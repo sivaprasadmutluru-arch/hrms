@@ -1,0 +1,33 @@
+package com.example.demo.attendance.entity;
+
+import com.example.demo.common.entity.BaseEntity;
+import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "attendance_late_come_early_out",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"attendance_id", "type"}))
+@Getter
+@Setter
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class AttendanceLateComeEarlyOut extends BaseEntity {
+
+    public enum EntryType {
+        LATE_COME, EARLY_OUT
+    }
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "attendance_id", nullable = false)
+    private Attendance attendance;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "employee_id")
+    private Employee employee;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false, length = 20)
+    private EntryType type;
+}
