@@ -32,7 +32,42 @@ public class LeaveType extends BaseEntity {
     private CarryforwardType carryforwardType = CarryforwardType.NO_CARRYFORWARD;
 
     @Column(name = "carryforward_max")
-    private Integer carryforwardMax;
+    private Double carryforwardMax;
+
+    // Reset configuration (mirrors Horilla reset/reset_based/reset_day/reset_month/reset_weekend)
+    @Column(name = "reset")
+    private Boolean reset = false;
+
+    @Column(name = "reset_based")
+    private String resetBased; // "monthly", "weekly", "yearly"
+
+    @Column(name = "reset_month")
+    private String resetMonth; // "1".."12"
+
+    @Column(name = "reset_day")
+    private String resetDay; // "1".."31" or "last day"
+
+    @Column(name = "reset_weekend")
+    private String resetWeekend; // "0"=Monday .. "6"=Sunday (for weekly reset)
+
+    // Carryforward expiry configuration
+    @Column(name = "carryforward_expire_in")
+    private Integer carryforwardExpireIn;
+
+    @Column(name = "carryforward_expire_period")
+    private String carryforwardExpirePeriod; // "day", "month", "year"
+
+    @Column(name = "carryforward_expire_date")
+    private java.time.LocalDate carryforwardExpireDate;
+
+    @Column(name = "require_attachment")
+    private Boolean requireAttachment = false;
+
+    @Column(name = "limit_leave")
+    private Boolean limitLeave = true;
+
+    @Column(name = "is_encashable")
+    private Boolean isEncashable = false;
 
     @Column(name = "leave_validation_type")
     @Enumerated(EnumType.STRING)

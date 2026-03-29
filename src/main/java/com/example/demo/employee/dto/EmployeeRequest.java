@@ -1,5 +1,7 @@
 package com.example.demo.employee.dto;
 
+import com.example.demo.auth.entity.Role;
+import com.example.demo.auth.entity.UserRole;
 import com.example.demo.employee.entity.Employee;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -33,7 +35,14 @@ public class EmployeeRequest {
     private String permanentAddress;
     private String currentAddress;
     private String country;
+    private String state;
+    private String city;
     private String zip;
+    private String workEmail;
+    private String workPhone;
+    private String qualification;
+    private Integer experience;
+    private Integer children;
     private String emergencyContact;
     private String emergencyContactName;
     private String emergencyContactRelation;
@@ -52,4 +61,11 @@ public class EmployeeRequest {
 
     // null means no change (preserves existing value); explicit true/false sets it
     private Boolean isActive;
+
+    // Optional: assign a role during employee creation (ignored on update)
+    private Role.RoleName role;
+    private UserRole.AccessScope accessScope;
+
+    // Login credentials for the auto-created user account (ignored on update)
+    private String password;
 }

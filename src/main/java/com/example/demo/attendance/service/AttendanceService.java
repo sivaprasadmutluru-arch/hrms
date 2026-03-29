@@ -1,5 +1,6 @@
 package com.example.demo.attendance.service;
 
+import com.example.demo.attendance.dto.AttendanceCalendarDayDto;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
@@ -10,8 +11,10 @@ import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
 import com.example.demo.base.repository.WorkTypeRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,8 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,6 +43,7 @@ public class AttendanceService {
     private final WorkTypeRepository workTypeRepository;
     private final AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
     private final AttendanceOverTimeRepository overtimeRepository;
+    private final GraceTimeRepository graceTimeRepository;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -73,7 +78,46 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceResponse update(Long id, AttendanceRequest req) {
-        return AttendanceResponse.from(attendanceRepository.save(buildAttendance(find(id), req)));
+        Attendance att = buildAttendance(find(id), req);
+        att = attendanceRepository.save(att);
+
+        // Auto-compute worked hours and detect late/early when checkout is present
+        if (att.getCheckOut() != null) {
+            autoComputeOnCheckout(att);
+        }
+
+        return AttendanceResponse.from(att);
+    }
+
+    private void autoComputeOnCheckout(Attendance att) {
+        // Compute worked hours
+        if (att.getCheckIn() != null) {
+            LocalTime in = att.getCheckIn();
+            LocalTime out = att.getCheckOut();
+            long minutes;
+            if (out.isBefore(in)) {
+                minutes = ChronoUnit.MINUTES.between(in, LocalTime.MAX) + 1
+                        + ChronoUnit.MINUTES.between(LocalTime.MIN, out);
+            } else {
+                minutes = ChronoUnit.MINUTES.between(in, out);
+            }
+            double worked = minutes / 60.0;
+            att.setWorkedHour(worked);
+            if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
+                att.setAttendanceOvertime(worked - att.getMinimumHour());
+            }
+            attendanceRepository.save(att);
+        }
+
+        // Detect late/early using company grace time (default 0 if not configured)
+        int graceMinutes = 0;
+        if (att.getCompany() != null) {
+            graceMinutes = graceTimeRepository
+                    .findFirstByCompanyIdAndIsDefaultTrue(att.getCompany().getId())
+                    .map(g -> g.getAllowedTimeInSeconds() != null ? g.getAllowedTimeInSeconds() / 60 : 0)
+                    .orElse(0);
+        }
+        detectLateComeEarlyOut(att.getId(), graceMinutes);
     }
 
     @Transactional
@@ -221,11 +265,98 @@ public class AttendanceService {
     }
 
     /**
+     * Reject an overtime record.
+     */
+    @Transactional
+    public AttendanceOverTime rejectOvertime(Long overtimeId) {
+        AttendanceOverTime ot = overtimeRepository.findById(overtimeId)
+                .orElseThrow(() -> new ResourceNotFoundException("AttendanceOverTime", overtimeId));
+        ot.setStatus(AttendanceOverTime.OvertimeStatus.REJECTED);
+        return overtimeRepository.save(ot);
+    }
+
+    /**
      * List overtime records for a company.
      */
     @Transactional(readOnly = true)
     public List<AttendanceOverTime> listOvertime(Long companyId) {
         return overtimeRepository.findByCompanyId(companyId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceCalendarDayDto> getCalendar(int year, int month, Long employeeId) {
+        Long resolvedEmployeeId = employeeId;
+        if (resolvedEmployeeId == null) {
+            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+            if (scope != null && scope.getUserId() != null) {
+                Employee emp = employeeRepository.findByUserId(scope.getUserId()).orElse(null);
+                if (emp != null) resolvedEmployeeId = emp.getId();
+            }
+        }
+        if (resolvedEmployeeId == null) return Collections.emptyList();
+
+        LocalDate first = LocalDate.of(year, month, 1);
+        LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
+        LocalDate today = LocalDate.now();
+
+        List<Attendance> attendances = attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(resolvedEmployeeId, first, last);
+        Map<LocalDate, Attendance> attendanceMap = attendances.stream()
+                .collect(Collectors.toMap(Attendance::getAttendanceDate, a -> a));
+
+        List<AttendanceLateComeEarlyOut> lateEarlyList = lateComeEarlyOutRepository.findByEmployeeId(resolvedEmployeeId);
+        Map<Long, List<AttendanceLateComeEarlyOut>> lateEarlyByAttendance = lateEarlyList.stream()
+                .collect(Collectors.groupingBy(le -> le.getAttendance().getId()));
+
+        List<AttendanceCalendarDayDto> days = new ArrayList<>();
+        LocalDate cur = first;
+        while (!cur.isAfter(last) && !cur.isAfter(today)) {
+            AttendanceCalendarDayDto dto = new AttendanceCalendarDayDto();
+            dto.setDate(cur);
+            dto.setDateName(cur.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH));
+
+            Attendance att = attendanceMap.get(cur);
+            if (att != null) {
+                dto.setAttendanceId(att.getId());
+                dto.setCheckIn(att.getCheckIn());
+                dto.setCheckInDate(att.getCheckInDate());
+                dto.setCheckOut(att.getCheckOut());
+                dto.setCheckOutDate(att.getCheckOutDate());
+                dto.setMinimumHour(att.getMinimumHour());
+                dto.setWorkedHour(att.getWorkedHour());
+                if (att.getShift() != null) dto.setShiftName(att.getShift().getName());
+                if (att.getWorkType() != null) dto.setWorkTypeName(att.getWorkType().getName());
+                if (att.getAttendanceOvertime() != null && att.getAttendanceOvertime() > 0)
+                    dto.setOvertime(att.getAttendanceOvertime());
+                if (att.getMinimumHour() != null && att.getWorkedHour() != null) {
+                    double pending = att.getMinimumHour() - att.getWorkedHour();
+                    dto.setPendingHour(pending > 0 ? pending : 0.0);
+                }
+
+                List<AttendanceLateComeEarlyOut> les = lateEarlyByAttendance.getOrDefault(att.getId(), Collections.emptyList());
+                dto.setTypes(les.stream().map(le -> le.getType().name()).collect(Collectors.toList()));
+                dto.setPenalties(les.size());
+
+                if (Boolean.TRUE.equals(att.getIsValidateRequestApproved())) {
+                    dto.setStatus("approved"); dto.setRowClass("blue");
+                } else if (Boolean.TRUE.equals(att.getIsValidateRequest())) {
+                    dto.setStatus("requested"); dto.setRowClass("orange");
+                } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.APPROVED) {
+                    dto.setStatus("on_time"); dto.setRowClass("green");
+                } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.REJECTED) {
+                    dto.setStatus("rejected"); dto.setRowClass("red");
+                } else {
+                    dto.setStatus("not_regularized"); dto.setRowClass("red");
+                }
+            } else {
+                dto.setTypes(Collections.emptyList());
+                dto.setStatus("no_record");
+                dto.setRowClass("gray");
+            }
+
+            days.add(dto);
+            cur = cur.plusDays(1);
+        }
+        return days;
     }
 
     private Attendance buildAttendance(Attendance att, AttendanceRequest req) {

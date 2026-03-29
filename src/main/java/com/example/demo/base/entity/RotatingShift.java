@@ -32,4 +32,14 @@ public class RotatingShift extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shift1_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShift shift1;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shift2_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShift shift2;
 }

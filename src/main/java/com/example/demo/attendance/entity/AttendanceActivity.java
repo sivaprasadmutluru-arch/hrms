@@ -1,12 +1,15 @@
 package com.example.demo.attendance.entity;
 
+import com.example.demo.base.entity.EmployeeShiftDay;
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -22,6 +25,11 @@ public class AttendanceActivity extends BaseEntity {
     @Column(name = "attendance_date")
     private LocalDate attendanceDate;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shift_day_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShiftDay shiftDay;
+
     @Column(name = "clock_in")
     private LocalTime clockIn;
 
@@ -34,8 +42,14 @@ public class AttendanceActivity extends BaseEntity {
     @Column(name = "clock_out_date")
     private LocalDate clockOutDate;
 
+    @Column(name = "in_datetime", columnDefinition = "timestamptz")
+    private LocalDateTime inDatetime;
+
+    @Column(name = "out_datetime", columnDefinition = "timestamptz")
+    private LocalDateTime outDatetime;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "in_datetime")
+    @Column(name = "clock_type")
     private ClockType clockType = ClockType.MANUAL;
 
     public enum ClockType {

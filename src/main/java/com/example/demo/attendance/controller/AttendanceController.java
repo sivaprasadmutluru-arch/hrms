@@ -1,5 +1,6 @@
 package com.example.demo.attendance.controller;
 
+import com.example.demo.attendance.dto.AttendanceCalendarDayDto;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
@@ -44,6 +45,16 @@ public class AttendanceController {
     @Operation(summary = "List all attendance records (company-scoped)")
     public ResponseEntity<Page<AttendanceResponse>> list(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(attendanceService.getAll(pageable));
+    }
+
+    @GetMapping("/calendar")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Get per-day attendance calendar for a given month")
+    public ResponseEntity<List<AttendanceCalendarDayDto>> getCalendar(
+            @RequestParam int year,
+            @RequestParam int month,
+            @RequestParam(required = false) Long employeeId) {
+        return ResponseEntity.ok(attendanceService.getCalendar(year, month, employeeId));
     }
 
     @GetMapping("/{id}")
@@ -134,6 +145,13 @@ public class AttendanceController {
     @Operation(summary = "Approve an overtime record")
     public ResponseEntity<AttendanceOverTime> approveOvertime(@PathVariable Long id) {
         return ResponseEntity.ok(attendanceService.approveOvertime(id));
+    }
+
+    @PostMapping("/overtime/{id}/reject")
+    @PreAuthorize("hasAuthority('attendance:approve')")
+    @Operation(summary = "Reject an overtime record")
+    public ResponseEntity<AttendanceOverTime> rejectOvertime(@PathVariable Long id) {
+        return ResponseEntity.ok(attendanceService.rejectOvertime(id));
     }
 
     // ─── Attendance Request Comments ──────────────────────────────────────────

@@ -1,9 +1,13 @@
 package com.example.demo.employee.service;
 
+import com.example.demo.auth.dto.AssignRoleRequest;
 import com.example.demo.auth.dto.RegisterRequest;
+import com.example.demo.auth.entity.Role;
 import com.example.demo.auth.entity.User;
+import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.auth.service.AuthService;
+import com.example.demo.auth.service.UserRoleService;
 import com.example.demo.base.entity.*;
 import com.example.demo.base.repository.*;
 import com.example.demo.common.exception.BadRequestException;
@@ -39,6 +43,7 @@ public class EmployeeService {
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
     private final AuthService authService;
+    private final UserRoleService userRoleService;
     private final CompanyRepository companyRepository;
     private final DepartmentRepository departmentRepository;
     private final JobPositionRepository jobPositionRepository;
@@ -104,20 +109,38 @@ public class EmployeeService {
         }
 
         Employee emp = buildEmployee(new Employee(), req);
+        if (emp.getBadgeId() == null || emp.getBadgeId().isBlank()) {
+            emp.setBadgeId(generateBadgeId(company.getId(), company.getName()));
+        }
 
         // Auto-create a linked user account if email is provided
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
+            boolean[] isNewUser = {false};
             User user = userRepository.findByEmail(req.getEmail()).orElseGet(() -> {
+                isNewUser[0] = true;
                 RegisterRequest reg = new RegisterRequest();
                 reg.setUsername(req.getEmail());
                 reg.setEmail(req.getEmail());
-                reg.setPassword("hrms@1234");   // temporary default password
+                reg.setPassword(req.getPassword() != null && !req.getPassword().isBlank()
+                        ? req.getPassword() : "hrms@1234");
                 reg.setFirstName(req.getFirstName());
                 reg.setLastName(req.getLastName());
-                reg.setCompanyId(req.getCompanyId());
+                reg.setCompanyId(null); // role assignment handled explicitly below
                 return authService.register(reg);
             });
             emp.setUser(user);
+
+            // Assign role: use selected role, or default to EMPLOYEE+SELF for new users
+            Role.RoleName roleName = req.getRole() != null ? req.getRole() : (isNewUser[0] ? Role.RoleName.EMPLOYEE : null);
+            UserRole.AccessScope scope = req.getAccessScope() != null ? req.getAccessScope() : (isNewUser[0] ? UserRole.AccessScope.SELF : null);
+            if (roleName != null && scope != null && !userRoleService.hasRole(user.getId(), req.getCompanyId(), roleName)) {
+                AssignRoleRequest roleReq = new AssignRoleRequest();
+                roleReq.setUserId(user.getId());
+                roleReq.setRoleName(roleName);
+                roleReq.setCompanyId(req.getCompanyId());
+                roleReq.setAccessScope(scope);
+                userRoleService.assignRole(roleReq);
+            }
         }
 
         return EmployeeResponse.from(employeeRepository.save(emp));
@@ -127,6 +150,10 @@ public class EmployeeService {
     public EmployeeResponse update(Long id, EmployeeRequest req) {
         Employee emp = findEmployee(id);
         buildEmployee(emp, req);
+        // Link to user account if not already linked and email is provided
+        if (emp.getUser() == null && req.getEmail() != null && !req.getEmail().isBlank()) {
+            userRepository.findByEmail(req.getEmail()).ifPresent(emp::setUser);
+        }
         return EmployeeResponse.from(employeeRepository.save(emp));
     }
 
@@ -155,6 +182,29 @@ public class EmployeeService {
                 .stream().map(EmployeeResponse::from).collect(Collectors.toList());
     }
 
+    private String generateBadgeId(Long companyId, String companyName) {
+        String code = companyCode(companyName);
+        long base = employeeRepository.countByCompanyId(companyId);
+        for (int i = 0; i < 1000; i++) {
+            String candidate = String.format("EMP-%s-%03d", code, base + 1 + i);
+            if (employeeRepository.findByBadgeId(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return "EMP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    private String companyCode(String name) {
+        String[] words = name.trim().split("\\s+");
+        StringBuilder code = new StringBuilder();
+        for (String w : words) {
+            if (code.length() >= 3) break;
+            if (!w.isEmpty()) code.append(Character.toUpperCase(w.charAt(0)));
+        }
+        while (code.length() < 3) code.append('X');
+        return code.toString();
+    }
+
     private Employee findEmployee(Long id) {
         return employeeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
@@ -178,7 +228,14 @@ public class EmployeeService {
         emp.setPermanentAddress(req.getPermanentAddress());
         emp.setCurrentAddress(req.getCurrentAddress());
         emp.setCountry(req.getCountry());
+        emp.setState(req.getState());
+        emp.setCity(req.getCity());
         emp.setZip(req.getZip());
+        emp.setWorkEmail(req.getWorkEmail());
+        emp.setWorkPhone(req.getWorkPhone());
+        emp.setQualification(req.getQualification());
+        emp.setExperience(req.getExperience());
+        emp.setChildren(req.getChildren());
         emp.setEmergencyContact(req.getEmergencyContact());
         emp.setEmergencyContactName(req.getEmergencyContactName());
         emp.setEmergencyContactRelation(req.getEmergencyContactRelation());

@@ -11,6 +11,7 @@ import com.example.demo.payroll.repository.PayslipRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ConsolidatedReportService {
 
     private final EmployeeRepository employeeRepository;
@@ -106,11 +108,15 @@ public class ConsolidatedReportService {
                 .count();
 
         // Build daily presence/absence chart data
+        // Count any attendance record (regardless of approval status) as present
         Map<LocalDate, Long> presentByDay = filtered.stream()
-                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceStatus.APPROVED.equals(a.getAttendanceValidated()))
+                .filter(a -> a.getEmployee() != null)
                 .collect(Collectors.groupingBy(
                         com.example.demo.attendance.entity.Attendance::getAttendanceDate,
-                        Collectors.counting()
+                        Collectors.collectingAndThen(
+                                Collectors.mapping(a -> a.getEmployee().getId(), Collectors.toSet()),
+                                s -> (long) s.size()
+                        )
                 ));
 
         // Total distinct employees for context

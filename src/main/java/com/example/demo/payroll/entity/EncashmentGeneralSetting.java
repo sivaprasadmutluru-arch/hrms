@@ -31,4 +31,12 @@ public class EncashmentGeneralSetting extends BaseEntity {
     /** Minimum accrued leave days required before encashment is allowed */
     @Column(name = "min_accrual_before_encashment")
     private Integer minAccrualBeforeEncashment;
+
+    /** Amount per bonus point for encashment (GCP: bonus_amount) */
+    @Column(name = "bonus_amount")
+    private Integer bonusAmount = 1;
+
+    /** Amount per leave day for encashment (GCP: leave_amount) */
+    @Column(name = "leave_amount")
+    private Integer leaveAmount;
 }

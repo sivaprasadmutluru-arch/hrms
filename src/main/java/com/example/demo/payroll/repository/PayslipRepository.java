@@ -3,14 +3,31 @@ package com.example.demo.payroll.repository;
 import com.example.demo.payroll.entity.Payslip;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PayslipRepository extends JpaRepository<Payslip, Long>, JpaSpecificationExecutor<Payslip> {
-    List<Payslip> findByEmployeeId(Long employeeId);
+
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company")
+    List<Payslip> findAllWithAssociations();
+
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company " +
+           "WHERE p.company.id IN :companyIds")
+    List<Payslip> findAllWithAssociationsByCompanyIdIn(@Param("companyIds") List<Long> companyIds);
+
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company " +
+           "WHERE p.employee.id = :employeeId")
+    List<Payslip> findByEmployeeId(@Param("employeeId") Long employeeId);
+
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company WHERE p.id = :id")
+    Optional<Payslip> findByIdWithAssociations(@Param("id") Long id);
+
     List<Payslip> findByCompanyId(Long companyId);
     List<Payslip> findByCompanyIdAndStatus(Long companyId, Payslip.PayslipStatus status);
     List<Payslip> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);

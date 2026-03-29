@@ -22,7 +22,12 @@ public class WorkRecord extends BaseEntity {
         FDP,   // Full Day Present
         HDP,   // Half Day Present
         ABS,   // Absent
+        LEA,   // Leave
         HD,    // Holiday/Company Leave
+        MCO,   // Missed Check Out
+        WOF,   // Weekly Off
+        LFD,   // Full Day Leave
+        LHD,   // Half Day Leave
         CONF,  // Conflict
         DFT    // Draft
     }
@@ -74,4 +79,9 @@ public class WorkRecord extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "attendance_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private com.example.demo.attendance.entity.Attendance attendance;
 }

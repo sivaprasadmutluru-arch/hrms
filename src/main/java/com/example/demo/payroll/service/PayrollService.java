@@ -67,14 +67,30 @@ public class PayrollService {
 
         for (Allowance a : allowances) {
             BigDecimal amount;
-            if (a.getAmountType() == Allowance.AmountType.PERCENTAGE && a.getPercentage() != null) {
-                amount = basicPay.multiply(BigDecimal.valueOf(a.getPercentage() / 100.0))
+            if (!Boolean.TRUE.equals(a.getIsFixed()) && a.getRate() != null) {
+                amount = basicPay.multiply(BigDecimal.valueOf(a.getRate() / 100.0))
                         .setScale(2, RoundingMode.HALF_UP);
             } else {
-                amount = a.getAmount() != null ? a.getAmount() : BigDecimal.ZERO;
+                amount = a.getAmount() != null ? BigDecimal.valueOf(a.getAmount()) : BigDecimal.ZERO;
             }
             totalAllowance = totalAllowance.add(amount);
-            allowanceLines.add(Map.of("name", a.getName(), "amount", amount, "type", "ALLOWANCE"));
+            allowanceLines.add(Map.of("name", a.getTitle(), "amount", amount, "type", "ALLOWANCE"));
+        }
+
+        // ── 2b. Contract-level allowances (housing / transport / other) ──────
+        if (contract != null) {
+            if (contract.getHousingAllowance() != null && contract.getHousingAllowance().compareTo(BigDecimal.ZERO) > 0) {
+                totalAllowance = totalAllowance.add(contract.getHousingAllowance());
+                allowanceLines.add(Map.of("name", "Housing Allowance", "amount", contract.getHousingAllowance(), "type", "ALLOWANCE"));
+            }
+            if (contract.getTransportAllowance() != null && contract.getTransportAllowance().compareTo(BigDecimal.ZERO) > 0) {
+                totalAllowance = totalAllowance.add(contract.getTransportAllowance());
+                allowanceLines.add(Map.of("name", "Transport Allowance", "amount", contract.getTransportAllowance(), "type", "ALLOWANCE"));
+            }
+            if (contract.getOtherAllowance() != null && contract.getOtherAllowance().compareTo(BigDecimal.ZERO) > 0) {
+                totalAllowance = totalAllowance.add(contract.getOtherAllowance());
+                allowanceLines.add(Map.of("name", "Other Allowance", "amount", contract.getOtherAllowance(), "type", "ALLOWANCE"));
+            }
         }
 
         BigDecimal grossPay = basicPay.add(totalAllowance);
@@ -87,13 +103,12 @@ public class PayrollService {
 
         for (Deduction d : deductions) {
             BigDecimal amount;
-            if (d.getAmountType() == Deduction.AmountType.PERCENTAGE) {
-                double rate = (d.getEmployeeRate() != null ? d.getEmployeeRate() : 0)
-                        + (d.getPercentage() != null ? d.getPercentage() : 0);
+            if (!Boolean.TRUE.equals(d.getIsFixed())) {
+                double rate = d.getRate() != null ? d.getRate() : 0.0;
                 amount = grossPay.multiply(BigDecimal.valueOf(rate / 100.0))
                         .setScale(2, RoundingMode.HALF_UP);
             } else {
-                amount = d.getAmount() != null ? d.getAmount() : BigDecimal.ZERO;
+                amount = d.getAmount() != null ? BigDecimal.valueOf(d.getAmount()) : BigDecimal.ZERO;
             }
 
             if (Boolean.TRUE.equals(d.getIsPretax())) {
@@ -101,13 +116,15 @@ public class PayrollService {
             } else {
                 postTaxDeductions = postTaxDeductions.add(amount);
             }
-            deductionLines.add(Map.of("name", d.getName(), "amount", amount, "type", "DEDUCTION",
+            deductionLines.add(Map.of("name", d.getTitle(), "amount", amount, "type", "DEDUCTION",
                     "pretax", Boolean.TRUE.equals(d.getIsPretax())));
         }
 
         // ── 4. Tax ────────────────────────────────────────────────────────────
         BigDecimal taxableIncome = grossPay.subtract(preTaxDeductions);
-        BigDecimal taxAmount = calculateTax(taxableIncome, companyId);
+        Long contractFilingStatusId = (contract != null && contract.getFilingStatus() != null)
+                ? contract.getFilingStatus().getId() : null;
+        BigDecimal taxAmount = calculateTax(taxableIncome, companyId, contractFilingStatusId);
 
         // ── 5. Loan installments ──────────────────────────────────────────────
         List<LoanAccount> activeLoans = loanAccountRepository.findByEmployeeIdAndSettledFalse(employeeId);
@@ -161,8 +178,7 @@ public class PayrollService {
         payslip.setPayDate(endDate);
         payslip.setBasicPay(basicPay);
         payslip.setGrossPay(grossPay);
-        payslip.setTotalAllowance(totalAllowance.add(totalReimbursement));
-        payslip.setTotalDeduction(preTaxDeductions.add(taxAmount).add(postTaxDeductions).add(totalLoanDeduction));
+        payslip.setDeduction(preTaxDeductions.add(taxAmount).add(postTaxDeductions).add(totalLoanDeduction));
         payslip.setNetPay(netPay);
         payslip.setStatus(Payslip.PayslipStatus.DRAFT);
         payslip.setCompany(companyRepository.getReferenceById(companyId));
@@ -198,11 +214,15 @@ public class PayrollService {
      * Calculate income tax by looking up tax brackets for the company's default filing status.
      * Uses progressive bracket calculation.
      */
-    private BigDecimal calculateTax(BigDecimal taxableIncome, Long companyId) {
-        List<FilingStatus> filingStatuses = filingStatusRepository.findByCompanyId(companyId);
-        if (filingStatuses.isEmpty()) return BigDecimal.ZERO;
+    private BigDecimal calculateTax(BigDecimal taxableIncome, Long companyId, Long contractFilingStatusId) {
+        // Use contract's filing status if set, otherwise fall back to first company filing status
+        Long filingStatusId = contractFilingStatusId;
+        if (filingStatusId == null) {
+            List<FilingStatus> filingStatuses = filingStatusRepository.findByCompanyId(companyId);
+            if (filingStatuses.isEmpty()) return BigDecimal.ZERO;
+            filingStatusId = filingStatuses.get(0).getId();
+        }
 
-        Long filingStatusId = filingStatuses.get(0).getId();
         List<TaxBracket> brackets = taxBracketRepository.findByFilingStatusId(filingStatusId);
         if (brackets.isEmpty()) return BigDecimal.ZERO;
 

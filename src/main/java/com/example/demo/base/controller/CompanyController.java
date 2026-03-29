@@ -5,6 +5,7 @@ import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.service.CompanyService;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ public class CompanyController {
 
     private final CompanyService companyService;
     private final CompanyRepository companyRepository;
+    private final EmployeeRepository employeeRepository;
 
     // ---- Prabha Tech (Platform Super Admin) endpoints ----
 
@@ -63,6 +66,24 @@ public class CompanyController {
     @Operation(summary = "List all branches under a Head Office")
     public ResponseEntity<List<Company>> listBranches(@PathVariable Long headOfficeId) {
         return ResponseEntity.ok(companyService.getBranches(headOfficeId));
+    }
+
+    @GetMapping("/{headOfficeId}/branches-summary")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN')")
+    @Operation(summary = "List branches with active employee count")
+    public ResponseEntity<List<Map<String, Object>>> branchesSummary(@PathVariable Long headOfficeId) {
+        List<Company> branches = companyService.getBranches(headOfficeId);
+        List<Map<String, Object>> result = branches.stream().map(b -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", b.getId());
+            m.put("name", b.getName());
+            m.put("email", b.getEmail());
+            m.put("location", b.getAddress() != null ? b.getAddress() : (b.getCity() != null ? b.getCity() : null));
+            m.put("status", b.getStatus());
+            m.put("employeeCount", employeeRepository.countByCompanyIdAndIsActiveTrue(b.getId()));
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/{headOfficeId}/branches")

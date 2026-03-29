@@ -157,7 +157,8 @@ public class DataSeeder implements CommandLineRunner {
                         "onboarding:view", "onboarding:create", "onboarding:edit",
                         "offboarding:view", "offboarding:create", "offboarding:edit",
                         "asset:view", "asset:create", "asset:edit",
-                        "helpdesk:view", "helpdesk:edit",
+                        "helpdesk:view", "helpdesk:create", "helpdesk:edit", "helpdesk:delete", "helpdesk:approve",
+                        "pms:view", "pms:create", "pms:edit",
                         "project:view", "project:create", "project:edit",
                         "department:view", "department:create", "department:edit",
                         "report:view", "report:export"));
@@ -232,6 +233,7 @@ public class DataSeeder implements CommandLineRunner {
                 perms(all,
                         "attendance:view", "attendance:create",
                         "leave:view", "leave:create",
+                        "payroll:view",
                         "helpdesk:view", "helpdesk:create",
                         "pms:view"));
 
@@ -746,7 +748,7 @@ public class DataSeeder implements CommandLineRunner {
 
             // ── Leave types ───────────────────────────────────────────────────
             seedLeaveType("Annual Leave",   "#4CAF50", 21, LeaveType.PaymentType.PAID,
-                    LeaveType.CarryforwardType.CARRYFORWARD, 10,
+                    LeaveType.CarryforwardType.CARRYFORWARD, 10.0,
                     LeaveType.LeaveValidationType.MANAGER_VALIDATION, true, headOffice);
             seedLeaveType("Sick Leave",     "#F44336", 12, LeaveType.PaymentType.PAID,
                     LeaveType.CarryforwardType.NO_CARRYFORWARD, null,
@@ -766,7 +768,7 @@ public class DataSeeder implements CommandLineRunner {
 
             if (blr != null) {
                 seedLeaveType("Annual Leave",  "#4CAF50", 21, LeaveType.PaymentType.PAID,
-                        LeaveType.CarryforwardType.CARRYFORWARD, 10,
+                        LeaveType.CarryforwardType.CARRYFORWARD, 10.0,
                         LeaveType.LeaveValidationType.MANAGER_VALIDATION, true, blr);
                 seedLeaveType("Sick Leave",    "#F44336", 12, LeaveType.PaymentType.PAID,
                         LeaveType.CarryforwardType.NO_CARRYFORWARD, null,
@@ -781,7 +783,7 @@ public class DataSeeder implements CommandLineRunner {
 
             if (mum != null) {
                 seedLeaveType("Annual Leave",  "#4CAF50", 21, LeaveType.PaymentType.PAID,
-                        LeaveType.CarryforwardType.CARRYFORWARD, 10,
+                        LeaveType.CarryforwardType.CARRYFORWARD, 10.0,
                         LeaveType.LeaveValidationType.MANAGER_VALIDATION, true, mum);
                 seedLeaveType("Sick Leave",    "#F44336", 12, LeaveType.PaymentType.PAID,
                         LeaveType.CarryforwardType.NO_CARRYFORWARD, null,
@@ -876,7 +878,7 @@ public class DataSeeder implements CommandLineRunner {
 
     private void seedLeaveType(String name, String colorCode, Integer totalDays,
                                LeaveType.PaymentType paymentType,
-                               LeaveType.CarryforwardType carryforwardType, Integer carryforwardMax,
+                               LeaveType.CarryforwardType carryforwardType, Double carryforwardMax,
                                LeaveType.LeaveValidationType validationType,
                                boolean excludeHoliday, Company company) {
         boolean exists = leaveTypeRepository.findByCompanyId(company.getId())

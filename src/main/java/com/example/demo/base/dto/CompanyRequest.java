@@ -15,6 +15,10 @@ public class CompanyRequest {
     @NotBlank
     private String name;
 
+    // Required only when creating a Head Office — credentials for the enterprise admin account
+    private String adminUsername;
+    private String adminPassword;
+
     private String address;
     private String city;
     private String state;

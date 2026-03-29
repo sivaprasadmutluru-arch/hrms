@@ -45,6 +45,17 @@ public class DisciplinaryAction extends BaseEntity {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
+    @Column(name = "unit_in", length = 10)
+    private String unitIn = "days";
+
+    @Column(name = "hours", length = 6)
+    private String hours = "00:00";
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "action_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private com.example.demo.employee.entity.ActionType action;
+
     public enum ActionType {
         WARNING, SUSPENSION, DEMOTION, TERMINATION, WRITTEN_WARNING, VERBAL_WARNING
     }

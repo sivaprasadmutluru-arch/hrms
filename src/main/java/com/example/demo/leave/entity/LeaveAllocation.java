@@ -15,11 +15,11 @@ import lombok.Setter;
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class LeaveAllocation extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "leave_type_id", nullable = false)
     private LeaveType leaveType;
 

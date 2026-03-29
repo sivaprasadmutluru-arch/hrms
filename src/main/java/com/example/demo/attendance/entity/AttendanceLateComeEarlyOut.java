@@ -30,4 +30,16 @@ public class AttendanceLateComeEarlyOut extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 20)
     private EntryType type;
+
+    @Column(name = "late_come", length = 10)
+    private String lateCome;
+
+    @Column(name = "early_out", length = 10)
+    private String earlyOut;
+
+    @Column(name = "late_come_second")
+    private Integer lateComeSecond;
+
+    @Column(name = "early_out_second")
+    private Integer earlyOutSecond;
 }

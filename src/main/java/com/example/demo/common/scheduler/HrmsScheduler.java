@@ -1,7 +1,11 @@
 package com.example.demo.common.scheduler;
 
+import com.example.demo.attendance.repository.AttendanceRepository;
+import com.example.demo.attendance.service.AttendanceService;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.payroll.entity.PayslipAutoGenerate;
 import com.example.demo.payroll.repository.ContractRepository;
 import com.example.demo.payroll.repository.PayslipAutoGenerateRepository;
@@ -25,6 +29,9 @@ public class HrmsScheduler {
     private final ContractRepository contractRepository;
     private final CompanyRepository companyRepository;
     private final LeaveService leaveService;
+    private final AttendanceService attendanceService;
+    private final AttendanceRepository attendanceRepository;
+    private final EmployeeRepository employeeRepository;
 
     /**
      * Payslip auto-generation: runs daily at 01:00.
@@ -36,8 +43,15 @@ public class HrmsScheduler {
         LocalDate today = LocalDate.now();
         List<PayslipAutoGenerate> configs = payslipAutoGenerateRepository.findAll();
         for (PayslipAutoGenerate config : configs) {
-            if (!Boolean.TRUE.equals(config.getIsEnabled())) continue;
-            int targetDay = config.getGenerateDay() != null ? config.getGenerateDay() : 1;
+            if (!Boolean.TRUE.equals(config.getAutoGenerate())) continue;
+            String generateDayStr = config.getGenerateDay();
+            int targetDay;
+            if ("last day".equalsIgnoreCase(generateDayStr)) {
+                targetDay = today.lengthOfMonth();
+            } else {
+                try { targetDay = Integer.parseInt(generateDayStr != null ? generateDayStr : "1"); }
+                catch (NumberFormatException ex) { targetDay = 1; }
+            }
             // Adjust for months with fewer days
             int lastDayOfMonth = today.lengthOfMonth();
             int effectiveDay = Math.min(targetDay, lastDayOfMonth);
@@ -72,6 +86,38 @@ public class HrmsScheduler {
                         && !c.getEndDate().isAfter(alertThreshold))
                 .forEach(c -> log.warn("Contract {} for employee {} expires on {}",
                         c.getId(), c.getEmployee().getId(), c.getEndDate()));
+    }
+
+    /**
+     * Monthly overtime computation: runs on the 1st of each month at 03:00.
+     * For each company, computes overtime for all active employees for the previous month.
+     */
+    @Scheduled(cron = "0 0 3 1 * *")
+    public void computeMonthlyOvertime() {
+        LocalDate lastMonth = LocalDate.now().minusMonths(1);
+        int month = lastMonth.getMonthValue();
+        int year = lastMonth.getYear();
+
+        List<Company> companies = companyRepository.findAll();
+        for (Company company : companies) {
+            List<Employee> employees = employeeRepository.findByCompanyIdAndIsActiveTrue(company.getId());
+            for (Employee employee : employees) {
+                boolean hasAttendance = !attendanceRepository
+                        .findByEmployeeIdAndAttendanceDateBetween(
+                                employee.getId(),
+                                lastMonth.withDayOfMonth(1),
+                                lastMonth.withDayOfMonth(lastMonth.lengthOfMonth()))
+                        .isEmpty();
+                if (!hasAttendance) continue;
+                try {
+                    attendanceService.computeMonthlyOvertime(employee.getId(), company.getId(), month, year);
+                } catch (Exception e) {
+                    log.error("Overtime computation failed for employee {} company {}: {}",
+                            employee.getId(), company.getId(), e.getMessage());
+                }
+            }
+        }
+        log.info("Monthly overtime computed for {}/{}", month, year);
     }
 
     /**

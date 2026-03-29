@@ -11,6 +11,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Entity
 @Table(name = "payroll_loan_accounts")
@@ -28,7 +29,8 @@ public class LoanAccount extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "company", "department",
+            "jobPosition", "jobRole", "workType", "shift", "reportingManager", "user"})
     private Employee employee;
 
     @Column(name = "loan_amount", precision = 12, scale = 2)
@@ -36,6 +38,30 @@ public class LoanAccount extends BaseEntity {
 
     @Column(name = "provided_date")
     private LocalDate providedDate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "allowance_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Allowance allowance;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "loan_account_deduction_ids",
+            joinColumns = @JoinColumn(name = "loan_account_id"),
+            inverseJoinColumns = @JoinColumn(name = "deduction_id"))
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Set<Deduction> deductionIds;
+
+    @Column(name = "is_fixed")
+    private Boolean isFixed = true;
+
+    @Column(name = "rate")
+    private Double rate = 0.0;
+
+    @Column(name = "apply_on")
+    private String applyOn = "end_of_month";
 
     @Column(name = "installment_start_date")
     private LocalDate installmentStartDate;

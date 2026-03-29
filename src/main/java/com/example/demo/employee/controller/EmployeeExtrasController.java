@@ -1,6 +1,7 @@
 package com.example.demo.employee.controller;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.*;
@@ -34,6 +35,7 @@ public class EmployeeExtrasController {
     private final ActionTypeRepository actionTypeRepository;
     private final EmployeeGeneralSettingRepository employeeGeneralSettingRepository;
     private final ProfileEditFeatureRepository profileEditFeatureRepository;
+    private final PolicyRepository policyRepository;
 
     // ─── Work Information ────────────────────────────────────────────────────
 
@@ -417,5 +419,96 @@ public class EmployeeExtrasController {
                 });
         f.setIsEditable(body.getIsEditable());
         return ResponseEntity.ok(profileEditFeatureRepository.save(f));
+    }
+
+    // ─── Policies ─────────────────────────────────────────────────────────────
+
+    @GetMapping("/policies")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List policies (company-scoped)")
+    public ResponseEntity<List<Policy>> listPolicies() {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || scope.hasUnrestrictedAccess()) {
+            if (scope != null && scope.getCompanyId() != null) {
+                return ResponseEntity.ok(policyRepository.findByCompanyId(scope.getCompanyId()));
+            }
+            return ResponseEntity.ok(policyRepository.findAll());
+        }
+        List<Long> accessibleIds = scope.getAccessibleCompanyIds();
+        if (accessibleIds.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (accessibleIds.size() == 1) {
+            return ResponseEntity.ok(policyRepository.findByCompanyId(accessibleIds.get(0)));
+        }
+        return ResponseEntity.ok(policyRepository.findByCompanyIdIn(accessibleIds));
+    }
+
+    @GetMapping("/policies/{id}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get policy by ID")
+    public ResponseEntity<Policy> getPolicy(@PathVariable Long id) {
+        Policy policy = policyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Policy", id));
+        return ResponseEntity.ok(policy);
+    }
+
+    @PostMapping("/policies")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Create a policy")
+    public ResponseEntity<Policy> createPolicy(@RequestBody Policy policy) {
+        if (policy.getCompanies() != null) {
+            policy.setCompanies(policy.getCompanies().stream()
+                    .filter(c -> c.getId() != null)
+                    .map(c -> companyRepository.getReferenceById(c.getId()))
+                    .toList());
+        }
+        return ResponseEntity.ok(policyRepository.save(policy));
+    }
+
+    @PutMapping("/policies/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Update a policy")
+    public ResponseEntity<Policy> updatePolicy(@PathVariable Long id, @RequestBody Policy updated) {
+        Policy policy = policyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Policy", id));
+        policy.setTitle(updated.getTitle());
+        policy.setBody(updated.getBody());
+        policy.setVisibleToAll(updated.isVisibleToAll());
+        if (updated.getCompanies() != null) {
+            policy.setCompanies(updated.getCompanies().stream()
+                    .filter(c -> c.getId() != null)
+                    .map(c -> companyRepository.getReferenceById(c.getId()))
+                    .toList());
+        }
+        return ResponseEntity.ok(policyRepository.save(policy));
+    }
+
+    @DeleteMapping("/policies/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Delete a policy")
+    public ResponseEntity<Map<String, String>> deletePolicy(@PathVariable Long id) {
+        policyRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Policy deleted"));
+    }
+
+    @PostMapping("/policies/{id}/employees")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Assign specific employees to a policy")
+    public ResponseEntity<Policy> assignPolicyEmployees(@PathVariable Long id,
+                                                         @RequestBody List<Long> employeeIds) {
+        Policy policy = policyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Policy", id));
+        List<com.example.demo.employee.entity.Employee> employees = employeeIds.stream()
+                .map(employeeRepository::getReferenceById)
+                .toList();
+        policy.setSpecificEmployees(employees);
+        return ResponseEntity.ok(policyRepository.save(policy));
     }
 }

@@ -3,7 +3,6 @@ package com.example.demo.auth.controller;
 import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.LoginResponse;
 import com.example.demo.auth.dto.PasswordResetRequest;
-import com.example.demo.auth.dto.RegisterRequest;
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.UserPrincipal;
@@ -67,13 +66,6 @@ public class AuthController {
     @Operation(summary = "Login and get JWT token")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
-    }
-
-    @PostMapping("/register")
-    @Operation(summary = "Register a new user")
-    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterRequest request) {
-        authService.register(request);
-        return ResponseEntity.ok(Map.of("message", "User registered successfully"));
     }
 
     @PostMapping("/forgot-password")

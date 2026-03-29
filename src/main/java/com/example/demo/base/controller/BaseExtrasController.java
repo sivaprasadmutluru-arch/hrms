@@ -1,5 +1,6 @@
 package com.example.demo.base.controller;
 
+import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.base.entity.*;
 import com.example.demo.base.repository.*;
 import com.example.demo.common.exception.ResourceNotFoundException;
@@ -28,6 +29,9 @@ public class BaseExtrasController {
     private final WorkTypeRequestCommentRepository workTypeRequestCommentRepository;
     private final ShiftRequestCommentRepository shiftRequestCommentRepository;
     private final TagRepository tagRepository;
+    private final ShiftScheduleRepository shiftScheduleRepository;
+    private final WorkTypeRepository workTypeRepository;
+    private final JobPositionRepository jobPositionRepository;
     private final MailTemplateRepository mailTemplateRepository;
     private final DynamicEmailConfigRepository dynamicEmailConfigRepository;
     private final AnnouncementViewRepository announcementViewRepository;
@@ -39,6 +43,12 @@ public class BaseExtrasController {
     private final ShiftRequestRepository shiftRequestRepository;
     private final WorkTypeRequestRepository workTypeRequestRepository;
     private final AnnouncementRepository announcementRepository;
+    private final CompanyAccessControlRepository companyAccessControlRepository;
+    private final EmployeeShiftScheduleRepository employeeShiftScheduleRepository;
+    private final NotificationSoundRepository notificationSoundRepository;
+    private final DynamicPaginationRepository dynamicPaginationRepository;
+    private final BiometricAttendanceRepository biometricAttendanceRepository;
+    private final UserRepository userRepository;
 
     // ---- Employee Types ----
 
@@ -368,6 +378,36 @@ public class BaseExtrasController {
         return ResponseEntity.ok(shiftRequestCommentRepository.save(comment));
     }
 
+    // ---- Shift Schedules ----
+
+    @GetMapping("/shift-schedules")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<ShiftSchedule>> listShiftSchedules() {
+        var spec = ScopeFilter.<ShiftSchedule>byCompany();
+        return ResponseEntity.ok(spec != null ? shiftScheduleRepository.findAll(spec) : shiftScheduleRepository.findAll());
+    }
+
+    // ---- Work Types ----
+
+    @GetMapping("/work-types")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<WorkType>> listWorkTypes() {
+        var spec = ScopeFilter.<WorkType>byCompany();
+        return ResponseEntity.ok(spec != null ? workTypeRepository.findAll(spec) : workTypeRepository.findAll());
+    }
+
+    // ---- Job Positions ----
+
+    @GetMapping("/job-positions")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<JobPosition>> listJobPositions() {
+        var spec = ScopeFilter.<JobPosition>byCompany();
+        return ResponseEntity.ok(spec != null ? jobPositionRepository.findAll(spec) : jobPositionRepository.findAll());
+    }
+
     // ---- Work Type Request Comments ----
 
     @GetMapping("/work-type-requests/{id}/comments")
@@ -387,5 +427,106 @@ public class BaseExtrasController {
             comment.setEmployee(employeeRepository.getReferenceById(comment.getEmployee().getId()));
         }
         return ResponseEntity.ok(workTypeRequestCommentRepository.save(comment));
+    }
+
+    // ---- Company Access Controls ----
+
+    @GetMapping("/company-access-controls/user/{userId}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getCompanyAccessControl(@PathVariable Long userId) {
+        return ResponseEntity.ok(companyAccessControlRepository.findByUserId(userId).orElse(null));
+    }
+
+    @PostMapping("/company-access-controls")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN')")
+    @Transactional
+    public ResponseEntity<CompanyAccessControl> saveCompanyAccessControl(@RequestBody CompanyAccessControl ctrl) {
+        return ResponseEntity.ok(companyAccessControlRepository.save(ctrl));
+    }
+
+    // ---- Employee Shift Schedules ----
+
+    @GetMapping("/shift-schedules/{shiftId}/day-schedules")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<EmployeeShiftSchedule>> listShiftDaySchedules(@PathVariable Long shiftId) {
+        return ResponseEntity.ok(employeeShiftScheduleRepository.findByShiftId(shiftId));
+    }
+
+    @PostMapping("/shift-schedules/{shiftId}/day-schedules")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<EmployeeShiftSchedule> createShiftDaySchedule(
+            @PathVariable Long shiftId, @RequestBody EmployeeShiftSchedule schedule) {
+        schedule.setShift(employeeShiftRepository.getReferenceById(shiftId));
+        return ResponseEntity.ok(employeeShiftScheduleRepository.save(schedule));
+    }
+
+    // ---- Notification Sounds ----
+
+    @GetMapping("/notification-sound/employee/{employeeId}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getNotificationSound(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(notificationSoundRepository.findByEmployeeId(employeeId).orElse(null));
+    }
+
+    @PostMapping("/notification-sound/employee/{employeeId}/toggle")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    public ResponseEntity<NotificationSound> toggleNotificationSound(@PathVariable Long employeeId) {
+        NotificationSound sound = notificationSoundRepository.findByEmployeeId(employeeId).orElseGet(() -> {
+            NotificationSound ns = new NotificationSound();
+            ns.setEmployee(employeeRepository.getReferenceById(employeeId));
+            return ns;
+        });
+        sound.setSoundEnabled(!sound.isSoundEnabled());
+        return ResponseEntity.ok(notificationSoundRepository.save(sound));
+    }
+
+    // ---- Dynamic Pagination ----
+
+    @GetMapping("/pagination/user/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getDynamicPagination(@PathVariable Long userId) {
+        return ResponseEntity.ok(dynamicPaginationRepository.findByUserId(userId).orElse(null));
+    }
+
+    @PostMapping("/pagination/user/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    public ResponseEntity<DynamicPagination> saveDynamicPagination(
+            @PathVariable Long userId, @RequestParam Integer pageSize) {
+        DynamicPagination dp = dynamicPaginationRepository.findByUserId(userId).orElseGet(() -> {
+            DynamicPagination d = new DynamicPagination();
+            d.setUser(userRepository.getReferenceById(userId));
+            return d;
+        });
+        dp.setPagination(pageSize);
+        return ResponseEntity.ok(dynamicPaginationRepository.save(dp));
+    }
+
+    // ---- Biometric Attendance Settings ----
+
+    @GetMapping("/biometric-attendance/company/{companyId}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getBiometricAttendance(@PathVariable Long companyId) {
+        return ResponseEntity.ok(biometricAttendanceRepository.findByCompanyId(companyId).orElse(null));
+    }
+
+    @PostMapping("/biometric-attendance/company/{companyId}/toggle")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN')")
+    @Transactional
+    public ResponseEntity<BiometricAttendance> toggleBiometricAttendance(@PathVariable Long companyId) {
+        BiometricAttendance ba = biometricAttendanceRepository.findByCompanyId(companyId).orElseGet(() -> {
+            BiometricAttendance b = new BiometricAttendance();
+            b.setCompany(companyRepository.getReferenceById(companyId));
+            return b;
+        });
+        ba.setInstalled(!ba.isInstalled());
+        return ResponseEntity.ok(biometricAttendanceRepository.save(ba));
     }
 }

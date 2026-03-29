@@ -4,11 +4,14 @@ import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.JobPosition;
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "recruitment_posts")
@@ -49,6 +52,35 @@ public class RecruitmentPost extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "recruitment_open_positions",
+        joinColumns = @JoinColumn(name = "recruitment_id"),
+        inverseJoinColumns = @JoinColumn(name = "job_position_id"))
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private List<JobPosition> openPositions = new ArrayList<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "recruitment_managers",
+        joinColumns = @JoinColumn(name = "recruitment_id"),
+        inverseJoinColumns = @JoinColumn(name = "employee_id"))
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private List<Employee> recruitmentManagers = new ArrayList<>();
+
+    @Column(name = "vacancy")
+    private Integer vacancy;
+
+    @Column(name = "publication_date")
+    private LocalDate publicationDate;
+
+    @Column(name = "closed")
+    private boolean closed = false;
+
+    @Column(name = "is_event_based")
+    private boolean isEventBased = false;
+
+    @Column(name = "publish_in_linkedin")
+    private boolean publishInLinkedin = false;
 
     public enum RecruitmentStatus {
         OPEN, CLOSED, CANCELLED

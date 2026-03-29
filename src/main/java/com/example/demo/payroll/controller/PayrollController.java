@@ -1,6 +1,8 @@
 package com.example.demo.payroll.controller;
 
-import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.repository.*;
+import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -52,19 +54,34 @@ public class PayrollController {
     private final PayrollGeneralSettingRepository payrollGeneralSettingRepository;
     private final EncashmentGeneralSettingRepository encashmentGeneralSettingRepository;
     private final PayslipAutoGenerateRepository payslipAutoGenerateRepository;
+    private final AllowanceRepository allowanceRepository;
+    private final DeductionRepository deductionRepository;
+    private final DepartmentRepository departmentRepository;
+    private final JobPositionRepository jobPositionRepository;
+    private final JobRoleRepository jobRoleRepository;
+    private final EmployeeShiftRepository employeeShiftRepository;
+    private final WorkTypeRepository workTypeRepository;
 
     @GetMapping("/contracts")
     @PreAuthorize("hasAuthority('payroll:view')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Contract>> listContracts() {
-        var spec = ScopeFilter.<Contract>byEmployee();
-        return ResponseEntity.ok(spec != null ? contractRepository.findAll(spec) : contractRepository.findAll());
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || (scope.hasUnrestrictedAccess() && scope.getCompanyId() == null)) {
+            return ResponseEntity.ok(contractRepository.findAllWithAssociations());
+        }
+        List<Long> companyIds = scope.hasUnrestrictedAccess()
+                ? java.util.List.of(scope.getCompanyId())
+                : scope.getAccessibleCompanyIds();
+        if (companyIds.isEmpty()) return ResponseEntity.ok(java.util.List.of());
+        return ResponseEntity.ok(contractRepository.findAllWithAssociationsByCompanyIdIn(companyIds));
     }
 
     @GetMapping("/contracts/{id}")
     @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
     public ResponseEntity<Contract> getContract(@PathVariable Long id) {
-        return ResponseEntity.ok(contractRepository.findById(id)
+        return ResponseEntity.ok(contractRepository.findByIdWithAssociations(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract", id)));
     }
 
@@ -72,13 +89,38 @@ public class PayrollController {
     @PreAuthorize("hasAuthority('payroll:create')")
     @Transactional
     public ResponseEntity<Contract> createContract(@RequestBody Contract contract) {
-        if (contract.getEmployee() != null && contract.getEmployee().getId() != null) {
-            contract.setEmployee(employeeRepository.getReferenceById(contract.getEmployee().getId()));
+        if (contract.getEmployee() == null || contract.getEmployee().getId() == null) {
+            return ResponseEntity.badRequest().build();
         }
-        if (contract.getCompany() != null && contract.getCompany().getId() != null) {
-            contract.setCompany(companyRepository.getReferenceById(contract.getCompany().getId()));
+        contract.setEmployee(employeeRepository.findById(contract.getEmployee().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Employee", contract.getEmployee().getId())));
+        Long companyId = (contract.getCompany() != null && contract.getCompany().getId() != null)
+                ? contract.getCompany().getId() : CompanyContext.get();
+        if (companyId != null) {
+            contract.setCompany(companyRepository.findById(companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", companyId)));
         }
-        return ResponseEntity.ok(contractRepository.save(contract));
+        if (contract.getFilingStatus() != null && contract.getFilingStatus().getId() != null) {
+            contract.setFilingStatus(filingStatusRepository.findById(contract.getFilingStatus().getId()).orElse(null));
+        }
+        if (contract.getDepartment() != null && contract.getDepartment().getId() != null) {
+            contract.setDepartment(departmentRepository.findById(contract.getDepartment().getId()).orElse(null));
+        }
+        if (contract.getJobPosition() != null && contract.getJobPosition().getId() != null) {
+            contract.setJobPosition(jobPositionRepository.findById(contract.getJobPosition().getId()).orElse(null));
+        }
+        if (contract.getJobRole() != null && contract.getJobRole().getId() != null) {
+            contract.setJobRole(jobRoleRepository.findById(contract.getJobRole().getId()).orElse(null));
+        }
+        if (contract.getShift() != null && contract.getShift().getId() != null) {
+            contract.setShift(employeeShiftRepository.findById(contract.getShift().getId()).orElse(null));
+        }
+        if (contract.getWorkType() != null && contract.getWorkType().getId() != null) {
+            contract.setWorkType(workTypeRepository.findById(contract.getWorkType().getId()).orElse(null));
+        }
+        contract.setTotalSalary(computeTotalSalary(contract));
+        Contract saved = contractRepository.save(contract);
+        return ResponseEntity.ok(contractRepository.findByIdWithAssociations(saved.getId()).orElse(saved));
     }
 
     @PutMapping("/contracts/{id}")
@@ -91,9 +133,54 @@ public class PayrollController {
         c.setEndDate(updated.getEndDate());
         c.setWage(updated.getWage());
         c.setWageType(updated.getWageType());
+        c.setPayFrequency(updated.getPayFrequency());
+        c.setHousingAllowance(updated.getHousingAllowance());
+        c.setTransportAllowance(updated.getTransportAllowance());
+        c.setOtherAllowance(updated.getOtherAllowance());
+        c.setTotalSalary(updated.getTotalSalary());
         c.setContractStatus(updated.getContractStatus());
         c.setNoticePeriodInDays(updated.getNoticePeriodInDays());
-        return ResponseEntity.ok(contractRepository.save(c));
+        c.setDeductLeaveFromBasicPay(updated.getDeductLeaveFromBasicPay());
+        c.setCalculateDailyLeaveAmount(updated.getCalculateDailyLeaveAmount());
+        c.setDeductionForOneLeaveAmount(updated.getDeductionForOneLeaveAmount());
+        c.setNote(updated.getNote());
+        c.setContractDocument(updated.getContractDocument());
+        if (updated.getEmployee() != null && updated.getEmployee().getId() != null) {
+            c.setEmployee(employeeRepository.findById(updated.getEmployee().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Employee", updated.getEmployee().getId())));
+        }
+        Long updatedCompanyId = (updated.getCompany() != null && updated.getCompany().getId() != null)
+                ? updated.getCompany().getId() : CompanyContext.get();
+        if (updatedCompanyId != null) {
+            c.setCompany(companyRepository.findById(updatedCompanyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", updatedCompanyId)));
+        }
+        if (updated.getFilingStatus() != null && updated.getFilingStatus().getId() != null) {
+            c.setFilingStatus(filingStatusRepository.findById(updated.getFilingStatus().getId()).orElse(null));
+        } else {
+            c.setFilingStatus(null);
+        }
+        c.setDepartment(updated.getDepartment() != null && updated.getDepartment().getId() != null
+                ? departmentRepository.findById(updated.getDepartment().getId()).orElse(null) : null);
+        c.setJobPosition(updated.getJobPosition() != null && updated.getJobPosition().getId() != null
+                ? jobPositionRepository.findById(updated.getJobPosition().getId()).orElse(null) : null);
+        c.setJobRole(updated.getJobRole() != null && updated.getJobRole().getId() != null
+                ? jobRoleRepository.findById(updated.getJobRole().getId()).orElse(null) : null);
+        c.setShift(updated.getShift() != null && updated.getShift().getId() != null
+                ? employeeShiftRepository.findById(updated.getShift().getId()).orElse(null) : null);
+        c.setWorkType(updated.getWorkType() != null && updated.getWorkType().getId() != null
+                ? workTypeRepository.findById(updated.getWorkType().getId()).orElse(null) : null);
+        c.setTotalSalary(computeTotalSalary(c));
+        contractRepository.save(c);
+        return ResponseEntity.ok(contractRepository.findByIdWithAssociations(c.getId()).orElse(c));
+    }
+
+    private java.math.BigDecimal computeTotalSalary(Contract c) {
+        java.math.BigDecimal total = c.getWage() != null ? c.getWage() : java.math.BigDecimal.ZERO;
+        if (c.getHousingAllowance() != null) total = total.add(c.getHousingAllowance());
+        if (c.getTransportAllowance() != null) total = total.add(c.getTransportAllowance());
+        if (c.getOtherAllowance() != null) total = total.add(c.getOtherAllowance());
+        return total;
     }
 
     @DeleteMapping("/contracts/{id}")
@@ -104,39 +191,202 @@ public class PayrollController {
         return ResponseEntity.ok(Map.of("message", "Contract deleted"));
     }
 
+    // ─── Allowances ───────────────────────────────────────────────────────────
+
+    @GetMapping("/allowances")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List allowances (company-scoped)")
+    public ResponseEntity<List<Allowance>> listAllowances() {
+        var spec = ScopeFilter.<Allowance>byCompany();
+        return ResponseEntity.ok(spec != null ? allowanceRepository.findAll(spec) : allowanceRepository.findAll());
+    }
+
+    @GetMapping("/allowances/{id}")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Operation(summary = "Get allowance by id")
+    public ResponseEntity<Allowance> getAllowance(@PathVariable Long id) {
+        return ResponseEntity.ok(allowanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Allowance", id)));
+    }
+
+    @PostMapping("/allowances")
+    @PreAuthorize("hasAuthority('payroll:create')")
+    @Transactional
+    @Operation(summary = "Create an allowance")
+    public ResponseEntity<Allowance> createAllowance(@RequestBody Allowance allowance) {
+        if (allowance.getCompany() != null && allowance.getCompany().getId() != null) {
+            allowance.setCompany(companyRepository.getReferenceById(allowance.getCompany().getId()));
+        }
+        return ResponseEntity.ok(allowanceRepository.save(allowance));
+    }
+
+    @PutMapping("/allowances/{id}")
+    @PreAuthorize("hasAuthority('payroll:edit')")
+    @Transactional
+    @Operation(summary = "Update an allowance")
+    public ResponseEntity<Allowance> updateAllowance(@PathVariable Long id, @RequestBody Allowance updated) {
+        Allowance a = allowanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Allowance", id));
+        a.setTitle(updated.getTitle());
+        a.setOneTimeDate(updated.getOneTimeDate());
+        a.setIncludeActiveEmployees(updated.getIncludeActiveEmployees());
+        a.setIsTaxable(updated.getIsTaxable());
+        a.setIsConditionBased(updated.getIsConditionBased());
+        a.setField(updated.getField());
+        a.setCondition(updated.getCondition());
+        a.setValue(updated.getValue());
+        a.setIsFixed(updated.getIsFixed());
+        a.setAmount(updated.getAmount());
+        a.setBasedOn(updated.getBasedOn());
+        a.setRate(updated.getRate());
+        a.setPerAttendanceFixedAmount(updated.getPerAttendanceFixedAmount());
+        a.setPerChildrenFixedAmount(updated.getPerChildrenFixedAmount());
+        a.setShiftPerAttendanceAmount(updated.getShiftPerAttendanceAmount());
+        a.setAmountPerOneHr(updated.getAmountPerOneHr());
+        a.setWorkTypePerAttendanceAmount(updated.getWorkTypePerAttendanceAmount());
+        a.setHasMaxLimit(updated.getHasMaxLimit());
+        a.setMaximumAmount(updated.getMaximumAmount());
+        a.setMaximumUnit(updated.getMaximumUnit());
+        a.setIfChoice(updated.getIfChoice());
+        a.setIfCondition(updated.getIfCondition());
+        a.setIfAmount(updated.getIfAmount());
+        a.setStartRange(updated.getStartRange());
+        a.setEndRange(updated.getEndRange());
+        a.setOnlyShowUnderEmployee(updated.getOnlyShowUnderEmployee());
+        a.setIsLoan(updated.getIsLoan());
+        return ResponseEntity.ok(allowanceRepository.save(a));
+    }
+
+    @DeleteMapping("/allowances/{id}")
+    @PreAuthorize("hasAuthority('payroll:edit')")
+    @Operation(summary = "Delete an allowance")
+    public ResponseEntity<Map<String, String>> deleteAllowance(@PathVariable Long id) {
+        allowanceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Allowance", id));
+        allowanceRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Allowance deleted"));
+    }
+
+    // ─── Deductions ───────────────────────────────────────────────────────────
+
+    @GetMapping("/deductions")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List deductions (company-scoped)")
+    public ResponseEntity<List<Deduction>> listDeductions() {
+        var spec = ScopeFilter.<Deduction>byCompany();
+        return ResponseEntity.ok(spec != null ? deductionRepository.findAll(spec) : deductionRepository.findAll());
+    }
+
+    @GetMapping("/deductions/{id}")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Operation(summary = "Get deduction by id")
+    public ResponseEntity<Deduction> getDeduction(@PathVariable Long id) {
+        return ResponseEntity.ok(deductionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Deduction", id)));
+    }
+
+    @PostMapping("/deductions")
+    @PreAuthorize("hasAuthority('payroll:create')")
+    @Transactional
+    @Operation(summary = "Create a deduction")
+    public ResponseEntity<Deduction> createDeduction(@RequestBody Deduction deduction) {
+        if (deduction.getCompany() != null && deduction.getCompany().getId() != null) {
+            deduction.setCompany(companyRepository.getReferenceById(deduction.getCompany().getId()));
+        }
+        return ResponseEntity.ok(deductionRepository.save(deduction));
+    }
+
+    @PutMapping("/deductions/{id}")
+    @PreAuthorize("hasAuthority('payroll:edit')")
+    @Transactional
+    @Operation(summary = "Update a deduction")
+    public ResponseEntity<Deduction> updateDeduction(@PathVariable Long id, @RequestBody Deduction updated) {
+        Deduction d = deductionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Deduction", id));
+        d.setTitle(updated.getTitle());
+        d.setOneTimeDate(updated.getOneTimeDate());
+        d.setIncludeActiveEmployees(updated.getIncludeActiveEmployees());
+        d.setIsTax(updated.getIsTax());
+        d.setIsPretax(updated.getIsPretax());
+        d.setIsConditionBased(updated.getIsConditionBased());
+        d.setField(updated.getField());
+        d.setCondition(updated.getCondition());
+        d.setValue(updated.getValue());
+        d.setUpdateCompensation(updated.getUpdateCompensation());
+        d.setIsFixed(updated.getIsFixed());
+        d.setAmount(updated.getAmount());
+        d.setBasedOn(updated.getBasedOn());
+        d.setRate(updated.getRate());
+        d.setEmployerRate(updated.getEmployerRate());
+        d.setHasMaxLimit(updated.getHasMaxLimit());
+        d.setMaximumAmount(updated.getMaximumAmount());
+        d.setMaximumUnit(updated.getMaximumUnit());
+        d.setIfChoice(updated.getIfChoice());
+        d.setIfCondition(updated.getIfCondition());
+        d.setIfAmount(updated.getIfAmount());
+        d.setStartRange(updated.getStartRange());
+        d.setEndRange(updated.getEndRange());
+        d.setOnlyShowUnderEmployee(updated.getOnlyShowUnderEmployee());
+        d.setIsInstallment(updated.getIsInstallment());
+        return ResponseEntity.ok(deductionRepository.save(d));
+    }
+
+    @DeleteMapping("/deductions/{id}")
+    @PreAuthorize("hasAuthority('payroll:edit')")
+    @Operation(summary = "Delete a deduction")
+    public ResponseEntity<Map<String, String>> deleteDeduction(@PathVariable Long id) {
+        deductionRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Deduction", id));
+        deductionRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Deduction deleted"));
+    }
+
     @GetMapping("/payslips")
     @PreAuthorize("hasAuthority('payroll:view')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Payslip>> listPayslips() {
-        var spec = ScopeFilter.<Payslip>byEmployee();
-        return ResponseEntity.ok(spec != null ? payslipRepository.findAll(spec) : payslipRepository.findAll());
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || (scope.hasUnrestrictedAccess() && scope.getCompanyId() == null)) {
+            return ResponseEntity.ok(payslipRepository.findAllWithAssociations());
+        }
+        List<Long> companyIds = scope.hasUnrestrictedAccess()
+                ? java.util.List.of(scope.getCompanyId())
+                : scope.getAccessibleCompanyIds();
+        if (companyIds.isEmpty()) return ResponseEntity.ok(java.util.List.of());
+        return ResponseEntity.ok(payslipRepository.findAllWithAssociationsByCompanyIdIn(companyIds));
     }
 
     @GetMapping("/payslips/{id}")
-    @PreAuthorize("hasAuthority('payroll:view')")
+    @PreAuthorize("hasAuthority('payroll:view') or hasRole('EMPLOYEE')")
+    @Transactional(readOnly = true)
     public ResponseEntity<Payslip> getPayslip(@PathVariable Long id) {
-        return ResponseEntity.ok(payslipRepository.findById(id)
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id)));
     }
 
     @PostMapping("/payslips/{id}/confirm")
     @PreAuthorize("hasAuthority('payroll:approve')")
+    @Transactional
     public ResponseEntity<Payslip> confirmPayslip(@PathVariable Long id) {
         Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
         p.setStatus(Payslip.PayslipStatus.CONFIRMED);
-        return ResponseEntity.ok(payslipRepository.save(p));
+        payslipRepository.save(p);
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
     }
 
     @PostMapping("/payslips/{id}/mark-paid")
     @PreAuthorize("hasAuthority('payroll:approve')")
+    @Transactional
     public ResponseEntity<Payslip> markPaid(@PathVariable Long id) {
         Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
         p.setStatus(Payslip.PayslipStatus.PAID);
-        return ResponseEntity.ok(payslipRepository.save(p));
+        payslipRepository.save(p);
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
     }
 
     @GetMapping("/employee/{employeeId}/payslips")
-    @PreAuthorize("hasAuthority('payroll:view')")
+    @PreAuthorize("hasAuthority('payroll:view') or hasRole('EMPLOYEE')")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<Payslip>> employeePayslips(@PathVariable Long employeeId) {
         return ResponseEntity.ok(payslipRepository.findByEmployeeId(employeeId));
     }
@@ -173,6 +423,8 @@ public class PayrollController {
         fs.setFilingStatus(updated.getFilingStatus());
         fs.setBasedOn(updated.getBasedOn());
         fs.setDescription(updated.getDescription());
+        fs.setUsePy(updated.getUsePy());
+        fs.setPythonCode(updated.getPythonCode());
         return ResponseEntity.ok(filingStatusRepository.save(fs));
     }
 
@@ -369,6 +621,7 @@ public class PayrollController {
         s.setEnableBonusPoint(body.getEnableBonusPoint());
         s.setMaxOvertimeHours(body.getMaxOvertimeHours());
         s.setPayrollStartDay(body.getPayrollStartDay());
+        s.setNoticePeriod(body.getNoticePeriod());
         return ResponseEntity.ok(payrollGeneralSettingRepository.save(s));
     }
 
@@ -399,6 +652,8 @@ public class PayrollController {
         s.setEnableSelfEncashment(body.getEnableSelfEncashment());
         s.setMaxEncashmentDays(body.getMaxEncashmentDays());
         s.setMinAccrualBeforeEncashment(body.getMinAccrualBeforeEncashment());
+        s.setBonusAmount(body.getBonusAmount());
+        s.setLeaveAmount(body.getLeaveAmount());
         return ResponseEntity.ok(encashmentGeneralSettingRepository.save(s));
     }
 
@@ -426,7 +681,7 @@ public class PayrollController {
                     n.setCompany(companyRepository.getReferenceById(companyId));
                     return n;
                 });
-        s.setIsEnabled(body.getIsEnabled());
+        s.setAutoGenerate(body.getAutoGenerate());
         s.setGenerateDay(body.getGenerateDay());
         s.setNotifyEmail(body.getNotifyEmail());
         return ResponseEntity.ok(payslipAutoGenerateRepository.save(s));
@@ -561,7 +816,7 @@ public class PayrollController {
     // ─── Payslip PDF Download ──────────────────────────────────────────────────
 
     @GetMapping("/payslips/{id}/pdf")
-    @PreAuthorize("hasAuthority('payroll:view')")
+    @PreAuthorize("hasAuthority('payroll:view') or hasRole('EMPLOYEE')")
     @Transactional(readOnly = true)
     @Operation(summary = "Download a payslip as PDF")
     public ResponseEntity<byte[]> downloadPayslipPdf(@PathVariable Long id) {
@@ -589,8 +844,8 @@ public class PayrollController {
             doc.add(new Paragraph(" "));
             doc.add(new Paragraph("─────────────────────────────────────", normalFont));
             doc.add(new Paragraph("Basic Pay:       " + formatAmount(p.getBasicPay()), normalFont));
-            doc.add(new Paragraph("Total Allowance: " + formatAmount(p.getTotalAllowance()), normalFont));
-            doc.add(new Paragraph("Total Deduction: " + formatAmount(p.getTotalDeduction()), normalFont));
+            doc.add(new Paragraph("Gross Pay:       " + formatAmount(p.getGrossPay()), normalFont));
+            doc.add(new Paragraph("Total Deduction: " + formatAmount(p.getDeduction()), normalFont));
             doc.add(new Paragraph("─────────────────────────────────────", normalFont));
             doc.add(new Paragraph("Net Pay:         " + formatAmount(p.getNetPay()), headerFont));
             doc.close();

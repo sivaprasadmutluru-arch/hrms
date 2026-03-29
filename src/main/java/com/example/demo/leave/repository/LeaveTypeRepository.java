@@ -11,4 +11,5 @@ import java.util.List;
 public interface LeaveTypeRepository extends JpaRepository<LeaveType, Long>, JpaSpecificationExecutor<LeaveType> {
     List<LeaveType> findByCompanyId(Long companyId);
     List<LeaveType> findByCompanyIdAndIsActiveTrue(Long companyId);
+    List<LeaveType> findByResetTrue();
 }

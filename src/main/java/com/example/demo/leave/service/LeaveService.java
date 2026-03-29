@@ -92,11 +92,15 @@ public class LeaveService {
 
         double days = calculateWorkingDays(startDate, endDate, companyId, leaveType);
 
-        // Validate balance against AvailableLeave (primary balance store)
+        // Validate balance: available + carryforward + forecasted (mirrors Horilla)
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
-        if (balance.getAvailableDays() < days) {
+        double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
+        double cfDays = resolveCarryforwardDays(balance);
+        double forecasted = balance.forcastedLeaves(startDate);
+        double totalBalance = availDays + cfDays + forecasted;
+        if (days > totalBalance) {
             throw new BadRequestException(
-                    "Insufficient leave balance. Available: " + balance.getAvailableDays() + ", Requested: " + days);
+                    "Insufficient leave balance. Available: " + totalBalance + ", Requested: " + days);
         }
 
         LeaveRequest request = new LeaveRequest();
@@ -112,7 +116,7 @@ public class LeaveService {
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId)));
 
         if (leaveType.getLeaveValidationType() == LeaveType.LeaveValidationType.AUTOMATIC) {
-            deductBalance(balance, days);
+            deductBalance(balance, days, request);
             request.setStatus(LeaveRequest.LeaveStatus.APPROVED);
         }
 
@@ -132,13 +136,15 @@ public class LeaveService {
         AvailableLeave balance = getOrCreateAvailableLeave(
                 request.getEmployee().getId(), request.getLeaveType().getId());
 
-        if (balance.getAvailableDays() < request.getRequestedDays()) {
+        double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
+        double cfDays = resolveCarryforwardDays(balance);
+        if (request.getRequestedDays() > availDays + cfDays) {
             throw new BadRequestException(
-                    "Insufficient leave balance. Available: " + balance.getAvailableDays()
+                    "Insufficient leave balance. Available: " + (availDays + cfDays)
                             + ", Requested: " + request.getRequestedDays());
         }
 
-        deductBalance(balance, request.getRequestedDays());
+        deductBalance(balance, request.getRequestedDays(), request);
         request.setStatus(LeaveRequest.LeaveStatus.APPROVED);
         LeaveRequest saved = leaveRequestRepository.save(request);
         eventPublisher.publishEvent(new LeaveApprovedEvent(this, saved));
@@ -153,8 +159,7 @@ public class LeaveService {
         // If the request was already APPROVED, restore the balance
         if (request.getStatus() == LeaveRequest.LeaveStatus.APPROVED) {
             restoreBalance(request.getEmployee().getId(),
-                    request.getLeaveType().getId(),
-                    request.getRequestedDays());
+                    request.getLeaveType().getId(), request);
         }
 
         request.setStatus(LeaveRequest.LeaveStatus.REJECTED);
@@ -176,8 +181,7 @@ public class LeaveService {
         // Restore balance only if leave was approved (deduction already happened)
         if (request.getStatus() == LeaveRequest.LeaveStatus.APPROVED) {
             restoreBalance(request.getEmployee().getId(),
-                    request.getLeaveType().getId(),
-                    request.getRequestedDays());
+                    request.getLeaveType().getId(), request);
         }
 
         request.setStatus(LeaveRequest.LeaveStatus.CANCELLED);
@@ -230,8 +234,16 @@ public class LeaveService {
         // Sync AvailableLeave
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
         balance.setAvailableDays(days);
-        balance.setTotalLeaveDays(days);
+        balance.setCarryforwardDays(0.0);
         balance.setAssignedDate(LocalDate.now());
+        // Set reset_date if this leave type has reset configured (mirrors Horilla pre_save_processing)
+        if (Boolean.TRUE.equals(balance.getLeaveType().getReset()) && balance.getResetDate() == null) {
+            balance.setResetDate(balance.computeNextResetDate(LocalDate.now()));
+        }
+        // Set expired_date for CARRYFORWARD_EXPIRE types using the LeaveType's carryforward_expire_date
+        if (balance.getLeaveType().getCarryforwardType() == LeaveType.CarryforwardType.CARRYFORWARD_EXPIRE) {
+            balance.setExpiredDate(balance.getLeaveType().getCarryforwardExpireDate());
+        }
         availableLeaveRepository.save(balance);
     }
 
@@ -405,14 +417,48 @@ public class LeaveService {
                 });
     }
 
-    private void deductBalance(AvailableLeave balance, double days) {
-        balance.setAvailableDays(Math.max(0.0, balance.getAvailableDays() - days));
+    /**
+     * Returns the effective carryforward days capped by carryforward_max (mirrors Horilla validation logic).
+     */
+    private double resolveCarryforwardDays(AvailableLeave balance) {
+        if (balance.getLeaveType() == null) return 0.0;
+        LeaveType.CarryforwardType cfType = balance.getLeaveType().getCarryforwardType();
+        if (cfType == null || cfType == LeaveType.CarryforwardType.NO_CARRYFORWARD) return 0.0;
+        double cf = balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0;
+        Double max = balance.getLeaveType().getCarryforwardMax();
+        return max != null ? Math.min(cf, max) : cf;
+    }
+
+    /**
+     * Deducts days from available_days first, then from carryforward_days.
+     * Tracks how much was taken from each on the request (mirrors Horilla no_approval()).
+     */
+    private void deductBalance(AvailableLeave balance, double days, LeaveRequest request) {
+        double avail = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
+        if (days > avail) {
+            double fromCarry = days - avail;
+            request.setApprovedAvailableDays(avail);
+            request.setApprovedCarryforwardDays(fromCarry);
+            balance.setAvailableDays(0.0);
+            balance.setCarryforwardDays(Math.max(0.0,
+                    (balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0) - fromCarry));
+        } else {
+            request.setApprovedAvailableDays(days);
+            request.setApprovedCarryforwardDays(0.0);
+            balance.setAvailableDays(avail - days);
+        }
         availableLeaveRepository.save(balance);
     }
 
-    private void restoreBalance(Long employeeId, Long leaveTypeId, double days) {
+    /**
+     * Restores balance using the exact amounts tracked on the request.
+     */
+    private void restoreBalance(Long employeeId, Long leaveTypeId, LeaveRequest request) {
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
-        balance.setAvailableDays(balance.getAvailableDays() + days);
+        double fromAvail = request.getApprovedAvailableDays() != null ? request.getApprovedAvailableDays() : 0.0;
+        double fromCarry = request.getApprovedCarryforwardDays() != null ? request.getApprovedCarryforwardDays() : 0.0;
+        balance.setAvailableDays((balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0) + fromAvail);
+        balance.setCarryforwardDays((balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0) + fromCarry);
         availableLeaveRepository.save(balance);
     }
 }

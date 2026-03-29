@@ -2,6 +2,7 @@ package com.example.demo.base.entity;
 
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -37,6 +38,30 @@ public class RotatingShiftAssign extends BaseEntity {
 
     @Column(name = "based_on")
     private String basedOn;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rotating_shift_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private RotatingShift rotatingShift;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "current_shift_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShift currentShift;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "next_shift_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShift nextShift;
+
+    @Column(name = "rotate_after_day")
+    private Integer rotateAfterDay = 7;
+
+    @Column(name = "rotate_every_weekend", length = 10)
+    private String rotateEveryWeekend = "monday";
+
+    @Column(name = "rotate_every", length = 10)
+    private String rotateEvery;
 
     public enum RotateAfterEvery {
         DAYS, WEEKS, MONTHS

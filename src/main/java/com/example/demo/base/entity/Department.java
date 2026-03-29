@@ -1,6 +1,7 @@
 package com.example.demo.base.entity;
 
 import com.example.demo.common.entity.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -20,5 +21,7 @@ public class Department extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manager_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "department", "reportingManager",
+            "company", "jobPosition", "jobRole", "workType", "shift", "user"})
     private com.example.demo.employee.entity.Employee manager;
 }

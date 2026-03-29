@@ -7,8 +7,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDate;
-
 @Entity
 @Table(name = "attendance_over_times")
 @Getter
@@ -27,6 +25,18 @@ public class AttendanceOverTime extends BaseEntity {
 
     @Column(name = "overtime_hours")
     private Double overtimeHours;
+
+    @Column(name = "hour", length = 10)
+    private String hour;
+
+    @Column(name = "hour_account_second")
+    private Integer hourAccountSecond;
+
+    @Column(name = "overtime", length = 10)
+    private String overtime;
+
+    @Column(name = "overtime_second")
+    private Integer overtimeSecond;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")

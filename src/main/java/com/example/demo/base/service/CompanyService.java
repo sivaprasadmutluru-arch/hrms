@@ -1,6 +1,12 @@
 package com.example.demo.base.service;
 
+import com.example.demo.auth.dto.AssignRoleRequest;
+import com.example.demo.auth.dto.RegisterRequest;
+import com.example.demo.auth.entity.Role;
+import com.example.demo.auth.entity.User;
 import com.example.demo.auth.entity.UserRole;
+import com.example.demo.auth.service.AuthService;
+import com.example.demo.auth.service.UserRoleService;
 import com.example.demo.base.dto.CompanyRequest;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
@@ -32,6 +38,8 @@ public class CompanyService {
     private final CompanyRepository companyRepository;
     private final OrganizationRepository organizationRepository;
     private final SchemaProvisioningService schemaProvisioningService;
+    private final AuthService authService;
+    private final UserRoleService userRoleService;
 
     /**
      * Creates a new Head Office company for an organization.
@@ -67,6 +75,23 @@ public class CompanyService {
         // Provision asynchronously — returns immediately so the HTTP response is fast.
         // Tables are created in the background; they're ready well before any user data is entered.
         schemaProvisioningService.provisionSchemaAsync(schemaName);
+
+        // Create the enterprise admin user and assign ENTERPRISE_ADMIN + ENTERPRISE scope
+        if (request.getAdminUsername() != null && !request.getAdminUsername().isBlank()
+                && request.getAdminPassword() != null && !request.getAdminPassword().isBlank()) {
+            RegisterRequest reg = new RegisterRequest();
+            reg.setUsername(request.getAdminUsername());
+            reg.setEmail(request.getAdminUsername());
+            reg.setPassword(request.getAdminPassword());
+            User adminUser = authService.register(reg);
+
+            AssignRoleRequest roleReq = new AssignRoleRequest();
+            roleReq.setUserId(adminUser.getId());
+            roleReq.setRoleName(Role.RoleName.ENTERPRISE_ADMIN);
+            roleReq.setCompanyId(headOffice.getId());
+            roleReq.setAccessScope(UserRole.AccessScope.ENTERPRISE);
+            userRoleService.assignRole(roleReq);
+        }
 
         return headOffice;
     }

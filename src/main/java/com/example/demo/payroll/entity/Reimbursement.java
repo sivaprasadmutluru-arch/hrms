@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Set;
 
 @Entity
 @Table(name = "payroll_reimbursements")
@@ -31,12 +32,14 @@ public class Reimbursement extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "company", "department",
+            "jobPosition", "jobRole", "workType", "shift", "reportingManager", "user"})
     private Employee employee;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by_id")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "company", "department",
+            "jobPosition", "jobRole", "workType", "shift", "reportingManager", "user"})
     private Employee approvedBy;
 
     @Column(name = "amount", precision = 12, scale = 2)
@@ -45,11 +48,37 @@ public class Reimbursement extends BaseEntity {
     @Column(name = "allowance_on")
     private LocalDate allowanceOn;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "leave_type_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private com.example.demo.leave.entity.LeaveType leaveType;
+
+    @Column(name = "ad_to_encash")
+    private Double adToEncash = 0.0;
+
+    @Column(name = "cfd_to_encash")
+    private Double cfdToEncash = 0.0;
+
+    @Column(name = "bonus_to_encash")
+    private Integer bonusToEncash = 0;
+
     @Column(name = "attachment_path")
     private String attachmentPath;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "allowance_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Allowance allowance;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "reimbursement_other_attachments",
+            joinColumns = @JoinColumn(name = "reimbursement_id"),
+            inverseJoinColumns = @JoinColumn(name = "attachment_id"))
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Set<ReimbursementMultipleAttachment> otherAttachments;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")

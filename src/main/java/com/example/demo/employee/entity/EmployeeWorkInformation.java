@@ -1,6 +1,8 @@
 package com.example.demo.employee.entity;
 
 import com.example.demo.base.entity.*;
+import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.EmployeeType;
 import com.example.demo.common.entity.BaseEntity;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -9,6 +11,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "employee_work_information")
@@ -65,4 +69,38 @@ public class EmployeeWorkInformation extends BaseEntity {
 
     @Column(name = "contract_end_date")
     private LocalDate contractEndDate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "employee_type_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeType employeeType;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "work_info_tags",
+        joinColumns = @JoinColumn(name = "work_info_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private List<EmployeeTag> tags = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Company company;
+
+    @Column(name = "work_email", length = 254)
+    private String workEmail;
+
+    @Column(name = "work_mobile", length = 254)
+    private String workMobile;
+
+    @Column(name = "salary_hour")
+    private Integer salaryHour;
+
+    @Column(name = "additional_info", columnDefinition = "TEXT")
+    private String additionalInfo;
+
+    @Column(name = "experience")
+    private Double experience;
 }

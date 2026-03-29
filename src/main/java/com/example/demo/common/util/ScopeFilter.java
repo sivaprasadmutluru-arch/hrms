@@ -90,6 +90,41 @@ public final class ScopeFilter {
     }
 
     /**
+     * For entities where company is reached THROUGH the "employee" relation
+     * (AttendanceLateComeEarlyOut, AttendanceOverTime — path: entity.employee.company.id).
+     *
+     *   SELF scope       → WHERE employee.user.id = :userId
+     *   All other scopes → WHERE employee.company.id IN (...)
+     */
+    public static <T> Specification<T> byEmployeeCompany() {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null) return null;
+
+        if (scope.isSelfScope()) {
+            Long userId = scope.getUserId();
+            return (root, query, cb) -> cb.equal(root.get("employee").get("user").get("id"), userId);
+        }
+
+        if (scope.hasUnrestrictedAccess()) {
+            if (scope.getCompanyId() != null) {
+                Long companyId = scope.getCompanyId();
+                return (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId);
+            }
+            return null;
+        }
+
+        List<Long> accessibleIds = scope.getAccessibleCompanyIds();
+        if (accessibleIds.isEmpty()) {
+            return (root, query, cb) -> cb.disjunction();
+        }
+        if (accessibleIds.size() == 1) {
+            Long companyId = accessibleIds.get(0);
+            return (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId);
+        }
+        return (root, query, cb) -> root.get("employee").get("company").get("id").in(accessibleIds);
+    }
+
+    /**
      * For entities where department is reached THROUGH the "employee" relation
      * (LeaveRequest, Attendance — path: entity.employee.department.id).
      *

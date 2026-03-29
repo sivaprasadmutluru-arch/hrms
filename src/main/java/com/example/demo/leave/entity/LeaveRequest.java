@@ -44,6 +44,14 @@ public class LeaveRequest extends BaseEntity {
     @Column(name = "reject_reason")
     private String rejectReason;
 
+    /** Days deducted from available_days when approved */
+    @Column(name = "approved_available_days")
+    private Double approvedAvailableDays = 0.0;
+
+    /** Days deducted from carryforward_days when approved */
+    @Column(name = "approved_carryforward_days")
+    private Double approvedCarryforwardDays = 0.0;
+
     @Column(name = "attachment_path")
     private String attachmentPath;
 

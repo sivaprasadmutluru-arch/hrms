@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface AvailableLeaveRepository extends JpaRepository<AvailableLeave, Long>, JpaSpecificationExecutor<AvailableLeave> {
     List<AvailableLeave> findByEmployeeId(Long employeeId);
     Optional<AvailableLeave> findByEmployeeIdAndLeaveTypeId(Long employeeId, Long leaveTypeId);
+    List<AvailableLeave> findByLeaveTypeId(Long leaveTypeId);
 }

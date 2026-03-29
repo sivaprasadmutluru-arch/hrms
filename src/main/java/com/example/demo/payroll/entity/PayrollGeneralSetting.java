@@ -39,4 +39,8 @@ public class PayrollGeneralSetting extends BaseEntity {
     /** Date from which payroll is calculated each month (1-31) */
     @Column(name = "payroll_start_day")
     private Integer payrollStartDay = 1;
+
+    /** Notice period in days (GCP: notice_period) */
+    @Column(name = "notice_period")
+    private Integer noticePeriod = 30;
 }

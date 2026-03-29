@@ -27,4 +27,10 @@ public class BonusPoint extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
+
+    @Column(name = "encashment_condition", length = 100)
+    private String encashmentCondition;
+
+    @Column(name = "redeeming_points")
+    private Integer redeemingPoints;
 }

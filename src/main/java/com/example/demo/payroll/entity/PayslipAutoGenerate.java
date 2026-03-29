@@ -20,18 +20,18 @@ public class PayslipAutoGenerate extends BaseEntity {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Company company;
 
-    /** Whether auto-generation is enabled */
-    @Column(name = "is_enabled")
-    private Boolean isEnabled = false;
+    /** Whether auto-generation is enabled (GCP: auto_generate) */
+    @Column(name = "auto_generate")
+    private Boolean autoGenerate = false;
 
     /**
-     * Day of month to auto-generate payslips (1–31).
-     * If the month has fewer days the last day is used.
+     * Day of month to auto-generate payslips.
+     * Supports "last day" or ordinal string "1"-"31" (GCP: generate_day).
      */
     @Column(name = "generate_day")
-    private Integer generateDay = 1;
+    private String generateDay = "1";
 
-    /** Email address to notify after generation */
+    /** Email address to notify after generation (extra field not in GCP) */
     @Column(name = "notify_email")
     private String notifyEmail;
 }

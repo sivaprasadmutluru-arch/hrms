@@ -56,6 +56,8 @@ public class LeaveController {
     private final LeaveAllocationRequestCommentRepository allocationRequestCommentRepository;
     private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
     private final EmployeePastLeaveRestrictRepository pastLeaveRestrictRepository;
+    private final CompensatoryLeaveRequestRepository compensatoryLeaveRequestRepository;
+    private final CompensatoryLeaveRequestCommentRepository compensatoryLeaveRequestCommentRepository;
 
     @GetMapping("/requests")
     @PreAuthorize("hasAuthority('leave:view')")
@@ -495,6 +497,65 @@ public class LeaveController {
                 });
         r.setEnabled(body.getEnabled());
         return ResponseEntity.ok(pastLeaveRestrictRepository.save(r));
+    }
+
+    // ─── Compensatory Leave Requests ──────────────────────────────────────────
+
+    @GetMapping("/compensatory-requests")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<com.example.demo.leave.entity.CompensatoryLeaveRequest>> listCompensatoryRequests(
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) String status) {
+        if (employeeId != null) return ResponseEntity.ok(compensatoryLeaveRequestRepository.findByEmployeeId(employeeId));
+        if (status != null) return ResponseEntity.ok(compensatoryLeaveRequestRepository.findByStatus(status));
+        return ResponseEntity.ok(compensatoryLeaveRequestRepository.findAll());
+    }
+
+    @PostMapping("/compensatory-requests")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> createCompensatoryRequest(
+            @RequestBody com.example.demo.leave.entity.CompensatoryLeaveRequest request) {
+        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(request));
+    }
+
+    @PutMapping("/compensatory-requests/{id}/approve")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> approveCompensatoryRequest(@PathVariable Long id) {
+        com.example.demo.leave.entity.CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
+                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("CompensatoryLeaveRequest", id));
+        req.setStatus("approved");
+        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(req));
+    }
+
+    @PutMapping("/compensatory-requests/{id}/reject")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> rejectCompensatoryRequest(
+            @PathVariable Long id, @RequestParam(required = false) String reason) {
+        com.example.demo.leave.entity.CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
+                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("CompensatoryLeaveRequest", id));
+        req.setStatus("rejected");
+        if (reason != null) req.setRejectReason(reason);
+        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(req));
+    }
+
+    @GetMapping("/compensatory-requests/{id}/comments")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<com.example.demo.leave.entity.CompensatoryLeaveRequestComment>> listCompensatoryComments(@PathVariable Long id) {
+        return ResponseEntity.ok(compensatoryLeaveRequestCommentRepository.findByRequestId(id));
+    }
+
+    @PostMapping("/compensatory-requests/{id}/comments")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequestComment> addCompensatoryComment(
+            @PathVariable Long id, @RequestBody com.example.demo.leave.entity.CompensatoryLeaveRequestComment comment) {
+        comment.setRequest(compensatoryLeaveRequestRepository.getReferenceById(id));
+        return ResponseEntity.ok(compensatoryLeaveRequestCommentRepository.save(comment));
     }
 
     // ─── Leave General Settings ───────────────────────────────────────────────

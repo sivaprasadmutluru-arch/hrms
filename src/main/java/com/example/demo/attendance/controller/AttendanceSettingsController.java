@@ -218,7 +218,7 @@ public class AttendanceSettingsController {
     @Transactional(readOnly = true)
     @Operation(summary = "List late come / early out records (company-scoped)")
     public ResponseEntity<List<AttendanceLateComeEarlyOut>> listLateComeEarlyOut() {
-        var spec = ScopeFilter.<AttendanceLateComeEarlyOut>byEmployee();
+        var spec = ScopeFilter.<AttendanceLateComeEarlyOut>byEmployeeCompany();
         return ResponseEntity.ok(spec != null
                 ? lateComeEarlyOutRepository.findAll(spec)
                 : lateComeEarlyOutRepository.findAll());

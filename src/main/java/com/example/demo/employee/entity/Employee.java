@@ -61,8 +61,29 @@ public class Employee extends BaseEntity {
     @Column(name = "country")
     private String country;
 
+    @Column(name = "state")
+    private String state;
+
+    @Column(name = "city")
+    private String city;
+
     @Column(name = "zip")
     private String zip;
+
+    @Column(name = "work_email")
+    private String workEmail;
+
+    @Column(name = "work_phone")
+    private String workPhone;
+
+    @Column(name = "qualification")
+    private String qualification;
+
+    @Column(name = "experience")
+    private Integer experience;
+
+    @Column(name = "children")
+    private Integer children;
 
     @Column(name = "emergency_contact")
     private String emergencyContact;

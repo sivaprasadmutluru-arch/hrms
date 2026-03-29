@@ -69,12 +69,43 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
 
         // Step 4: Find the user's role assignment for this company
         List<UserRole> userRoles = userRoleRepository.findByUserIdAndCompanyId(currentUser.getId(), companyId);
+        boolean isBranchFilter = false;
+
+        // If no roles found for this company, check if it's a branch and the user has an
+        // ENTERPRISE / HEAD_OFFICE role on the parent head office.
+        // This handles the case where an enterprise admin filters the employee list by a specific
+        // branch: the frontend sends X-Company-Id = <branchId>, but the admin's UserRole is
+        // registered against the head-office company, not the branch.
+        if (userRoles.isEmpty()) {
+            Company requestedCompany = companyRepository.findById(companyId).orElse(null);
+            if (requestedCompany != null && requestedCompany.isBranch()
+                    && requestedCompany.getParentCompanyId() != null) {
+                List<UserRole> hoRoles = userRoleRepository.findByUserIdAndCompanyId(
+                        currentUser.getId(), requestedCompany.getParentCompanyId());
+                if (!hoRoles.isEmpty()) {
+                    userRoles = hoRoles;
+                    isBranchFilter = true;
+                    log.debug("User {} has no direct role for branch {} — falling back to head-office roles ({})",
+                            currentUser.getId(), companyId, requestedCompany.getParentCompanyId());
+                }
+            }
+        }
 
         // Step 5: Determine access scope (use the highest scope if user has multiple roles)
         UserRole.AccessScope scope = resolveHighestScope(userRoles, currentUser);
 
-        // Step 6: Build the list of company IDs this user can access
-        List<Long> accessibleCompanyIds = buildAccessibleCompanyIds(companyId, scope);
+        // Step 6: Build the list of company IDs this user can access.
+        // When an enterprise/HO admin is filtering by a specific branch (isBranchFilter = true),
+        // restrict the accessible list to only that branch instead of expanding to all branches.
+        List<Long> accessibleCompanyIds;
+        if (isBranchFilter
+                && (scope == UserRole.AccessScope.ENTERPRISE || scope == UserRole.AccessScope.HEAD_OFFICE)) {
+            accessibleCompanyIds = new ArrayList<>(List.of(companyId));
+            log.debug("Enterprise admin {} filtering to branch {} — accessible: [{}]",
+                    currentUser.getId(), companyId, companyId);
+        } else {
+            accessibleCompanyIds = buildAccessibleCompanyIds(companyId, scope);
+        }
 
         // Step 6b: Also add any companies explicitly granted via cross-branch access
         if (scope != null) { // not platform admin (they already have unrestricted)

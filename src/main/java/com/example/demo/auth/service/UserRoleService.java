@@ -84,6 +84,11 @@ public class UserRoleService {
         return UserRoleDto.from(saved);
     }
 
+    public boolean hasRole(Long userId, Long companyId, Role.RoleName roleName) {
+        return userRoleRepository.findByUserIdAndCompanyId(userId, companyId).stream()
+                .anyMatch(ur -> ur.getRole().getName() == roleName);
+    }
+
     @Transactional
     public void revokeRole(Long userId, Long roleId, Long companyId) {
         userRoleRepository.deleteByUserIdAndRoleIdAndCompanyId(userId, roleId, companyId);

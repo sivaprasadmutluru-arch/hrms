@@ -2,6 +2,7 @@ package com.example.demo.base.entity;
 
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -34,6 +35,33 @@ public class RotatingWorkTypeAssign extends BaseEntity {
 
     @Column(name = "rotate_after_every_count")
     private Integer rotateAfterEveryCount;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rotating_work_type_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private RotatingWorkType rotatingWorkType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "current_work_type_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private WorkType currentWorkType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "next_work_type_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private WorkType nextWorkType;
+
+    @Column(name = "rotate_after_day")
+    private Integer rotateAfterDay = 7;
+
+    @Column(name = "rotate_every_weekend", length = 10)
+    private String rotateEveryWeekend = "monday";
+
+    @Column(name = "rotate_every", length = 10)
+    private String rotateEvery;
+
+    @Column(name = "based_on", length = 10)
+    private String basedOn;
 
     public enum RotateAfterEvery {
         DAYS, WEEKS, MONTHS

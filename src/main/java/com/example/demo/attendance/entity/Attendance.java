@@ -1,10 +1,12 @@
 package com.example.demo.attendance.entity;
 
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.EmployeeShiftDay;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.base.entity.WorkType;
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -70,6 +72,40 @@ public class Attendance extends BaseEntity {
 
     @Column(name = "is_validate_request_approved")
     private Boolean isValidateRequestApproved = false;
+
+    @Column(name = "at_work_second")
+    private Integer atWorkSecond;
+
+    @Column(name = "overtime_second")
+    private Integer overtimeSecond;
+
+    @Column(name = "approved_overtime_second")
+    private Integer approvedOvertimeSecond;
+
+    @Column(name = "is_bulk_request")
+    private boolean isBulkRequest = false;
+
+    @Column(name = "request_description", columnDefinition = "TEXT")
+    private String requestDescription;
+
+    @Column(name = "request_type", length = 20)
+    private String requestType;
+
+    @Column(name = "is_holiday")
+    private boolean isHoliday = false;
+
+    @Column(name = "requested_data", columnDefinition = "TEXT")
+    private String requestedData;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shift_day_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private EmployeeShiftDay shiftDay;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batch_attendance_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private BatchAttendance batchAttendance;
 
     public enum AttendanceStatus {
         PENDING, APPROVED, REJECTED

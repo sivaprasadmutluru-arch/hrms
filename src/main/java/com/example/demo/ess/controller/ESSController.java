@@ -112,22 +112,29 @@ public class ESSController {
         // Enforce that the employee can only check in for themselves
         req.setEmployeeId(emp.getId());
         req.setCompanyId(emp.getCompany().getId());
+        LocalDate today = LocalDate.now();
         Attendance saved = attendanceRepository.findByEmployeeIdAndAttendanceDate(
-                        emp.getId(), req.getAttendanceDate() != null ? req.getAttendanceDate() : LocalDate.now())
+                        emp.getId(), req.getAttendanceDate() != null ? req.getAttendanceDate() : today)
                 .map(existing -> {
-                    // Update existing record (check-out or correction)
-                    existing.setCheckOut(req.getCheckOut());
-                    existing.setCheckOutDate(req.getCheckOutDate());
-                    existing.setWorkedHour(req.getWorkedHour());
+                    // Update existing record with check-out time
+                    existing.setCheckOut(req.getCheckOut() != null ? req.getCheckOut() : java.time.LocalTime.now());
+                    existing.setCheckOutDate(req.getCheckOutDate() != null ? req.getCheckOutDate() : today);
+                    if (existing.getCheckIn() != null && existing.getCheckOut() != null) {
+                        long minutes = java.time.temporal.ChronoUnit.MINUTES.between(existing.getCheckIn(), existing.getCheckOut());
+                        if (minutes < 0) minutes += 24 * 60;
+                        existing.setWorkedHour(req.getWorkedHour() != null ? req.getWorkedHour() : minutes / 60.0);
+                    } else if (req.getWorkedHour() != null) {
+                        existing.setWorkedHour(req.getWorkedHour());
+                    }
                     return attendanceRepository.save(existing);
                 })
                 .orElseGet(() -> {
                     Attendance att = new Attendance();
                     att.setEmployee(emp);
                     att.setCompany(emp.getCompany());
-                    att.setAttendanceDate(req.getAttendanceDate() != null ? req.getAttendanceDate() : LocalDate.now());
-                    att.setCheckIn(req.getCheckIn());
-                    att.setCheckInDate(req.getCheckInDate());
+                    att.setAttendanceDate(req.getAttendanceDate() != null ? req.getAttendanceDate() : today);
+                    att.setCheckIn(req.getCheckIn() != null ? req.getCheckIn() : java.time.LocalTime.now());
+                    att.setCheckInDate(req.getCheckInDate() != null ? req.getCheckInDate() : today);
                     return attendanceRepository.save(att);
                 });
         return ResponseEntity.ok(AttendanceResponse.from(saved));

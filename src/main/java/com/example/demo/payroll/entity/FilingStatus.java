@@ -24,6 +24,12 @@ public class FilingStatus extends BaseEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "use_py")
+    private Boolean usePy = false;
+
+    @Column(name = "python_code", columnDefinition = "TEXT")
+    private String pythonCode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
