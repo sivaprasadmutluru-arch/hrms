@@ -6,6 +6,7 @@ import { fetchAll, create, update, remove, selectAll, selectLoading, selectPagin
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
 import { fetchAll as fetchDepartments, selectAll as selectDepartments } from '../departments/departmentsSlice'
+import { fetchJobPositions, selectJobPositions, fetchWorkTypes, selectWorkTypes, fetchEmployeeShifts, selectEmployeeShifts } from '../base/baseExtrasSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -32,10 +33,50 @@ const GENDERS = [
   { value: 'OTHER', label: 'Other' },
 ]
 
+const MARITAL_STATUSES = [
+  { value: 'SINGLE', label: 'Single' },
+  { value: 'MARRIED', label: 'Married' },
+  { value: 'DIVORCED', label: 'Divorced' },
+  { value: 'WIDOWED', label: 'Widowed' },
+]
+
 const STATUS_OPTIONS = [
   { value: 'true', label: 'Active' },
   { value: 'false', label: 'Inactive' },
 ]
+
+const ACCESS_SCOPE_OPTIONS = [
+  { value: 'SELF', label: 'Self (own records only)' },
+  { value: 'DEPARTMENT', label: 'Department' },
+  { value: 'BRANCH', label: 'Branch' },
+  { value: 'HEAD_OFFICE', label: 'Head Office' },
+  { value: 'ENTERPRISE', label: 'Enterprise (all)' },
+]
+
+const ROLE_OPTIONS_BY_LEVEL = {
+  platform: [
+    { value: 'ENTERPRISE_ADMIN', label: 'Enterprise Admin' },
+    { value: 'BRANCH_ADMIN', label: 'Branch Admin' },
+    { value: 'HR_MANAGER', label: 'HR Manager' },
+    { value: 'ACCOUNTANT', label: 'Accountant' },
+    { value: 'DEPARTMENT_MANAGER', label: 'Department Manager' },
+    { value: 'TEAM_LEAD', label: 'Team Lead' },
+    { value: 'EMPLOYEE', label: 'Employee' },
+  ],
+  enterprise: [
+    { value: 'BRANCH_ADMIN', label: 'Branch Admin' },
+    { value: 'HR_MANAGER', label: 'HR Manager' },
+    { value: 'ACCOUNTANT', label: 'Accountant' },
+    { value: 'DEPARTMENT_MANAGER', label: 'Department Manager' },
+    { value: 'TEAM_LEAD', label: 'Team Lead' },
+    { value: 'EMPLOYEE', label: 'Employee' },
+  ],
+  branch: [
+    { value: 'DEPARTMENT_MANAGER', label: 'Department Manager' },
+    { value: 'TEAM_LEAD', label: 'Team Lead' },
+    { value: 'EMPLOYEE', label: 'Employee' },
+  ],
+}
 
 export default function EmployeesPage() {
   const dispatch = useDispatch()
@@ -46,6 +87,9 @@ export default function EmployeesPage() {
   const companies = useSelector(selectCompanies)        // head office(s)
   const allBranches = useSelector(selectBranches)       // { [headOfficeId]: [branch, ...] }
   const departments = useSelector(selectDepartments)
+  const jobPositions = useSelector(selectJobPositions)
+  const workTypes = useSelector(selectWorkTypes)
+  const employeeShifts = useSelector(selectEmployeeShifts)
   const userRoles = useSelector(selectUserRoles)
 
   // Build email → role name lookup (take first/highest role per email)
@@ -66,6 +110,12 @@ export default function EmployeesPage() {
 
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin()
 
+  const assignableRoles = isPlatformAdmin()
+    ? ROLE_OPTIONS_BY_LEVEL.platform
+    : isEnterpriseAdmin()
+      ? ROLE_OPTIONS_BY_LEVEL.enterprise
+      : ROLE_OPTIONS_BY_LEVEL.branch
+
   const subtitle = isPlatformAdmin()
     ? 'All employees across all organizations'
     : isEnterpriseAdmin()
@@ -80,6 +130,9 @@ export default function EmployeesPage() {
     dispatch(fetchAll({ page: 0, size: 20, ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
     dispatch(fetchUserRoles())
     dispatch(fetchDepartments({ page: 0, size: 100 }))
+    dispatch(fetchJobPositions())
+    dispatch(fetchWorkTypes())
+    dispatch(fetchEmployeeShifts())
     if (isEnterpriseAdmin() && user?.companyId) {
       // Load head office into companies.data, then load all its branches
       dispatch(fetchMyCompany(user.companyId)).then(() => {
@@ -111,9 +164,27 @@ export default function EmployeesPage() {
       companyId: row.companyId,
       departmentId: row.departmentId,
       nationality: row.nationality,
+      maritalStatus: row.maritalStatus,
       permanentAddress: row.permanentAddress,
+      country: row.country,
+      state: row.state,
+      city: row.city,
+      zip: row.zip,
+      workEmail: row.workEmail,
+      workPhone: row.workPhone,
+      qualification: row.qualification,
+      experience: row.experience,
+      children: row.children,
       emergencyContactName: row.emergencyContactName,
       emergencyContact: row.emergencyContact,
+      emergencyContactRelation: row.emergencyContactRelation,
+      jobPositionId: row.jobPositionId,
+      workTypeId: row.workTypeId,
+      shiftId: row.shiftId,
+      reportingManagerId: row.reportingManagerId,
+      currentAddress: row.currentAddress,
+      countryOfBirth: row.countryOfBirth,
+      placeOfBirth: row.placeOfBirth,
       isActive: String(row.isActive ?? true),
     })
     setModalOpen(true)
@@ -121,11 +192,24 @@ export default function EmployeesPage() {
 
   const onSubmit = async (data) => {
     // coerce IDs to numbers
+    const { confirmPassword, ...rest } = data
     const payload = {
-      ...data,
-      companyId: data.companyId ? Number(data.companyId) : undefined,
+      ...rest,
+      companyId: data.companyId ? Number(data.companyId) : (user?.companyId ? Number(user.companyId) : undefined),
       departmentId: data.departmentId ? Number(data.departmentId) : undefined,
+      jobPositionId: data.jobPositionId ? Number(data.jobPositionId) : undefined,
+      workTypeId: data.workTypeId ? Number(data.workTypeId) : undefined,
+      shiftId: data.shiftId ? Number(data.shiftId) : undefined,
+      reportingManagerId: data.reportingManagerId ? Number(data.reportingManagerId) : undefined,
       isActive: data.isActive === 'true',
+      role: data.role || undefined,
+      accessScope: data.accessScope || undefined,
+      // Omit empty strings for date/enum fields — backend can't deserialize "" as LocalDate or Enum
+      dateOfBirth: data.dateOfBirth || undefined,
+      dateJoining: data.dateJoining || undefined,
+      gender: data.gender || undefined,
+      maritalStatus: data.maritalStatus || undefined,
+      employeeType: data.employeeType || undefined,
     }
     try {
       if (editing) {
@@ -169,7 +253,7 @@ export default function EmployeesPage() {
         </div>
       ),
     },
-    { accessorKey: 'badgeId', header: 'Badge ID' },
+    { accessorKey: 'badgeId', header: 'Badge ID', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'companyName', header: 'Branch / Company' },
     { accessorKey: 'departmentName', header: 'Department' },
     { accessorKey: 'employeeType', header: 'Type', cell: ({ getValue }) => <Badge label={getValue()?.replace(/_/g, ' ') || '—'} variant="secondary" /> },
@@ -211,6 +295,10 @@ export default function EmployeesPage() {
     : companies.map(c => ({ value: c.id, label: `${c.name} [${c.companyType || c.type || 'Company'}]` }))
 
   const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }))
+  const jobPositionOptions = jobPositions.map(p => ({ value: p.id, label: p.name }))
+  const workTypeOptions = workTypes.map(w => ({ value: w.id, label: w.name }))
+  const shiftOptions = employeeShifts.map(s => ({ value: s.id, label: s.name }))
+  const reportingManagerOptions = employees.map(e => ({ value: e.id, label: e.fullName || e.firstName }))
 
   return (
     <div>
@@ -308,7 +396,7 @@ export default function EmployeesPage() {
             <Input label="Phone" {...register('phone')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Badge ID" {...register('badgeId')} />
+            <Input label="Badge ID" placeholder="Auto-generated if left blank" {...register('badgeId')} />
             <Select label="Gender" options={GENDERS} {...register('gender')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -329,6 +417,40 @@ export default function EmployeesPage() {
               {...register('isActive')}
             />
           </div>
+          {!editing && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Password"
+                  type="password"
+                  error={errors.password?.message}
+                  {...register('password', { required: 'Required' })}
+                />
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  error={errors.confirmPassword?.message}
+                  {...register('confirmPassword', {
+                    required: 'Required',
+                    validate: (val, formValues) =>
+                      val === formValues.password || 'Passwords do not match',
+                  })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Role"
+                  options={[{ value: '', label: 'None' }, ...assignableRoles]}
+                  {...register('role')}
+                />
+                <Select
+                  label="Access Scope"
+                  options={[{ value: '', label: 'None' }, ...ACCESS_SCOPE_OPTIONS]}
+                  {...register('accessScope')}
+                />
+              </div>
+            </>
+          )}
           {companyOptions.length > 0 && (
             <Select
               label="Branch / Company"
@@ -344,14 +466,74 @@ export default function EmployeesPage() {
               {...register('departmentId')}
             />
           )}
+          {jobPositionOptions.length > 0 && (
+            <Select
+              label="Job Position"
+              options={[{ value: '', label: 'None' }, ...jobPositionOptions]}
+              {...register('jobPositionId')}
+            />
+          )}
+          {workTypeOptions.length > 0 && (
+            <Select
+              label="Work Type"
+              options={[{ value: '', label: 'None' }, ...workTypeOptions]}
+              {...register('workTypeId')}
+            />
+          )}
+          {shiftOptions.length > 0 && (
+            <Select
+              label="Shift"
+              options={[{ value: '', label: 'None' }, ...shiftOptions]}
+              {...register('shiftId')}
+            />
+          )}
+          {reportingManagerOptions.length > 0 && (
+            <Select
+              label="Reporting Manager"
+              options={[{ value: '', label: 'None' }, ...reportingManagerOptions]}
+              {...register('reportingManagerId')}
+            />
+          )}
 
-          {/* Contact */}
-          <Input label="Nationality" {...register('nationality')} />
+          {/* Personal details */}
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Marital Status" options={[{ value: '', label: 'None' }, ...MARITAL_STATUSES]} {...register('maritalStatus')} />
+            <Input label="Nationality" {...register('nationality')} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Qualification" {...register('qualification')} />
+            <Input label="Experience (years)" type="number" {...register('experience')} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Children" type="number" {...register('children')} />
+          </div>
+
+          {/* Work contact */}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Work Email" type="email" {...register('workEmail')} />
+            <Input label="Work Phone" {...register('workPhone')} />
+          </div>
+
+          {/* Address */}
           <Input label="Permanent Address" {...register('permanentAddress')} />
+          <Input label="Current Address" {...register('currentAddress')} />
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Country" {...register('country')} />
+            <Input label="State" {...register('state')} />
+            <Input label="City" {...register('city')} />
+          </div>
+          <Input label="ZIP Code" {...register('zip')} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Country of Birth" {...register('countryOfBirth')} />
+            <Input label="Place of Birth" {...register('placeOfBirth')} />
+          </div>
+
+          {/* Emergency contact */}
           <div className="grid grid-cols-2 gap-3">
             <Input label="Emergency Contact Name" {...register('emergencyContactName')} />
             <Input label="Emergency Contact Number" {...register('emergencyContact')} />
           </div>
+          <Input label="Emergency Contact Relation" {...register('emergencyContactRelation')} />
         </div>
       </Modal>
 

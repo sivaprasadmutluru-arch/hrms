@@ -299,6 +299,19 @@ export const deleteWorkRecord = createAsyncThunk('attendance/deleteWorkRecord', 
   }
 })
 
+// ─── Calendar ──────────────────────────────────────────────────────────────
+
+export const fetchCalendar = createAsyncThunk('attendance/fetchCalendar', async ({ year, month, employeeId }, { rejectWithValue }) => {
+  try {
+    const params = { year, month }
+    if (employeeId) params.employeeId = employeeId
+    const res = await api.get('/attendance/calendar', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance calendar')
+  }
+})
+
 // ─── Overtime ──────────────────────────────────────────────────────────────
 
 export const fetchOvertime = createAsyncThunk('attendance/fetchOvertime', async (companyId, { rejectWithValue }) => {
@@ -319,6 +332,15 @@ export const approveOvertime = createAsyncThunk('attendance/approveOvertime', as
   }
 })
 
+export const rejectOvertime = createAsyncThunk('attendance/rejectOvertime', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/attendance/overtime/${id}/reject`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to reject overtime')
+  }
+})
+
 const attendanceSlice = createSlice({
   name: 'attendance',
   initialState: {
@@ -334,6 +356,8 @@ const attendanceSlice = createSlice({
     workRecords: [],
     workRecordsPagination: { page: 0, size: 20, total: 0 },
     comments: [],
+    calendarDays: [],
+    calendarLoading: false,
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
@@ -468,9 +492,18 @@ const attendanceSlice = createSlice({
         state.workRecords = state.workRecords.filter(r => r.id !== action.payload)
       })
 
+      // Calendar
+      .addCase(fetchCalendar.pending, (state) => { state.calendarLoading = true })
+      .addCase(fetchCalendar.fulfilled, (state, action) => { state.calendarLoading = false; state.calendarDays = action.payload })
+      .addCase(fetchCalendar.rejected, (state) => { state.calendarLoading = false })
+
       // Overtime
       .addCase(fetchOvertime.fulfilled, (state, action) => { state.overtimeRecords = action.payload })
       .addCase(approveOvertime.fulfilled, (state, action) => {
+        const idx = state.overtimeRecords.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.overtimeRecords[idx] = action.payload
+      })
+      .addCase(rejectOvertime.fulfilled, (state, action) => {
         const idx = state.overtimeRecords.findIndex(r => r.id === action.payload.id)
         if (idx !== -1) state.overtimeRecords[idx] = action.payload
       })
@@ -491,4 +524,6 @@ export const selectWorkRecords = (state) => state.attendance.workRecords
 export const selectWorkRecordsPagination = (state) => state.attendance.workRecordsPagination
 export const selectComments = (state) => state.attendance.comments
 export const selectOvertimeRecords = (state) => state.attendance.overtimeRecords
+export const selectCalendarDays = (state) => state.attendance.calendarDays
+export const selectCalendarLoading = (state) => state.attendance.calendarLoading
 export default attendanceSlice.reducer

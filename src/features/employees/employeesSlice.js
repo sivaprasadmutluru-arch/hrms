@@ -19,7 +19,9 @@ export const create = createAsyncThunk('employees/create', async (data, { reject
     const res = await api.post('/employees', data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to create employee')
+    const d = err.response?.data
+    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null) || 'Failed to create employee'
+    return rejectWithValue(msg)
   }
 })
 

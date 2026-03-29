@@ -11,7 +11,7 @@ import { fetchAll as fetchLeave } from '../leave/leaveSlice'
 import { fetchAll as fetchTickets } from '../helpdesk/helpdeskSlice'
 import { fetchAll as fetchProjects } from '../projects/projectsSlice'
 import { fetchAll as fetchOrganizations } from '../organizations/organizationsSlice'
-import { fetchAll as fetchCompanies } from '../companies/companiesSlice'
+import { fetchBranchesSummary, selectBranchesSummary } from '../companies/companiesSlice'
 import { fetchHeadcount as fetchHeadcountReport, fetchAttendanceReport } from '../reports/reportsSlice'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const companies = useSelector(s => s.companies)
   const headcount = useSelector(s => s.reports.headcount)
   const attendanceReport = useSelector(s => s.reports.attendance)
+  const branchesSummary = useSelector(selectBranchesSummary)
 
   const isSuperAdmin = isPlatformAdmin()
   const isEntAdmin = isEnterpriseAdmin()
@@ -42,7 +43,9 @@ export default function DashboardPage() {
     dispatch(fetchHeadcountReport({}))
     dispatch(fetchAttendanceReport({ from: weekAgo, to: today }))
     if (isSuperAdmin) dispatch(fetchOrganizations({ page: 0, size: 100 }))
-    if (isEntAdmin) dispatch(fetchCompanies({ page: 0, size: 50 }))
+    if (isEntAdmin && user?.companyId) {
+      dispatch(fetchBranchesSummary(user.companyId))
+    }
   }, [dispatch, isSuperAdmin, isEntAdmin])
 
   // Map attendance daily data — last 7 days with day labels
@@ -52,16 +55,18 @@ export default function DashboardPage() {
     absent: d.absent,
   }))
 
+  console.log('headcount:', headcount)
+
   const pendingLeaves = (leave.data || []).filter(l => l.status === 'PENDING')
   const openTickets = (helpdesk.data || []).filter(t => t.status === 'OPEN')
   const activeProjects = (projects.data || []).filter(p => p.status === 'ACTIVE')
   const activeOrgs = (organizations?.data || []).filter(o => o.status === 'ACTIVE')
-  const branches = (companies?.data || []).filter(c => c.companyType === 'BRANCH')
+  const branchSummaryList = user?.companyId ? (branchesSummary[user.companyId] || []) : []
 
   const subtitle = isSuperAdmin
     ? 'Platform overview — all client organizations'
     : isEntAdmin
-      ? `Head office overview — ${user?.enterpriseName || 'your enterprise'} (${branches.length} branch${branches.length !== 1 ? 'es' : ''})`
+      ? `Head office overview — ${user?.enterpriseName || 'your enterprise'} (${branchSummaryList.length} branch${branchSummaryList.length !== 1 ? 'es' : ''})`
       : isBranchMgr
         ? `Branch overview — ${user?.companyName || 'your branch'}`
         : "Welcome back — here's what's happening today."
@@ -75,7 +80,10 @@ export default function DashboardPage() {
           <StatCard title="Active Organizations" value={activeOrgs.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
         )}
         {isEntAdmin && (
-          <StatCard title="Branch Companies" value={branches.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
+          <StatCard title="Branch Companies" value={branchSummaryList.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
+        )}
+        {isEntAdmin && (
+          <StatCard title="Total Employees" value={headcount?.active ?? '—'} icon={UsersIcon} color="teal" />
         )}
         {!isSuperAdmin && !isEntAdmin && (
           <StatCard title="Total Employees" value={headcount?.active ?? '—'} icon={UsersIcon} color="indigo" />
@@ -120,32 +128,37 @@ export default function DashboardPage() {
       {/* Enterprise Admin — branch companies summary */}
       {isEntAdmin && (
         <Card className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Branch Companies ({branches.length}/5)</h3>
-          {companies?.loading ? <Spinner size="sm" /> : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b">
-                  <th className="pb-2 text-left">Branch Name</th>
-                  <th className="pb-2 text-left">Email</th>
-                  <th className="pb-2 text-left">Location</th>
-                  <th className="pb-2 text-left">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {branches.slice(0, 5).map(branch => (
-                  <tr key={branch.id} className="border-b border-gray-50">
-                    <td className="py-2 font-medium text-gray-800">{branch.name || '—'}</td>
-                    <td className="py-2 text-gray-600">{branch.email || '—'}</td>
-                    <td className="py-2 text-gray-600">{branch.location || branch.address || '—'}</td>
-                    <td className="py-2"><Badge label={branch.status || 'Active'} variant={STATUS_COLORS[branch.status?.toLowerCase()] || 'success'} /></td>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Branch Companies ({branchSummaryList.length}/5)</h3>
+          {companies?.loading ? <Spinner size="sm" /> : (() => {
+            const rows = branchSummaryList
+            return (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b">
+                    <th className="pb-2 text-left">Branch Name</th>
+                    <th className="pb-2 text-left">Email</th>
+                    <th className="pb-2 text-left">Location</th>
+                    <th className="pb-2 text-left">Employees</th>
+                    <th className="pb-2 text-left">Status</th>
                   </tr>
-                ))}
-                {branches.length === 0 && (
-                  <tr><td colSpan="4" className="py-4 text-center text-gray-400">No branches yet. Go to Companies to add branches.</td></tr>
-                )}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {rows.slice(0, 5).map(branch => (
+                    <tr key={branch.id} className="border-b border-gray-50">
+                      <td className="py-2 font-medium text-gray-800">{branch.name || '—'}</td>
+                      <td className="py-2 text-gray-600">{branch.email || '—'}</td>
+                      <td className="py-2 text-gray-600">{branch.location || branch.address || '—'}</td>
+                      <td className="py-2 text-gray-800 font-medium">{branch.employeeCount ?? '—'}</td>
+                      <td className="py-2"><Badge label={branch.status || 'Active'} variant={STATUS_COLORS[branch.status?.toLowerCase()] || 'success'} /></td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <tr><td colSpan="5" className="py-4 text-center text-gray-400">No branches yet. Go to Companies to add branches.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )
+          })()}
         </Card>
       )}
 

@@ -16,6 +16,11 @@ import useAuth from '../../hooks/useAuth'
 
 const TABS = ['General', 'Encashment', 'Auto-Generate']
 
+const GENERATE_DAY_OPTIONS = [
+  { value: 'last day', label: 'Last Day of Month' },
+  ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+]
+
 export default function PayrollSettingsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
@@ -45,6 +50,7 @@ export default function PayrollSettingsPage() {
       enableBonusPoint: generalSettings.enableBonusPoint,
       maxOvertimeHours: generalSettings.maxOvertimeHours,
       payrollStartDay: generalSettings.payrollStartDay,
+      noticePeriod: generalSettings.noticePeriod,
     })
   }, [generalSettings, resetGeneral])
 
@@ -53,13 +59,15 @@ export default function PayrollSettingsPage() {
       enableSelfEncashment: encashmentSettings.enableSelfEncashment,
       maxEncashmentDays: encashmentSettings.maxEncashmentDays,
       minAccrualBeforeEncashment: encashmentSettings.minAccrualBeforeEncashment,
+      bonusAmount: encashmentSettings.bonusAmount,
+      leaveAmount: encashmentSettings.leaveAmount,
     })
   }, [encashmentSettings, resetEncash])
 
   useEffect(() => {
     if (autoGenerate) resetAuto({
-      isEnabled: autoGenerate.isEnabled,
-      generateDay: autoGenerate.generateDay,
+      autoGenerate: autoGenerate.autoGenerate,
+      generateDay: autoGenerate.generateDay != null ? String(autoGenerate.generateDay) : '',
       notifyEmail: autoGenerate.notifyEmail,
     })
   }, [autoGenerate, resetAuto])
@@ -115,6 +123,7 @@ export default function PayrollSettingsPage() {
           </div>
           <Input label="Max Overtime Hours" type="number" step="0.5" error={errG.maxOvertimeHours?.message} {...regGeneral('maxOvertimeHours', { valueAsNumber: true })} />
           <Input label="Payroll Start Day (1–31)" type="number" min="1" max="31" error={errG.payrollStartDay?.message} {...regGeneral('payrollStartDay', { valueAsNumber: true })} />
+          <Input label="Notice Period (days)" type="number" min="0" error={errG.noticePeriod?.message} {...regGeneral('noticePeriod', { valueAsNumber: true })} />
           <div className="flex justify-end">
             <Button onClick={handleGeneral(onSaveGeneral)} disabled={loading}>Save</Button>
           </div>
@@ -130,6 +139,8 @@ export default function PayrollSettingsPage() {
           </div>
           <Input label="Max Encashment Days per Year" type="number" error={errE.maxEncashmentDays?.message} {...regEncash('maxEncashmentDays', { valueAsNumber: true })} />
           <Input label="Min Accrual Before Encashment" type="number" error={errE.minAccrualBeforeEncashment?.message} {...regEncash('minAccrualBeforeEncashment', { valueAsNumber: true })} />
+          <Input label="Bonus Amount" type="number" step="0.01" error={errE.bonusAmount?.message} {...regEncash('bonusAmount', { valueAsNumber: true })} />
+          <Input label="Leave Amount" type="number" step="0.01" error={errE.leaveAmount?.message} {...regEncash('leaveAmount', { valueAsNumber: true })} />
           <div className="flex justify-end">
             <Button onClick={handleEncash(onSaveEncash)} disabled={loading}>Save</Button>
           </div>
@@ -140,10 +151,18 @@ export default function PayrollSettingsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-4">
           <h3 className="text-base font-semibold text-gray-800">Payslip Auto-Generation</h3>
           <div className="flex items-center gap-3">
-            <input type="checkbox" id="isEnabled" {...regAuto('isEnabled')} className="h-4 w-4 text-indigo-600 rounded" />
-            <label htmlFor="isEnabled" className="text-sm text-gray-700">Enable automatic payslip generation</label>
+            <input type="checkbox" id="autoGenerate" {...regAuto('autoGenerate')} className="h-4 w-4 text-indigo-600 rounded" />
+            <label htmlFor="autoGenerate" className="text-sm text-gray-700">Enable automatic payslip generation</label>
           </div>
-          <Input label="Generate on Day of Month (1–31)" type="number" min="1" max="31" error={errA.generateDay?.message} {...regAuto('generateDay', { valueAsNumber: true })} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Generate on Day of Month</label>
+            <select {...regAuto('generateDay')} className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">— Select day —</option>
+              {GENERATE_DAY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <Input label="Notification Email" type="email" error={errA.notifyEmail?.message} {...regAuto('notifyEmail')} />
           <div className="flex justify-end">
             <Button onClick={handleAuto(onSaveAuto)} disabled={loading}>Save</Button>

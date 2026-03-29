@@ -19,13 +19,23 @@ const LOAN_TYPE_OPTIONS = [
   { value: 'FINE', label: 'Fine' },
 ]
 
+const APPLY_ON_OPTIONS = [
+  { value: 'end_of_month', label: 'End of Month' },
+  { value: 'start_of_month', label: 'Start of Month' },
+]
+
 export default function LoansPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const loans = useSelector(selectLoans)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
+    defaultValues: { isFixed: true }
+  })
+
+  const isFixed = watch('isFixed')
 
   useEffect(() => { dispatch(fetchLoans()) }, [dispatch])
 
@@ -62,7 +72,7 @@ export default function LoansPage() {
     { accessorKey: 'settled', header: 'Status', cell: ({ getValue }) => (
       <Badge label={getValue() ? 'Settled' : 'Active'} variant={getValue() ? 'success' : 'warning'} />
     )},
-    { id: 'actions', header: '', cell: ({ row }) => !row.original.settled ? (
+    { id: 'actions', header: '', cell: ({ row }) => !isEmp && !row.original.settled ? (
       <Button size="sm" variant="success" onClick={() => handleSettle(row.original.id)}>Settle</Button>
     ) : null },
   ]
@@ -70,7 +80,7 @@ export default function LoansPage() {
   return (
     <div>
       <PageHeader title="Loan Accounts" subtitle="Employee loans, advances, and fines"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Loan</Button>} />
+        actions={!isEmp && <Button onClick={() => { reset({ isFixed: true }); setModalOpen(true) }}>+ New Loan</Button>} />
       <DataTable columns={columns} data={loans} loading={loading} />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Loan Account"
         footer={
@@ -83,11 +93,28 @@ export default function LoansPage() {
           <Input label="Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <Select label="Loan Type" options={LOAN_TYPE_OPTIONS} {...register('loanType')} />
           <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
-          <Input label="Loan Amount" type="number" step="0.01" error={errors.loanAmount?.message} {...register('loanAmount', { required: 'Required' })} />
+          <Input label="Loan Amount" type="number" step="0.01" error={errors.loanAmount?.message} {...register('loanAmount', { required: 'Required', valueAsNumber: true })} />
           <Input label="Provided Date" type="date" {...register('providedDate')} />
-          <Input label="Installment Amount" type="number" step="0.01" {...register('installmentAmount')} />
-          <Input label="Number of Installments" type="number" {...register('installments')} />
+          <Input label="Installment Amount" type="number" step="0.01" {...register('installmentAmount', { valueAsNumber: true })} />
+          <Input label="Number of Installments" type="number" {...register('installments', { valueAsNumber: true })} />
           <Input label="Installment Start Date" type="date" {...register('installmentStartDate')} />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              rows={3} {...register('description')} />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="isFixed" {...register('isFixed')} className="h-4 w-4 text-indigo-600 rounded" />
+            <label htmlFor="isFixed" className="text-sm text-gray-700">Fixed Amount</label>
+          </div>
+
+          {!isFixed && (
+            <Input label="Rate (%)" type="number" step="0.01" {...register('rate', { valueAsNumber: true })} />
+          )}
+
+          <Select label="Apply On" options={APPLY_ON_OPTIONS} {...register('applyOn')} />
         </div>
       </Modal>
     </div>

@@ -336,6 +336,50 @@ export const deleteCondition = createAsyncThunk('payroll/deleteCondition', async
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+// ─── Allowances ───────────────────────────────────────────────────────────────
+
+export const fetchAllowances = createAsyncThunk('payroll/fetchAllowances', async (_, { rejectWithValue }) => {
+  try { const res = await api.get('/payroll/allowances'); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const createAllowance = createAsyncThunk('payroll/createAllowance', async (data, { rejectWithValue }) => {
+  try { const res = await api.post('/payroll/allowances', data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const updateAllowance = createAsyncThunk('payroll/updateAllowance', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/payroll/allowances/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const deleteAllowance = createAsyncThunk('payroll/deleteAllowance', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/payroll/allowances/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Deductions ───────────────────────────────────────────────────────────────
+
+export const fetchDeductions = createAsyncThunk('payroll/fetchDeductions', async (_, { rejectWithValue }) => {
+  try { const res = await api.get('/payroll/deductions'); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const createDeduction = createAsyncThunk('payroll/createDeduction', async (data, { rejectWithValue }) => {
+  try { const res = await api.post('/payroll/deductions', data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const updateDeduction = createAsyncThunk('payroll/updateDeduction', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/payroll/deductions/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const deleteDeduction = createAsyncThunk('payroll/deleteDeduction', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/payroll/deductions/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 const payrollSlice = createSlice({
   name: 'payroll',
   initialState: {
@@ -351,6 +395,8 @@ const payrollSlice = createSlice({
     encashmentSettings: null,
     payslipAutoGenerate: null,
     conditions: [],
+    allowances: [],
+    deductions: [],
     selected: {},
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
@@ -524,6 +570,22 @@ const payrollSlice = createSlice({
         if (idx !== -1) state.conditions[idx] = action.payload
       })
       .addCase(deleteCondition.fulfilled, (state, action) => { state.conditions = state.conditions.filter(c => c.id !== action.payload) })
+
+      .addCase(fetchAllowances.fulfilled, (state, action) => { state.allowances = action.payload.content || action.payload })
+      .addCase(createAllowance.fulfilled, (state, action) => { state.allowances.unshift(action.payload) })
+      .addCase(updateAllowance.fulfilled, (state, action) => {
+        const idx = state.allowances.findIndex(a => a.id === action.payload.id)
+        if (idx !== -1) state.allowances[idx] = action.payload
+      })
+      .addCase(deleteAllowance.fulfilled, (state, action) => { state.allowances = state.allowances.filter(a => a.id !== action.payload) })
+
+      .addCase(fetchDeductions.fulfilled, (state, action) => { state.deductions = action.payload.content || action.payload })
+      .addCase(createDeduction.fulfilled, (state, action) => { state.deductions.unshift(action.payload) })
+      .addCase(updateDeduction.fulfilled, (state, action) => {
+        const idx = state.deductions.findIndex(d => d.id === action.payload.id)
+        if (idx !== -1) state.deductions[idx] = action.payload
+      })
+      .addCase(deleteDeduction.fulfilled, (state, action) => { state.deductions = state.deductions.filter(d => d.id !== action.payload) })
   },
 })
 
@@ -542,4 +604,6 @@ export const selectPayrollGeneralSettings = (state) => state.payroll.payrollGene
 export const selectEncashmentSettings = (state) => state.payroll.encashmentSettings
 export const selectPayslipAutoGenerate = (state) => state.payroll.payslipAutoGenerate
 export const selectConditions = (state) => state.payroll.conditions
+export const selectAllowances = (state) => state.payroll.allowances
+export const selectDeductions = (state) => state.payroll.deductions
 export default payrollSlice.reducer

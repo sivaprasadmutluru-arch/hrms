@@ -68,6 +68,15 @@ export const fetchBranches = createAsyncThunk('companies/fetchBranches', async (
   }
 })
 
+export const fetchBranchesSummary = createAsyncThunk('companies/fetchBranchesSummary', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.get(`/companies/${id}/branches-summary`)
+    return { headOfficeId: id, data: res.data }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch branches summary')
+  }
+})
+
 export const fetchApprovalConditions = createAsyncThunk('companies/fetchApprovalConditions', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/approval-conditions')
@@ -110,6 +119,7 @@ const companiesSlice = createSlice({
     data: [],
     selected: {},
     branches: {},
+    branchesSummary: {},
     approvalConditions: [],
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
@@ -161,6 +171,10 @@ const companiesSlice = createSlice({
       })
       .addCase(fetchBranches.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
+      .addCase(fetchBranchesSummary.fulfilled, (state, action) => {
+        state.branchesSummary[action.payload.headOfficeId] = action.payload.data
+      })
+
       .addCase(fetchMyCompany.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchMyCompany.fulfilled, (state, action) => {
         state.loading = false
@@ -187,5 +201,6 @@ export const selectSelected = (state) => state.companies.selected
 export const selectLoading = (state) => state.companies.loading
 export const selectPagination = (state) => state.companies.pagination
 export const selectBranches = (state) => state.companies.branches
+export const selectBranchesSummary = (state) => state.companies.branchesSummary
 export const selectApprovalConditions = (state) => state.companies.approvalConditions
 export default companiesSlice.reducer

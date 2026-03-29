@@ -127,6 +127,24 @@ export const fetchAnnouncementViews = createAsyncThunk('baseExtras/fetchAnnounce
   try { return (await api.get(`/announcements/${id}/views`)).data } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+// ─── Shift Schedules ──────────────────────────────────────────────────────────
+
+export const fetchShiftSchedules = createAsyncThunk('baseExtras/fetchShiftSchedules', async (_, { rejectWithValue }) => {
+  try { return (await api.get('/shift-schedules')).data } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Work Types ───────────────────────────────────────────────────────────────
+
+export const fetchWorkTypes = createAsyncThunk('baseExtras/fetchWorkTypes', async (_, { rejectWithValue }) => {
+  try { return (await api.get('/work-types')).data } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Job Positions ────────────────────────────────────────────────────────────
+
+export const fetchJobPositions = createAsyncThunk('baseExtras/fetchJobPositions', async (_, { rejectWithValue }) => {
+  try { return (await api.get('/job-positions')).data } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 const baseExtrasSlice = createSlice({
@@ -134,6 +152,9 @@ const baseExtrasSlice = createSlice({
   initialState: {
     employeeTypes: [],
     employeeShifts: [],
+    shiftSchedules: [],
+    workTypes: [],
+    jobPositions: [],
     tags: [],
     mailTemplates: [],
     emailConfig: null,
@@ -215,11 +236,23 @@ const baseExtrasSlice = createSlice({
 
       // Announcement Views
       .addCase(fetchAnnouncementViews.fulfilled, (state, action) => { state.announcementViews = action.payload })
+
+      // Shift Schedules
+      .addCase(fetchShiftSchedules.fulfilled, (state, action) => { state.shiftSchedules = action.payload.content || action.payload })
+
+      // Work Types
+      .addCase(fetchWorkTypes.fulfilled, (state, action) => { state.workTypes = action.payload.content || action.payload })
+
+      // Job Positions
+      .addCase(fetchJobPositions.fulfilled, (state, action) => { state.jobPositions = action.payload.content || action.payload })
   },
 })
 
 export const selectEmployeeTypes = (state) => state.baseExtras.employeeTypes
 export const selectEmployeeShifts = (state) => state.baseExtras.employeeShifts
+export const selectShiftSchedules = (state) => state.baseExtras.shiftSchedules
+export const selectWorkTypes = (state) => state.baseExtras.workTypes
+export const selectJobPositions = (state) => state.baseExtras.jobPositions
 export const selectTags = (state) => state.baseExtras.tags
 export const selectMailTemplates = (state) => state.baseExtras.mailTemplates
 export const selectEmailConfig = (state) => state.baseExtras.emailConfig

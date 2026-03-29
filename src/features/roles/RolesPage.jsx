@@ -205,6 +205,14 @@ export default function RolesPage() {
               <Input label="First Name" {...regUser('firstName')} />
               <Input label="Last Name" {...regUser('lastName')} />
             </div>
+            {!isPlatformAdmin() && (
+              <Select
+                label="Company"
+                options={companyOptions}
+                {...regUser('companyId', { required: 'Required' })}
+                error={userErrors.companyId?.message}
+              />
+            )}
             <div className="flex justify-end pt-2">
               <Button type="submit" loading={loading}>Create User</Button>
             </div>

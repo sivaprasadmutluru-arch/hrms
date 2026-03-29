@@ -207,6 +207,22 @@ export default function CompaniesPage() {
               {...register('organizationId', { required: 'Organization is required' })}
             />
           )}
+          {modalType === 'headoffice' && !editTarget && (
+            <>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-1">Enterprise Admin Credentials</p>
+              <Input
+                label="Username / Email"
+                {...register('adminUsername', { required: 'Admin username is required' })}
+                error={errors.adminUsername?.message}
+              />
+              <Input
+                label="Password"
+                type="password"
+                {...register('adminPassword', { required: 'Admin password is required', minLength: { value: 6, message: 'Min 6 characters' } })}
+                error={errors.adminPassword?.message}
+              />
+            </>
+          )}
         </div>
       </Modal>
     </div>

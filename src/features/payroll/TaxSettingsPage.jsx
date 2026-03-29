@@ -35,6 +35,8 @@ export default function TaxSettingsPage() {
   const fsForm = useForm()
   const bracketForm = useForm()
 
+  const usePy = fsForm.watch('usePy')
+
   useEffect(() => { dispatch(fetchFilingStatuses()) }, [dispatch])
 
   useEffect(() => {
@@ -44,7 +46,13 @@ export default function TaxSettingsPage() {
   const openCreateFs = () => { setEditingFs(null); fsForm.reset({}); setFsModalOpen(true) }
   const openEditFs = (fs) => {
     setEditingFs(fs)
-    fsForm.reset({ filingStatus: fs.filingStatus, basedOn: fs.basedOn, description: fs.description })
+    fsForm.reset({
+      filingStatus: fs.filingStatus,
+      basedOn: fs.basedOn,
+      description: fs.description,
+      usePy: fs.usePy,
+      pythonCode: fs.pythonCode,
+    })
     setFsModalOpen(true)
   }
 
@@ -78,7 +86,7 @@ export default function TaxSettingsPage() {
     try {
       const payload = { ...data, filingStatus: { id: selectedFs.id } }
       if (editingBracket) {
-        await dispatch(updateTaxBracket({ id: editingBracket.id, data })).unwrap()
+        await dispatch(updateTaxBracket({ id: editingBracket.id, data: { ...data, filingStatus: { id: selectedFs.id } } })).unwrap()
         toast.success('Tax bracket updated')
       } else {
         await dispatch(createTaxBracket(payload)).unwrap()
@@ -102,6 +110,7 @@ export default function TaxSettingsPage() {
     { accessorKey: 'filingStatus', header: 'Name' },
     { accessorKey: 'basedOn', header: 'Based On' },
     { accessorKey: 'description', header: 'Description', cell: ({ getValue }) => getValue() || '—' },
+    { accessorKey: 'usePy', header: 'Python', cell: ({ getValue }) => getValue() ? <span className="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 font-medium">Enabled</span> : '—' },
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => { setSelectedFs(row.original); openEditFs(row.original) }}>Edit</Button>
@@ -158,6 +167,21 @@ export default function TaxSettingsPage() {
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               rows={2} {...fsForm.register('description')} />
           </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="usePy" {...fsForm.register('usePy')} className="h-4 w-4 text-indigo-600 rounded" />
+            <label htmlFor="usePy" className="text-sm text-gray-700">Enable Python Code for custom tax calculation</label>
+          </div>
+          {usePy && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Python Code</label>
+              <textarea
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+                rows={8}
+                placeholder="# Write your custom tax calculation here&#10;# Available variables: basic_pay, gross_pay, taxable_gross_pay&#10;# Must assign result to: tax_amount"
+                {...fsForm.register('pythonCode')}
+              />
+            </div>
+          )}
         </div>
       </Modal>
 

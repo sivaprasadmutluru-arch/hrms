@@ -38,8 +38,10 @@ export default function ReimbursementsPage() {
   const [selected, setSelected] = useState(null)
   const [commentText, setCommentText] = useState('')
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
   const { register: regAttach, handleSubmit: handleAttach, reset: resetAttach } = useForm()
+
+  const reimbursementType = watch('reimbursementType')
 
   useEffect(() => { dispatch(fetchReimbursements()) }, [dispatch])
 
@@ -126,7 +128,7 @@ export default function ReimbursementsPage() {
   return (
     <div>
       <PageHeader title="Reimbursements" subtitle="Employee reimbursement and encashment requests"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>} />
+        actions={<Button onClick={() => { reset(isEmp ? { employeeId: String(user?.employeeId) } : {}); setModalOpen(true) }}>+ New Request</Button>} />
       <DataTable columns={columns} data={reimbursements} loading={loading} />
 
       {/* Create Modal */}
@@ -140,14 +142,38 @@ export default function ReimbursementsPage() {
         <div className="space-y-4">
           <Input label="Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <Select label="Type" options={TYPE_OPTIONS} {...register('reimbursementType')} />
-          <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
-          <Input label="Amount" type="number" step="0.01" error={errors.amount?.message} {...register('amount', { required: 'Required' })} />
+          {!isEmp && <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />}
+          <Input label="Amount" type="number" step="0.01" error={errors.amount?.message} {...register('amount', { required: 'Required', valueAsNumber: true })} />
           <Input label="Date" type="date" {...register('allowanceOn')} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               rows={3} {...register('description')} />
           </div>
+
+          {/* Conditional fields based on type */}
+          {reimbursementType === 'LEAVE_ENCASHMENT' && (
+            <div className="space-y-3 bg-indigo-50 p-3 rounded-lg">
+              <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Leave Encashment Details</p>
+              <Input label="Leave Type ID" type="number" {...register('leaveTypeId', { valueAsNumber: true })} />
+              <Input label="Accrued (FD) to Encash" type="number" step="0.01" {...register('adToEncash', { valueAsNumber: true })} />
+              <Input label="Carry Forward (CFD) to Encash" type="number" step="0.01" {...register('cfdToEncash', { valueAsNumber: true })} />
+            </div>
+          )}
+
+          {reimbursementType === 'BONUS_ENCASHMENT' && (
+            <div className="space-y-3 bg-amber-50 p-3 rounded-lg">
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Bonus Encashment Details</p>
+              <Input label="Bonus to Encash" type="number" step="0.01" {...register('bonusToEncash', { valueAsNumber: true })} />
+            </div>
+          )}
+
+          {reimbursementType === 'REIMBURSEMENT' && (
+            <div className="space-y-3 bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Reimbursement Details</p>
+              <Input label="Attachment Path (file path / URL)" {...register('attachmentPath')} />
+            </div>
+          )}
         </div>
       </Modal>
 

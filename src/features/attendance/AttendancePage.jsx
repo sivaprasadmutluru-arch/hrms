@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   fetchAll, create, approve, reject,
   fetchLateComeEarlyOut, deleteLateComeEarlyOut,
-  fetchOvertime, approveOvertime,
+  fetchOvertime, approveOvertime, rejectOvertime,
   selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords
 } from './attendanceSlice'
 import useAuth from '../../hooks/useAuth'
@@ -48,10 +48,18 @@ export default function AttendancePage() {
   }, [tab, dispatch, user])
 
   const handleApprove = async (id) => {
-    try { await dispatch(approve(id)).unwrap(); toast.success('Approved') } catch { toast.error('Failed') }
+    try {
+      await dispatch(approve(id)).unwrap()
+      dispatch(fetchLateComeEarlyOut())
+      toast.success('Approved')
+    } catch { toast.error('Failed') }
   }
   const handleReject = async (id) => {
-    try { await dispatch(reject(id)).unwrap(); toast.success('Rejected') } catch { toast.error('Failed') }
+    try {
+      await dispatch(reject(id)).unwrap()
+      dispatch(fetchLateComeEarlyOut())
+      toast.success('Rejected')
+    } catch { toast.error('Failed') }
   }
 
   const handleDeleteLate = async (id) => {
@@ -62,6 +70,10 @@ export default function AttendancePage() {
 
   const handleApproveOvertime = async (id) => {
     try { await dispatch(approveOvertime(id)).unwrap(); toast.success('Overtime approved') }
+    catch (e) { toast.error(e || 'Failed') }
+  }
+  const handleRejectOvertime = async (id) => {
+    try { await dispatch(rejectOvertime(id)).unwrap(); toast.success('Overtime rejected') }
     catch (e) { toast.error(e || 'Failed') }
   }
 
@@ -81,7 +93,7 @@ export default function AttendancePage() {
     { accessorKey: 'checkOut', header: 'Check Out', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'workedHour', header: 'Hours' },
     { accessorKey: 'attendanceValidated', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Pending'} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => row.original.isValidateRequest === true ? (
+    { id: 'actions', header: '', cell: ({ row }) => row.original.attendanceValidated === 'PENDING' && row.original.checkOut ? (
       <div className="flex gap-2">
         <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
         <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
@@ -117,7 +129,10 @@ export default function AttendancePage() {
       return <Badge label={v || 'PENDING'} variant={v === 'APPROVED' ? 'success' : v === 'REJECTED' ? 'danger' : 'default'} />
     }},
     { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'PENDING' ? (
-      <Button size="sm" variant="success" onClick={() => handleApproveOvertime(row.original.id)}>Approve</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="success" onClick={() => handleApproveOvertime(row.original.id)}>Approve</Button>
+        <Button size="sm" variant="danger" onClick={() => handleRejectOvertime(row.original.id)}>Reject</Button>
+      </div>
     ) : null },
   ]
 

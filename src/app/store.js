@@ -25,6 +25,15 @@ import documentsReducer from '../features/documents/documentsSlice'
 import auditReducer from '../features/audit/auditSlice'
 import announcementsReducer from '../features/announcements/announcementsSlice'
 import baseExtrasReducer from '../features/base/baseExtrasSlice'
+import biometricReducer from '../features/biometric/biometricSlice'
+import geofencingReducer from '../features/geofencing/geofencingSlice'
+import faceDetectionReducer from '../features/facedetection/faceDetectionSlice'
+import ldapReducer from '../features/ldap/ldapSlice'
+import backupReducer from '../features/backup/backupSlice'
+import outlookAuthReducer from '../features/outlookauth/outlookAuthSlice'
+import accessibilityReducer from '../features/accessibility/accessibilitySlice'
+import viewsReducer from '../features/views/viewsSlice'
+import dynamicFieldsReducer from '../features/dynamicfields/dynamicFieldsSlice'
 
 export const store = configureStore({
   reducer: {
@@ -54,6 +63,15 @@ export const store = configureStore({
     audit: auditReducer,
     announcements: announcementsReducer,
     baseExtras: baseExtrasReducer,
+    biometric: biometricReducer,
+    geofencing: geofencingReducer,
+    faceDetection: faceDetectionReducer,
+    ldap: ldapReducer,
+    backup: backupReducer,
+    outlookAuth: outlookAuthReducer,
+    accessibility: accessibilityReducer,
+    views: viewsReducer,
+    dynamicFields: dynamicFieldsReducer,
   },
   devTools: true
 })

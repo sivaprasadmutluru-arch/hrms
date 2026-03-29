@@ -44,6 +44,8 @@ import LeaveRestrictionsPage from './features/leave/LeaveRestrictionsPage'
 import TaxSettingsPage from './features/payroll/TaxSettingsPage'
 import LoansPage from './features/payroll/LoansPage'
 import ReimbursementsPage from './features/payroll/ReimbursementsPage'
+import AllowancesPage from './features/payroll/AllowancesPage'
+import DeductionsPage from './features/payroll/DeductionsPage'
 import AttendanceSettingsPage from './features/attendance/AttendanceSettingsPage'
 import ShiftRequestsPage from './features/attendance/ShiftRequestsPage'
 import WorkTypeRequestsPage from './features/attendance/WorkTypeRequestsPage'
@@ -67,15 +69,27 @@ import AnnouncementsPage from './features/announcements/AnnouncementsPage'
 import ApprovalConditionsPage from './features/companies/ApprovalConditionsPage'
 import TimeSheetsPage from './features/projects/TimeSheetsPage'
 import WorkRecordsPage from './features/attendance/WorkRecordsPage'
+import AttendanceCalendarPage from './features/attendance/AttendanceCalendarPage'
 import PayrollSettingsPage from './features/payroll/PayrollSettingsPage'
 import EmployeeSettingsPage from './features/employees/EmployeeSettingsPage'
 import EmployeeNotesPage from './features/employees/EmployeeNotesPage'
+import MyProfilePage from './features/employees/MyProfilePage'
+import AdminProfilePage from './features/employees/AdminProfilePage'
 import SkillsPage from './features/recruitment/SkillsPage'
 import SurveysPage from './features/recruitment/SurveysPage'
 import CandidateDocumentsPage from './features/recruitment/CandidateDocumentsPage'
 import EmailTemplatesPage from './features/companies/EmailTemplatesPage'
 import EmailLogsPage from './features/companies/EmailLogsPage'
 import CompanySettingsPage from './features/companies/CompanySettingsPage'
+import BiometricDevicesPage from './features/biometric/BiometricDevicesPage'
+import BiometricEmployeesPage from './features/biometric/BiometricEmployeesPage'
+import GeoFencingPage from './features/geofencing/GeoFencingPage'
+import FaceDetectionPage from './features/facedetection/FaceDetectionPage'
+import LdapSettingsPage from './features/ldap/LdapSettingsPage'
+import BackupPage from './features/backup/BackupPage'
+import OutlookAuthPage from './features/outlookauth/OutlookAuthPage'
+import AccessibilityPage from './features/accessibility/AccessibilityPage'
+import DynamicFieldsPage from './features/dynamicfields/DynamicFieldsPage'
 
 export default function App() {
   return (
@@ -100,6 +114,8 @@ export default function App() {
           <Route path="roles" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<RolesPage />} />} />
 
           {/* Employees — admin and HR */}
+          <Route path="employees/me" element={<MyProfilePage />} />
+          <Route path="admin/profile" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT', 'DEPARTMENT_MANAGER', 'TEAM_LEAD']} element={<AdminProfilePage />} />} />
           <Route path="employees" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<EmployeesPage />} />} />
           <Route path="employees/:id/work-info" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<WorkInfoPage />} />} />
           <Route path="employees/:id/bank-details" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<BankDetailsPage />} />} />
@@ -129,15 +145,18 @@ export default function App() {
           {/* Finance routes */}
           <Route path="payroll/contracts"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<ContractsPage />} />} />
           <Route path="payroll/tax-settings"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<TaxSettingsPage />} />} />
-          <Route path="payroll/loans"          element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<LoansPage />} />} />
-          <Route path="payroll/reimbursements" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<ReimbursementsPage />} />} />
+          <Route path="payroll/loans"          element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT', 'EMPLOYEE']} element={<LoansPage />} />} />
+          <Route path="payroll/reimbursements" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT', 'EMPLOYEE']} element={<ReimbursementsPage />} />} />
           <Route path="payroll/settings"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<PayrollSettingsPage />} />} />
+          <Route path="payroll/allowances" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<AllowancesPage />} />} />
+          <Route path="payroll/deductions" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<DeductionsPage />} />} />
 
           {/* Reports — admin and managers */}
           <Route path="reports" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<ReportsPage />} />} />
 
           {/* Accessible to all authenticated users */}
           <Route path="attendance"                  element={<AttendancePage />} />
+          <Route path="attendance/calendar"         element={<AttendanceCalendarPage />} />
           <Route path="attendance/settings"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceSettingsPage />} />} />
           <Route path="attendance/work-records"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<WorkRecordsPage />} />} />
           <Route path="shift-requests"              element={<ShiftRequestsPage />} />
@@ -174,6 +193,21 @@ export default function App() {
           <Route path="companies/email-templates" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<EmailTemplatesPage />} />} />
           <Route path="companies/email-logs"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<EmailLogsPage />} />} />
           <Route path="companies/settings"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<CompanySettingsPage />} />} />
+
+          {/* Biometric */}
+          <Route path="biometric/devices"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<BiometricDevicesPage />} />} />
+          <Route path="biometric/employees" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<BiometricEmployeesPage />} />} />
+
+          {/* Attendance hardware & integrations */}
+          <Route path="geofencing"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<GeoFencingPage />} />} />
+          <Route path="face-detection" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<FaceDetectionPage />} />} />
+
+          {/* Settings & integrations */}
+          <Route path="settings/ldap"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<LdapSettingsPage />} />} />
+          <Route path="settings/backup"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<BackupPage />} />} />
+          <Route path="settings/outlook-auth"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<OutlookAuthPage />} />} />
+          <Route path="settings/accessibility"  element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<AccessibilityPage />} />} />
+          <Route path="settings/dynamic-fields" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DynamicFieldsPage />} />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
