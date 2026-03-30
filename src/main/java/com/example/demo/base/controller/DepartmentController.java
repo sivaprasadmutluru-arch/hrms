@@ -31,8 +31,11 @@ public class DepartmentController {
     @GetMapping
     @PreAuthorize("hasAuthority('department:view')")
     public ResponseEntity<List<Department>> list() {
-        var spec = ScopeFilter.<Department>byCompany();
-        return ResponseEntity.ok(spec != null ? departmentRepository.findAll(spec) : departmentRepository.findAll());
+        var companySpec = ScopeFilter.<Department>byCompany();
+        org.springframework.data.jpa.domain.Specification<Department> activeSpec =
+                (root, query, cb) -> cb.isTrue(root.get("isActive"));
+        var spec = companySpec != null ? companySpec.and(activeSpec) : activeSpec;
+        return ResponseEntity.ok(departmentRepository.findAll(spec));
     }
 
     @GetMapping("/{id}")

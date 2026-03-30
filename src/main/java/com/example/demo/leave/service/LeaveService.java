@@ -40,6 +40,7 @@ public class LeaveService {
     private final CompanyLeaveRepository companyLeaveRepository;
     private final EmployeeRepository employeeRepository;
     private final CompanyRepository companyRepository;
+    private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
 
     // ─── Queries ──────────────────────────────────────────────────────────────
 
@@ -133,6 +134,15 @@ public class LeaveService {
             throw new BadRequestException("Leave request is not in REQUESTED state");
         }
 
+        // Enforce that all condition approvals are completed before approving
+        List<LeaveRequestConditionApproval> conditionApprovals =
+                conditionApprovalRepository.findByLeaveRequestIdOrderBySequenceAsc(requestId);
+        boolean hasPending = conditionApprovals.stream()
+                .anyMatch(a -> !Boolean.TRUE.equals(a.getIsApproved()) && !Boolean.TRUE.equals(a.getIsRejected()));
+        if (hasPending) {
+            throw new BadRequestException("All condition approval steps must be completed before approving this request");
+        }
+
         AvailableLeave balance = getOrCreateAvailableLeave(
                 request.getEmployee().getId(), request.getLeaveType().getId());
 
@@ -204,6 +214,33 @@ public class LeaveService {
     }
 
     @Transactional
+    public LeaveType updateLeaveType(Long id, LeaveType updated) {
+        LeaveType lt = leaveTypeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveType", id));
+        lt.setName(updated.getName());
+        lt.setTotalDays(updated.getTotalDays());
+        lt.setPaymentType(updated.getPaymentType());
+        lt.setCarryforwardType(updated.getCarryforwardType());
+        lt.setCarryforwardMax(updated.getCarryforwardMax());
+        lt.setLeaveValidationType(updated.getLeaveValidationType());
+        lt.setColorCode(updated.getColorCode());
+        lt.setReset(updated.getReset());
+        lt.setResetBased(updated.getResetBased());
+        lt.setResetMonth(updated.getResetMonth());
+        lt.setResetDay(updated.getResetDay());
+        lt.setResetWeekend(updated.getResetWeekend());
+        lt.setCarryforwardExpireIn(updated.getCarryforwardExpireIn());
+        lt.setCarryforwardExpirePeriod(updated.getCarryforwardExpirePeriod());
+        lt.setCarryforwardExpireDate(updated.getCarryforwardExpireDate());
+        lt.setExcludeHoliday(updated.getExcludeHoliday());
+        lt.setExcludeCompanyLeave(updated.getExcludeCompanyLeave());
+        lt.setRequireAttachment(updated.getRequireAttachment());
+        lt.setLimitLeave(updated.getLimitLeave());
+        lt.setIsEncashable(updated.getIsEncashable());
+        return leaveTypeRepository.save(lt);
+    }
+
+    @Transactional
     public void deleteLeaveType(Long id) {
         LeaveType lt = leaveTypeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveType", id));
@@ -231,10 +268,14 @@ public class LeaveService {
         allocation.setAvailableDays(days);
         leaveAllocationRepository.save(allocation);
 
-        // Sync AvailableLeave
+        // Sync AvailableLeave — preserve existing carryforward, only reset for new records
+        boolean isNewBalance = availableLeaveRepository
+                .findByEmployeeIdAndLeaveTypeId(employeeId, leaveTypeId).isEmpty();
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
         balance.setAvailableDays(days);
-        balance.setCarryforwardDays(0.0);
+        if (isNewBalance) {
+            balance.setCarryforwardDays(0.0);
+        }
         balance.setAssignedDate(LocalDate.now());
         // Set reset_date if this leave type has reset configured (mirrors Horilla pre_save_processing)
         if (Boolean.TRUE.equals(balance.getLeaveType().getReset()) && balance.getResetDate() == null) {
@@ -252,7 +293,7 @@ public class LeaveService {
      */
     @Transactional
     public int bulkAllocate(Long companyId, Long leaveTypeId, double days, int year) {
-        List<Employee> employees = employeeRepository.findByCompanyId(companyId);
+        List<Employee> employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
         for (Employee emp : employees) {
             allocateLeave(emp.getId(), leaveTypeId, days, year, companyId);
         }
@@ -270,6 +311,16 @@ public class LeaveService {
     @Transactional
     public void annualReset(Long companyId, int currentYear) {
         int nextYear = currentYear + 1;
+
+        // Idempotency guard: skip if next year's allocations already exist as ACTIVE
+        List<LeaveAllocation> existingNext = leaveAllocationRepository.findByCompanyIdAndYear(companyId, nextYear);
+        boolean alreadyReset = existingNext.stream()
+                .anyMatch(a -> a.getStatus() == LeaveAllocation.AllocationStatus.ACTIVE);
+        if (alreadyReset) {
+            log.info("Annual reset already run for year {} in company {}, skipping", nextYear, companyId);
+            return;
+        }
+
         List<LeaveAllocation> currentAllocations = leaveAllocationRepository.findByCompanyIdAndYear(companyId, currentYear);
 
         for (LeaveAllocation current : currentAllocations) {
@@ -332,8 +383,7 @@ public class LeaveService {
             balance.setAssignedDate(LocalDate.of(nextYear, 1, 1));
             balance.setResetDate(LocalDate.of(nextYear, 1, 1));
             if (leaveType.getCarryforwardType() == LeaveType.CarryforwardType.CARRYFORWARD_EXPIRE) {
-                // Carried days expire mid-year (June 30)
-                balance.setExpiredDate(LocalDate.of(nextYear, 6, 30));
+                balance.setExpiredDate(computeCarryforwardExpireDate(leaveType, nextYear));
             }
             availableLeaveRepository.save(balance);
 
@@ -448,6 +498,28 @@ public class LeaveService {
             balance.setAvailableDays(avail - days);
         }
         availableLeaveRepository.save(balance);
+    }
+
+    /**
+     * Computes the carryforward expiry date from LeaveType config.
+     * Uses carryforwardExpireDate if set, otherwise derives from carryforwardExpireIn + carryforwardExpirePeriod
+     * relative to Jan 1 of the given year. Falls back to June 30 if no config found.
+     */
+    private LocalDate computeCarryforwardExpireDate(LeaveType leaveType, int year) {
+        if (leaveType.getCarryforwardExpireDate() != null) {
+            return leaveType.getCarryforwardExpireDate();
+        }
+        if (leaveType.getCarryforwardExpireIn() != null && leaveType.getCarryforwardExpirePeriod() != null) {
+            LocalDate base = LocalDate.of(year, 1, 1);
+            int amount = leaveType.getCarryforwardExpireIn();
+            return switch (leaveType.getCarryforwardExpirePeriod()) {
+                case "day"   -> base.plusDays(amount);
+                case "month" -> base.plusMonths(amount);
+                case "year"  -> base.plusYears(amount);
+                default      -> LocalDate.of(year, 6, 30);
+            };
+        }
+        return LocalDate.of(year, 6, 30);
     }
 
     /**

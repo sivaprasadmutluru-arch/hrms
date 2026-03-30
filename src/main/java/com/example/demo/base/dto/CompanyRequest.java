@@ -18,6 +18,8 @@ public class CompanyRequest {
     // Required only when creating a Head Office — credentials for the enterprise admin account
     private String adminUsername;
     private String adminPassword;
+    private String adminFirstName;
+    private String adminLastName;
 
     private String address;
     private String city;

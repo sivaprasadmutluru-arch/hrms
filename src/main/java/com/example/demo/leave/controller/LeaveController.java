@@ -5,6 +5,7 @@ import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.leave.dto.*;
 import com.example.demo.leave.entity.*;
 import com.example.demo.leave.repository.*;
 import com.example.demo.leave.service.LeaveService;
@@ -15,7 +16,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -62,22 +62,29 @@ public class LeaveController {
     @GetMapping("/requests")
     @PreAuthorize("hasAuthority('leave:view')")
     @Operation(summary = "List all leave requests (company-scoped)")
-    public ResponseEntity<Page<LeaveRequest>> listRequests(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(leaveService.getAllRequests(pageable));
+    public ResponseEntity<Page<LeaveRequestDTO>> listRequests(@PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(leaveService.getAllRequests(pageable).map(LeaveMapper::toDTO));
     }
 
     @GetMapping("/types")
     @PreAuthorize("hasAuthority('leave:view')")
     @Operation(summary = "Get leave types for company")
-    public ResponseEntity<List<LeaveType>> getTypes() {
-        return ResponseEntity.ok(leaveService.getLeaveTypes());
+    public ResponseEntity<List<LeaveTypeDTO>> getTypes() {
+        return ResponseEntity.ok(leaveService.getLeaveTypes().stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/types")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Create a leave type (isOrganizationWide=true requires Head Office access)")
-    public ResponseEntity<LeaveType> createLeaveType(@RequestBody LeaveType leaveType) {
-        return ResponseEntity.ok(leaveService.createLeaveType(leaveType));
+    public ResponseEntity<LeaveTypeDTO> createLeaveType(@RequestBody LeaveType leaveType) {
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.createLeaveType(leaveType)));
+    }
+
+    @PutMapping("/types/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Update a leave type")
+    public ResponseEntity<LeaveTypeDTO> updateLeaveType(@PathVariable Long id, @RequestBody LeaveType updated) {
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.updateLeaveType(id, updated)));
     }
 
     @DeleteMapping("/types/{id}")
@@ -91,84 +98,71 @@ public class LeaveController {
     @PostMapping("/apply")
     @PreAuthorize("hasAuthority('leave:create')")
     @Operation(summary = "Apply for leave")
-    public ResponseEntity<LeaveRequest> apply(
+    public ResponseEntity<LeaveRequestDTO> apply(
             @AuthenticationPrincipal UserPrincipal principal,
-            @RequestParam(required = false) Long employeeId,
-            @RequestParam Long leaveTypeId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam(required = false) String description,
-            @RequestParam Long companyId) {
-        Long resolvedEmployeeId = employeeId != null ? employeeId
+            @RequestBody ApplyLeaveRequest body) {
+        Long resolvedEmployeeId = body.employeeId() != null ? body.employeeId()
                 : employeeRepository.findByUserId(principal.getId())
                         .map(e -> e.getId())
-                        .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("Employee record not found for current user"));
-        return ResponseEntity.ok(leaveService.applyLeave(resolvedEmployeeId, leaveTypeId, startDate, endDate, description, companyId));
+                        .orElseThrow(() -> new ResourceNotFoundException("Employee record not found for current user"));
+        return ResponseEntity.ok(LeaveMapper.toDTO(
+                leaveService.applyLeave(resolvedEmployeeId, body.leaveTypeId(), body.startDate(), body.endDate(), body.description(), body.companyId())));
     }
 
     @PostMapping("/requests/{id}/approve")
     @PreAuthorize("hasAuthority('leave:approve')")
     @Operation(summary = "Approve leave request")
-    public ResponseEntity<LeaveRequest> approve(@PathVariable Long id) {
-        return ResponseEntity.ok(leaveService.approve(id));
+    public ResponseEntity<LeaveRequestDTO> approve(@PathVariable Long id) {
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.approve(id)));
     }
 
     @PostMapping("/requests/{id}/reject")
     @PreAuthorize("hasAuthority('leave:approve')")
     @Operation(summary = "Reject leave request")
-    public ResponseEntity<LeaveRequest> reject(@PathVariable Long id, @RequestParam(required = false) String reason) {
-        return ResponseEntity.ok(leaveService.reject(id, reason));
+    public ResponseEntity<LeaveRequestDTO> reject(@PathVariable Long id,
+                                                   @RequestBody(required = false) RejectLeaveRequest body) {
+        String reason = body != null ? body.reason() : null;
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.reject(id, reason)));
     }
 
     @PostMapping("/requests/{id}/cancel")
     @PreAuthorize("hasAuthority('leave:create')")
     @Operation(summary = "Cancel a leave request (employee self-cancel, restores balance if approved)")
-    public ResponseEntity<LeaveRequest> cancel(@PathVariable Long id) {
-        return ResponseEntity.ok(leaveService.cancel(id));
+    public ResponseEntity<LeaveRequestDTO> cancel(@PathVariable Long id) {
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.cancel(id)));
     }
 
     @GetMapping("/allocations")
     @PreAuthorize("hasAuthority('leave:view')")
     @Operation(summary = "List leave allocations (company-scoped)")
-    public ResponseEntity<List<LeaveAllocation>> listAllocations(
+    public ResponseEntity<List<LeaveAllocationDTO>> listAllocations(
             @RequestParam(required = false) Long employeeId,
             @RequestParam(required = false) Integer year) {
-        return ResponseEntity.ok(leaveService.getAllocations(employeeId, year));
+        return ResponseEntity.ok(leaveService.getAllocations(employeeId, year).stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/allocate")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Allocate leave days to employee")
-    public ResponseEntity<Map<String, String>> allocate(
-            @RequestParam Long employeeId,
-            @RequestParam Long leaveTypeId,
-            @RequestParam double days,
-            @RequestParam int year,
-            @RequestParam Long companyId) {
-        leaveService.allocateLeave(employeeId, leaveTypeId, days, year, companyId);
+    public ResponseEntity<Map<String, String>> allocate(@RequestBody AllocateLeaveRequest body) {
+        leaveService.allocateLeave(body.employeeId(), body.leaveTypeId(), body.days(), body.year(), body.companyId());
         return ResponseEntity.ok(Map.of("message", "Leave allocated successfully"));
     }
 
     @PostMapping("/allocate/bulk")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Bulk-allocate leave days to all active employees in a company")
-    public ResponseEntity<Map<String, String>> bulkAllocate(
-            @RequestParam Long companyId,
-            @RequestParam Long leaveTypeId,
-            @RequestParam double days,
-            @RequestParam int year) {
-        leaveService.bulkAllocate(companyId, leaveTypeId, days, year);
+    public ResponseEntity<Map<String, String>> bulkAllocate(@RequestBody BulkAllocateRequest body) {
+        leaveService.bulkAllocate(body.companyId(), body.leaveTypeId(), body.days(), body.year());
         return ResponseEntity.ok(Map.of("message", "Bulk allocation completed"));
     }
 
     @PostMapping("/reset/annual")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Run annual leave reset with carry-forward logic for all employees in a company")
-    public ResponseEntity<Map<String, String>> annualReset(
-            @RequestParam Long companyId,
-            @RequestParam int year) {
-        leaveService.annualReset(companyId, year);
-        return ResponseEntity.ok(Map.of("message", "Annual reset completed for year " + year));
+    public ResponseEntity<Map<String, String>> annualReset(@RequestBody AnnualResetRequest body) {
+        leaveService.annualReset(body.companyId(), body.year());
+        return ResponseEntity.ok(Map.of("message", "Annual reset completed for year " + body.year()));
     }
 
     // ─── Leave Balance (AvailableLeave) ──────────────────────────────────────
@@ -177,38 +171,38 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "Get leave balance for all employees (company-scoped)")
-    public ResponseEntity<List<AvailableLeave>> listBalance() {
+    public ResponseEntity<List<AvailableLeaveDTO>> listBalance() {
         var spec = ScopeFilter.<AvailableLeave>byEmployee();
-        return ResponseEntity.ok(spec != null ? availableLeaveRepository.findAll(spec) : availableLeaveRepository.findAll());
+        List<AvailableLeave> result = spec != null
+                ? availableLeaveRepository.findAll(spec)
+                : availableLeaveRepository.findAll();
+        return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
     }
 
     @GetMapping("/balance/employee/{employeeId}")
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "Get leave balance for a specific employee")
-    public ResponseEntity<List<AvailableLeave>> getEmployeeBalance(@PathVariable Long employeeId) {
-        return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId));
+    public ResponseEntity<List<AvailableLeaveDTO>> getEmployeeBalance(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId).stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/balance/credit")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     @Operation(summary = "Credit leave days to an employee's balance")
-    public ResponseEntity<AvailableLeave> creditBalance(
-            @RequestParam Long employeeId,
-            @RequestParam Long leaveTypeId,
-            @RequestParam double days) {
-        AvailableLeave al = availableLeaveRepository.findByEmployeeIdAndLeaveTypeId(employeeId, leaveTypeId)
+    public ResponseEntity<AvailableLeaveDTO> creditBalance(@RequestBody CreditBalanceRequest body) {
+        AvailableLeave al = availableLeaveRepository.findByEmployeeIdAndLeaveTypeId(body.employeeId(), body.leaveTypeId())
                 .orElseGet(() -> {
                     AvailableLeave n = new AvailableLeave();
-                    n.setEmployee(employeeRepository.getReferenceById(employeeId));
-                    n.setLeaveType(leaveTypeRepository.getReferenceById(leaveTypeId));
+                    n.setEmployee(employeeRepository.getReferenceById(body.employeeId()));
+                    n.setLeaveType(leaveTypeRepository.getReferenceById(body.leaveTypeId()));
                     n.setAssignedDate(LocalDate.now());
                     return n;
                 });
-        al.setAvailableDays(al.getAvailableDays() + days);
-        al.setTotalLeaveDays(al.getTotalLeaveDays() + days);
-        return ResponseEntity.ok(availableLeaveRepository.save(al));
+        al.setAvailableDays(al.getAvailableDays() + body.days());
+        al.setTotalLeaveDays(al.getTotalLeaveDays() + body.days());
+        return ResponseEntity.ok(LeaveMapper.toDTO(availableLeaveRepository.save(al)));
     }
 
     // ─── Leave Allocation Requests ────────────────────────────────────────────
@@ -217,16 +211,19 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "List leave allocation requests (company-scoped)")
-    public ResponseEntity<List<LeaveAllocationRequest>> listAllocationRequests() {
+    public ResponseEntity<List<LeaveAllocationRequestDTO>> listAllocationRequests() {
         var spec = ScopeFilter.<LeaveAllocationRequest>byEmployee();
-        return ResponseEntity.ok(spec != null ? allocationRequestRepository.findAll(spec) : allocationRequestRepository.findAll());
+        List<LeaveAllocationRequest> result = spec != null
+                ? allocationRequestRepository.findAll(spec)
+                : allocationRequestRepository.findAll();
+        return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/allocation-requests")
     @PreAuthorize("hasAuthority('leave:create')")
     @Transactional
     @Operation(summary = "Submit a leave allocation request")
-    public ResponseEntity<LeaveAllocationRequest> createAllocationRequest(@RequestBody LeaveAllocationRequest req) {
+    public ResponseEntity<LeaveAllocationRequestDTO> createAllocationRequest(@RequestBody LeaveAllocationRequest req) {
         if (req.getEmployee() != null && req.getEmployee().getId() != null) {
             req.setEmployee(employeeRepository.getReferenceById(req.getEmployee().getId()));
         }
@@ -235,18 +232,17 @@ public class LeaveController {
         }
         req.setRequestedDate(LocalDate.now());
         req.setStatus(LeaveAllocationRequest.AllocationStatus.REQUESTED);
-        return ResponseEntity.ok(allocationRequestRepository.save(req));
+        return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
     @PostMapping("/allocation-requests/{id}/approve")
     @PreAuthorize("hasAuthority('leave:approve')")
     @Transactional
     @Operation(summary = "Approve a leave allocation request")
-    public ResponseEntity<LeaveAllocationRequest> approveAllocationRequest(@PathVariable Long id) {
+    public ResponseEntity<LeaveAllocationRequestDTO> approveAllocationRequest(@PathVariable Long id) {
         LeaveAllocationRequest req = allocationRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
         req.setStatus(LeaveAllocationRequest.AllocationStatus.APPROVED);
-        // Credit the balance
         AvailableLeave al = availableLeaveRepository
                 .findByEmployeeIdAndLeaveTypeId(req.getEmployee().getId(), req.getLeaveType().getId())
                 .orElseGet(() -> {
@@ -259,21 +255,21 @@ public class LeaveController {
         al.setAvailableDays(al.getAvailableDays() + req.getRequestedDays());
         al.setTotalLeaveDays(al.getTotalLeaveDays() + req.getRequestedDays());
         availableLeaveRepository.save(al);
-        return ResponseEntity.ok(allocationRequestRepository.save(req));
+        return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
     @PostMapping("/allocation-requests/{id}/reject")
     @PreAuthorize("hasAuthority('leave:approve')")
     @Transactional
     @Operation(summary = "Reject a leave allocation request")
-    public ResponseEntity<LeaveAllocationRequest> rejectAllocationRequest(
+    public ResponseEntity<LeaveAllocationRequestDTO> rejectAllocationRequest(
             @PathVariable Long id,
-            @RequestParam(required = false) String reason) {
+            @RequestBody(required = false) RejectLeaveRequest body) {
         LeaveAllocationRequest req = allocationRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
         req.setStatus(LeaveAllocationRequest.AllocationStatus.REJECTED);
-        req.setRejectReason(reason);
-        return ResponseEntity.ok(allocationRequestRepository.save(req));
+        req.setRejectReason(body != null ? body.reason() : null);
+        return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
     // ─── Leave Restrictions ───────────────────────────────────────────────────
@@ -282,9 +278,12 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "List leave restrictions (company-scoped)")
-    public ResponseEntity<List<RestrictLeave>> listRestrictions() {
+    public ResponseEntity<List<LeaveRestrictionDTO>> listRestrictions() {
         var spec = ScopeFilter.<RestrictLeave>byCompany();
-        return ResponseEntity.ok(spec != null ? restrictLeaveRepository.findAll(spec) : restrictLeaveRepository.findAll());
+        List<RestrictLeave> result = spec != null
+                ? restrictLeaveRepository.findAll(spec)
+                : restrictLeaveRepository.findAll();
+        return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/restrictions")
@@ -504,42 +503,49 @@ public class LeaveController {
     @GetMapping("/compensatory-requests")
     @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
-    public ResponseEntity<List<com.example.demo.leave.entity.CompensatoryLeaveRequest>> listCompensatoryRequests(
+    public ResponseEntity<List<CompensatoryLeaveRequestDTO>> listCompensatoryRequests(
             @RequestParam(required = false) Long employeeId,
-            @RequestParam(required = false) String status) {
-        if (employeeId != null) return ResponseEntity.ok(compensatoryLeaveRequestRepository.findByEmployeeId(employeeId));
-        if (status != null) return ResponseEntity.ok(compensatoryLeaveRequestRepository.findByStatus(status));
-        return ResponseEntity.ok(compensatoryLeaveRequestRepository.findAll());
+            @RequestParam(required = false) CompensatoryLeaveRequest.CompensatoryLeaveStatus status) {
+        List<CompensatoryLeaveRequest> result;
+        if (employeeId != null) {
+            result = compensatoryLeaveRequestRepository.findByEmployeeId(employeeId);
+        } else if (status != null) {
+            result = compensatoryLeaveRequestRepository.findByStatus(status);
+        } else {
+            result = compensatoryLeaveRequestRepository.findAll();
+        }
+        return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
     }
 
     @PostMapping("/compensatory-requests")
     @PreAuthorize("isAuthenticated()")
     @Transactional
-    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> createCompensatoryRequest(
-            @RequestBody com.example.demo.leave.entity.CompensatoryLeaveRequest request) {
-        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(request));
+    public ResponseEntity<CompensatoryLeaveRequestDTO> createCompensatoryRequest(
+            @RequestBody CompensatoryLeaveRequest request) {
+        request.setStatus(CompensatoryLeaveRequest.CompensatoryLeaveStatus.REQUESTED);
+        return ResponseEntity.ok(LeaveMapper.toDTO(compensatoryLeaveRequestRepository.save(request)));
     }
 
     @PutMapping("/compensatory-requests/{id}/approve")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Transactional
-    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> approveCompensatoryRequest(@PathVariable Long id) {
-        com.example.demo.leave.entity.CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
-                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("CompensatoryLeaveRequest", id));
-        req.setStatus("approved");
-        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(req));
+    public ResponseEntity<CompensatoryLeaveRequestDTO> approveCompensatoryRequest(@PathVariable Long id) {
+        CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("CompensatoryLeaveRequest", id));
+        req.setStatus(CompensatoryLeaveRequest.CompensatoryLeaveStatus.APPROVED);
+        return ResponseEntity.ok(LeaveMapper.toDTO(compensatoryLeaveRequestRepository.save(req)));
     }
 
     @PutMapping("/compensatory-requests/{id}/reject")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Transactional
-    public ResponseEntity<com.example.demo.leave.entity.CompensatoryLeaveRequest> rejectCompensatoryRequest(
-            @PathVariable Long id, @RequestParam(required = false) String reason) {
-        com.example.demo.leave.entity.CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
-                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("CompensatoryLeaveRequest", id));
-        req.setStatus("rejected");
-        if (reason != null) req.setRejectReason(reason);
-        return ResponseEntity.ok(compensatoryLeaveRequestRepository.save(req));
+    public ResponseEntity<CompensatoryLeaveRequestDTO> rejectCompensatoryRequest(
+            @PathVariable Long id, @RequestBody(required = false) RejectLeaveRequest body) {
+        CompensatoryLeaveRequest req = compensatoryLeaveRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("CompensatoryLeaveRequest", id));
+        req.setStatus(CompensatoryLeaveRequest.CompensatoryLeaveStatus.REJECTED);
+        if (body != null && body.reason() != null) req.setRejectReason(body.reason());
+        return ResponseEntity.ok(LeaveMapper.toDTO(compensatoryLeaveRequestRepository.save(req)));
     }
 
     @GetMapping("/compensatory-requests/{id}/comments")

@@ -4,8 +4,11 @@ import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.LoginResponse;
 import com.example.demo.auth.dto.PasswordResetRequest;
 import com.example.demo.auth.entity.UserRole;
+import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.UserPrincipal;
+import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,8 +17,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,9 +33,12 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
+    private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
 
     @GetMapping("/me")
+    @Transactional
     @Operation(summary = "Get current user info and roles")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal UserPrincipal principal) {
         List<String> roles = principal.getAuthorities().stream()
@@ -40,19 +48,33 @@ public class AuthController {
                 .distinct()
                 .collect(java.util.stream.Collectors.toList());
 
-        Long companyId = userRoleRepository.findByUserId(principal.getId()).stream()
+        UserRole primaryRole = userRoleRepository.findByUserId(principal.getId()).stream()
                 .filter(ur -> ur.getCompany() != null)
                 .max(java.util.Comparator.comparingInt(ur ->
                         ur.getAccessScope() != null ? ur.getAccessScope().ordinal() : -1))
-                .map(ur -> ur.getCompany().getId())
                 .orElse(null);
 
-        // Use HashMap instead of Map.of() to support null values
-        Map<String, Object> response = new HashMap<>();
+        Long companyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
+
+        // Auto-create an employee profile for admin users who don't have one yet
         Long employeeId = employeeRepository.findByUserId(principal.getId())
-                .map(e -> e.getId())
-                .orElse(null);
+                .map(Employee::getId)
+                .orElseGet(() -> {
+                    if (companyId == null) return null;
+                    return companyRepository.findById(companyId).map(company -> {
+                        return userRepository.findById(principal.getId()).map(user -> {
+                            Employee emp = new Employee();
+                            emp.setFirstName(principal.getUsername());
+                            emp.setWorkEmail(principal.getEmail() != null ? principal.getEmail() : principal.getUsername());
+                            emp.setCompany(company);
+                            emp.setUser(user);
+                            emp.setDateJoining(LocalDate.now());
+                            return employeeRepository.save(emp).getId();
+                        }).orElse(null);
+                    }).orElse(null);
+                });
 
+        Map<String, Object> response = new HashMap<>();
         response.put("userId", principal.getId());
         response.put("username", principal.getUsername());
         response.put("email", principal.getEmail());

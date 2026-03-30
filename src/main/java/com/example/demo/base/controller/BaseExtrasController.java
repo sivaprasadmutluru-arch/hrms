@@ -32,6 +32,8 @@ public class BaseExtrasController {
     private final ShiftScheduleRepository shiftScheduleRepository;
     private final WorkTypeRepository workTypeRepository;
     private final JobPositionRepository jobPositionRepository;
+    private final JobRoleRepository jobRoleRepository;
+    private final DepartmentRepository departmentRepository;
     private final MailTemplateRepository mailTemplateRepository;
     private final DynamicEmailConfigRepository dynamicEmailConfigRepository;
     private final AnnouncementViewRepository announcementViewRepository;
@@ -388,6 +390,36 @@ public class BaseExtrasController {
         return ResponseEntity.ok(spec != null ? shiftScheduleRepository.findAll(spec) : shiftScheduleRepository.findAll());
     }
 
+    @PostMapping("/shift-schedules")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<ShiftSchedule> createShiftSchedule(@RequestBody ShiftSchedule s) {
+        if (s.getCompany() != null && s.getCompany().getId() != null)
+            s.setCompany(companyRepository.getReferenceById(s.getCompany().getId()));
+        return ResponseEntity.ok(shiftScheduleRepository.save(s));
+    }
+
+    @PutMapping("/shift-schedules/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<ShiftSchedule> updateShiftSchedule(@PathVariable Long id, @RequestBody ShiftSchedule updated) {
+        ShiftSchedule s = shiftScheduleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("ShiftSchedule", id));
+        s.setName(updated.getName());
+        s.setStartTime(updated.getStartTime());
+        s.setEndTime(updated.getEndTime());
+        s.setMinimumWorkingHour(updated.getMinimumWorkingHour());
+        s.setFullTime(updated.getFullTime());
+        return ResponseEntity.ok(shiftScheduleRepository.save(s));
+    }
+
+    @DeleteMapping("/shift-schedules/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, String>> deleteShiftSchedule(@PathVariable Long id) {
+        shiftScheduleRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Deleted"));
+    }
+
     // ---- Work Types ----
 
     @GetMapping("/work-types")
@@ -398,6 +430,32 @@ public class BaseExtrasController {
         return ResponseEntity.ok(spec != null ? workTypeRepository.findAll(spec) : workTypeRepository.findAll());
     }
 
+    @PostMapping("/work-types")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<WorkType> createWorkType(@RequestBody WorkType wt) {
+        if (wt.getCompany() != null && wt.getCompany().getId() != null)
+            wt.setCompany(companyRepository.getReferenceById(wt.getCompany().getId()));
+        return ResponseEntity.ok(workTypeRepository.save(wt));
+    }
+
+    @PutMapping("/work-types/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<WorkType> updateWorkType(@PathVariable Long id, @RequestBody WorkType updated) {
+        WorkType wt = workTypeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkType", id));
+        wt.setName(updated.getName());
+        return ResponseEntity.ok(workTypeRepository.save(wt));
+    }
+
+    @DeleteMapping("/work-types/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, String>> deleteWorkType(@PathVariable Long id) {
+        workTypeRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Deleted"));
+    }
+
     // ---- Job Positions ----
 
     @GetMapping("/job-positions")
@@ -406,6 +464,76 @@ public class BaseExtrasController {
     public ResponseEntity<List<JobPosition>> listJobPositions() {
         var spec = ScopeFilter.<JobPosition>byCompany();
         return ResponseEntity.ok(spec != null ? jobPositionRepository.findAll(spec) : jobPositionRepository.findAll());
+    }
+
+    @PostMapping("/job-positions")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<JobPosition> createJobPosition(@RequestBody JobPosition jp) {
+        if (jp.getCompany() != null && jp.getCompany().getId() != null)
+            jp.setCompany(companyRepository.getReferenceById(jp.getCompany().getId()));
+        if (jp.getDepartment() != null && jp.getDepartment().getId() != null)
+            jp.setDepartment(departmentRepository.getReferenceById(jp.getDepartment().getId()));
+        return ResponseEntity.ok(jobPositionRepository.save(jp));
+    }
+
+    @PutMapping("/job-positions/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<JobPosition> updateJobPosition(@PathVariable Long id, @RequestBody JobPosition updated) {
+        JobPosition jp = jobPositionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("JobPosition", id));
+        jp.setName(updated.getName());
+        if (updated.getDepartment() != null && updated.getDepartment().getId() != null)
+            jp.setDepartment(departmentRepository.getReferenceById(updated.getDepartment().getId()));
+        return ResponseEntity.ok(jobPositionRepository.save(jp));
+    }
+
+    @DeleteMapping("/job-positions/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, String>> deleteJobPosition(@PathVariable Long id) {
+        jobPositionRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Deleted"));
+    }
+
+    // ---- Job Roles ----
+
+    @GetMapping("/job-roles")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<JobRole>> listJobRoles() {
+        var spec = ScopeFilter.<JobRole>byCompany();
+        return ResponseEntity.ok(spec != null ? jobRoleRepository.findAll(spec) : jobRoleRepository.findAll());
+    }
+
+    @PostMapping("/job-roles")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<JobRole> createJobRole(@RequestBody JobRole jr) {
+        if (jr.getCompany() != null && jr.getCompany().getId() != null)
+            jr.setCompany(companyRepository.getReferenceById(jr.getCompany().getId()));
+        if (jr.getJobPosition() != null && jr.getJobPosition().getId() != null)
+            jr.setJobPosition(jobPositionRepository.getReferenceById(jr.getJobPosition().getId()));
+        return ResponseEntity.ok(jobRoleRepository.save(jr));
+    }
+
+    @PutMapping("/job-roles/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    public ResponseEntity<JobRole> updateJobRole(@PathVariable Long id, @RequestBody JobRole updated) {
+        JobRole jr = jobRoleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("JobRole", id));
+        jr.setName(updated.getName());
+        if (updated.getJobPosition() != null && updated.getJobPosition().getId() != null)
+            jr.setJobPosition(jobPositionRepository.getReferenceById(updated.getJobPosition().getId()));
+        return ResponseEntity.ok(jobRoleRepository.save(jr));
+    }
+
+    @DeleteMapping("/job-roles/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, String>> deleteJobRole(@PathVariable Long id) {
+        jobRoleRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Deleted"));
     }
 
     // ---- Work Type Request Comments ----

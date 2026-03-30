@@ -16,10 +16,13 @@ import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.tenant.SchemaProvisioningService;
+import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -40,6 +43,7 @@ public class CompanyService {
     private final SchemaProvisioningService schemaProvisioningService;
     private final AuthService authService;
     private final UserRoleService userRoleService;
+    private final EmployeeRepository employeeRepository;
 
     /**
      * Creates a new Head Office company for an organization.
@@ -91,6 +95,18 @@ public class CompanyService {
             roleReq.setCompanyId(headOffice.getId());
             roleReq.setAccessScope(UserRole.AccessScope.ENTERPRISE);
             userRoleService.assignRole(roleReq);
+
+            // Create an Employee profile so the admin gets an employeeId
+            Employee adminEmployee = new Employee();
+            String firstName = (request.getAdminFirstName() != null && !request.getAdminFirstName().isBlank())
+                    ? request.getAdminFirstName() : request.getAdminUsername();
+            adminEmployee.setFirstName(firstName);
+            adminEmployee.setLastName(request.getAdminLastName());
+            adminEmployee.setWorkEmail(request.getAdminUsername());
+            adminEmployee.setCompany(headOffice);
+            adminEmployee.setUser(adminUser);
+            adminEmployee.setDateJoining(LocalDate.now());
+            employeeRepository.save(adminEmployee);
         }
 
         return headOffice;

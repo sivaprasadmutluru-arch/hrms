@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface CompensatoryLeaveRequestRepository extends JpaRepository<CompensatoryLeaveRequest, Long> {
     List<CompensatoryLeaveRequest> findByEmployeeId(Long employeeId);
-    List<CompensatoryLeaveRequest> findByStatus(String status);
+    List<CompensatoryLeaveRequest> findByStatus(CompensatoryLeaveRequest.CompensatoryLeaveStatus status);
 }

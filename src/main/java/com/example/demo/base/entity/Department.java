@@ -15,11 +15,12 @@ public class Department extends BaseEntity {
     @Column(nullable = false)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "branches", "organization", "parentCompany"})
     private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "manager_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "department", "reportingManager",
             "company", "jobPosition", "jobRole", "workType", "shift", "user"})

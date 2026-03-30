@@ -47,8 +47,13 @@ public class CompensatoryLeaveRequest extends BaseEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 30)
-    private String status = "requested";
+    private CompensatoryLeaveStatus status = CompensatoryLeaveStatus.REQUESTED;
+
+    public enum CompensatoryLeaveStatus {
+        REQUESTED, APPROVED, REJECTED
+    }
 
     @Column(name = "reject_reason", columnDefinition = "TEXT")
     private String rejectReason;
