@@ -10,6 +10,10 @@ import OrganizationsPage from './features/organizations/OrganizationsPage'
 import SubscriptionPage from './features/organizations/SubscriptionPage'
 import CompaniesPage from './features/companies/CompaniesPage'
 import DepartmentsPage from './features/departments/DepartmentsPage'
+import JobPositionsPage from './features/base/JobPositionsPage'
+import JobRolesPage from './features/base/JobRolesPage'
+import WorkTypesPage from './features/base/WorkTypesPage'
+import ShiftSchedulesPage from './features/base/ShiftSchedulesPage'
 import AttendancePage from './features/attendance/AttendancePage'
 import LeavePage from './features/leave/LeavePage'
 import ContractsPage from './features/payroll/ContractsPage'
@@ -125,7 +129,11 @@ export default function App() {
           <Route path="employee-settings" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<EmployeeSettingsPage />} />} />
 
           {/* HR + Admin routes */}
-          <Route path="departments"            element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DepartmentsPage />} />} />
+          <Route path="departments"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DepartmentsPage />} />} />
+          <Route path="job-positions"    element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<JobPositionsPage />} />} />
+          <Route path="job-roles"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<JobRolesPage />} />} />
+          <Route path="work-types"       element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<WorkTypesPage />} />} />
+          <Route path="shift-schedules"  element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<ShiftSchedulesPage />} />} />
           <Route path="recruitment/posts"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RecruitmentPostsPage />} />} />
           <Route path="recruitment/applicants"    element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<ApplicantsPage />} />} />
           <Route path="recruitment/interviews"    element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<InterviewsPage />} />} />

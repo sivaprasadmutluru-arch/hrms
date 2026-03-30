@@ -14,11 +14,8 @@ export default function LeaveBalancePage() {
   }, [dispatch])
 
   const columns = [
-    { id: 'employee', header: 'Employee', cell: ({ row }) => {
-      const emp = row.original.employee
-      return emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.employeeCode || '—' : '—'
-    }},
-    { id: 'leaveType', header: 'Leave Type', cell: ({ row }) => row.original.leaveType?.name || '—' },
+    { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
+    { id: 'leaveType', header: 'Leave Type', cell: ({ row }) => row.original.leaveTypeName || '—' },
     { accessorKey: 'totalLeaveDays', header: 'Total', cell: ({ getValue }) => getValue() ?? 0 },
     { accessorKey: 'availableDays', header: 'Available', cell: ({ getValue }) => getValue() ?? 0 },
     { id: 'used', header: 'Used', cell: ({ row }) => {

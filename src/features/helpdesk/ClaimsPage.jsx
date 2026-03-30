@@ -16,7 +16,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function ClaimsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const claims = useSelector(selectClaims)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -67,7 +68,7 @@ export default function ClaimsPage() {
     }},
     { id: 'actions', header: '', cell: ({ row }) => {
       const status = getStatus(row.original)
-      if (status !== 'PENDING') return null
+      if (status !== 'PENDING' || isEmp) return null
       return (
         <div className="flex gap-2">
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>

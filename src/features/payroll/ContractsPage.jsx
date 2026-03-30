@@ -6,6 +6,8 @@ import {
   fetchAll, create, update, selectLoading, selectPagination,
   fetchConditions, createCondition, updateCondition, deleteCondition, selectConditions,
   fetchFilingStatuses, selectFilingStatuses,
+  fetchAllowances, selectAllowances,
+  fetchDeductions, selectDeductions,
 } from './payrollSlice'
 import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
 import useAuth from '../../hooks/useAuth'
@@ -40,11 +42,35 @@ const CONTRACT_STATUS_OPTIONS = [
   { value: 'TERMINATED', label: 'Terminated' },
 ]
 
+const CONDITION_TYPE_OPTIONS = [
+  { value: 'EQUAL', label: 'Equal (==)' },
+  { value: 'NOT_EQUAL', label: 'Not Equal (!=)' },
+  { value: 'LESS_THAN', label: 'Less Than (<)' },
+  { value: 'GREATER_THAN', label: 'Greater Than (>)' },
+  { value: 'LESS_THAN_OR_EQUAL', label: 'Less Than or Equal (<=)' },
+  { value: 'GREATER_THAN_OR_EQUAL', label: 'Greater Than or Equal (>=)' },
+  { value: 'CONTAINS', label: 'Contains' },
+]
+
+const FIELD_OPTIONS = [
+  { value: 'children', label: 'Children' },
+  { value: 'marital_status', label: 'Marital Status' },
+  { value: 'experience', label: 'Experience' },
+  { value: 'gender', label: 'Gender' },
+  { value: 'country', label: 'Country' },
+  { value: 'state', label: 'State' },
+  { value: 'contract_set__pay_frequency', label: 'Pay Frequency' },
+  { value: 'contract_set__wage_type', label: 'Wage Type' },
+  { value: 'contract_set__department__department', label: 'Department on Contract' },
+]
+
 export default function ContractsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
   const contracts = useSelector(s => s.payroll.contracts)
   const conditions = useSelector(selectConditions)
+  const allowances = useSelector(selectAllowances)
+  const deductions = useSelector(selectDeductions)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
 
@@ -59,14 +85,19 @@ export default function ContractsPage() {
   const filingStatuses = useSelector(selectFilingStatuses)
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
-  const { register: regCond, handleSubmit: handleCondSubmit, reset: resetCond, formState: { errors: condErrors } } = useForm()
+  const { register: regCond, handleSubmit: handleCondSubmit, reset: resetCond, watch: watchCond, formState: { errors: condErrors } } = useForm({ defaultValues: { isAllowance: true } })
 
   const deductLeaveFromBasicPay = watch('deductLeaveFromBasicPay')
   const calculateDailyLeaveAmount = watch('calculateDailyLeaveAmount')
+  const condIsAllowance = watchCond('isAllowance')
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 20 })) }, [dispatch])
   useEffect(() => { dispatch(fetchFilingStatuses()) }, [dispatch])
-  useEffect(() => { if (tab === 'Pay Conditions') dispatch(fetchConditions({})) }, [tab, dispatch])
+  useEffect(() => { dispatch(fetchAllowances()) }, [dispatch])
+  useEffect(() => { dispatch(fetchDeductions()) }, [dispatch])
+  useEffect(() => {
+    if (tab === 'Pay Conditions') dispatch(fetchConditions({}))
+  }, [tab, dispatch])
 
   const loadEmployees = async () => {
     setEmployeesLoading(true)
@@ -88,8 +119,19 @@ export default function ContractsPage() {
     setModalOpen(true)
     loadEmployees()
   }
-  const openCreateCond = () => { setEditingCond(null); resetCond({}); setCondModalOpen(true) }
-  const openEditCond = (row) => { setEditingCond(row); resetCond(row); setCondModalOpen(true) }
+  const openCreateCond = () => { setEditingCond(null); resetCond({ isAllowance: true }); setCondModalOpen(true) }
+  const openEditCond = (row) => {
+    setEditingCond(row)
+    resetCond({
+      field: row.field,
+      conditionType: row.conditionType,
+      value: row.value,
+      isAllowance: row.isAllowance ?? true,
+      allowanceId: row.allowanceId,
+      deductionId: row.deductionId,
+    })
+    setCondModalOpen(true)
+  }
 
   const onSubmit = async (formData) => {
     try {
@@ -111,8 +153,17 @@ export default function ContractsPage() {
 
   const onCondSubmit = async (formData) => {
     try {
-      if (editingCond) { await dispatch(updateCondition({ id: editingCond.id, data: formData })).unwrap(); toast.success('Condition updated') }
-      else { await dispatch(createCondition(formData)).unwrap(); toast.success('Condition created') }
+      const isAllowance = formData.isAllowance ?? true
+      const payload = {
+        field: formData.field,
+        conditionType: formData.conditionType,
+        value: formData.value,
+        isAllowance,
+        allowanceId: isAllowance ? (Number(formData.allowanceId) || null) : null,
+        deductionId: !isAllowance ? (Number(formData.deductionId) || null) : null,
+      }
+      if (editingCond) { await dispatch(updateCondition({ id: editingCond.id, data: payload })).unwrap(); toast.success('Condition updated') }
+      else { await dispatch(createCondition(payload)).unwrap(); toast.success('Condition created') }
       setCondModalOpen(false)
       dispatch(fetchConditions({}))
     } catch (e) { toast.error(e || 'Error') }
@@ -147,9 +198,11 @@ export default function ContractsPage() {
 
   const condColumns = [
     { accessorKey: 'field', header: 'Field' },
-    { accessorKey: 'operator', header: 'Operator' },
+    { accessorKey: 'conditionType', header: 'Condition Type' },
     { accessorKey: 'value', header: 'Value' },
-    { accessorKey: 'secondaryValue', header: 'Secondary Value', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'appliesTo', header: 'Applies To', cell: ({ row }) => (
+      <Badge label={row.original.isAllowance ? 'Allowance' : 'Deduction'} variant={row.original.isAllowance ? 'success' : 'warning'} />
+    )},
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openEditCond(row.original)}>Edit</Button>
@@ -262,10 +315,18 @@ export default function ContractsPage() {
       <Modal open={condModalOpen} onClose={() => setCondModalOpen(false)} title={editingCond ? 'Edit Condition' : 'New Pay Condition'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCondModalOpen(false)}>Cancel</Button><Button onClick={handleCondSubmit(onCondSubmit)}>{editingCond ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
-          <Input label="Field" error={condErrors.field?.message} {...regCond('field', { required: 'Required' })} placeholder="e.g. basic_pay" />
-          <Input label="Operator" error={condErrors.operator?.message} {...regCond('operator', { required: 'Required' })} placeholder="e.g. gt, lt, eq" />
+          <Select label="Field" options={FIELD_OPTIONS} error={condErrors.field?.message} {...regCond('field', { required: 'Required' })} />
+          <Select label="Condition Type" options={CONDITION_TYPE_OPTIONS} error={condErrors.conditionType?.message} {...regCond('conditionType', { required: 'Required' })} />
           <Input label="Value" error={condErrors.value?.message} {...regCond('value', { required: 'Required' })} />
-          <Input label="Secondary Value (optional)" {...regCond('secondaryValue')} />
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="condIsAllowance" {...regCond('isAllowance')} className="h-4 w-4 text-indigo-600 rounded" />
+            <label htmlFor="condIsAllowance" className="text-sm text-gray-700">Applies to Allowance (uncheck for Deduction)</label>
+          </div>
+          {condIsAllowance ? (
+            <Select label="Allowance" options={allowances.map(a => ({ value: a.id, label: a.title }))} {...regCond('allowanceId')} />
+          ) : (
+            <Select label="Deduction" options={deductions.map(d => ({ value: d.id, label: d.title }))} {...regCond('deductionId')} />
+          )}
         </div>
       </Modal>
     </div>

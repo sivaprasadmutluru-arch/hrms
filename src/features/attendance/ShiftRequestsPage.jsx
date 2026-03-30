@@ -17,7 +17,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function ShiftRequestsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const requests = useSelector(selectShiftRequests)
   const loading = useSelector(selectShiftRequestsLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -63,7 +64,7 @@ export default function ShiftRequestsPage() {
     { accessorKey: 'requestedTill', header: 'Till', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'isPermanent', header: 'Permanent', cell: ({ getValue }) => getValue() ? 'Yes' : 'No' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue()} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'REQUESTED' ? (
+    { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'REQUESTED' && !isEmp ? (
       <div className="flex gap-2">
         <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
         <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>

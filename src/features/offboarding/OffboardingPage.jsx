@@ -87,8 +87,8 @@ export default function OffboardingPage() {
   }
 
   const columns = [
-    { accessorKey: 'employee.firstName', header: 'First Name' },
-    { accessorKey: 'employee.lastName', header: 'Last Name' },
+    { id: 'firstName', header: 'First Name', cell: ({ row }) => row.original.employee?.firstName || '—' },
+    { id: 'lastName', header: 'Last Name', cell: ({ row }) => row.original.employee?.lastName || '—' },
     { accessorKey: 'exitDate', header: 'Exit Date', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'noticePeriodType', header: 'Notice Period' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'PENDING'} variant={getValue() === 'COMPLETED' ? 'success' : getValue() === 'IN_PROGRESS' ? 'info' : 'warning'} /> },

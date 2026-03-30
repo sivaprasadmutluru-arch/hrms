@@ -24,7 +24,8 @@ const TABS = ['Attendance', 'Late / Early Out', 'Overtime']
 
 export default function AttendancePage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -93,7 +94,7 @@ export default function AttendancePage() {
     { accessorKey: 'checkOut', header: 'Check Out', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'workedHour', header: 'Hours' },
     { accessorKey: 'attendanceValidated', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Pending'} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => row.original.attendanceValidated === 'PENDING' && row.original.checkOut ? (
+    { id: 'actions', header: '', cell: ({ row }) => row.original.attendanceValidated === 'PENDING' && row.original.checkOut && !isEmp ? (
       <div className="flex gap-2">
         <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
         <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
@@ -111,9 +112,9 @@ export default function AttendancePage() {
       const v = getValue()
       return <Badge label={v === 'LATE_COME' ? 'Late Come' : 'Early Out'} variant={v === 'LATE_COME' ? 'warning' : 'accent'} />
     }},
-    { id: 'actions', header: '', cell: ({ row }) => (
+    { id: 'actions', header: '', cell: ({ row }) => !isEmp ? (
       <Button size="sm" variant="danger" onClick={() => handleDeleteLate(row.original.id)}>Delete</Button>
-    )},
+    ) : null },
   ]
 
   const overtimeColumns = [
@@ -128,7 +129,7 @@ export default function AttendancePage() {
       const v = getValue()
       return <Badge label={v || 'PENDING'} variant={v === 'APPROVED' ? 'success' : v === 'REJECTED' ? 'danger' : 'default'} />
     }},
-    { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'PENDING' ? (
+    { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'PENDING' && !isEmp ? (
       <div className="flex gap-2">
         <Button size="sm" variant="success" onClick={() => handleApproveOvertime(row.original.id)}>Approve</Button>
         <Button size="sm" variant="danger" onClick={() => handleRejectOvertime(row.original.id)}>Reject</Button>

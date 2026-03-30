@@ -210,6 +210,10 @@ export default function CompaniesPage() {
           {modalType === 'headoffice' && !editTarget && (
             <>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-1">Enterprise Admin Credentials</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="First Name" {...register('adminFirstName', { required: 'Required' })} error={errors.adminFirstName?.message} />
+                <Input label="Last Name" {...register('adminLastName')} />
+              </div>
               <Input
                 label="Username / Email"
                 {...register('adminUsername', { required: 'Admin username is required' })}

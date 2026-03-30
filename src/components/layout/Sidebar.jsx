@@ -75,7 +75,15 @@ const LEAVE_GROUP = {
   children: [
     { label: 'Leave Requests', to: '/leave' },
     { label: 'Leave Balance',  to: '/leave/balance' },
+    { label: 'Allocations',    to: '/leave/allocations' },
+    { label: 'Restrictions',   to: '/leave/restrictions' },
   ],
+}
+
+// Leave group without Restrictions (for roles that cannot manage restrictions)
+const LEAVE_GROUP_BASIC = {
+  ...LEAVE_GROUP,
+  children: LEAVE_GROUP.children.slice(0, 3),
 }
 
 const PAYROLL_GROUP = {
@@ -140,6 +148,19 @@ const BIOMETRIC_GROUP = {
   ],
 }
 
+const ORG_SETUP_GROUP = {
+  label: 'Setup',
+  icon: BuildingOfficeIcon,
+  group: 'org-setup',
+  children: [
+    { label: 'Departments',     to: '/departments' },
+    { label: 'Job Positions',   to: '/job-positions' },
+    { label: 'Job Roles',       to: '/job-roles' },
+    { label: 'Work Types',      to: '/work-types' },
+    { label: 'Shift Schedules', to: '/shift-schedules' },
+  ],
+}
+
 const SETTINGS_GROUP = {
   label: 'Settings',
   icon: Cog6ToothIcon,
@@ -176,7 +197,7 @@ function getNavSections(auth) {
         items: [
           { label: 'Companies', to: '/companies', icon: BuildingOffice2Icon },
           COMPANY_GROUP,
-          { label: 'Departments', to: '/departments', icon: BuildingOfficeIcon },
+          ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
         ],
       },
@@ -236,7 +257,7 @@ function getNavSections(auth) {
         items: [
           { label: 'Companies', to: '/companies', icon: BuildingOffice2Icon },
           COMPANY_GROUP,
-          { label: 'Departments', to: '/departments', icon: BuildingOfficeIcon },
+          ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
         ],
       },
@@ -244,7 +265,7 @@ function getNavSections(auth) {
         title: 'Workforce',
         items: [
           ATTENDANCE_GROUP,
-          { label: 'Leave',    to: '/leave',  icon: CalendarDaysIcon },
+          LEAVE_GROUP,
           PAYROLL_GROUP,
           { label: 'Assets',   to: '/assets', icon: ArchiveBoxIcon },
         ],
@@ -294,7 +315,7 @@ function getNavSections(auth) {
         title: 'Organization',
         items: [
           COMPANY_GROUP,
-          { label: 'Departments', to: '/departments', icon: BuildingOfficeIcon },
+          ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
         ],
       },
@@ -302,7 +323,7 @@ function getNavSections(auth) {
         title: 'Workforce',
         items: [
           ATTENDANCE_GROUP,
-          { label: 'Leave',  to: '/leave',  icon: CalendarDaysIcon },
+          LEAVE_GROUP,
           PAYROLL_GROUP,
           { label: 'Assets', to: '/assets', icon: ArchiveBoxIcon },
         ],
@@ -352,7 +373,7 @@ function getNavSections(auth) {
         title: 'Organization',
         items: [
           COMPANY_GROUP,
-          { label: 'Departments', to: '/departments', icon: BuildingOfficeIcon },
+          ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
         ],
       },
@@ -360,7 +381,7 @@ function getNavSections(auth) {
         title: 'Workforce',
         items: [
           ATTENDANCE_GROUP,
-          { label: 'Leave',   to: '/leave',  icon: CalendarDaysIcon },
+          LEAVE_GROUP,
           { label: 'Assets',  to: '/assets', icon: ArchiveBoxIcon },
         ],
       },
@@ -426,7 +447,7 @@ function getNavSections(auth) {
         title: 'Workforce',
         items: [
           ATTENDANCE_GROUP_BASIC,
-          { label: 'Leave', to: '/leave', icon: CalendarDaysIcon },
+          LEAVE_GROUP_BASIC,
         ],
       },
       {

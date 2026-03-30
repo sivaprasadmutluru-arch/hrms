@@ -21,7 +21,7 @@ export const fetchById = createAsyncThunk('leave/fetchById', async (id, { reject
 
 export const create = createAsyncThunk('leave/create', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/leave/apply', null, { params: data })
+    const res = await api.post('/leave/apply', data)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to create leave request')
@@ -55,6 +55,33 @@ export const fetchLeaveTypes = createAsyncThunk('leave/fetchLeaveTypes', async (
   }
 })
 
+export const createLeaveType = createAsyncThunk('leave/createLeaveType', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/leave/types', data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to create leave type')
+  }
+})
+
+export const updateLeaveType = createAsyncThunk('leave/updateLeaveType', async ({ id, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/leave/types/${id}`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update leave type')
+  }
+})
+
+export const deleteLeaveType = createAsyncThunk('leave/deleteLeaveType', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/leave/types/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete leave type')
+  }
+})
+
 export const approveLeave = createAsyncThunk('leave/approveLeave', async (id, { rejectWithValue }) => {
   try {
     const res = await api.post(`/leave/requests/${id}/approve`)
@@ -66,7 +93,7 @@ export const approveLeave = createAsyncThunk('leave/approveLeave', async (id, { 
 
 export const rejectLeave = createAsyncThunk('leave/rejectLeave', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    const res = await api.post(`/leave/requests/${id}/reject`, null, { params: reason ? { reason } : undefined })
+    const res = await api.post(`/leave/requests/${id}/reject`, reason ? { reason } : null)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to reject leave request')
@@ -75,7 +102,7 @@ export const rejectLeave = createAsyncThunk('leave/rejectLeave', async ({ id, re
 
 export const allocateLeave = createAsyncThunk('leave/allocateLeave', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/leave/allocate', null, { params: data })
+    const res = await api.post('/leave/allocate', data)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to allocate leave')
@@ -103,7 +130,7 @@ export const fetchLeaveBalance = createAsyncThunk('leave/fetchLeaveBalance', asy
 
 export const creditLeaveBalance = createAsyncThunk('leave/creditLeaveBalance', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/leave/balance/credit', null, { params: data })
+    const res = await api.post('/leave/balance/credit', data)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to credit leave balance')
@@ -317,7 +344,7 @@ export const cancelLeave = createAsyncThunk('leave/cancelLeave', async (id, { re
 
 export const bulkAllocateLeave = createAsyncThunk('leave/bulkAllocateLeave', async (data, { rejectWithValue }) => {
   try {
-    await api.post('/leave/allocate/bulk', null, { params: data })
+    await api.post('/leave/allocate/bulk', data)
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Bulk allocation failed')
   }
@@ -327,7 +354,7 @@ export const bulkAllocateLeave = createAsyncThunk('leave/bulkAllocateLeave', asy
 
 export const annualLeaveReset = createAsyncThunk('leave/annualLeaveReset', async (data, { rejectWithValue }) => {
   try {
-    await api.post('/leave/reset/annual', null, { params: data })
+    await api.post('/leave/reset/annual', data)
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Annual reset failed')
   }
@@ -417,6 +444,22 @@ const leaveSlice = createSlice({
         state.leaveTypes = action.payload
       })
       .addCase(fetchLeaveTypes.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(createLeaveType.fulfilled, (state, action) => {
+        state.leaveTypes.push(action.payload)
+      })
+      .addCase(createLeaveType.rejected, (state, action) => { state.error = action.payload })
+
+      .addCase(updateLeaveType.fulfilled, (state, action) => {
+        const idx = state.leaveTypes.findIndex(lt => lt.id === action.payload.id)
+        if (idx !== -1) state.leaveTypes[idx] = action.payload
+      })
+      .addCase(updateLeaveType.rejected, (state, action) => { state.error = action.payload })
+
+      .addCase(deleteLeaveType.fulfilled, (state, action) => {
+        state.leaveTypes = state.leaveTypes.filter(lt => lt.id !== action.payload)
+      })
+      .addCase(deleteLeaveType.rejected, (state, action) => { state.error = action.payload })
 
       .addCase(approveLeave.pending, (state) => { state.loading = true; state.error = null })
       .addCase(approveLeave.fulfilled, (state, action) => {

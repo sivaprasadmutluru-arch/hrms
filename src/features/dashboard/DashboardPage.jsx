@@ -185,7 +185,7 @@ export default function DashboardPage() {
               {pendingLeaves.slice(0, 5).map(l => (
                 <div key={l.id} className="flex items-center justify-between text-sm">
                   <div>
-                    <p className="font-medium text-gray-800">{l.employeeName || l.employee?.name || 'Employee'}</p>
+                    <p className="font-medium text-gray-800">{l.employeeName || 'Employee'}</p>
                     <p className="text-xs text-gray-500">{formatDate(l.startDate)} – {formatDate(l.endDate)}</p>
                   </div>
                   <Badge label="Pending" variant="warning" />
@@ -206,8 +206,8 @@ export default function DashboardPage() {
               <tbody>
                 {(leave.data || []).slice(0, 5).map(l => (
                   <tr key={l.id} className="border-b border-gray-50">
-                    <td className="py-2 font-medium text-gray-800">{l.employee ? `${l.employee.firstName || ''} ${l.employee.lastName || ''}`.trim() || l.employee.employeeCode || '—' : '—'}</td>
-                    <td className="py-2 text-gray-600">{l.leaveType?.name || l.type || '—'}</td>
+                    <td className="py-2 font-medium text-gray-800">{l.employeeName || '—'}</td>
+                    <td className="py-2 text-gray-600">{l.leaveTypeName || '—'}</td>
                     <td className="py-2"><Badge label={l.status} variant={STATUS_COLORS[l.status?.toLowerCase()] || 'default'} /></td>
                   </tr>
                 ))}

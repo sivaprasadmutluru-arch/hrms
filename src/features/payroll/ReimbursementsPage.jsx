@@ -27,7 +27,8 @@ const TYPE_OPTIONS = [
 
 export default function ReimbursementsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const reimbursements = useSelector(selectReimbursements)
   const loading = useSelector(selectLoading)
   const attachments = useSelector(selectReimbursementAttachments)
@@ -117,7 +118,7 @@ export default function ReimbursementsPage() {
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openDetail(row.original)}>Details</Button>
-        {row.original.status === 'REQUESTED' && <>
+        {row.original.status === 'REQUESTED' && !isEmp && <>
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
           <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
         </>}

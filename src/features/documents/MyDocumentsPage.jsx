@@ -18,7 +18,8 @@ const STATUS_VARIANT = { APPROVED: 'success', REJECTED: 'danger', SUBMITTED: 'in
 
 export default function MyDocumentsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const documents = useSelector(selectDocuments)
   const loading = useSelector(selectDocumentsLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -63,7 +64,7 @@ export default function MyDocumentsPage() {
     )},
     { id: 'actions', header: '', cell: ({ row }) => {
       const s = row.original.status
-      if (s === 'APPROVED' || s === 'REJECTED') return null
+      if (s === 'APPROVED' || s === 'REJECTED' || isEmp) return null
       return (
         <div className="flex gap-2">
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>

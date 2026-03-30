@@ -18,7 +18,8 @@ const STATUS_VARIANT = { APPROVED: 'success', REJECTED: 'danger', REQUESTED: 'wa
 
 export default function ResignationsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
+  const isEmp = isEmployee()
   const resignations = useSelector(selectResignations)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -60,7 +61,7 @@ export default function ResignationsPage() {
       <Badge label={row.original.status || 'REQUESTED'} variant={STATUS_VARIANT[row.original.status] || 'default'} />
     )},
     { id: 'actions', header: '', cell: ({ row }) => {
-      if (row.original.status !== 'REQUESTED') return null
+      if (row.original.status !== 'REQUESTED' || isEmp) return null
       return (
         <div className="flex gap-2">
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>

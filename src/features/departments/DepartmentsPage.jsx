@@ -26,7 +26,7 @@ export default function DepartmentsPage() {
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 20 })) }, [dispatch])
 
-  const openCreate = () => { setEditing(null); reset({}); setModalOpen(true) }
+  const openCreate = () => { setEditing(null); reset({ managerId: user?.employeeId ?? '' }); setModalOpen(true) }
   const openEdit = (row) => {
     setEditing(row)
     reset({ name: row.name, managerId: row.manager?.id })

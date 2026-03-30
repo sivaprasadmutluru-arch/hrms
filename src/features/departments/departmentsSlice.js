@@ -19,18 +19,18 @@ export const fetchById = createAsyncThunk('departments/fetchById', async (id, { 
   }
 })
 
-export const create = createAsyncThunk('departments/create', async (data, { rejectWithValue }) => {
+export const create = createAsyncThunk('departments/create', async ({ body, params }, { rejectWithValue }) => {
   try {
-    const res = await api.post('/departments', data)
+    const res = await api.post('/departments', body, { params })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to create department')
   }
 })
 
-export const update = createAsyncThunk('departments/update', async ({ id, data }, { rejectWithValue }) => {
+export const update = createAsyncThunk('departments/update', async ({ id, data, params }, { rejectWithValue }) => {
   try {
-    const res = await api.put(`/departments/${id}`, data)
+    const res = await api.put(`/departments/${id}`, data, { params })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to update department')
