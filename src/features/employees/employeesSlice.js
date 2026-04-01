@@ -56,6 +56,19 @@ export const uploadPhoto = createAsyncThunk('employees/uploadPhoto', async ({ id
   }
 })
 
+export const fetchOrgChart = createAsyncThunk('employees/fetchOrgChart', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/employees/org-chart', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to fetch org chart') }
+})
+export const bulkArchiveEmployees = createAsyncThunk('employees/bulkArchive', async (ids, { rejectWithValue }) => {
+  try { const res = await api.post('/employees/bulk-archive', ids); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to bulk archive') }
+})
+export const fetchEmployeeDashboard = createAsyncThunk('employees/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/employees/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to fetch dashboard') }
+})
+
 const employeesSlice = createSlice({
   name: 'employees',
   initialState: {
@@ -63,6 +76,8 @@ const employeesSlice = createSlice({
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
+    orgChart: [],
+    employeeDashboard: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -105,6 +120,8 @@ const employeesSlice = createSlice({
         if (idx !== -1) state.data[idx] = action.payload
       })
       .addCase(uploadPhoto.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(fetchOrgChart.fulfilled, (state, action) => { state.orgChart = action.payload })
+      .addCase(fetchEmployeeDashboard.fulfilled, (state, action) => { state.employeeDashboard = action.payload })
   },
 })
 

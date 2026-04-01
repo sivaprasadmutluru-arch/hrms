@@ -274,6 +274,61 @@ export const upsertRecruitmentSettings = createAsyncThunk('recruitment/upsertRec
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+export const fetchPipeline = createAsyncThunk('recruitment/fetchPipeline', async (postId, { rejectWithValue }) => {
+  try { const res = await api.get(`/recruitment/posts/${postId}/pipeline`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const closePost = createAsyncThunk('recruitment/closePost', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/posts/${id}/close`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const reopenPost = createAsyncThunk('recruitment/reopenPost', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/posts/${id}/reopen`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const archivePost = createAsyncThunk('recruitment/archivePost', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/posts/${id}/archive`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const unarchivePost = createAsyncThunk('recruitment/unarchivePost', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/posts/${id}/unarchive`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const convertToEmployee = createAsyncThunk('recruitment/convertToEmployee', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/applicants/${id}/convert-employee`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const bulkApplicantAction = createAsyncThunk('recruitment/bulkAction', async (body, { rejectWithValue }) => {
+  try { const res = await api.post('/recruitment/applicants/bulk-action', body); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const sendMailToCandidate = createAsyncThunk('recruitment/sendMail', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.post(`/recruitment/applicants/${id}/send-mail`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const fetchRecruitmentDashboard = createAsyncThunk('recruitment/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/recruitment/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const setupLinkedIn = createAsyncThunk('recruitment/setupLinkedIn', async (data, { rejectWithValue }) => {
+  try { const res = await api.post('/recruitment/linkedin/setup', data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const syncLinkedIn = createAsyncThunk('recruitment/syncLinkedIn', async (params, { rejectWithValue }) => {
+  try { const res = await api.post('/recruitment/linkedin/sync', null, { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 const recruitmentSlice = createSlice({
   name: 'recruitment',
   initialState: {

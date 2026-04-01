@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
-import { fetchPayslips, fetchEmployeePayslips, confirmPayslip, markPaid, generatePayslip, generateBulkPayslips, selectLoading } from './payrollSlice'
+import { fetchPayslips, fetchEmployeePayslips, confirmPayslip, markPaid, generatePayslip, generateBulkPayslips, selectLoading, sendPayslipEmail } from './payrollSlice'
 import { useForm } from 'react-hook-form'
 import Input from '../../components/common/Input'
 import useAuth from '../../hooks/useAuth'
@@ -43,6 +43,9 @@ export default function PayslipsPage() {
   }
   const handleMarkPaid = async (id) => {
     try { await dispatch(markPaid(id)).unwrap(); toast.success('Marked as paid') } catch { toast.error('Failed') }
+  }
+  const handleSendEmail = async (id) => {
+    try { await dispatch(sendPayslipEmail(id)).unwrap(); toast.success('Email sent') } catch (e) { toast.error(e || 'Failed to send email') }
   }
 
   const handleDownloadPdf = (id) => {
@@ -95,6 +98,7 @@ export default function PayslipsPage() {
         <Button size="sm" variant="secondary" onClick={() => handleDownloadPdf(row.original.id)}>PDF</Button>
         {!isEmp && row.original.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => handleConfirm(row.original.id)}>Confirm</Button>}
         {!isEmp && row.original.status === 'CONFIRMED' && <Button size="sm" variant="success" onClick={() => handleMarkPaid(row.original.id)}>Mark Paid</Button>}
+        {!isEmp && <Button size="sm" variant="outline" onClick={() => handleSendEmail(row.original.id)}>Send Email</Button>}
       </div>
     )},
   ]

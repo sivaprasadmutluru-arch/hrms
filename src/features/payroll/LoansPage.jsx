@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchLoans, createLoan, settleLoan, selectLoans, selectLoading } from './payrollSlice'
+import { fetchLoans, createLoan, settleLoan, deleteLoan, selectLoans, selectLoading } from './payrollSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -45,6 +45,12 @@ export default function LoansPage() {
     catch (e) { toast.error(e || 'Failed') }
   }
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this loan?')) return
+    try { await dispatch(deleteLoan(id)).unwrap(); toast.success('Loan deleted') }
+    catch (e) { toast.error(e || 'Failed') }
+  }
+
   const onSubmit = async (formData) => {
     try {
       await dispatch(createLoan({
@@ -73,7 +79,10 @@ export default function LoansPage() {
       <Badge label={getValue() ? 'Settled' : 'Active'} variant={getValue() ? 'success' : 'warning'} />
     )},
     { id: 'actions', header: '', cell: ({ row }) => !isEmp && !row.original.settled ? (
-      <Button size="sm" variant="success" onClick={() => handleSettle(row.original.id)}>Settle</Button>
+      <>
+        <Button size="sm" variant="success" onClick={() => handleSettle(row.original.id)}>Settle</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      </>
     ) : null },
   ]
 

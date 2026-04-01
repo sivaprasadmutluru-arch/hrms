@@ -380,6 +380,65 @@ export const deleteDeduction = createAsyncThunk('payroll/deleteDeduction', async
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+export const sendPayslipEmail = createAsyncThunk('payroll/sendPayslipEmail', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/payroll/payslips/${id}/send-email`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to send email') }
+})
+
+export const deleteLoan = createAsyncThunk('payroll/deleteLoan', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/payroll/loans/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete loan') }
+})
+
+export const fetchBatchGroups = createAsyncThunk('payroll/fetchBatchGroups', async (_, { rejectWithValue }) => {
+  try { const res = await api.get('/payroll/batch-groups'); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const createBatchGroup = createAsyncThunk('payroll/createBatchGroup', async (data, { rejectWithValue }) => {
+  try { const res = await api.post('/payroll/batch-groups', data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const updateBatchGroup = createAsyncThunk('payroll/updateBatchGroup', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/payroll/batch-groups/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const deleteBatchGroup = createAsyncThunk('payroll/deleteBatchGroup', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/payroll/batch-groups/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const fetchPayrollDashboard = createAsyncThunk('payroll/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/payroll/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const exportPayslipsExcel = createAsyncThunk('payroll/exportPayslipsExcel', async (filters = {}, { rejectWithValue }) => {
+  try {
+    const params = {}
+    if (filters.status) params.status = filters.status
+    if (filters.startDate) params.startDate = filters.startDate
+    if (filters.endDate) params.endDate = filters.endDate
+    if (filters.employeeId) params.employeeId = filters.employeeId
+
+    const res = await api.get('/payroll/payslips/export/excel', { params, responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    const today = new Date().toISOString().slice(0, 10)
+    link.setAttribute('download', `Payslip_export_${today}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    return true
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export payslips')
+  }
+})
+
 const payrollSlice = createSlice({
   name: 'payroll',
   initialState: {
@@ -397,9 +456,12 @@ const payrollSlice = createSlice({
     conditions: [],
     allowances: [],
     deductions: [],
+    batchGroups: [],
+    payrollDashboard: null,
     selected: {},
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
+    exportingExcel: false,
     error: null,
   },
   reducers: {},
@@ -586,6 +648,24 @@ const payrollSlice = createSlice({
         if (idx !== -1) state.deductions[idx] = action.payload
       })
       .addCase(deleteDeduction.fulfilled, (state, action) => { state.deductions = state.deductions.filter(d => d.id !== action.payload) })
+
+      .addCase(exportPayslipsExcel.pending, (state) => { state.exportingExcel = true })
+      .addCase(exportPayslipsExcel.fulfilled, (state) => { state.exportingExcel = false })
+      .addCase(exportPayslipsExcel.rejected, (state) => { state.exportingExcel = false })
+
+      .addCase(fetchBatchGroups.fulfilled, (state, action) => { state.batchGroups = action.payload })
+      .addCase(createBatchGroup.fulfilled, (state, action) => { state.batchGroups.push(action.payload) })
+      .addCase(updateBatchGroup.fulfilled, (state, action) => {
+        const idx = state.batchGroups.findIndex(g => g.id === action.payload.id)
+        if (idx !== -1) state.batchGroups[idx] = action.payload
+      })
+      .addCase(deleteBatchGroup.fulfilled, (state, action) => {
+        state.batchGroups = state.batchGroups.filter(g => g.id !== action.payload)
+      })
+      .addCase(fetchPayrollDashboard.fulfilled, (state, action) => { state.payrollDashboard = action.payload })
+      .addCase(deleteLoan.fulfilled, (state, action) => {
+        if (state.loans) state.loans = state.loans.filter(l => l.id !== action.payload)
+      })
   },
 })
 
@@ -606,4 +686,5 @@ export const selectPayslipAutoGenerate = (state) => state.payroll.payslipAutoGen
 export const selectConditions = (state) => state.payroll.conditions
 export const selectAllowances = (state) => state.payroll.allowances
 export const selectDeductions = (state) => state.payroll.deductions
+export const selectExportingExcel = (state) => state.payroll.exportingExcel
 export default payrollSlice.reducer

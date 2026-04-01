@@ -360,6 +360,55 @@ export const annualLeaveReset = createAsyncThunk('leave/annualLeaveReset', async
   }
 })
 
+// ─── Holidays ─────────────────────────────────────────────────────────────
+
+export const fetchHolidays = createAsyncThunk('leave/fetchHolidays', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/leave/holidays', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const createHoliday = createAsyncThunk('leave/createHoliday', async ({ data, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post('/leave/holidays', data, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const updateHoliday = createAsyncThunk('leave/updateHoliday', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/leave/holidays/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const deleteHoliday = createAsyncThunk('leave/deleteHoliday', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/leave/holidays/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Company Leaves ────────────────────────────────────────────────────────
+
+export const fetchCompanyLeaves = createAsyncThunk('leave/fetchCompanyLeaves', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/leave/company-leaves', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const createCompanyLeave = createAsyncThunk('leave/createCompanyLeave', async ({ data, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post('/leave/company-leaves', data, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const updateCompanyLeave = createAsyncThunk('leave/updateCompanyLeave', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/leave/company-leaves/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const deleteCompanyLeave = createAsyncThunk('leave/deleteCompanyLeave', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/leave/company-leaves/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Leave Clash Check / Dashboard ────────────────────────────────────────
+
+export const checkLeaveClash = createAsyncThunk('leave/checkClash', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/leave/clash-check', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const fetchLeaveDashboard = createAsyncThunk('leave/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/leave/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 // ─── Past Leave Restrict ───────────────────────────────────────────────────
 
 export const fetchPastLeaveRestrict = createAsyncThunk('leave/fetchPastLeaveRestrict', async (companyId, { rejectWithValue }) => {
@@ -398,6 +447,10 @@ const leaveSlice = createSlice({
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
+    holidays: [],
+    companyLeaves: [],
+    leaveDashboard: null,
+    clashResult: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -588,6 +641,32 @@ const leaveSlice = createSlice({
       // Past Leave Restrict
       .addCase(fetchPastLeaveRestrict.fulfilled, (state, action) => { state.pastLeaveRestrict = action.payload })
       .addCase(upsertPastLeaveRestrict.fulfilled, (state, action) => { state.pastLeaveRestrict = action.payload })
+
+      // Holidays
+      .addCase(fetchHolidays.fulfilled, (state, action) => { state.holidays = action.payload })
+      .addCase(createHoliday.fulfilled, (state, action) => { state.holidays.push(action.payload) })
+      .addCase(updateHoliday.fulfilled, (state, action) => {
+        const idx = state.holidays.findIndex(h => h.id === action.payload.id)
+        if (idx !== -1) state.holidays[idx] = action.payload
+      })
+      .addCase(deleteHoliday.fulfilled, (state, action) => {
+        state.holidays = state.holidays.filter(h => h.id !== action.payload)
+      })
+
+      // Company Leaves
+      .addCase(fetchCompanyLeaves.fulfilled, (state, action) => { state.companyLeaves = action.payload })
+      .addCase(createCompanyLeave.fulfilled, (state, action) => { state.companyLeaves.push(action.payload) })
+      .addCase(updateCompanyLeave.fulfilled, (state, action) => {
+        const idx = state.companyLeaves.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.companyLeaves[idx] = action.payload
+      })
+      .addCase(deleteCompanyLeave.fulfilled, (state, action) => {
+        state.companyLeaves = state.companyLeaves.filter(l => l.id !== action.payload)
+      })
+
+      // Leave Dashboard / Clash Check
+      .addCase(fetchLeaveDashboard.fulfilled, (state, action) => { state.leaveDashboard = action.payload })
+      .addCase(checkLeaveClash.fulfilled, (state, action) => { state.clashResult = action.payload })
   },
 })
 

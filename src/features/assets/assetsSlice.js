@@ -127,6 +127,55 @@ export const addAssetDocument = createAsyncThunk('assets/addAssetDocument', asyn
   }
 })
 
+// ─── Asset Categories ──────────────────────────────────────────────────────
+
+export const fetchCategories = createAsyncThunk('assets/fetchCategories', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/assets/categories', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const createCategory = createAsyncThunk('assets/createCategory', async ({ data, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post('/assets/categories', data, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const updateCategory = createAsyncThunk('assets/updateCategory', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/assets/categories/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const deleteCategory = createAsyncThunk('assets/deleteCategory', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/assets/categories/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const duplicateCategory = createAsyncThunk('assets/duplicateCategory', async ({ id, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post(`/assets/categories/${id}/duplicate`, null, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Asset Requests ────────────────────────────────────────────────────────
+
+export const fetchRequests = createAsyncThunk('assets/fetchRequests', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/assets/requests', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const createRequest = createAsyncThunk('assets/createRequest', async ({ data, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post('/assets/requests', data, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const approveRequest = createAsyncThunk('assets/approveRequest', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/assets/requests/${id}/approve`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const rejectRequest = createAsyncThunk('assets/rejectRequest', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/assets/requests/${id}/reject`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+// ─── Asset Dashboard ───────────────────────────────────────────────────────
+
+export const fetchAssetDashboard = createAsyncThunk('assets/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/assets/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 const assetsSlice = createSlice({
   name: 'assets',
   initialState: {
@@ -139,6 +188,9 @@ const assetsSlice = createSlice({
     assetAssignments: [],
     assetReports: [],
     assetDocuments: [],
+    categories: [],
+    requests: [],
+    assetDashboard: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -211,6 +263,35 @@ const assetsSlice = createSlice({
       // Documents
       .addCase(fetchAssetDocuments.fulfilled, (state, action) => { state.assetDocuments = action.payload })
       .addCase(addAssetDocument.fulfilled, (state, action) => { state.assetDocuments.push(action.payload) })
+
+      // Categories
+      .addCase(fetchCategories.fulfilled, (state, action) => { state.categories = action.payload })
+      .addCase(createCategory.fulfilled, (state, action) => { state.categories.push(action.payload) })
+      .addCase(updateCategory.fulfilled, (state, action) => {
+        const idx = state.categories.findIndex(c => c.id === action.payload.id)
+        if (idx !== -1) state.categories[idx] = action.payload
+      })
+      .addCase(deleteCategory.fulfilled, (state, action) => {
+        state.categories = state.categories.filter(c => c.id !== action.payload)
+      })
+      .addCase(duplicateCategory.fulfilled, (state, action) => { state.categories.push(action.payload) })
+
+      // Requests
+      .addCase(fetchRequests.fulfilled, (state, action) => {
+        state.requests = action.payload.content || action.payload
+      })
+      .addCase(createRequest.fulfilled, (state, action) => { state.requests.push(action.payload) })
+      .addCase(approveRequest.fulfilled, (state, action) => {
+        const idx = state.requests.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.requests[idx] = action.payload
+      })
+      .addCase(rejectRequest.fulfilled, (state, action) => {
+        const idx = state.requests.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.requests[idx] = action.payload
+      })
+
+      // Asset Dashboard
+      .addCase(fetchAssetDashboard.fulfilled, (state, action) => { state.assetDashboard = action.payload })
   },
 })
 

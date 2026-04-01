@@ -59,6 +59,7 @@ const ATTENDANCE_GROUP = {
     { label: 'Attendance',    to: '/attendance' },
     { label: 'Calendar',      to: '/attendance/calendar' },
     { label: 'Work Records',  to: '/attendance/work-records' },
+    { label: 'Dashboard',     to: '/attendance/dashboard' },
   ],
 }
 
@@ -73,10 +74,13 @@ const LEAVE_GROUP = {
   icon: CalendarDaysIcon,
   group: 'leave',
   children: [
-    { label: 'Leave Requests', to: '/leave' },
-    { label: 'Leave Balance',  to: '/leave/balance' },
-    { label: 'Allocations',    to: '/leave/allocations' },
-    { label: 'Restrictions',   to: '/leave/restrictions' },
+    { label: 'Leave Requests',  to: '/leave' },
+    { label: 'Leave Balance',   to: '/leave/balance' },
+    { label: 'Allocations',     to: '/leave/allocations' },
+    { label: 'Restrictions',    to: '/leave/restrictions' },
+    { label: 'Holidays',        to: '/leave/holidays' },
+    { label: 'Company Leaves',  to: '/leave/company-leaves' },
+    { label: 'Dashboard',       to: '/leave/dashboard' },
   ],
 }
 
@@ -91,6 +95,7 @@ const PAYROLL_GROUP = {
   icon: BanknotesIcon,
   group: 'payroll',
   children: [
+    { label: 'Payroll',        to: '/payroll/payroll' },
     { label: 'Contracts',      to: '/payroll/contracts' },
     { label: 'Payslips',       to: '/payroll/payslips' },
     { label: 'Allowances',     to: '/payroll/allowances' },
@@ -98,7 +103,9 @@ const PAYROLL_GROUP = {
     { label: 'Loans',          to: '/payroll/loans' },
     { label: 'Tax Settings',   to: '/payroll/tax-settings' },
     { label: 'Reimbursements', to: '/payroll/reimbursements' },
+    { label: 'Batch Groups',   to: '/payroll/batch-groups' },
     { label: 'Settings',       to: '/payroll/settings' },
+    { label: 'Dashboard',      to: '/payroll/dashboard' },
   ],
 }
 
@@ -108,9 +115,11 @@ const RECRUITMENT_GROUP = {
   group: 'recruitment',
   children: [
     { label: 'Job Posts',      to: '/recruitment/posts' },
+    { label: 'Pipeline',       to: '/recruitment/pipeline' },
     { label: 'Skills',         to: '/recruitment/skills' },
     { label: 'Surveys',        to: '/recruitment/surveys' },
     { label: 'Candidate Docs', to: '/recruitment/candidate-docs' },
+    { label: 'Dashboard',      to: '/recruitment/dashboard' },
   ],
 }
 
@@ -161,6 +170,17 @@ const ORG_SETUP_GROUP = {
   ],
 }
 
+const ASSETS_GROUP = {
+  label: 'Assets',
+  icon: ArchiveBoxIcon,
+  group: 'assets',
+  children: [
+    { label: 'All Assets',  to: '/assets' },
+    { label: 'Categories',  to: '/assets/categories' },
+    { label: 'Requests',    to: '/assets/requests' },
+  ],
+}
+
 const SETTINGS_GROUP = {
   label: 'Settings',
   icon: Cog6ToothIcon,
@@ -171,6 +191,7 @@ const SETTINGS_GROUP = {
     { label: 'Outlook Auth',   to: '/settings/outlook-auth' },
     { label: 'Accessibility',  to: '/settings/accessibility' },
     { label: 'Dynamic Fields', to: '/settings/dynamic-fields' },
+    { label: 'LinkedIn',       to: '/settings/linkedin' },
   ],
 }
 
@@ -207,7 +228,7 @@ function getNavSections(auth) {
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
-          { label: 'Assets', to: '/assets', icon: ArchiveBoxIcon },
+          ASSETS_GROUP,
         ],
       },
       {
@@ -325,7 +346,7 @@ function getNavSections(auth) {
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
-          { label: 'Assets', to: '/assets', icon: ArchiveBoxIcon },
+          ASSETS_GROUP,
         ],
       },
       {
@@ -426,7 +447,7 @@ function getNavSections(auth) {
         title: 'Finance',
         items: [
           PAYROLL_GROUP,
-          { label: 'Assets', to: '/assets', icon: ArchiveBoxIcon },
+          ASSETS_GROUP,
         ],
       },
       {

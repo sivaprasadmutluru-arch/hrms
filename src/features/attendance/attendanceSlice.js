@@ -312,6 +312,71 @@ export const fetchCalendar = createAsyncThunk('attendance/fetchCalendar', async 
   }
 })
 
+// ─── Clock In / Clock Out / Not-In / Not-Out / Today / Bulk Overtime / Dashboard ─
+
+export const clockIn = createAsyncThunk('attendance/clockIn', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/attendance/clock-in', null, { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to clock in')
+  }
+})
+
+export const clockOut = createAsyncThunk('attendance/clockOut', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/attendance/clock-out', null, { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to clock out')
+  }
+})
+
+export const fetchNotIn = createAsyncThunk('attendance/fetchNotIn', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/not-in', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch not-in employees')
+  }
+})
+
+export const fetchNotOut = createAsyncThunk('attendance/fetchNotOut', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/not-out', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch not-out employees')
+  }
+})
+
+export const fetchToday = createAsyncThunk('attendance/fetchToday', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/today', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch today attendance')
+  }
+})
+
+export const bulkApproveOvertime = createAsyncThunk('attendance/bulkApproveOvertime', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/attendance/overtime/bulk-approve', ids)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk approve overtime')
+  }
+})
+
+export const fetchAttendanceDashboard = createAsyncThunk('attendance/fetchDashboard', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/dashboard', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance dashboard')
+  }
+})
+
 // ─── Overtime ──────────────────────────────────────────────────────────────
 
 export const fetchOvertime = createAsyncThunk('attendance/fetchOvertime', async (companyId, { rejectWithValue }) => {
@@ -361,6 +426,10 @@ const attendanceSlice = createSlice({
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
+    notIn: [],
+    notOut: [],
+    today: [],
+    dashboard: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -507,6 +576,12 @@ const attendanceSlice = createSlice({
         const idx = state.overtimeRecords.findIndex(r => r.id === action.payload.id)
         if (idx !== -1) state.overtimeRecords[idx] = action.payload
       })
+
+      // Clock In / Clock Out / Not-In / Not-Out / Today / Dashboard
+      .addCase(fetchNotIn.fulfilled, (state, action) => { state.notIn = action.payload })
+      .addCase(fetchNotOut.fulfilled, (state, action) => { state.notOut = action.payload })
+      .addCase(fetchToday.fulfilled, (state, action) => { state.today = action.payload })
+      .addCase(fetchAttendanceDashboard.fulfilled, (state, action) => { state.dashboard = action.payload })
   },
 })
 

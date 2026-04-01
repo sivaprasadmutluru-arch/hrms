@@ -271,6 +271,27 @@ export const upsertBonusPointSettings = createAsyncThunk('performance/upsertBonu
   }
 })
 
+export const fetchFeedbackOverview = createAsyncThunk('performance/fetchFeedbackOverview', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/pms/feedback/overview', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const bulkCreateFeedback = createAsyncThunk('performance/bulkCreateFeedback', async (feedbackList, { rejectWithValue }) => {
+  try { const res = await api.post('/pms/feedback/bulk-create', feedbackList); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const archiveObjective = createAsyncThunk('performance/archiveObjective', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/pms/objectives/${id}/archive`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const unarchiveObjective = createAsyncThunk('performance/unarchiveObjective', async (id, { rejectWithValue }) => {
+  try { const res = await api.post(`/pms/objectives/${id}/unarchive`); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const fetchPerformanceDashboard = createAsyncThunk('performance/fetchDashboard', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/pms/dashboard', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 const performanceSlice = createSlice({
   name: 'performance',
   initialState: {
@@ -288,6 +309,8 @@ const performanceSlice = createSlice({
     questionTemplates: [],
     questions: [],
     bonusPointSettings: {},
+    feedbackOverview: null,
+    performanceDashboard: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -406,6 +429,8 @@ const performanceSlice = createSlice({
       // Bonus Point Settings
       .addCase(fetchBonusPointSettings.fulfilled, (state, action) => { state.bonusPointSettings = action.payload })
       .addCase(upsertBonusPointSettings.fulfilled, (state, action) => { state.bonusPointSettings = action.payload })
+      .addCase(fetchFeedbackOverview.fulfilled, (state, action) => { state.feedbackOverview = action.payload })
+      .addCase(fetchPerformanceDashboard.fulfilled, (state, action) => { state.performanceDashboard = action.payload })
   },
 })
 
@@ -422,4 +447,6 @@ export const selectObjectiveComments = (state) => state.performance.objectiveCom
 export const selectQuestionTemplates = (state) => state.performance.questionTemplates
 export const selectQuestions = (state) => state.performance.questions
 export const selectBonusPointSettings = (state) => state.performance.bonusPointSettings
+export const selectFeedbackOverview = (state) => state.performance.feedbackOverview
+export const selectPerformanceDashboard = (state) => state.performance.performanceDashboard
 export default performanceSlice.reducer
