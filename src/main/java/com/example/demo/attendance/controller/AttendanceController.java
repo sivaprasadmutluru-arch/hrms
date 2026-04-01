@@ -15,16 +15,21 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -204,5 +209,92 @@ public class AttendanceController {
     public ResponseEntity<Map<String, String>> deleteRequestFile(@PathVariable Long id) {
         requestFileRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "File deleted"));
+    }
+
+    // ─── Clock In / Out ───────────────────────────────────────────────────────
+
+    @PostMapping("/clock-in")
+    @PreAuthorize("hasAuthority('attendance:create')")
+    @Operation(summary = "Clock in an employee")
+    public ResponseEntity<AttendanceResponse> clockIn(
+            @RequestParam Long employeeId,
+            @RequestParam Long companyId) {
+        return ResponseEntity.ok(attendanceService.clockIn(employeeId, companyId));
+    }
+
+    @PostMapping("/clock-out")
+    @PreAuthorize("hasAuthority('attendance:edit')")
+    @Operation(summary = "Clock out an employee")
+    public ResponseEntity<AttendanceResponse> clockOut(@RequestParam Long attendanceId) {
+        return ResponseEntity.ok(attendanceService.clockOut(attendanceId));
+    }
+
+    // ─── Not Clocked In / Out ─────────────────────────────────────────────────
+
+    @GetMapping("/not-in")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Get employees who have not clocked in on a given date")
+    public ResponseEntity<List<Map<String, Object>>> getNotClockedIn(
+            @RequestParam Long companyId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(attendanceService.getNotClockedIn(companyId, date));
+    }
+
+    @GetMapping("/not-out")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Get employees who have not clocked out on a given date")
+    public ResponseEntity<List<Map<String, Object>>> getNotClockedOut(
+            @RequestParam Long companyId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(attendanceService.getNotClockedOut(companyId, date));
+    }
+
+    // ─── Today's Attendance ───────────────────────────────────────────────────
+
+    @GetMapping("/today")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Get today's attendance records for a company")
+    public ResponseEntity<List<AttendanceResponse>> getTodayAttendance(@RequestParam Long companyId) {
+        return ResponseEntity.ok(attendanceService.getTodayAttendance(companyId));
+    }
+
+    // ─── Excel Export / Import ────────────────────────────────────────────────
+
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Export attendance records to Excel")
+    public void exportToExcel(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
+        attendanceService.exportToExcel(companyId, response);
+    }
+
+    @PostMapping("/import")
+    @PreAuthorize("hasAuthority('attendance:create')")
+    @Operation(summary = "Import attendance records from Excel")
+    public ResponseEntity<Map<String, Object>> importFromExcel(
+            @RequestParam MultipartFile file,
+            @RequestParam Long companyId) throws IOException {
+        int count = attendanceService.importFromExcel(file, companyId);
+        return ResponseEntity.ok(Map.of("imported", count));
+    }
+
+    // ─── Bulk Approve Overtime ────────────────────────────────────────────────
+
+    @PostMapping("/overtime/bulk-approve")
+    @PreAuthorize("hasAuthority('attendance:approve')")
+    @Operation(summary = "Bulk approve overtime records")
+    public ResponseEntity<Map<String, Object>> bulkApproveOvertime(@RequestBody List<Long> ids) {
+        int count = attendanceService.bulkApproveOvertime(ids);
+        return ResponseEntity.ok(Map.of("approved", count));
+    }
+
+    // ─── Dashboard ────────────────────────────────────────────────────────────
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Get attendance dashboard stats for a company")
+    public ResponseEntity<Map<String, Object>> getDashboard(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(attendanceService.getDashboard(companyId, date));
     }
 }

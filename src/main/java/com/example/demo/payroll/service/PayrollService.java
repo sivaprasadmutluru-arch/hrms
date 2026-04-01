@@ -1,6 +1,7 @@
 package com.example.demo.payroll.service;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.event.PayslipGeneratedEvent;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.entity.Employee;
@@ -37,6 +38,7 @@ public class PayrollService {
     private final CompanyRepository companyRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final EmailService emailService;
 
     /**
      * Generate a payslip for one employee for the given pay period.
@@ -243,5 +245,29 @@ public class PayrollService {
         }
 
         return tax.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Send payslip email to the employee using EmailService.
+     */
+    @Transactional
+    public void sendPayslipEmail(Long payslipId) {
+        Payslip payslip = payslipRepository.findByIdWithAssociations(payslipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payslip", payslipId));
+        Employee employee = payslip.getEmployee();
+        String recipientEmail = employee != null ? employee.getEmail() : null;
+        if (recipientEmail == null || recipientEmail.isBlank()) {
+            log.warn("No email address found for employee on payslip {}", payslipId);
+            return;
+        }
+        Long companyId = payslip.getCompany() != null ? payslip.getCompany().getId() : null;
+        String subject = "Your Payslip for " + payslip.getStartDate() + " to " + payslip.getEndDate();
+        String body = "<p>Dear " + (employee.getFirstName() != null ? employee.getFirstName() : "Employee") + ",</p>"
+                + "<p>Please find your payslip for the period "
+                + payslip.getStartDate() + " to " + payslip.getEndDate() + ".</p>"
+                + "<p>Net Pay: " + payslip.getNetPay() + "</p>"
+                + "<p>Thank you.</p>";
+        emailService.sendEmail(companyId, recipientEmail, subject, body, employee);
+        log.info("Payslip email sent for payslip {} to {}", payslipId, recipientEmail);
     }
 }

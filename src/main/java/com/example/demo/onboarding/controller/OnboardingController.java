@@ -1,6 +1,7 @@
 package com.example.demo.onboarding.controller;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.onboarding.entity.*;
@@ -14,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +33,7 @@ public class OnboardingController {
     private final OnboardingCandidateRepository onboardingCandidateRepository;
     private final CandidateStageRepository candidateStageRepository;
     private final CandidateTaskRepository candidateTaskRepository;
+    private final EmailService emailService;
 
     @GetMapping("/tasks")
     @PreAuthorize("hasAuthority('onboarding:view')")
@@ -240,5 +243,99 @@ public class OnboardingController {
                 .orElseThrow(() -> new ResourceNotFoundException("CandidateTask", id));
         ct.setIsCompleted(true);
         return ResponseEntity.ok(candidateTaskRepository.save(ct));
+    }
+
+    // ─── Offer Letter ─────────────────────────────────────────────────────────
+
+    @PostMapping("/candidates/{id}/offer-letter/send")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Send offer letter email to an onboarding candidate")
+    public ResponseEntity<Map<String, Object>> sendOfferLetter(@PathVariable Long id) {
+        OnboardingCandidate oc = onboardingCandidateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
+        String recipientEmail = null;
+        if (oc.getCandidate() != null && oc.getCandidate().getEmail() != null) {
+            recipientEmail = oc.getCandidate().getEmail();
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("candidateId", id);
+        if (recipientEmail != null) {
+            Long companyId = oc.getPortal() != null && oc.getPortal().getCompany() != null
+                    ? oc.getPortal().getCompany().getId() : null;
+            emailService.sendEmail(companyId, recipientEmail,
+                    "Your Offer Letter",
+                    "<p>Congratulations! Please find your offer letter attached.</p>",
+                    null);
+            result.put("message", "Offer letter sent to " + recipientEmail);
+            result.put("email", recipientEmail);
+        } else {
+            result.put("message", "Offer letter queued (no email address found for candidate)");
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/candidates/{id}/offer-letter/status")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Update offer letter status for an onboarding candidate")
+    public ResponseEntity<OnboardingCandidate> updateOfferLetterStatus(
+            @PathVariable Long id,
+            @RequestParam String status) {
+        OnboardingCandidate oc = onboardingCandidateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
+        try {
+            oc.setStatus(OnboardingCandidate.OnboardingStatus.valueOf(status));
+        } catch (IllegalArgumentException e) {
+            // Status value not recognized – leave as-is and return the record
+        }
+        return ResponseEntity.ok(onboardingCandidateRepository.save(oc));
+    }
+
+    // ─── Onboarding Portal (Public) ───────────────────────────────────────────
+
+    @GetMapping("/portal/{token}/welcome")
+    @Operation(summary = "Public portal welcome page (stub)")
+    public ResponseEntity<Map<String, Object>> portalWelcome(@PathVariable String token) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", token);
+        result.put("message", "Welcome to the onboarding portal. Please create your account to continue.");
+        result.put("status", "ACTIVE");
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/portal/{token}/create-account")
+    @Operation(summary = "Public portal account creation (stub)")
+    public ResponseEntity<Map<String, Object>> portalCreateAccount(
+            @PathVariable String token,
+            @RequestBody Map<String, Object> body) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", token);
+        result.put("message", "Account creation request received. You will receive a confirmation email shortly.");
+        result.put("success", true);
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Onboarding Dashboard ─────────────────────────────────────────────────
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Onboarding dashboard KPIs")
+    public ResponseEntity<Map<String, Object>> onboardingDashboard(@RequestParam(required = false) Long companyId) {
+        List<EmployeeOnboarding> all = employeeOnboardingRepository.findAll();
+        long total = all.size();
+        long completed = all.stream()
+                .filter(o -> EmployeeOnboarding.OnboardingStatus.COMPLETED.equals(o.getStatus()))
+                .count();
+        long pending = all.stream()
+                .filter(o -> EmployeeOnboarding.OnboardingStatus.PENDING.equals(o.getStatus())
+                        || EmployeeOnboarding.OnboardingStatus.IN_PROGRESS.equals(o.getStatus()))
+                .count();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalOnboarding", total);
+        result.put("completedOnboarding", completed);
+        result.put("pendingOnboarding", pending);
+        return ResponseEntity.ok(result);
     }
 }

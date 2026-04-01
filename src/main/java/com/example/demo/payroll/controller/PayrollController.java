@@ -9,6 +9,7 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.payroll.entity.*;
 import com.example.demo.payroll.repository.*;
 import com.example.demo.payroll.service.PayrollService;
+import com.example.demo.payroll.service.PayslipExcelExportService;
 import com.lowagie.text.Document;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
@@ -39,6 +40,7 @@ import java.util.HashMap;
 public class PayrollController {
 
     private final PayrollService payrollService;
+    private final PayslipExcelExportService payslipExcelExportService;
     private final ContractRepository contractRepository;
     private final PayslipRepository payslipRepository;
     private final EmployeeRepository employeeRepository;
@@ -813,6 +815,54 @@ public class PayrollController {
         return ResponseEntity.ok(payrollService.generateBulkPayslips(companyId, startDate, endDate));
     }
 
+    // ─── Payslip Excel Export ──────────────────────────────────────────────────
+
+    @GetMapping("/payslips/export/excel")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Export payslips as Excel (Summary + Detailed sheets)",
+               description = "Optional filters: status, startDate, endDate, employeeId")
+    public ResponseEntity<byte[]> exportPayslipsExcel(
+            @RequestParam(required = false) Payslip.PayslipStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long employeeId) {
+
+        // Respect access scope (same pattern as listPayslips)
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        List<Payslip> payslips;
+        if (scope == null || (scope.hasUnrestrictedAccess() && scope.getCompanyId() == null)) {
+            payslips = payslipRepository.findAllWithAssociations();
+        } else {
+            List<Long> companyIds = scope.hasUnrestrictedAccess()
+                    ? java.util.List.of(scope.getCompanyId())
+                    : scope.getAccessibleCompanyIds();
+            payslips = companyIds.isEmpty()
+                    ? java.util.List.of()
+                    : payslipRepository.findAllWithAssociationsByCompanyIdIn(companyIds);
+        }
+
+        // In-memory filtering
+        payslips = payslips.stream()
+                .filter(p -> status == null || status == p.getStatus())
+                .filter(p -> employeeId == null || (p.getEmployee() != null && employeeId.equals(p.getEmployee().getId())))
+                .filter(p -> startDate == null || (p.getStartDate() != null && !p.getStartDate().isBefore(startDate)))
+                .filter(p -> endDate == null || (p.getEndDate() != null && !p.getEndDate().isAfter(endDate)))
+                .toList();
+
+        try {
+            byte[] bytes = payslipExcelExportService.exportPayslips(payslips);
+            String filename = "Payslip_export_" + LocalDate.now() + ".xlsx";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+            headers.setContentDispositionFormData("attachment", filename);
+            return ResponseEntity.ok().headers(headers).body(bytes);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate payslip Excel export", e);
+        }
+    }
+
     // ─── Payslip PDF Download ──────────────────────────────────────────────────
 
     @GetMapping("/payslips/{id}/pdf")
@@ -861,5 +911,129 @@ public class PayrollController {
 
     private String formatAmount(java.math.BigDecimal amount) {
         return amount != null ? amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() : "0.00";
+    }
+
+    // ─── Send Payslip Email ────────────────────────────────────────────────────
+
+    @PostMapping("/payslips/{id}/send-email")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Operation(summary = "Send payslip email to employee")
+    public ResponseEntity<Map<String, String>> sendPayslipEmail(@PathVariable Long id) {
+        payslipRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+        payrollService.sendPayslipEmail(id);
+        return ResponseEntity.ok(Map.of("message", "Payslip email sent successfully"));
+    }
+
+    // ─── Delete Loan ──────────────────────────────────────────────────────────
+
+    @DeleteMapping("/loans/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Delete a loan account")
+    public ResponseEntity<Void> deleteLoan(@PathVariable Long id) {
+        loanAccountRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LoanAccount", id));
+        loanAccountRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Batch Groups (stub) ──────────────────────────────────────────────────
+
+    @GetMapping("/batch-groups")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Operation(summary = "List payroll batch groups (stub)")
+    public ResponseEntity<List<Map<String, Object>>> listBatchGroups() {
+        return ResponseEntity.ok(java.util.Collections.emptyList());
+    }
+
+    @PostMapping("/batch-groups")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Create a payroll batch group (stub)")
+    public ResponseEntity<Map<String, Object>> createBatchGroup(@RequestBody Map<String, Object> body) {
+        Map<String, Object> result = new HashMap<>(body);
+        result.put("id", 1L);
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/batch-groups/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Update a payroll batch group (stub)")
+    public ResponseEntity<Map<String, Object>> updateBatchGroup(@PathVariable Long id,
+                                                                 @RequestBody Map<String, Object> body) {
+        Map<String, Object> result = new HashMap<>(body);
+        result.put("id", id);
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/batch-groups/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Delete a payroll batch group (stub)")
+    public ResponseEntity<Void> deleteBatchGroup(@PathVariable Long id) {
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Payroll Dashboard ────────────────────────────────────────────────────
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get payroll dashboard stats for a company")
+    public ResponseEntity<Map<String, Object>> payrollDashboard(@RequestParam Long companyId) {
+        List<Payslip> all = payslipRepository.findByCompanyId(companyId);
+        long total = all.size();
+        long confirmed = all.stream().filter(p -> Payslip.PayslipStatus.CONFIRMED == p.getStatus()).count();
+        long paid = all.stream().filter(p -> Payslip.PayslipStatus.PAID == p.getStatus()).count();
+        long pending = all.stream().filter(p -> Payslip.PayslipStatus.DRAFT == p.getStatus()).count();
+        java.math.BigDecimal totalNetPay = all.stream()
+                .filter(p -> p.getNetPay() != null)
+                .map(Payslip::getNetPay)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalPayslips", total);
+        result.put("confirmedPayslips", confirmed);
+        result.put("paidPayslips", paid);
+        result.put("pendingPayslips", pending);
+        result.put("totalNetPay", totalNetPay);
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Payslip Inline Edit ──────────────────────────────────────────────────
+
+    @PatchMapping("/payslips/{id}/inline")
+    @PreAuthorize("hasAuthority('payroll:edit')")
+    @Transactional
+    @Operation(summary = "Inline-edit specific fields on a payslip")
+    public ResponseEntity<Payslip> inlineEditPayslip(@PathVariable Long id,
+                                                      @RequestBody Map<String, Object> fields) {
+        Payslip p = payslipRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+
+        fields.forEach((key, value) -> {
+            switch (key) {
+                case "groupName" -> p.setGroupName(value != null ? value.toString() : null);
+                case "reference" -> p.setReference(value != null ? value.toString() : null);
+                case "status" -> {
+                    if (value != null) p.setStatus(Payslip.PayslipStatus.valueOf(value.toString()));
+                }
+                case "basicPay" -> {
+                    if (value != null) p.setBasicPay(new java.math.BigDecimal(value.toString()));
+                }
+                case "grossPay" -> {
+                    if (value != null) p.setGrossPay(new java.math.BigDecimal(value.toString()));
+                }
+                case "deduction" -> {
+                    if (value != null) p.setDeduction(new java.math.BigDecimal(value.toString()));
+                }
+                case "netPay" -> {
+                    if (value != null) p.setNetPay(new java.math.BigDecimal(value.toString()));
+                }
+                default -> { /* ignore unknown fields */ }
+            }
+        });
+
+        payslipRepository.save(p);
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
     }
 }

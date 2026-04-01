@@ -1,5 +1,16 @@
 package com.example.demo.report.controller;
 
+import com.example.demo.asset.entity.Asset;
+import com.example.demo.asset.repository.AssetRepository;
+import com.example.demo.attendance.entity.Attendance;
+import com.example.demo.attendance.repository.AttendanceRepository;
+import com.example.demo.leave.entity.LeaveRequest;
+import com.example.demo.leave.repository.LeaveRequestRepository;
+import com.example.demo.payroll.entity.Payslip;
+import com.example.demo.payroll.repository.PayslipRepository;
+import com.example.demo.recruitment.entity.RecruitmentPost;
+import com.example.demo.recruitment.repository.ApplicantRepository;
+import com.example.demo.recruitment.repository.RecruitmentPostRepository;
 import com.example.demo.report.service.ConsolidatedReportService;
 import com.example.demo.report.util.ExcelExporter;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,9 +21,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +42,12 @@ public class ConsolidatedReportController {
 
     private final ConsolidatedReportService reportService;
     private final ExcelExporter excelExporter;
+    private final AttendanceRepository attendanceRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final PayslipRepository payslipRepository;
+    private final RecruitmentPostRepository recruitmentPostRepository;
+    private final ApplicantRepository applicantRepository;
+    private final AssetRepository assetRepository;
 
     @GetMapping("/headcount")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
@@ -95,5 +115,131 @@ public class ConsolidatedReportController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
+    }
+
+    // ─── Dashboard Endpoints ───────────────────────────────────────────────────
+
+    @GetMapping("/attendance-dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Attendance dashboard KPIs for today")
+    public ResponseEntity<Map<String, Object>> attendanceDashboard(@RequestParam(required = false) Long companyId) {
+        LocalDate today = LocalDate.now();
+        List<Attendance> all = attendanceRepository.findAll();
+        List<Attendance> todayRecords = all.stream()
+                .filter(a -> today.equals(a.getAttendanceDate()))
+                .toList();
+        long clockedInToday = todayRecords.stream()
+                .map(a -> a.getEmployee() != null ? a.getEmployee().getId() : null)
+                .filter(id -> id != null)
+                .distinct()
+                .count();
+        long lateEmployees = todayRecords.stream()
+                .filter(a -> a.getCheckIn() != null && a.getCheckIn().isAfter(java.time.LocalTime.of(9, 0)))
+                .map(a -> a.getEmployee() != null ? a.getEmployee().getId() : null)
+                .filter(id -> id != null)
+                .distinct()
+                .count();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalAttendanceToday", todayRecords.size());
+        result.put("employeesClockedInToday", clockedInToday);
+        result.put("lateEmployees", lateEmployees);
+        result.put("date", today);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/leave-dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Leave dashboard KPIs for current month")
+    public ResponseEntity<Map<String, Object>> leaveDashboard(@RequestParam(required = false) Long companyId) {
+        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        LocalDate endOfMonth = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth());
+        List<LeaveRequest> all = leaveRequestRepository.findAll();
+        List<LeaveRequest> monthRequests = all.stream()
+                .filter(r -> r.getStartDate() != null
+                        && !r.getStartDate().isBefore(startOfMonth)
+                        && !r.getStartDate().isAfter(endOfMonth))
+                .toList();
+        long pending = monthRequests.stream()
+                .filter(r -> LeaveRequest.LeaveStatus.REQUESTED.equals(r.getStatus()))
+                .count();
+        long approved = monthRequests.stream()
+                .filter(r -> LeaveRequest.LeaveStatus.APPROVED.equals(r.getStatus()))
+                .count();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalLeaveRequests", monthRequests.size());
+        result.put("pendingRequests", pending);
+        result.put("approvedRequests", approved);
+        result.put("month", startOfMonth.getMonth().toString());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/payroll-dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Payroll dashboard KPIs for current month")
+    public ResponseEntity<Map<String, Object>> payrollDashboard(@RequestParam(required = false) Long companyId) {
+        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        LocalDate endOfMonth = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth());
+        List<Payslip> all = payslipRepository.findAll();
+        List<Payslip> monthPayslips = all.stream()
+                .filter(p -> p.getStartDate() != null
+                        && !p.getStartDate().isBefore(startOfMonth)
+                        && !p.getStartDate().isAfter(endOfMonth))
+                .toList();
+        long confirmed = monthPayslips.stream()
+                .filter(p -> Payslip.PayslipStatus.CONFIRMED.equals(p.getStatus()))
+                .count();
+        long paid = monthPayslips.stream()
+                .filter(p -> Payslip.PayslipStatus.PAID.equals(p.getStatus()))
+                .count();
+        double totalAmount = monthPayslips.stream()
+                .filter(p -> p.getNetPay() != null)
+                .mapToDouble(p -> p.getNetPay().doubleValue())
+                .sum();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalPayslips", monthPayslips.size());
+        result.put("confirmedPayslips", confirmed);
+        result.put("paidPayslips", paid);
+        result.put("totalNetAmount", totalAmount);
+        result.put("month", startOfMonth.getMonth().toString());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/recruitment-dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Recruitment dashboard KPIs")
+    public ResponseEntity<Map<String, Object>> recruitmentDashboard(@RequestParam(required = false) Long companyId) {
+        List<RecruitmentPost> posts = recruitmentPostRepository.findAll();
+        long activePosts = posts.stream()
+                .filter(p -> RecruitmentPost.RecruitmentStatus.OPEN.equals(p.getStatus()))
+                .count();
+        long totalApplicants = applicantRepository.count();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalPosts", posts.size());
+        result.put("activePosts", activePosts);
+        result.put("totalApplicants", totalApplicants);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/asset-dashboard")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Asset dashboard KPIs")
+    public ResponseEntity<Map<String, Object>> assetDashboard(@RequestParam(required = false) Long companyId) {
+        List<Asset> all = assetRepository.findAll();
+        long assignedAssets = all.stream()
+                .filter(a -> Asset.AssetStatus.IN_USE.equals(a.getStatus()))
+                .count();
+        long availableAssets = all.stream()
+                .filter(a -> Asset.AssetStatus.AVAILABLE.equals(a.getStatus()))
+                .count();
+        Map<String, Object> result = new HashMap<>();
+        result.put("totalAssets", all.size());
+        result.put("assignedAssets", assignedAssets);
+        result.put("availableAssets", availableAssets);
+        return ResponseEntity.ok(result);
     }
 }

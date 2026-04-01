@@ -575,4 +575,141 @@ public class PmsController {
         periodRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Period deleted"));
     }
+
+    // ─── Feedback Overview ────────────────────────────────────────────────────
+
+    @GetMapping("/feedback/overview")
+    @PreAuthorize("hasAuthority('pms:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get feedback overview KPIs for a company")
+    public ResponseEntity<Map<String, Object>> feedbackOverview(@RequestParam(required = false) Long companyId) {
+        List<EmployeeFeedback> all = feedbackRepository.findAll();
+        long total = all.size();
+        long completed = all.stream()
+                .filter(f -> EmployeeFeedback.FeedbackStatus.COMPLETED.equals(f.getStatus()))
+                .count();
+        long pending = all.stream()
+                .filter(f -> EmployeeFeedback.FeedbackStatus.REQUESTED.equals(f.getStatus()))
+                .count();
+        double averageScore = all.stream()
+                .filter(f -> f.getRating() != null)
+                .mapToDouble(EmployeeFeedback::getRating)
+                .average()
+                .orElse(0.0);
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("totalFeedback", total);
+        result.put("completedFeedback", completed);
+        result.put("pendingFeedback", pending);
+        result.put("averageScore", averageScore);
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Bulk Create Feedback ─────────────────────────────────────────────────
+
+    @PostMapping("/feedback/bulk-create")
+    @PreAuthorize("hasAuthority('pms:create')")
+    @Transactional
+    @Operation(summary = "Bulk create employee feedback records")
+    public ResponseEntity<Map<String, Object>> bulkCreateFeedback(@RequestBody List<Map<String, Object>> feedbackList) {
+        int count = 0;
+        for (Map<String, Object> entry : feedbackList) {
+            EmployeeFeedback fb = new EmployeeFeedback();
+            if (entry.get("employeeId") instanceof Number empId) {
+                fb.setEmployee(employeeRepository.getReferenceById(((Number) empId).longValue()));
+            }
+            if (entry.get("reviewerId") instanceof Number revId) {
+                fb.setReviewer(employeeRepository.getReferenceById(((Number) revId).longValue()));
+            }
+            if (entry.get("rating") instanceof Number rating) {
+                fb.setRating(((Number) rating).doubleValue());
+            }
+            if (entry.get("feedback") instanceof String feedbackText) {
+                fb.setFeedback(feedbackText);
+            }
+            if (entry.get("feedbackType") instanceof String typeStr) {
+                try {
+                    fb.setFeedbackType(EmployeeFeedback.FeedbackType.valueOf(typeStr));
+                } catch (IllegalArgumentException ignored) {}
+            }
+            feedbackRepository.save(fb);
+            count++;
+        }
+        return ResponseEntity.ok(Map.of("created", count));
+    }
+
+    // ─── Archive / Unarchive Objective ───────────────────────────────────────
+
+    @PostMapping("/objectives/{id}/archive")
+    @PreAuthorize("hasAuthority('pms:edit')")
+    @Transactional
+    @Operation(summary = "Archive an objective (sets status to AT_RISK as archived marker)")
+    public ResponseEntity<Map<String, Object>> archiveObjective(@PathVariable Long id) {
+        Objective obj = objectiveRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Objective", id));
+        obj.setStatus(Objective.ObjectiveStatus.AT_RISK);
+        objectiveRepository.save(obj);
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("id", id);
+        result.put("message", "Objective archived");
+        result.put("status", obj.getStatus());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/objectives/{id}/unarchive")
+    @PreAuthorize("hasAuthority('pms:edit')")
+    @Transactional
+    @Operation(summary = "Unarchive an objective (sets status back to IN_PROGRESS)")
+    public ResponseEntity<Map<String, Object>> unarchiveObjective(@PathVariable Long id) {
+        Objective obj = objectiveRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Objective", id));
+        obj.setStatus(Objective.ObjectiveStatus.IN_PROGRESS);
+        objectiveRepository.save(obj);
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("id", id);
+        result.put("message", "Objective unarchived");
+        result.put("status", obj.getStatus());
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Archive Feedback ─────────────────────────────────────────────────────
+
+    @PostMapping("/feedback/{id}/archive")
+    @PreAuthorize("hasAuthority('pms:edit')")
+    @Transactional
+    @Operation(summary = "Archive a feedback record (marks as COMPLETED)")
+    public ResponseEntity<Map<String, Object>> archiveFeedback(@PathVariable Long id) {
+        EmployeeFeedback fb = feedbackRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("EmployeeFeedback", id));
+        fb.setStatus(EmployeeFeedback.FeedbackStatus.COMPLETED);
+        feedbackRepository.save(fb);
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("id", id);
+        result.put("message", "Feedback archived");
+        result.put("status", fb.getStatus());
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── PMS Dashboard ────────────────────────────────────────────────────────
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAuthority('pms:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "PMS dashboard KPIs")
+    public ResponseEntity<Map<String, Object>> pmsDashboard(@RequestParam(required = false) Long companyId) {
+        List<Objective> objectives = objectiveRepository.findAll();
+        long totalObjectives = objectives.size();
+        long completedObjectives = objectives.stream()
+                .filter(o -> Objective.ObjectiveStatus.COMPLETED.equals(o.getStatus()))
+                .count();
+        long pendingObjectives = objectives.stream()
+                .filter(o -> !Objective.ObjectiveStatus.COMPLETED.equals(o.getStatus()))
+                .count();
+        long totalFeedback = feedbackRepository.count();
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("totalObjectives", totalObjectives);
+        result.put("completedObjectives", completedObjectives);
+        result.put("pendingObjectives", pendingObjectives);
+        result.put("totalFeedback", totalFeedback);
+        return ResponseEntity.ok(result);
+    }
 }

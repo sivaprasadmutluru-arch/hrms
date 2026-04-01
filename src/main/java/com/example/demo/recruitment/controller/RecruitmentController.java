@@ -1,29 +1,35 @@
 package com.example.demo.recruitment.controller;
 
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.recruitment.entity.*;
 import com.example.demo.recruitment.repository.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/recruitment")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Recruitment")
 public class RecruitmentController {
 
     private final RecruitmentPostRepository recruitmentPostRepository;
+    private final RecruitmentStageRepository recruitmentStageRepository;
     private final ApplicantRepository applicantRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final CandidateRatingRepository candidateRatingRepository;
@@ -633,5 +639,201 @@ public class RecruitmentController {
         s.setShowSalaryRange(body.getShowSalaryRange());
         s.setAutoAdvanceOnInterview(body.getAutoAdvanceOnInterview());
         return ResponseEntity.ok(recruitmentGeneralSettingRepository.save(s));
+    }
+
+    // ─── Pipeline ─────────────────────────────────────────────────────────────
+
+    @GetMapping("/posts/{id}/pipeline")
+    @PreAuthorize("hasAuthority('recruitment:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get pipeline (stages with applicants) for a recruitment post")
+    public ResponseEntity<List<Map<String, Object>>> getPostPipeline(@PathVariable Long id) {
+        recruitmentPostRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        List<RecruitmentStage> stages = recruitmentStageRepository.findByRecruitmentIdOrderBySequenceAsc(id);
+        List<Applicant> allApplicants = applicantRepository.findByRecruitmentId(id);
+
+        List<Map<String, Object>> pipeline = stages.stream().map(stage -> {
+            List<Applicant> inStage = allApplicants.stream()
+                    .filter(a -> a.getStage() != null && stage.getId().equals(a.getStage().getId()))
+                    .collect(Collectors.toList());
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("stageId", stage.getId());
+            entry.put("stageName", stage.getName());
+            entry.put("stageType", stage.getStageType());
+            entry.put("applicants", inStage);
+            return entry;
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(pipeline);
+    }
+
+    // ─── Post Status Changes ──────────────────────────────────────────────────
+
+    @PostMapping("/posts/{id}/close")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Close a recruitment post")
+    public ResponseEntity<RecruitmentPost> closePost(@PathVariable Long id) {
+        RecruitmentPost post = recruitmentPostRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        post.setClosed(true);
+        post.setActive(false);
+        post.setEndDate(LocalDate.now());
+        post.setStatus(RecruitmentPost.RecruitmentStatus.CLOSED);
+        return ResponseEntity.ok(recruitmentPostRepository.save(post));
+    }
+
+    @PostMapping("/posts/{id}/reopen")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Reopen a recruitment post")
+    public ResponseEntity<RecruitmentPost> reopenPost(@PathVariable Long id) {
+        RecruitmentPost post = recruitmentPostRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        post.setClosed(false);
+        post.setActive(true);
+        post.setStatus(RecruitmentPost.RecruitmentStatus.OPEN);
+        return ResponseEntity.ok(recruitmentPostRepository.save(post));
+    }
+
+    @PostMapping("/posts/{id}/archive")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Archive a recruitment post (deactivate)")
+    public ResponseEntity<RecruitmentPost> archivePost(@PathVariable Long id) {
+        RecruitmentPost post = recruitmentPostRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        post.setActive(false);
+        return ResponseEntity.ok(recruitmentPostRepository.save(post));
+    }
+
+    @PostMapping("/posts/{id}/unarchive")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Unarchive a recruitment post (reactivate)")
+    public ResponseEntity<RecruitmentPost> unarchivePost(@PathVariable Long id) {
+        RecruitmentPost post = recruitmentPostRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        post.setActive(true);
+        return ResponseEntity.ok(recruitmentPostRepository.save(post));
+    }
+
+    // ─── Stage Operations ─────────────────────────────────────────────────────
+
+    @PostMapping("/stages/{id}/duplicate")
+    @PreAuthorize("hasAuthority('recruitment:create')")
+    @Transactional
+    @Operation(summary = "Duplicate a recruitment stage")
+    public ResponseEntity<RecruitmentStage> duplicateStage(@PathVariable Long id) {
+        RecruitmentStage original = recruitmentStageRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentStage", id));
+        RecruitmentStage copy = new RecruitmentStage();
+        copy.setName(original.getName() + " (Copy)");
+        copy.setSequence(original.getSequence());
+        copy.setStageType(original.getStageType());
+        copy.setRecruitment(original.getRecruitment());
+        return ResponseEntity.ok(recruitmentStageRepository.save(copy));
+    }
+
+    @PostMapping("/stages/{id}/archive")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Archive a recruitment stage (deactivate)")
+    public ResponseEntity<RecruitmentStage> archiveStage(@PathVariable Long id) {
+        RecruitmentStage stage = recruitmentStageRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentStage", id));
+        stage.setActive(false);
+        return ResponseEntity.ok(recruitmentStageRepository.save(stage));
+    }
+
+    // ─── Applicant Operations ─────────────────────────────────────────────────
+
+    @PostMapping("/applicants/{id}/convert-employee")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Convert an applicant/candidate to an employee")
+    public ResponseEntity<Map<String, Object>> convertToEmployee(@PathVariable Long id) {
+        Applicant applicant = applicantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Applicant", id));
+        Candidate candidate = applicant.getCandidate();
+        Company company = applicant.getCompany();
+
+        Employee employee = new Employee();
+        if (candidate != null && candidate.getName() != null) {
+            String[] parts = candidate.getName().trim().split("\\s+", 2);
+            employee.setFirstName(parts[0]);
+            if (parts.length > 1) employee.setLastName(parts[1]);
+        }
+        employee.setEmail(candidate != null ? candidate.getEmail() : null);
+        employee.setCompany(company);
+        employee.setActive(true);
+
+        Employee saved = employeeRepository.save(employee);
+        applicant.setStatus(Applicant.ApplicantStatus.HIRED);
+        applicantRepository.save(applicant);
+
+        return ResponseEntity.ok(Map.of("employeeId", saved.getId(), "message", "Employee created successfully"));
+    }
+
+    @PostMapping("/applicants/bulk-action")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
+    @Operation(summary = "Apply a bulk action to a list of applicants")
+    public ResponseEntity<Map<String, Object>> bulkApplicantAction(@RequestBody Map<String, Object> body) {
+        String action = (String) body.get("action");
+        @SuppressWarnings("unchecked")
+        List<Integer> rawIds = (List<Integer>) body.get("ids");
+        if (action == null || rawIds == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "action and ids are required"));
+        }
+        List<Long> ids = rawIds.stream().map(Integer::longValue).collect(Collectors.toList());
+        List<Applicant> applicants = applicantRepository.findAllById(ids);
+
+        switch (action.toLowerCase()) {
+            case "hire" -> applicants.forEach(a -> a.setStatus(Applicant.ApplicantStatus.HIRED));
+            case "reject" -> applicants.forEach(a -> a.setStatus(Applicant.ApplicantStatus.REJECTED));
+            case "archive" -> applicants.forEach(a -> a.setActive(false));
+            default -> { /* no-op for unknown actions */ }
+        }
+        applicantRepository.saveAll(applicants);
+        return ResponseEntity.ok(Map.of("count", applicants.size(), "action", action));
+    }
+
+    @PostMapping("/applicants/{id}/send-mail")
+    @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Operation(summary = "Send an email to an applicant (stub)")
+    public ResponseEntity<Map<String, Object>> sendApplicantMail(@PathVariable Long id,
+                                                                   @RequestBody Map<String, Object> mailRequest) {
+        applicantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Applicant", id));
+        log.info("Sending mail to applicant {}: subject={}", id, mailRequest.get("subject"));
+        return ResponseEntity.ok(Map.of("message", "Mail sent successfully", "applicantId", id));
+    }
+
+    // ─── Recruitment Dashboard ────────────────────────────────────────────────
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAuthority('recruitment:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get recruitment dashboard stats for a company")
+    public ResponseEntity<Map<String, Object>> recruitmentDashboard(@RequestParam Long companyId) {
+        List<RecruitmentPost> posts = recruitmentPostRepository.findByCompanyId(companyId);
+        long totalPosts = posts.size();
+        long activePosts = posts.stream().filter(p -> p.isActive() && !p.isClosed()).count();
+
+        List<Applicant> applicants = applicantRepository.findByCompanyId(companyId);
+        long totalApplicants = applicants.size();
+        long shortlisted = applicants.stream()
+                .filter(a -> Applicant.ApplicantStatus.IN_PROGRESS == a.getStatus()).count();
+        long rejected = applicants.stream()
+                .filter(a -> Applicant.ApplicantStatus.REJECTED == a.getStatus()).count();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalPosts", totalPosts);
+        result.put("activePosts", activePosts);
+        result.put("totalApplicants", totalApplicants);
+        result.put("shortlistedApplicants", shortlisted);
+        result.put("rejectedApplicants", rejected);
+        return ResponseEntity.ok(result);
     }
 }

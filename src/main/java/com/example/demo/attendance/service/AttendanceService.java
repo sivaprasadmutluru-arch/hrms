@@ -7,6 +7,7 @@ import com.example.demo.attendance.entity.Attendance;
 import com.example.demo.attendance.entity.AttendanceLateComeEarlyOut;
 import com.example.demo.attendance.entity.AttendanceOverTime;
 import com.example.demo.attendance.repository.*;
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
@@ -16,14 +17,20 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
@@ -357,6 +364,200 @@ public class AttendanceService {
             cur = cur.plusDays(1);
         }
         return days;
+    }
+
+    // ─── Clock In / Out ───────────────────────────────────────────────────────
+
+    @Transactional
+    public AttendanceResponse clockIn(Long employeeId, Long companyId) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        Attendance att = new Attendance();
+        att.setEmployee(employee);
+        att.setCompany(company);
+        att.setAttendanceDate(LocalDate.now());
+        att.setCheckIn(LocalTime.now());
+        att.setCheckInDate(LocalDate.now());
+        att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+        return AttendanceResponse.from(attendanceRepository.save(att));
+    }
+
+    @Transactional
+    public AttendanceResponse clockOut(Long attendanceId) {
+        Attendance att = find(attendanceId);
+        att.setCheckOut(LocalTime.now());
+        att.setCheckOutDate(LocalDate.now());
+        att = attendanceRepository.save(att);
+        autoComputeOnCheckout(att);
+        return AttendanceResponse.from(att);
+    }
+
+    // ─── Not Clocked In / Out ─────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getNotClockedIn(Long companyId, LocalDate date) {
+        List<Employee> allActive = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, date);
+        Set<Long> presentIds = new HashSet<>();
+        for (Attendance a : attendances) {
+            if (a.getEmployee() != null) presentIds.add(a.getEmployee().getId());
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Employee emp : allActive) {
+            if (!presentIds.contains(emp.getId())) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", emp.getId());
+                m.put("name", emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : ""));
+                m.put("department", emp.getDepartment() != null ? emp.getDepartment().getName() : null);
+                result.add(m);
+            }
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getNotClockedOut(Long companyId, LocalDate date) {
+        List<Attendance> notOut = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(companyId, date);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Attendance a : notOut) {
+            Employee emp = a.getEmployee();
+            if (emp != null) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", emp.getId());
+                m.put("name", emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : ""));
+                m.put("department", emp.getDepartment() != null ? emp.getDepartment().getName() : null);
+                m.put("attendanceId", a.getId());
+                m.put("checkIn", a.getCheckIn());
+                result.add(m);
+            }
+        }
+        return result;
+    }
+
+    // ─── Today's Attendance ───────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<AttendanceResponse> getTodayAttendance(Long companyId) {
+        return attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, LocalDate.now())
+                .stream().map(AttendanceResponse::from).collect(Collectors.toList());
+    }
+
+    // ─── Bulk Approve Overtime ────────────────────────────────────────────────
+
+    @Transactional
+    public int bulkApproveOvertime(List<Long> ids) {
+        int count = 0;
+        for (Long id : ids) {
+            overtimeRepository.findById(id).ifPresent(ot -> {
+                ot.setStatus(AttendanceOverTime.OvertimeStatus.APPROVED);
+                overtimeRepository.save(ot);
+            });
+            count++;
+        }
+        return count;
+    }
+
+    // ─── Dashboard ────────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDashboard(Long companyId, LocalDate date) {
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        long totalEmployees = employeeRepository.countByCompanyIdAndIsActiveTrue(companyId);
+        List<Attendance> presentRecords = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNull(companyId, targetDate);
+        long presentToday = presentRecords.size();
+        long absentToday = totalEmployees - presentToday;
+        long notOutYet = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(companyId, targetDate).size();
+        // Count late arrivals on that date
+        List<Attendance> dayAttendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, targetDate);
+        long lateCount = dayAttendances.stream()
+                .flatMap(a -> lateComeEarlyOutRepository.findByAttendanceId(a.getId()).stream())
+                .filter(le -> le.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME)
+                .count();
+        long overtimePending = overtimeRepository.findByCompanyId(companyId).stream()
+                .filter(ot -> ot.getStatus() == AttendanceOverTime.OvertimeStatus.PENDING)
+                .count();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalEmployees", totalEmployees);
+        result.put("presentToday", presentToday);
+        result.put("absentToday", absentToday);
+        result.put("notOutYet", notOutYet);
+        result.put("lateCount", lateCount);
+        result.put("overtimePending", overtimePending);
+        return result;
+    }
+
+    // ─── Excel Export / Import ────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public void exportToExcel(Long companyId, HttpServletResponse response) throws IOException {
+        List<Attendance> records = attendanceRepository.findByCompanyId(companyId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=attendance.xlsx");
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Attendance");
+            Row header = sheet.createRow(0);
+            String[] columns = {"Employee Name", "Date", "Check-In", "Check-Out", "Worked Hours", "Status"};
+            for (int i = 0; i < columns.length; i++) {
+                header.createCell(i).setCellValue(columns[i]);
+            }
+            int rowNum = 1;
+            for (Attendance a : records) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(a.getEmployee() != null
+                        ? a.getEmployee().getFirstName() + " " + (a.getEmployee().getLastName() != null ? a.getEmployee().getLastName() : "") : "");
+                row.createCell(1).setCellValue(a.getAttendanceDate() != null ? a.getAttendanceDate().toString() : "");
+                row.createCell(2).setCellValue(a.getCheckIn() != null ? a.getCheckIn().toString() : "");
+                row.createCell(3).setCellValue(a.getCheckOut() != null ? a.getCheckOut().toString() : "");
+                row.createCell(4).setCellValue(a.getWorkedHour() != null ? a.getWorkedHour() : 0.0);
+                row.createCell(5).setCellValue(a.getAttendanceValidated() != null ? a.getAttendanceValidated().name() : "");
+            }
+            workbook.write(response.getOutputStream());
+        }
+    }
+
+    @Transactional
+    public int importFromExcel(MultipartFile file, Long companyId) throws IOException {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        int count = 0;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                String employeeName = getCellString(row, 0);
+                String dateStr = getCellString(row, 1);
+                String checkInStr = getCellString(row, 2);
+                String checkOutStr = getCellString(row, 3);
+                if (employeeName == null || employeeName.isBlank() || dateStr == null || dateStr.isBlank()) continue;
+                // Try to match employee by name (first last)
+                String[] parts = employeeName.trim().split(" ", 2);
+                String firstName = parts[0];
+                List<Employee> employees = employeeRepository.findByCompanyId(companyId);
+                Employee found = employees.stream()
+                        .filter(e -> e.getFirstName() != null && e.getFirstName().equalsIgnoreCase(firstName))
+                        .findFirst().orElse(null);
+                if (found == null) continue;
+                Attendance att = new Attendance();
+                att.setEmployee(found);
+                att.setCompany(company);
+                try { att.setAttendanceDate(LocalDate.parse(dateStr)); } catch (Exception e) { continue; }
+                try { if (checkInStr != null && !checkInStr.isBlank()) att.setCheckIn(LocalTime.parse(checkInStr)); } catch (Exception ignored) {}
+                try { if (checkOutStr != null && !checkOutStr.isBlank()) att.setCheckOut(LocalTime.parse(checkOutStr)); } catch (Exception ignored) {}
+                att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+                attendanceRepository.save(att);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private String getCellString(Row row, int col) {
+        if (row.getCell(col) == null) return null;
+        return row.getCell(col).toString().trim();
     }
 
     private Attendance buildAttendance(Attendance att, AttendanceRequest req) {
