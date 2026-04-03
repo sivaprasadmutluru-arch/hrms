@@ -28,4 +28,8 @@ public class AttendanceCalendarDayDto {
     private int penalties;
     private String status;
     private String rowClass;
+    /** dayType: present | irregular | absent | on_leave | holiday | weekly_off | future */
+    private String dayType;
+    private String leaveTypeName;
+    private String holidayName;
 }

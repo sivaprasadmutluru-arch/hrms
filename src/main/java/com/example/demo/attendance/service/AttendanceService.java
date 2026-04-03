@@ -17,6 +17,10 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.leave.entity.Holiday;
+import com.example.demo.leave.entity.LeaveRequest;
+import com.example.demo.leave.repository.HolidayRepository;
+import com.example.demo.leave.repository.LeaveRequestRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +55,8 @@ public class AttendanceService {
     private final AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
     private final AttendanceOverTimeRepository overtimeRepository;
     private final GraceTimeRepository graceTimeRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final HolidayRepository holidayRepository;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -293,36 +299,120 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public List<AttendanceCalendarDayDto> getCalendar(int year, int month, Long employeeId) {
         Long resolvedEmployeeId = employeeId;
+        Long resolvedCompanyId = null;
+
         if (resolvedEmployeeId == null) {
             AccessScopeContext.ScopeData scope = AccessScopeContext.get();
             if (scope != null && scope.getUserId() != null) {
                 Employee emp = employeeRepository.findByUserId(scope.getUserId()).orElse(null);
-                if (emp != null) resolvedEmployeeId = emp.getId();
+                if (emp != null) {
+                    resolvedEmployeeId = emp.getId();
+                    if (emp.getCompany() != null) resolvedCompanyId = emp.getCompany().getId();
+                }
             }
+        } else {
+            Employee emp = employeeRepository.findById(resolvedEmployeeId).orElse(null);
+            if (emp != null && emp.getCompany() != null) resolvedCompanyId = emp.getCompany().getId();
         }
+
         if (resolvedEmployeeId == null) return Collections.emptyList();
 
         LocalDate first = LocalDate.of(year, month, 1);
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
         LocalDate today = LocalDate.now();
 
-        List<Attendance> attendances = attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(resolvedEmployeeId, first, last);
+        // Attendance records for the month
+        List<Attendance> attendances = attendanceRepository
+                .findByEmployeeIdAndAttendanceDateBetween(resolvedEmployeeId, first, last);
         Map<LocalDate, Attendance> attendanceMap = attendances.stream()
                 .collect(Collectors.toMap(Attendance::getAttendanceDate, a -> a));
 
-        List<AttendanceLateComeEarlyOut> lateEarlyList = lateComeEarlyOutRepository.findByEmployeeId(resolvedEmployeeId);
+        // Late/early records
+        List<AttendanceLateComeEarlyOut> lateEarlyList =
+                lateComeEarlyOutRepository.findByEmployeeId(resolvedEmployeeId);
         Map<Long, List<AttendanceLateComeEarlyOut>> lateEarlyByAttendance = lateEarlyList.stream()
                 .collect(Collectors.groupingBy(le -> le.getAttendance().getId()));
 
+        // Approved leaves that overlap with this month
+        List<LeaveRequest> approvedLeaves = leaveRequestRepository
+                .findByEmployeeIdAndStatus(resolvedEmployeeId, LeaveRequest.LeaveStatus.APPROVED);
+        // Build a map of date → leaveTypeName for quick lookup
+        Map<LocalDate, String> leaveDayMap = new HashMap<>();
+        for (LeaveRequest lr : approvedLeaves) {
+            if (lr.getStartDate() == null || lr.getEndDate() == null) continue;
+            LocalDate lStart = lr.getStartDate().isBefore(first) ? first : lr.getStartDate();
+            LocalDate lEnd = lr.getEndDate().isAfter(last) ? last : lr.getEndDate();
+            String typeName = lr.getLeaveType() != null ? lr.getLeaveType().getName() : "Leave";
+            for (LocalDate d = lStart; !d.isAfter(lEnd); d = d.plusDays(1)) {
+                leaveDayMap.put(d, typeName);
+            }
+        }
+
+        // Holidays for the company this month
+        Map<LocalDate, String> holidayMap = new HashMap<>();
+        if (resolvedCompanyId != null) {
+            List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(resolvedCompanyId, first, last);
+            for (Holiday h : holidays) {
+                if (h.getStartDate() == null) continue;
+                LocalDate hEnd = h.getEndDate() != null ? h.getEndDate() : h.getStartDate();
+                LocalDate hStart = h.getStartDate().isBefore(first) ? first : h.getStartDate();
+                hEnd = hEnd.isAfter(last) ? last : hEnd;
+                for (LocalDate d = hStart; !d.isAfter(hEnd); d = d.plusDays(1)) {
+                    holidayMap.put(d, h.getName() != null ? h.getName() : "Holiday");
+                }
+            }
+        }
+
         List<AttendanceCalendarDayDto> days = new ArrayList<>();
         LocalDate cur = first;
-        while (!cur.isAfter(last) && !cur.isAfter(today)) {
+        while (!cur.isAfter(last)) {
             AttendanceCalendarDayDto dto = new AttendanceCalendarDayDto();
             dto.setDate(cur);
             dto.setDateName(cur.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH));
+            dto.setTypes(Collections.emptyList());
+
+            // Future date
+            if (cur.isAfter(today)) {
+                dto.setStatus("future");
+                dto.setRowClass("gray");
+                dto.setDayType("future");
+                days.add(dto);
+                cur = cur.plusDays(1);
+                continue;
+            }
+
+            // Public holiday takes highest precedence
+            if (holidayMap.containsKey(cur)) {
+                dto.setStatus("holiday");
+                dto.setRowClass("gray");
+                dto.setDayType("holiday");
+                dto.setHolidayName(holidayMap.get(cur));
+                days.add(dto);
+                cur = cur.plusDays(1);
+                continue;
+            }
+
+            // Weekend (Sat/Sun) with no attendance record → Weekly Off
+            boolean isWeekend = cur.getDayOfWeek().getValue() >= 6; // 6=SAT, 7=SUN
 
             Attendance att = attendanceMap.get(cur);
-            if (att != null) {
+
+            if (att == null) {
+                if (leaveDayMap.containsKey(cur)) {
+                    dto.setStatus("on_leave");
+                    dto.setRowClass("gray");
+                    dto.setDayType("on_leave");
+                    dto.setLeaveTypeName(leaveDayMap.get(cur));
+                } else if (isWeekend) {
+                    dto.setStatus("weekly_off");
+                    dto.setRowClass("gray");
+                    dto.setDayType("weekly_off");
+                } else {
+                    dto.setStatus("absent");
+                    dto.setRowClass("orange");
+                    dto.setDayType("absent");
+                }
+            } else {
                 dto.setAttendanceId(att.getId());
                 dto.setCheckIn(att.getCheckIn());
                 dto.setCheckInDate(att.getCheckInDate());
@@ -339,25 +429,27 @@ public class AttendanceService {
                     dto.setPendingHour(pending > 0 ? pending : 0.0);
                 }
 
-                List<AttendanceLateComeEarlyOut> les = lateEarlyByAttendance.getOrDefault(att.getId(), Collections.emptyList());
+                List<AttendanceLateComeEarlyOut> les =
+                        lateEarlyByAttendance.getOrDefault(att.getId(), Collections.emptyList());
                 dto.setTypes(les.stream().map(le -> le.getType().name()).collect(Collectors.toList()));
                 dto.setPenalties(les.size());
 
+                // Determine status & dayType
                 if (Boolean.TRUE.equals(att.getIsValidateRequestApproved())) {
-                    dto.setStatus("approved"); dto.setRowClass("blue");
+                    dto.setStatus("approved"); dto.setRowClass("blue"); dto.setDayType("present");
                 } else if (Boolean.TRUE.equals(att.getIsValidateRequest())) {
-                    dto.setStatus("requested"); dto.setRowClass("orange");
+                    dto.setStatus("requested"); dto.setRowClass("orange"); dto.setDayType("irregular");
                 } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.APPROVED) {
-                    dto.setStatus("on_time"); dto.setRowClass("green");
+                    dto.setStatus("on_time"); dto.setRowClass("green"); dto.setDayType("present");
                 } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.REJECTED) {
-                    dto.setStatus("rejected"); dto.setRowClass("red");
+                    dto.setStatus("rejected"); dto.setRowClass("red"); dto.setDayType("absent");
                 } else {
-                    dto.setStatus("not_regularized"); dto.setRowClass("red");
+                    // Has record but not validated — irregular
+                    boolean hasIssues = !les.isEmpty();
+                    dto.setStatus("not_regularized");
+                    dto.setRowClass(hasIssues ? "orange" : "green");
+                    dto.setDayType(hasIssues ? "irregular" : "present");
                 }
-            } else {
-                dto.setTypes(Collections.emptyList());
-                dto.setStatus("no_record");
-                dto.setRowClass("gray");
             }
 
             days.add(dto);

@@ -63,6 +63,7 @@ public class PayrollController {
     private final JobRoleRepository jobRoleRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
     private final WorkTypeRepository workTypeRepository;
+    private final PayrollBatchGroupRepository payrollBatchGroupRepository;
 
     @GetMapping("/contracts")
     @PreAuthorize("hasAuthority('payroll:view')")
@@ -938,38 +939,54 @@ public class PayrollController {
         return ResponseEntity.noContent().build();
     }
 
-    // ─── Batch Groups (stub) ──────────────────────────────────────────────────
+    // ─── Batch Groups ─────────────────────────────────────────────────────────
 
     @GetMapping("/batch-groups")
     @PreAuthorize("hasAuthority('payroll:view')")
-    @Operation(summary = "List payroll batch groups (stub)")
-    public ResponseEntity<List<Map<String, Object>>> listBatchGroups() {
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+    @Transactional(readOnly = true)
+    @Operation(summary = "List payroll batch groups (company-scoped)")
+    public ResponseEntity<List<PayrollBatchGroup>> listBatchGroups() {
+        var spec = ScopeFilter.<PayrollBatchGroup>byCompany();
+        return ResponseEntity.ok(spec != null
+                ? payrollBatchGroupRepository.findAll(spec)
+                : payrollBatchGroupRepository.findAll());
     }
 
     @PostMapping("/batch-groups")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Operation(summary = "Create a payroll batch group (stub)")
-    public ResponseEntity<Map<String, Object>> createBatchGroup(@RequestBody Map<String, Object> body) {
-        Map<String, Object> result = new HashMap<>(body);
-        result.put("id", 1L);
-        return ResponseEntity.ok(result);
+    @Transactional
+    @Operation(summary = "Create a payroll batch group")
+    public ResponseEntity<PayrollBatchGroup> createBatchGroup(@RequestBody PayrollBatchGroup batchGroup) {
+        if (batchGroup.getCompany() != null && batchGroup.getCompany().getId() != null) {
+            batchGroup.setCompany(companyRepository.getReferenceById(batchGroup.getCompany().getId()));
+        }
+        return ResponseEntity.ok(payrollBatchGroupRepository.save(batchGroup));
     }
 
     @PutMapping("/batch-groups/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Operation(summary = "Update a payroll batch group (stub)")
-    public ResponseEntity<Map<String, Object>> updateBatchGroup(@PathVariable Long id,
-                                                                 @RequestBody Map<String, Object> body) {
-        Map<String, Object> result = new HashMap<>(body);
-        result.put("id", id);
-        return ResponseEntity.ok(result);
+    @Transactional
+    @Operation(summary = "Update a payroll batch group")
+    public ResponseEntity<PayrollBatchGroup> updateBatchGroup(@PathVariable Long id,
+                                                               @RequestBody PayrollBatchGroup updated) {
+        PayrollBatchGroup group = payrollBatchGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("PayrollBatchGroup", id));
+        group.setName(updated.getName());
+        group.setDescription(updated.getDescription());
+        group.setStartDate(updated.getStartDate());
+        group.setEndDate(updated.getEndDate());
+        return ResponseEntity.ok(payrollBatchGroupRepository.save(group));
     }
 
     @DeleteMapping("/batch-groups/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Operation(summary = "Delete a payroll batch group (stub)")
+    @Transactional
+    @Operation(summary = "Delete a payroll batch group")
     public ResponseEntity<Void> deleteBatchGroup(@PathVariable Long id) {
+        PayrollBatchGroup group = payrollBatchGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("PayrollBatchGroup", id));
+        group.setActive(false);
+        payrollBatchGroupRepository.save(group);
         return ResponseEntity.noContent().build();
     }
 

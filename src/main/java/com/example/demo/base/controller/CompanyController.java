@@ -68,6 +68,13 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.getBranches(headOfficeId));
     }
 
+    @GetMapping("/branches/summary")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN')")
+    @Operation(summary = "List branches with active employee count (via query param)")
+    public ResponseEntity<List<Map<String, Object>>> branchesSummaryByParam(@RequestParam Long companyId) {
+        return branchesSummary(companyId);
+    }
+
     @GetMapping("/{headOfficeId}/branches-summary")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN')")
     @Operation(summary = "List branches with active employee count")

@@ -117,10 +117,13 @@ public class RecruitmentController {
 
     @PutMapping("/applicants/{id}/stage")
     @PreAuthorize("hasAuthority('recruitment:edit')")
+    @Transactional
     public ResponseEntity<Applicant> updateStage(@PathVariable Long id, @RequestParam Long stageId) {
         Applicant applicant = applicantRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Applicant", id));
-        // Stage lookup would be done here
+        RecruitmentStage stage = recruitmentStageRepository.findById(stageId)
+                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentStage", stageId));
+        applicant.setStage(stage);
         return ResponseEntity.ok(applicantRepository.save(applicant));
     }
 
@@ -827,6 +830,8 @@ public class RecruitmentController {
                 .filter(a -> Applicant.ApplicantStatus.IN_PROGRESS == a.getStatus()).count();
         long rejected = applicants.stream()
                 .filter(a -> Applicant.ApplicantStatus.REJECTED == a.getStatus()).count();
+        long hired = applicants.stream()
+                .filter(a -> Applicant.ApplicantStatus.HIRED == a.getStatus()).count();
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("totalPosts", totalPosts);
@@ -834,6 +839,7 @@ public class RecruitmentController {
         result.put("totalApplicants", totalApplicants);
         result.put("shortlistedApplicants", shortlisted);
         result.put("rejectedApplicants", rejected);
+        result.put("hiredApplicants", hired);
         return ResponseEntity.ok(result);
     }
 }

@@ -33,6 +33,17 @@ public class HelpdeskExtrasController {
     private final com.example.demo.helpdesk.repository.TicketRepository ticketRepository;
     private final com.example.demo.base.repository.DepartmentRepository departmentRepository;
 
+    // ─── Dashboard summary (GET /api/helpdesk) ────────────────────────────────
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List helpdesk tickets (company-scoped, for dashboard)")
+    public ResponseEntity<List<Ticket>> listTickets() {
+        var spec = ScopeFilter.<Ticket>byCompany();
+        return ResponseEntity.ok(spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll());
+    }
+
     // ─── Claims ───────────────────────────────────────────────────────────────
 
     @GetMapping("/claims")
