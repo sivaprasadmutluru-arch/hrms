@@ -768,6 +768,98 @@ public class LeaveController {
         return ResponseEntity.ok(Map.of("message", "Import completed", "count", count));
     }
 
+    // ─── Export Holidays ──────────────────────────────────────────────────────
+
+    @GetMapping("/holidays/export")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Export holidays as Excel")
+    public void exportHolidays(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
+        List<Holiday> holidays = holidayRepository.findByCompanyId(companyId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=holidays.xlsx");
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Holidays");
+            Row header = sheet.createRow(0);
+            String[] cols = {"Name", "Start Date", "End Date", "Recurring"};
+            for (int i = 0; i < cols.length; i++) {
+                header.createCell(i).setCellValue(cols[i]);
+            }
+            int rowNum = 1;
+            for (Holiday h : holidays) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(h.getName() != null ? h.getName() : "");
+                row.createCell(1).setCellValue(h.getStartDate() != null ? h.getStartDate().toString() : "");
+                row.createCell(2).setCellValue(h.getEndDate() != null ? h.getEndDate().toString() : "");
+                row.createCell(3).setCellValue(Boolean.TRUE.equals(h.getRecurring()) ? "Yes" : "No");
+            }
+            workbook.write(response.getOutputStream());
+        }
+    }
+
+    // ─── Import Holidays ──────────────────────────────────────────────────────
+
+    @PostMapping("/holidays/import")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Import holidays from Excel")
+    public ResponseEntity<Map<String, Object>> importHolidays(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Long companyId) throws IOException {
+        int imported = 0;
+        List<String> errors = new ArrayList<>();
+        try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                try {
+                    Cell nameCell = row.getCell(0);
+                    Cell startCell = row.getCell(1);
+                    Cell endCell = row.getCell(2);
+                    Cell recurringCell = row.getCell(3);
+
+                    if (nameCell == null || nameCell.getCellType() == CellType.BLANK) {
+                        errors.add("Row " + (i + 1) + ": Name is required");
+                        continue;
+                    }
+                    String name = nameCell.getStringCellValue().trim();
+
+                    if (startCell == null || startCell.getCellType() == CellType.BLANK) {
+                        errors.add("Row " + (i + 1) + ": Start Date is required");
+                        continue;
+                    }
+                    LocalDate startDate = LocalDate.parse(startCell.getStringCellValue().trim());
+
+                    LocalDate endDate = null;
+                    if (endCell != null && endCell.getCellType() != CellType.BLANK) {
+                        endDate = LocalDate.parse(endCell.getStringCellValue().trim());
+                    }
+
+                    boolean recurring = false;
+                    if (recurringCell != null && recurringCell.getCellType() != CellType.BLANK) {
+                        String recurringVal = recurringCell.getStringCellValue().trim().toLowerCase();
+                        recurring = "true".equals(recurringVal) || "yes".equals(recurringVal);
+                    }
+
+                    Holiday holiday = new Holiday();
+                    holiday.setName(name);
+                    holiday.setStartDate(startDate);
+                    holiday.setEndDate(endDate);
+                    holiday.setRecurring(recurring);
+                    holiday.setCompany(companyRepository.getReferenceById(companyId));
+                    holidayRepository.save(holiday);
+                    imported++;
+                } catch (Exception e) {
+                    errors.add("Row " + (i + 1) + ": " + e.getMessage());
+                }
+            }
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("imported", imported);
+        result.put("errors", errors);
+        return ResponseEntity.ok(result);
+    }
+
     // ─── Dashboard ────────────────────────────────────────────────────────────
 
     @GetMapping("/dashboard")

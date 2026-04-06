@@ -6,6 +6,8 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.*;
 import com.example.demo.employee.repository.*;
+import com.example.demo.payroll.entity.EncashmentCondition;
+import com.example.demo.payroll.repository.EncashmentConditionRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,7 @@ public class EmployeeExtrasController {
     private final EmployeeGeneralSettingRepository employeeGeneralSettingRepository;
     private final ProfileEditFeatureRepository profileEditFeatureRepository;
     private final PolicyRepository policyRepository;
+    private final EncashmentConditionRepository encashmentConditionRepository;
 
     // ─── Work Information ────────────────────────────────────────────────────
 
@@ -510,5 +513,45 @@ public class EmployeeExtrasController {
                 .toList();
         policy.setSpecificEmployees(employees);
         return ResponseEntity.ok(policyRepository.save(policy));
+    }
+
+    // ─── Encashment Condition per Employee ────────────────────────────────────
+
+    @GetMapping("/employees/{id}/encashment-condition")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get encashment condition for an employee")
+    public ResponseEntity<EncashmentCondition> getEncashmentCondition(@PathVariable Long id) {
+        return encashmentConditionRepository.findByEmployeeId(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/employees/{id}/encashment-condition")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT')")
+    @Transactional
+    @Operation(summary = "Create or update encashment condition for an employee")
+    public ResponseEntity<EncashmentCondition> upsertEncashmentCondition(@PathVariable Long id,
+                                                                          @RequestBody EncashmentCondition body) {
+        EncashmentCondition condition = encashmentConditionRepository.findByEmployeeId(id)
+                .orElseGet(() -> {
+                    EncashmentCondition n = new EncashmentCondition();
+                    n.setEmployee(employeeRepository.getReferenceById(id));
+                    return n;
+                });
+        condition.setMaxEncashableDays(body.getMaxEncashableDays());
+        condition.setEligibleLeaveTypes(body.getEligibleLeaveTypes());
+        condition.setIsEligible(body.getIsEligible());
+        condition.setNotes(body.getNotes());
+        return ResponseEntity.ok(encashmentConditionRepository.save(condition));
+    }
+
+    @DeleteMapping("/employees/{id}/encashment-condition")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT')")
+    @Transactional
+    @Operation(summary = "Delete encashment condition for an employee")
+    public ResponseEntity<Map<String, String>> deleteEncashmentCondition(@PathVariable Long id) {
+        encashmentConditionRepository.findByEmployeeId(id).ifPresent(encashmentConditionRepository::delete);
+        return ResponseEntity.ok(Map.of("message", "Encashment condition deleted"));
     }
 }

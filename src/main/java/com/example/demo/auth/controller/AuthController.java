@@ -105,4 +105,20 @@ public class AuthController {
         authService.resetPassword(token, newPassword);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
+
+    @PostMapping("/change-username")
+    @Operation(summary = "Change username for the current user")
+    public ResponseEntity<Map<String, String>> changeUsername(@AuthenticationPrincipal UserPrincipal user,
+                                                              @RequestBody Map<String, String> body) {
+        authService.changeUsername(user.getId(), body.get("newUsername"));
+        return ResponseEntity.ok(Map.of("message", "Username updated successfully"));
+    }
+
+    @PostMapping("/change-password")
+    @Operation(summary = "Change password for the current user")
+    public ResponseEntity<Map<String, String>> changePassword(@AuthenticationPrincipal UserPrincipal user,
+                                                              @RequestBody Map<String, String> body) {
+        authService.changePassword(user.getId(), body.get("currentPassword"), body.get("newPassword"));
+        return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+    }
 }

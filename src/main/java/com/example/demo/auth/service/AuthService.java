@@ -14,6 +14,7 @@ import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.exception.BadRequestException;
+import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -132,6 +133,28 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void changeUsername(Long userId, String newUsername) {
+        if (userRepository.existsByUsername(newUsername)) {
+            throw new BadRequestException("Username already taken");
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        user.setUsername(newUsername);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
 }

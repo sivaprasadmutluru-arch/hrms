@@ -3,6 +3,7 @@ package com.example.demo.notification.service;
 import com.example.demo.auth.entity.User;
 import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.base.entity.Company;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.notification.entity.Notification;
 import com.example.demo.notification.repository.NotificationRepository;
@@ -54,5 +55,20 @@ public class NotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
         n.setIsRead(true);
         notificationRepository.save(n);
+    }
+
+    @Transactional
+    public void deleteNotification(Long notificationId, Long userId) {
+        Notification n = notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
+        if (!n.getRecipient().getId().equals(userId)) {
+            throw new BadRequestException("Notification does not belong to the current user");
+        }
+        notificationRepository.delete(n);
+    }
+
+    @Transactional
+    public void deleteAllNotifications(Long userId) {
+        notificationRepository.deleteAllByRecipientId(userId);
     }
 }

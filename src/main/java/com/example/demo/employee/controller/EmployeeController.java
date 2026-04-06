@@ -265,6 +265,219 @@ public class EmployeeController {
         }
     }
 
+    // ─── Work Info Export ─────────────────────────────────────────────────────
+
+    @GetMapping("/work-info/export")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Export work information for all employees of a company as Excel")
+    public void exportWorkInfo(@RequestParam Long companyId,
+                               HttpServletResponse response) throws IOException {
+        List<Employee> employees = employeeRepository.findByCompanyId(companyId);
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition", "attachment; filename=work_info_" + companyId + ".xlsx");
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            org.apache.poi.xssf.usermodel.XSSFSheet sheet = wb.createSheet("Work Info");
+            String[] headers = {
+                "Employee ID", "Employee Name", "Department", "Job Position",
+                "Job Role", "Work Type", "Shift Schedule", "Reporting Manager", "Date of Joining"
+            };
+            org.apache.poi.xssf.usermodel.XSSFRow headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                headerRow.createCell(i).setCellValue(headers[i]);
+            }
+            int rowIdx = 1;
+            for (Employee emp : employees) {
+                EmployeeWorkInformation wi = employeeWorkInformationRepository
+                        .findByEmployeeId(emp.getId()).orElse(null);
+                org.apache.poi.xssf.usermodel.XSSFRow row = sheet.createRow(rowIdx++);
+                row.createCell(0).setCellValue(emp.getId() != null ? emp.getId() : 0L);
+                row.createCell(1).setCellValue(
+                        (emp.getFirstName() != null ? emp.getFirstName() : "") + " " +
+                        (emp.getLastName() != null ? emp.getLastName() : ""));
+                row.createCell(2).setCellValue(wi != null && wi.getDepartment() != null ? wi.getDepartment().getName() : "");
+                row.createCell(3).setCellValue(wi != null && wi.getJobPosition() != null ? wi.getJobPosition().getName() : "");
+                row.createCell(4).setCellValue(wi != null && wi.getJobRole() != null ? wi.getJobRole().getName() : "");
+                row.createCell(5).setCellValue(wi != null && wi.getWorkType() != null ? wi.getWorkType().getName() : "");
+                row.createCell(6).setCellValue(wi != null && wi.getShift() != null ? wi.getShift().getName() : "");
+                Employee mgr = wi != null ? wi.getReportingManager() : null;
+                row.createCell(7).setCellValue(mgr != null ?
+                        (mgr.getFirstName() != null ? mgr.getFirstName() : "") + " " +
+                        (mgr.getLastName() != null ? mgr.getLastName() : "") : "");
+                row.createCell(8).setCellValue(wi != null && wi.getDateJoining() != null ? wi.getDateJoining().toString() : "");
+            }
+            wb.write(response.getOutputStream());
+        }
+    }
+
+    // ─── Work Info Import ─────────────────────────────────────────────────────
+
+    @PostMapping("/work-info/import")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Import work information for employees from an Excel file")
+    public ResponseEntity<Map<String, Object>> importWorkInfo(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Long companyId) throws IOException {
+
+        int updated = 0;
+        List<String> errors = new ArrayList<>();
+
+        try (org.apache.poi.ss.usermodel.Workbook wb = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = wb.getSheetAt(0);
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                String empIdStr = getCellStr(row, 0);
+                if (empIdStr == null || empIdStr.isBlank()) continue;
+
+                Long empId;
+                try {
+                    empId = Long.parseLong(empIdStr.trim());
+                } catch (NumberFormatException ex) {
+                    errors.add("Row " + (i + 1) + ": invalid Employee ID '" + empIdStr + "'");
+                    continue;
+                }
+
+                Employee emp = employeeRepository.findById(empId).orElse(null);
+                if (emp == null) {
+                    errors.add("Row " + (i + 1) + ": employee not found for ID " + empId);
+                    continue;
+                }
+
+                EmployeeWorkInformation wi = employeeWorkInformationRepository
+                        .findByEmployeeId(empId)
+                        .orElseGet(() -> {
+                            EmployeeWorkInformation n = new EmployeeWorkInformation();
+                            n.setEmployee(emp);
+                            return n;
+                        });
+
+                String deptName = getCellStr(row, 1);
+                if (deptName != null && !deptName.isBlank()) {
+                    departmentRepository.findAll().stream()
+                            .filter(d -> deptName.trim().equalsIgnoreCase(d.getName()))
+                            .findFirst()
+                            .ifPresent(wi::setDepartment);
+                }
+
+                String jobPosName = getCellStr(row, 2);
+                if (jobPosName != null && !jobPosName.isBlank()) {
+                    jobPositionRepository.findAll().stream()
+                            .filter(jp -> jobPosName.trim().equalsIgnoreCase(jp.getName()))
+                            .findFirst()
+                            .ifPresent(wi::setJobPosition);
+                }
+
+                String shiftName = getCellStr(row, 3);
+                if (shiftName != null && !shiftName.isBlank()) {
+                    shiftScheduleRepository.findAll().stream()
+                            .filter(s -> shiftName.trim().equalsIgnoreCase(s.getName()))
+                            .findFirst()
+                            .ifPresent(wi::setShift);
+                }
+
+                String workTypeName = getCellStr(row, 4);
+                if (workTypeName != null && !workTypeName.isBlank()) {
+                    workTypeRepository.findAll().stream()
+                            .filter(wt -> workTypeName.trim().equalsIgnoreCase(wt.getName()))
+                            .findFirst()
+                            .ifPresent(wi::setWorkType);
+                }
+
+                String mgrIdStr = getCellStr(row, 5);
+                if (mgrIdStr != null && !mgrIdStr.isBlank()) {
+                    try {
+                        Long mgrId = Long.parseLong(mgrIdStr.trim());
+                        employeeRepository.findById(mgrId).ifPresent(wi::setReportingManager);
+                    } catch (NumberFormatException ex) {
+                        errors.add("Row " + (i + 1) + ": invalid Reporting Manager ID '" + mgrIdStr + "'");
+                    }
+                }
+
+                employeeWorkInformationRepository.save(wi);
+                updated++;
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("updated", updated);
+        result.put("errors", errors);
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Bulk Field Update ────────────────────────────────────────────────────
+
+    record BulkUpdateRequest(List<Long> employeeIds, String department, String shift, String workType, String jobPosition) {}
+
+    @PostMapping("/bulk-update")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Bulk update work info fields for a list of employees")
+    public ResponseEntity<Map<String, Object>> bulkUpdateWorkInfo(@RequestBody BulkUpdateRequest request) {
+        if (request.employeeIds() == null || request.employeeIds().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "employeeIds is required"));
+        }
+
+        com.example.demo.base.entity.Department resolvedDept = null;
+        if (request.department() != null && !request.department().isBlank()) {
+            resolvedDept = departmentRepository.findAll().stream()
+                    .filter(d -> request.department().trim().equalsIgnoreCase(d.getName()))
+                    .findFirst().orElse(null);
+        }
+
+        com.example.demo.base.entity.ShiftSchedule resolvedShift = null;
+        if (request.shift() != null && !request.shift().isBlank()) {
+            resolvedShift = shiftScheduleRepository.findAll().stream()
+                    .filter(s -> request.shift().trim().equalsIgnoreCase(s.getName()))
+                    .findFirst().orElse(null);
+        }
+
+        com.example.demo.base.entity.WorkType resolvedWorkType = null;
+        if (request.workType() != null && !request.workType().isBlank()) {
+            resolvedWorkType = workTypeRepository.findAll().stream()
+                    .filter(wt -> request.workType().trim().equalsIgnoreCase(wt.getName()))
+                    .findFirst().orElse(null);
+        }
+
+        com.example.demo.base.entity.JobPosition resolvedJobPosition = null;
+        if (request.jobPosition() != null && !request.jobPosition().isBlank()) {
+            resolvedJobPosition = jobPositionRepository.findAll().stream()
+                    .filter(jp -> request.jobPosition().trim().equalsIgnoreCase(jp.getName()))
+                    .findFirst().orElse(null);
+        }
+
+        final com.example.demo.base.entity.Department finalDept = resolvedDept;
+        final com.example.demo.base.entity.ShiftSchedule finalShift = resolvedShift;
+        final com.example.demo.base.entity.WorkType finalWorkType = resolvedWorkType;
+        final com.example.demo.base.entity.JobPosition finalJobPosition = resolvedJobPosition;
+
+        int updatedCount = 0;
+        for (Long empId : request.employeeIds()) {
+            Employee emp = employeeRepository.findById(empId).orElse(null);
+            if (emp == null) continue;
+
+            EmployeeWorkInformation wi = employeeWorkInformationRepository
+                    .findByEmployeeId(empId)
+                    .orElseGet(() -> {
+                        EmployeeWorkInformation n = new EmployeeWorkInformation();
+                        n.setEmployee(emp);
+                        return n;
+                    });
+
+            if (finalDept != null) wi.setDepartment(finalDept);
+            if (finalShift != null) wi.setShift(finalShift);
+            if (finalWorkType != null) wi.setWorkType(finalWorkType);
+            if (finalJobPosition != null) wi.setJobPosition(finalJobPosition);
+
+            employeeWorkInformationRepository.save(wi);
+            updatedCount++;
+        }
+
+        return ResponseEntity.ok(Map.of("updated", updatedCount));
+    }
+
     // ─── Dashboard ────────────────────────────────────────────────────────────
 
     @GetMapping("/dashboard")
