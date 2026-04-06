@@ -27,7 +27,7 @@ public class Payslip extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "company", "department",
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "company",
             "jobPosition", "jobRole", "workType", "shift", "reportingManager", "user"})
     private Employee employee;
 

@@ -14,18 +14,18 @@ import java.util.Optional;
 @Repository
 public interface PayslipRepository extends JpaRepository<Payslip, Long>, JpaSpecificationExecutor<Payslip> {
 
-    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company")
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company")
     List<Payslip> findAllWithAssociations();
 
-    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company " +
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company " +
            "WHERE p.company.id IN :companyIds")
     List<Payslip> findAllWithAssociationsByCompanyIdIn(@Param("companyIds") List<Long> companyIds);
 
-    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company " +
-           "WHERE p.employee.id = :employeeId")
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company " +
+           "WHERE e.id = :employeeId")
     List<Payslip> findByEmployeeId(@Param("employeeId") Long employeeId);
 
-    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee LEFT JOIN FETCH p.company WHERE p.id = :id")
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company WHERE p.id = :id")
     Optional<Payslip> findByIdWithAssociations(@Param("id") Long id);
 
     List<Payslip> findByCompanyId(Long companyId);

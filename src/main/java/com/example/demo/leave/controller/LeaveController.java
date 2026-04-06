@@ -183,7 +183,7 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "Get leave balance for all employees (company-scoped)")
     public ResponseEntity<List<AvailableLeaveDTO>> listBalance() {
-        var spec = ScopeFilter.<AvailableLeave>byEmployee();
+        var spec = ScopeFilter.<AvailableLeave>byEmployeeCompany();
         List<AvailableLeave> result = spec != null
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();

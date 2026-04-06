@@ -85,7 +85,8 @@ public class CompanyService {
                 && request.getAdminPassword() != null && !request.getAdminPassword().isBlank()) {
             RegisterRequest reg = new RegisterRequest();
             reg.setUsername(request.getAdminUsername());
-            reg.setEmail(request.getAdminUsername());
+            reg.setEmail(request.getAdminEmail() != null && !request.getAdminEmail().isBlank()
+                    ? request.getAdminEmail() : request.getAdminUsername());
             reg.setPassword(request.getAdminPassword());
             User adminUser = authService.register(reg);
 

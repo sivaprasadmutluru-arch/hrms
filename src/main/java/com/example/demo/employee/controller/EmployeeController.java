@@ -17,6 +17,7 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.employee.repository.EmployeeTagRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.employee.service.EmployeeService;
+import com.example.demo.employee.service.GlobalEmployeeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -45,6 +46,7 @@ import java.util.stream.Collectors;
 public class EmployeeController {
 
     private final EmployeeService employeeService;
+    private final GlobalEmployeeService globalEmployeeService;
     private final EmployeeRepository employeeRepository;
     private final EmployeeTagRepository employeeTagRepository;
     private final CompanyRepository companyRepository;
@@ -60,6 +62,13 @@ public class EmployeeController {
     @Operation(summary = "List all employees (company-scoped)")
     public ResponseEntity<Page<EmployeeResponse>> list(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(employeeService.getAll(pageable));
+    }
+
+    @GetMapping("/global")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "List ALL employees across every organization (Super Admin only)")
+    public ResponseEntity<Page<EmployeeResponse>> listGlobal(@PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable));
     }
 
     @GetMapping("/{id}")
@@ -284,9 +293,9 @@ public class EmployeeController {
                 .collect(Collectors.toList());
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalEmployees", total);
-        result.put("activeEmployees", active);
-        result.put("inactiveEmployees", inactive);
+        result.put("total", total);
+        result.put("active", active);
+        result.put("inactive", inactive);
         result.put("departmentBreakdown", deptBreakdown);
         return ResponseEntity.ok(result);
     }

@@ -1,13 +1,10 @@
 package com.example.demo.helpdesk.controller;
 
-import com.example.demo.common.util.ScopeFilter;
-import com.example.demo.common.exception.ResourceNotFoundException;
-import com.example.demo.employee.entity.Employee;
-import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.helpdesk.entity.Ticket;
+import com.example.demo.helpdesk.entity.TicketAttachment;
 import com.example.demo.helpdesk.entity.TicketComment;
-import com.example.demo.helpdesk.repository.TicketCommentRepository;
-import com.example.demo.helpdesk.repository.TicketRepository;
+import com.example.demo.helpdesk.service.HelpdeskService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,89 +20,160 @@ import java.util.Map;
 @Tag(name = "Helpdesk")
 public class TicketController {
 
-    private final TicketRepository ticketRepository;
-    private final TicketCommentRepository ticketCommentRepository;
-    private final EmployeeRepository employeeRepository;
+    private final HelpdeskService helpdeskService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "List all tickets (company-scoped)")
     public ResponseEntity<List<Ticket>> list() {
-        var spec = ScopeFilter.<Ticket>byCompany();
-        return ResponseEntity.ok(spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll());
+        return ResponseEntity.ok(helpdeskService.listTickets());
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Get a ticket by ID")
     public ResponseEntity<Ticket> get(@PathVariable Long id) {
-        return ResponseEntity.ok(ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id)));
+        return ResponseEntity.ok(helpdeskService.getTicketById(id));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('helpdesk:create')")
+    @Operation(summary = "Create a new ticket")
     public ResponseEntity<Ticket> create(@RequestBody Ticket ticket) {
-        return ResponseEntity.ok(ticketRepository.save(ticket));
+        return ResponseEntity.ok(helpdeskService.createTicket(ticket));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Update a ticket")
     public ResponseEntity<Ticket> update(@PathVariable Long id, @RequestBody Ticket updated) {
-        Ticket ticket = ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
-        ticket.setTitle(updated.getTitle());
-        ticket.setDescription(updated.getDescription());
-        ticket.setStatus(updated.getStatus());
-        ticket.setPriority(updated.getPriority());
-        ticket.setAssignedTo(updated.getAssignedTo());
-        return ResponseEntity.ok(ticketRepository.save(ticket));
-    }
-
-    @PostMapping("/{id}/resolve")
-    @PreAuthorize("hasAuthority('helpdesk:edit')")
-    public ResponseEntity<Ticket> resolve(@PathVariable Long id) {
-        Ticket ticket = ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
-        ticket.setStatus(Ticket.TicketStatus.RESOLVED);
-        return ResponseEntity.ok(ticketRepository.save(ticket));
-    }
-
-    @PostMapping("/{id}/close")
-    @PreAuthorize("hasAuthority('helpdesk:edit')")
-    public ResponseEntity<Ticket> close(@PathVariable Long id) {
-        Ticket ticket = ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
-        ticket.setStatus(Ticket.TicketStatus.CLOSED);
-        return ResponseEntity.ok(ticketRepository.save(ticket));
+        return ResponseEntity.ok(helpdeskService.updateTicket(id, updated));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('helpdesk:delete')")
+    @Operation(summary = "Soft-delete a ticket")
     public ResponseEntity<Map<String, String>> delete(@PathVariable Long id) {
-        Ticket ticket = ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
-        ticket.setActive(false);
-        ticketRepository.save(ticket);
+        helpdeskService.deleteTicket(id);
         return ResponseEntity.ok(Map.of("message", "Ticket deactivated"));
     }
 
+    @PostMapping("/{id}/assign/{assigneeId}")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Assign a ticket to an employee")
+    public ResponseEntity<Ticket> assign(@PathVariable Long id, @PathVariable Long assigneeId) {
+        return ResponseEntity.ok(helpdeskService.assignTicket(id, assigneeId));
+    }
+
+    @PostMapping("/{id}/resolve")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Mark a ticket as resolved")
+    public ResponseEntity<Ticket> resolve(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.resolveTicket(id));
+    }
+
+    @PostMapping("/{id}/close")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Close a ticket")
+    public ResponseEntity<Ticket> close(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.closeTicket(id));
+    }
+
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Reopen a closed or resolved ticket")
+    public ResponseEntity<Ticket> reopen(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.reopenTicket(id));
+    }
+
+    @PostMapping("/{id}/escalate")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @Operation(summary = "Escalate a ticket to CRITICAL if past SLA (default 48h)")
+    public ResponseEntity<Ticket> escalate(@PathVariable Long id,
+                                           @RequestParam(defaultValue = "48") int slaHours) {
+        return ResponseEntity.ok(helpdeskService.escalateTicket(id, slaHours));
+    }
+
+    @GetMapping("/search")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Search tickets by keyword, status, type, and priority")
+    public ResponseEntity<List<Ticket>> search(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Ticket.TicketStatus status,
+            @RequestParam(required = false) Long typeId,
+            @RequestParam(required = false) Ticket.Priority priority) {
+        return ResponseEntity.ok(helpdeskService.searchTickets(keyword, status, typeId, priority));
+    }
+
+    @GetMapping("/by-employee/{employeeId}")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Get tickets raised by a specific employee")
+    public ResponseEntity<List<Ticket>> byEmployee(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(helpdeskService.getTicketsByEmployee(employeeId));
+    }
+
+    @GetMapping("/by-assignee/{employeeId}")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Get tickets assigned to a specific employee")
+    public ResponseEntity<List<Ticket>> byAssignee(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(helpdeskService.getTicketsByAssignee(employeeId));
+    }
+
+    @GetMapping("/by-department/{departmentId}")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Get tickets raised by employees in a specific department")
+    public ResponseEntity<List<Ticket>> byDepartment(@PathVariable Long departmentId) {
+        return ResponseEntity.ok(helpdeskService.getTicketsByDepartment(departmentId));
+    }
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "Get helpdesk dashboard statistics")
+    public ResponseEntity<Map<String, Object>> dashboard() {
+        return ResponseEntity.ok(helpdeskService.getDashboard());
+    }
+
+    // ─── Comments ─────────────────────────────────────────────────────────────
+
     @GetMapping("/{id}/comments")
     @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "List comments for a ticket")
     public ResponseEntity<List<TicketComment>> listComments(@PathVariable Long id) {
-        return ResponseEntity.ok(ticketCommentRepository.findByTicketIdOrderByCreatedAtAsc(id));
+        return ResponseEntity.ok(helpdeskService.listComments(id));
     }
 
     @PostMapping("/{id}/comments")
     @PreAuthorize("hasAuthority('helpdesk:create')")
-    public ResponseEntity<TicketComment> addComment(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        Ticket ticket = ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
-        TicketComment comment = new TicketComment();
-        comment.setTicket(ticket);
-        comment.setComment((String) body.get("comment"));
-        if (body.get("commentedById") != null) {
-            Long commentedById = Long.parseLong(body.get("commentedById").toString());
-            employeeRepository.findById(commentedById).ifPresent(comment::setCommentedBy);
-        }
-        return ResponseEntity.ok(ticketCommentRepository.save(comment));
+    @Operation(summary = "Add a comment to a ticket")
+    public ResponseEntity<TicketComment> addComment(@PathVariable Long id,
+                                                     @RequestBody Map<String, Object> body) {
+        String comment = (String) body.get("comment");
+        Long commentedById = Long.parseLong(body.get("commentedById").toString());
+        return ResponseEntity.ok(helpdeskService.addComment(id, comment, commentedById));
+    }
+
+    // ─── Attachments ──────────────────────────────────────────────────────────
+
+    @GetMapping("/{ticketId}/attachments")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    @Operation(summary = "List attachments for a ticket")
+    public ResponseEntity<List<TicketAttachment>> listAttachments(@PathVariable Long ticketId) {
+        return ResponseEntity.ok(helpdeskService.listAttachments(ticketId));
+    }
+
+    @PostMapping("/{ticketId}/attachments")
+    @PreAuthorize("hasAuthority('helpdesk:create')")
+    @Operation(summary = "Add an attachment to a ticket")
+    public ResponseEntity<TicketAttachment> addAttachment(@PathVariable Long ticketId,
+                                                           @RequestBody TicketAttachment attachment) {
+        return ResponseEntity.ok(helpdeskService.addAttachment(ticketId, attachment));
+    }
+
+    @DeleteMapping("/attachments/{id}")
+    @PreAuthorize("hasAuthority('helpdesk:delete')")
+    @Operation(summary = "Delete a ticket attachment")
+    public ResponseEntity<Map<String, String>> deleteAttachment(@PathVariable Long id) {
+        helpdeskService.deleteAttachment(id);
+        return ResponseEntity.ok(Map.of("message", "Attachment deleted"));
     }
 }

@@ -77,9 +77,11 @@ public class ConsolidatedReportService {
         Map<String, Object> result = new HashMap<>();
         result.put("total", total);
         result.put("active", active);
+        result.put("inactive", departed);
         result.put("onLeave", onLeave);
         result.put("departed", departed);
         result.put("byDepartment", byDepartment);
+        result.put("departmentBreakdown", byDepartment);
         return result;
     }
 

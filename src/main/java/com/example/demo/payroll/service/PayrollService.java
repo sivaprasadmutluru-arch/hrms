@@ -6,6 +6,9 @@ import com.example.demo.common.event.PayslipGeneratedEvent;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.leave.entity.LeaveRequest;
+import com.example.demo.leave.entity.LeaveType;
+import com.example.demo.leave.repository.LeaveRequestRepository;
 import com.example.demo.payroll.entity.*;
 import com.example.demo.payroll.repository.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
@@ -36,6 +40,7 @@ public class PayrollService {
     private final FilingStatusRepository filingStatusRepository;
     private final PayslipRepository payslipRepository;
     private final CompanyRepository companyRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final EmailService emailService;
@@ -61,6 +66,40 @@ public class PayrollService {
                 .orElse(null);
         BigDecimal basicPay = contract != null && contract.getWage() != null
                 ? contract.getWage() : BigDecimal.ZERO;
+
+        // ── 1b. Unpaid leave deduction ───────────────────────────────────────
+        BigDecimal unpaidLeaveDeduction = BigDecimal.ZERO;
+        List<Map<String, Object>> unpaidLeaveLines = new ArrayList<>();
+        if (contract != null && Boolean.TRUE.equals(contract.getDeductLeaveFromBasicPay())) {
+            List<LeaveRequest> approvedLeaves = leaveRequestRepository
+                    .findApprovedOverlapping(employeeId, startDate, endDate);
+
+            double totalUnpaidDays = approvedLeaves.stream()
+                    .filter(lr -> lr.getLeaveType() != null
+                            && LeaveType.PaymentType.UNPAID == lr.getLeaveType().getPaymentType()
+                            && lr.getRequestedDays() != null)
+                    .mapToDouble(LeaveRequest::getRequestedDays)
+                    .sum();
+
+            if (totalUnpaidDays > 0) {
+                BigDecimal dailyRate;
+                if (Boolean.TRUE.equals(contract.getCalculateDailyLeaveAmount())) {
+                    long periodDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+                    dailyRate = basicPay.divide(BigDecimal.valueOf(periodDays), 10, RoundingMode.HALF_UP);
+                } else if (contract.getDeductionForOneLeaveAmount() != null
+                        && contract.getDeductionForOneLeaveAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    dailyRate = contract.getDeductionForOneLeaveAmount();
+                } else {
+                    dailyRate = BigDecimal.ZERO;
+                }
+                unpaidLeaveDeduction = dailyRate
+                        .multiply(BigDecimal.valueOf(totalUnpaidDays))
+                        .setScale(2, RoundingMode.HALF_UP);
+                basicPay = basicPay.subtract(unpaidLeaveDeduction).max(BigDecimal.ZERO);
+                unpaidLeaveLines.add(Map.of("name", "Unpaid Leave (" + totalUnpaidDays + " day(s))",
+                        "amount", unpaidLeaveDeduction, "type", "DEDUCTION", "pretax", false));
+            }
+        }
 
         // ── 2. Allowances ────────────────────────────────────────────────────
         List<Allowance> allowances = allowanceRepository.findByCompanyId(companyId);
@@ -102,6 +141,8 @@ public class PayrollService {
         BigDecimal preTaxDeductions = BigDecimal.ZERO;
         BigDecimal postTaxDeductions = BigDecimal.ZERO;
         List<Map<String, Object>> deductionLines = new ArrayList<>();
+
+        deductionLines.addAll(unpaidLeaveLines);
 
         for (Deduction d : deductions) {
             BigDecimal amount;
@@ -166,6 +207,7 @@ public class PayrollService {
         // ── 8. Build pay head data JSON ───────────────────────────────────────
         Map<String, Object> payHeadData = new LinkedHashMap<>();
         payHeadData.put("basicPay", basicPay);
+        payHeadData.put("unpaidLeaveDeduction", unpaidLeaveDeduction);
         payHeadData.put("allowances", allowanceLines);
         payHeadData.put("deductions", deductionLines);
         payHeadData.put("taxAmount", taxAmount);
@@ -180,7 +222,7 @@ public class PayrollService {
         payslip.setPayDate(endDate);
         payslip.setBasicPay(basicPay);
         payslip.setGrossPay(grossPay);
-        payslip.setDeduction(preTaxDeductions.add(taxAmount).add(postTaxDeductions).add(totalLoanDeduction));
+        payslip.setDeduction(unpaidLeaveDeduction.add(preTaxDeductions).add(taxAmount).add(postTaxDeductions).add(totalLoanDeduction));
         payslip.setNetPay(netPay);
         payslip.setStatus(Payslip.PayslipStatus.DRAFT);
         payslip.setCompany(companyRepository.getReferenceById(companyId));

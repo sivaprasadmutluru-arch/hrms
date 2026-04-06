@@ -236,8 +236,8 @@ public class AttendanceController {
     @Operation(summary = "Get employees who have not clocked in on a given date")
     public ResponseEntity<List<Map<String, Object>>> getNotClockedIn(
             @RequestParam Long companyId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(attendanceService.getNotClockedIn(companyId, date));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(attendanceService.getNotClockedIn(companyId, date != null ? date : LocalDate.now()));
     }
 
     @GetMapping("/not-out")
@@ -245,8 +245,8 @@ public class AttendanceController {
     @Operation(summary = "Get employees who have not clocked out on a given date")
     public ResponseEntity<List<Map<String, Object>>> getNotClockedOut(
             @RequestParam Long companyId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(attendanceService.getNotClockedOut(companyId, date));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(attendanceService.getNotClockedOut(companyId, date != null ? date : LocalDate.now()));
     }
 
     // ─── Today's Attendance ───────────────────────────────────────────────────

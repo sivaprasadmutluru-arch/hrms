@@ -23,6 +23,8 @@ public class EmployeeResponse {
     private LocalDate dateOfBirth;
     private String maritalStatus;
     private String nationality;
+    private String countryOfBirth;
+    private String placeOfBirth;
     private String permanentAddress;
     private String currentAddress;
     private String country;
@@ -46,6 +48,7 @@ public class EmployeeResponse {
 
     private Long companyId;
     private String companyName;
+    private String organizationName;
     private Long departmentId;
     private String departmentName;
     private Long jobPositionId;
@@ -73,6 +76,8 @@ public class EmployeeResponse {
         r.setDateOfBirth(e.getDateOfBirth());
         r.setMaritalStatus(e.getMaritalStatus() != null ? e.getMaritalStatus().name() : null);
         r.setNationality(e.getNationality());
+        r.setCountryOfBirth(e.getCountryOfBirth());
+        r.setPlaceOfBirth(e.getPlaceOfBirth());
         r.setPermanentAddress(e.getPermanentAddress());
         r.setCurrentAddress(e.getCurrentAddress());
         r.setCountry(e.getCountry());

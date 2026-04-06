@@ -79,6 +79,7 @@ public class EmployeeService {
         return page.map(EmployeeResponse::from);
     }
 
+    @Transactional(readOnly = true)
     public EmployeeResponse getById(Long id) {
         return EmployeeResponse.from(findEmployee(id));
     }
