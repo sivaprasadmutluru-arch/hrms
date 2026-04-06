@@ -912,7 +912,7 @@ export default function DashboardPage() {
       {isEntAdmin && (
         <EnterpriseAdminDashboard
           branchSummaryList={branchSummaryList}
-          headcount={employeeDashboard || headcount}
+          headcount={headcount}
           leave={leave}
           attendanceReport={attendanceReport}
           helpdesk={helpdesk}

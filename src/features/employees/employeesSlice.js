@@ -14,6 +14,16 @@ export const fetchAll = createAsyncThunk('employees/fetchAll', async (params, { 
   }
 })
 
+// Platform Super Admin only — fetches employees across ALL organization schemas
+export const fetchAllGlobal = createAsyncThunk('employees/fetchAllGlobal', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/employees/global', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch global employees')
+  }
+})
+
 export const create = createAsyncThunk('employees/create', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/employees', data)
@@ -93,6 +103,18 @@ const employeesSlice = createSlice({
         }
       })
       .addCase(fetchAll.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(fetchAllGlobal.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchAllGlobal.fulfilled, (state, action) => {
+        state.loading = false
+        state.data = action.payload.content || action.payload
+        if (action.payload.totalElements !== undefined) {
+          state.pagination.total = action.payload.totalElements
+          state.pagination.page = action.payload.number ?? state.pagination.page
+          state.pagination.size = action.payload.size ?? state.pagination.size
+        }
+      })
+      .addCase(fetchAllGlobal.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(create.pending, (state) => { state.loading = true; state.error = null })
       .addCase(create.fulfilled, (state, action) => { state.loading = false; state.data.unshift(action.payload) })

@@ -1,57 +1,23 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, create, update, remove, selectAll, selectLoading, selectPagination } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, selectAll, selectLoading, selectPagination } from './employeesSlice'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
 import { fetchAll as fetchDepartments, selectAll as selectDepartments } from '../departments/departmentsSlice'
 import { fetchJobPositions, selectJobPositions, fetchWorkTypes, selectWorkTypes, fetchShiftSchedules, selectShiftSchedules, fetchJobRoles, selectJobRoles } from '../base/baseExtrasSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
-import Input from '../../components/common/Input'
-import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import Avatar from '../../components/common/Avatar'
 import useAuth from '../../hooks/useAuth'
 import { formatDate } from '../../utils/formatters'
-
-const EMPLOYEE_TYPES = [
-  { value: 'FULL_TIME', label: 'Full Time' },
-  { value: 'PART_TIME', label: 'Part Time' },
-  { value: 'CONTRACT', label: 'Contract' },
-  { value: 'INTERN', label: 'Intern' },
-]
-
-const GENDERS = [
-  { value: 'MALE', label: 'Male' },
-  { value: 'FEMALE', label: 'Female' },
-  { value: 'OTHER', label: 'Other' },
-]
-
-const MARITAL_STATUSES = [
-  { value: 'SINGLE', label: 'Single' },
-  { value: 'MARRIED', label: 'Married' },
-  { value: 'DIVORCED', label: 'Divorced' },
-  { value: 'WIDOWED', label: 'Widowed' },
-]
-
-const STATUS_OPTIONS = [
-  { value: 'true', label: 'Active' },
-  { value: 'false', label: 'Inactive' },
-]
-
-const ACCESS_SCOPE_OPTIONS = [
-  { value: 'SELF', label: 'Self (own records only)' },
-  { value: 'DEPARTMENT', label: 'Department' },
-  { value: 'BRANCH', label: 'Branch' },
-  { value: 'HEAD_OFFICE', label: 'Head Office' },
-  { value: 'ENTERPRISE', label: 'Enterprise (all)' },
-]
+import EmployeeFormFields from './EmployeeFormFields'
 
 const ROLE_OPTIONS_BY_LEVEL = {
   platform: [
@@ -78,14 +44,143 @@ const ROLE_OPTIONS_BY_LEVEL = {
   ],
 }
 
+function StatCard({ label, value, icon, color }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl ${color}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-gray-900 leading-tight">{value}</p>
+        <p className="text-xs text-gray-500 font-medium">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete }) {
+  return (
+    <div
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
+      onClick={() => onView(employee)}
+    >
+      {/* Card top accent */}
+      <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-t-2xl" />
+      <div className="p-5">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="shrink-0">
+              <Avatar name={employee.fullName || employee.firstName} size="lg" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{employee.fullName || '—'}</p>
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{employee.email || '—'}</p>
+            </div>
+          </div>
+          <span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+            employee.isActive
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-600 border border-red-200'
+          }`}>
+            {employee.isActive ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+
+        {/* Details grid */}
+        <div className="space-y-2 mb-4">
+          {employee.badgeId && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="16" rx="2" strokeWidth="2" />
+                <path d="M9 9h6M9 13h4" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <span className="font-mono font-medium text-gray-700">{employee.badgeId}</span>
+            </div>
+          )}
+          {employee.departmentName && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M3 7h18M3 12h18M3 17h18" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              {employee.departmentName}
+            </div>
+          )}
+          {employee.organizationName && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="9" cy="7" r="4" strokeWidth="2" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {employee.organizationName}
+            </div>
+          )}
+          {employee.companyName && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M3 21V8l9-5 9 5v13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <rect x="9" y="14" width="6" height="7" strokeWidth="2" />
+              </svg>
+              {employee.companyName}
+            </div>
+          )}
+          {employee.dateJoining && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Joined {formatDate(employee.dateJoining)}
+            </div>
+          )}
+        </div>
+
+        {/* Tags row */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {employee.employeeType && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {employee.employeeType.replace(/_/g, ' ')}
+            </span>
+          )}
+          {role && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 border border-violet-100">
+              {role.replace(/_/g, ' ')}
+            </span>
+          )}
+        </div>
+
+        {/* Actions */}
+        {canManage && (
+          <div className="flex gap-2 pt-3 border-t border-gray-100">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(employee) }}
+              className="flex-1 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(employee) }}
+              className="flex-1 py-1.5 text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function EmployeesPage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, user } = useAuth()
   const employees = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
-  const companies = useSelector(selectCompanies)        // head office(s)
-  const allBranches = useSelector(selectBranches)       // { [headOfficeId]: [branch, ...] }
+  const companies = useSelector(selectCompanies)
+  const allBranches = useSelector(selectBranches)
   const departments = useSelector(selectDepartments)
   const jobPositions = useSelector(selectJobPositions)
   const jobRoles = useSelector(selectJobRoles)
@@ -93,7 +188,6 @@ export default function EmployeesPage() {
   const shiftSchedules = useSelector(selectShiftSchedules)
   const userRoles = useSelector(selectUserRoles)
 
-  // Build email → role name lookup (take first/highest role per email)
   const roleByEmail = useMemo(() => {
     const map = {}
     userRoles.forEach(ur => { if (ur.email && ur.roleName) map[ur.email] = ur.roleName })
@@ -104,7 +198,7 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
-  // Platform admin context: which company's employees to view
+  const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
   const [selectedCompanyId, setSelectedCompanyId] = useState(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -125,10 +219,11 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (isPlatformAdmin()) {
-      // Load all companies so the platform admin can pick a context
       dispatch(fetchAll_companies({ page: 0, size: 100 }))
+      dispatch(fetchAllGlobal({ page: 0, size: 20 }))
+    } else {
+      dispatch(fetchAll({ page: 0, size: 20 }))
     }
-    dispatch(fetchAll({ page: 0, size: 20, ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
     dispatch(fetchUserRoles())
     dispatch(fetchDepartments({ page: 0, size: 100 }))
     dispatch(fetchJobPositions())
@@ -136,27 +231,24 @@ export default function EmployeesPage() {
     dispatch(fetchWorkTypes())
     dispatch(fetchShiftSchedules())
     if (isEnterpriseAdmin() && user?.companyId) {
-      // Load head office into companies.data, then load all its branches
       dispatch(fetchMyCompany(user.companyId)).then(() => {
         dispatch(fetchBranches(user.companyId))
       })
     }
   }, [dispatch])
 
-  const load = (page) => dispatch(fetchAll({ page, size: 20, ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
-
-  const openCreate = () => {
-    setEditing(null)
-    setModalOpen(true)
+  // Super Admin with no company filter → global; otherwise scoped
+  const load = (page) => {
+    if (isPlatformAdmin() && !selectedCompanyId) {
+      dispatch(fetchAllGlobal({ page, size: 20 }))
+    } else {
+      dispatch(fetchAll({ page, size: 20, ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
+    }
   }
 
-  const openEdit = (row) => {
-    setEditing(row)
-    setModalOpen(true)
-  }
+  const openCreate = () => { setEditing(null); setModalOpen(true) }
+  const openEdit = (row) => { setEditing(row); setModalOpen(true) }
 
-  // Reset form values after modal mounts — ensures all fields (including conditionally
-  // rendered selects) exist in the DOM before reset() sets their values.
   useEffect(() => {
     if (!modalOpen) return
     if (editing) {
@@ -203,7 +295,6 @@ export default function EmployeesPage() {
   }, [modalOpen, editing])
 
   const onSubmit = async (data) => {
-    // coerce IDs to numbers
     const { confirmPassword, ...rest } = data
     const payload = {
       ...rest,
@@ -217,13 +308,11 @@ export default function EmployeesPage() {
       isActive: data.isActive === 'true',
       role: data.role || undefined,
       accessScope: data.accessScope || undefined,
-      // Omit empty strings for date/enum fields — backend can't deserialize "" as LocalDate or Enum
       dateOfBirth: data.dateOfBirth || undefined,
       dateJoining: data.dateJoining || undefined,
       gender: data.gender || undefined,
       maritalStatus: data.maritalStatus || undefined,
       employeeType: data.employeeType || undefined,
-      // Coerce number inputs (HTML always returns strings)
       experience: data.experience !== '' && data.experience != null ? Number(data.experience) : undefined,
       children: data.children !== '' && data.children != null ? Number(data.children) : undefined,
     }
@@ -250,10 +339,13 @@ export default function EmployeesPage() {
 
   const filtered = search
     ? employees.filter(e =>
-        `${e.fullName} ${e.email} ${e.badgeId} ${e.companyName} ${e.departmentName}`
+        `${e.fullName} ${e.email} ${e.badgeId} ${e.companyName} ${e.departmentName} ${e.organizationName || ''}`
           .toLowerCase().includes(search.toLowerCase())
       )
     : employees
+
+  const activeCount = employees.filter(e => e.isActive).length
+  const inactiveCount = employees.filter(e => !e.isActive).length
 
   const columns = [
     {
@@ -270,6 +362,7 @@ export default function EmployeesPage() {
       ),
     },
     { accessorKey: 'badgeId', header: 'Badge ID', cell: ({ getValue }) => getValue() || '—' },
+    ...(isPlatformAdmin() ? [{ accessorKey: 'organizationName', header: 'Organization', cell: ({ getValue }) => getValue() || '—' }] : []),
     { accessorKey: 'companyName', header: 'Branch / Company' },
     { accessorKey: 'departmentName', header: 'Department' },
     { accessorKey: 'employeeType', header: 'Type', cell: ({ getValue }) => <Badge label={getValue()?.replace(/_/g, ' ') || '—'} variant="secondary" /> },
@@ -283,22 +376,23 @@ export default function EmployeesPage() {
       header: 'Status',
       cell: ({ row }) => <Badge label={row.original.isActive ? 'Active' : 'Inactive'} variant={row.original.isActive ? 'success' : 'danger'} />,
     },
-    ...(canManage ? [{
+    {
       id: 'actions',
       header: '',
       cell: ({ row }) => (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-          <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Remove</Button>
+          <Button size="sm" variant="secondary" onClick={() => navigate(`/employees/${row.original.id}`)}>View</Button>
+          {canManage && (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+              <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Remove</Button>
+            </>
+          )}
         </div>
       ),
-    }] : []),
+    },
   ]
 
-  // Build company options:
-  // - Enterprise admin: head office + all its branches (from companies.branches[companyId])
-  // - Super admin: all companies in state
-  // - Branch admin: no dropdown needed (backend scopes automatically)
   const branchesForEntAdmin = isEnterpriseAdmin() && user?.companyId
     ? (allBranches[user.companyId] || [])
     : []
@@ -318,72 +412,149 @@ export default function EmployeesPage() {
   const reportingManagerOptions = employees.map(e => ({ value: e.id, label: e.fullName || e.firstName }))
 
   return (
-    <div>
-      <PageHeader
-        title="Employees"
-        subtitle={subtitle}
-        actions={canManage ? <Button onClick={openCreate}>+ New Employee</Button> : null}
-      />
-
-      {/* Platform admin: company context picker */}
-      {isPlatformAdmin() && companies.length > 0 && (
-        <div className="mb-4 flex items-center gap-3">
-          <label className="text-sm text-gray-500 shrink-0">View company:</label>
-          <select
-            value={selectedCompanyId || ''}
-            onChange={e => {
-              const id = e.target.value ? Number(e.target.value) : null
-              console.log('[EmployeesPage] Platform admin selected company:', id, '| companyIdOverride header will be:', id || '(none — default from user.companyId)')
-              setSelectedCompanyId(id)
-              dispatch(fetchAll({ page: 0, size: 20, ...(id ? { companyIdOverride: id } : {}) }))
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">— select a company —</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Employees</h1>
+          <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
         </div>
-      )}
-
-      {/* Enterprise admin: branch filter picker */}
-      {isEnterpriseAdmin() && (companies.length > 0 || branchesForEntAdmin.length > 0) && (
-        <div className="mb-4 flex items-center gap-3">
-          <label className="text-sm text-gray-500 shrink-0">View branch:</label>
-          <select
-            value={selectedCompanyId || ''}
-            onChange={e => {
-              const id = e.target.value ? Number(e.target.value) : null
-              console.log('[EmployeesPage] Enterprise admin selected branch:', id, '| companyIdOverride header will be:', id || '(none — default from user.companyId)')
-              setSelectedCompanyId(id)
-              dispatch(fetchAll({ page: 0, size: 20, ...(id ? { companyIdOverride: id } : {}) }))
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        {canManage && (
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
           >
-            <option value="">— All branches —</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>{c.name} [Head Office]</option>
-            ))}
-            {branchesForEntAdmin.map(b => (
-              <option key={b.id} value={b.id}>{b.name} [Branch]</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Search bar */}
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by name, email, badge ID, branch, department..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full max-w-md px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Employee
+          </button>
+        )}
       </div>
 
-      <DataTable columns={columns} data={filtered} loading={loading} />
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard label="Total Employees" value={pagination.total || employees.length} icon="👥" color="bg-indigo-50 text-indigo-600" />
+        <StatCard label="Active" value={activeCount} icon="✅" color="bg-emerald-50 text-emerald-600" />
+        <StatCard label="Inactive" value={inactiveCount} icon="⏸️" color="bg-red-50 text-red-500" />
+        <StatCard label="Departments" value={departments.length} icon="🏢" color="bg-violet-50 text-violet-600" />
+      </div>
+
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[220px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search name, email, badge ID..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+            />
+          </div>
+
+          {/* Platform admin: company picker — "All" uses global endpoint, specific company uses scoped */}
+          {isPlatformAdmin() && companies.length > 0 && (
+            <select
+              value={selectedCompanyId || ''}
+              onChange={e => {
+                const id = e.target.value ? Number(e.target.value) : null
+                setSelectedCompanyId(id)
+                if (id) {
+                  dispatch(fetchAll({ page: 0, size: 20, companyIdOverride: id }))
+                } else {
+                  dispatch(fetchAllGlobal({ page: 0, size: 20 }))
+                }
+              }}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+            >
+              <option value="">All organizations</option>
+              {companies.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Enterprise admin: branch picker */}
+          {isEnterpriseAdmin() && (companies.length > 0 || branchesForEntAdmin.length > 0) && (
+            <select
+              value={selectedCompanyId || ''}
+              onChange={e => {
+                const id = e.target.value ? Number(e.target.value) : null
+                setSelectedCompanyId(id)
+                dispatch(fetchAll({ page: 0, size: 20, ...(id ? { companyIdOverride: id } : {}) }))
+              }}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+            >
+              <option value="">All branches</option>
+              {companies.map(c => (
+                <option key={c.id} value={c.id}>{c.name} [Head Office]</option>
+              ))}
+              {branchesForEntAdmin.map(b => (
+                <option key={b.id} value={b.id}>{b.name} [Branch]</option>
+              ))}
+            </select>
+          )}
+
+          {/* View toggle */}
+          <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5 ml-auto">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Card view"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 0h7v7h-7v-7z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+              title="List view"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex justify-center items-center py-24">
+          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 text-2xl">👤</div>
+          <p className="text-gray-900 font-semibold text-base">No employees found</p>
+          <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((emp, idx) => (
+            <EmployeeCard
+              key={`${emp.companyId ?? 'x'}-${emp.id ?? idx}-${idx}`}
+              employee={emp}
+              role={roleByEmail[emp.email]}
+              canManage={canManage}
+              onView={(e) => navigate(`/employees/${e.id}`)}
+              onEdit={openEdit}
+              onDelete={setDeleteTarget}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <DataTable columns={columns} data={filtered} loading={false} />
+        </div>
+      )}
+
       <Pagination
         page={pagination.page}
         totalPages={Math.ceil(pagination.total / pagination.size)}
@@ -402,151 +573,21 @@ export default function EmployeesPage() {
           </div>
         }
       >
-        <div className="space-y-4">
-          {/* Core identity */}
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="First Name" error={errors.firstName?.message} {...register('firstName', { required: 'Required' })} />
-            <Input label="Last Name" {...register('lastName')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Email" type="email" {...register('email')} />
-            <Input label="Phone" {...register('phone')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Badge ID" placeholder="Auto-generated if left blank" {...register('badgeId')} />
-            <Select label="Gender" options={[{ value: '', label: 'Select...' }, ...GENDERS]} {...register('gender')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Date of Birth" type="date" {...register('dateOfBirth')} />
-            <Input label="Date of Joining" type="date" {...register('dateJoining')} />
-          </div>
-
-          {/* Assignment */}
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Employee Type"
-              options={[{ value: '', label: 'Select...' }, ...EMPLOYEE_TYPES]}
-              {...register('employeeType')}
-            />
-            <Select
-              label="Status"
-              options={STATUS_OPTIONS}
-              {...register('isActive')}
-            />
-          </div>
-          {!editing && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Password"
-                  type="password"
-                  error={errors.password?.message}
-                  {...register('password', { required: 'Required' })}
-                />
-                <Input
-                  label="Confirm Password"
-                  type="password"
-                  error={errors.confirmPassword?.message}
-                  {...register('confirmPassword', {
-                    required: 'Required',
-                    validate: (val, formValues) =>
-                      val === formValues.password || 'Passwords do not match',
-                  })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Select
-                  label="Role"
-                  options={[{ value: '', label: 'None' }, ...assignableRoles]}
-                  {...register('role')}
-                />
-                <Select
-                  label="Access Scope"
-                  options={[{ value: '', label: 'None' }, ...ACCESS_SCOPE_OPTIONS]}
-                  {...register('accessScope')}
-                />
-              </div>
-            </>
-          )}
-          {(isPlatformAdmin() || isEnterpriseAdmin()) && (
-            <Select
-              label="Branch / Company"
-              options={companyOptions}
-              error={errors.companyId?.message}
-              {...register('companyId', { required: 'Required' })}
-            />
-          )}
-          <Select
-            label="Department"
-            options={[{ value: '', label: 'None' }, ...departmentOptions]}
-            {...register('departmentId')}
-          />
-          <Select
-            label="Job Position"
-            options={[{ value: '', label: 'None' }, ...jobPositionOptions]}
-            {...register('jobPositionId')}
-          />
-          <Select
-            label="Job Role"
-            options={[{ value: '', label: 'None' }, ...jobRoleOptions]}
-            {...register('jobRoleId')}
-          />
-          <Select
-            label="Work Type"
-            options={[{ value: '', label: 'None' }, ...workTypeOptions]}
-            {...register('workTypeId')}
-          />
-          <Select
-            label="Shift"
-            options={[{ value: '', label: 'None' }, ...shiftOptions]}
-            {...register('shiftId')}
-          />
-          <Select
-            label="Reporting Manager"
-            options={[{ value: '', label: 'None' }, ...reportingManagerOptions]}
-            {...register('reportingManagerId')}
-          />
-
-          {/* Personal details */}
-          <div className="grid grid-cols-2 gap-3">
-            <Select label="Marital Status" options={[{ value: '', label: 'None' }, ...MARITAL_STATUSES]} {...register('maritalStatus')} />
-            <Input label="Nationality" {...register('nationality')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Qualification" {...register('qualification')} />
-            <Input label="Experience (years)" type="number" {...register('experience')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Children" type="number" {...register('children')} />
-          </div>
-
-          {/* Work contact */}
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Work Email" type="email" {...register('workEmail')} />
-            <Input label="Work Phone" {...register('workPhone')} />
-          </div>
-
-          {/* Address */}
-          <Input label="Permanent Address" {...register('permanentAddress')} />
-          <Input label="Current Address" {...register('currentAddress')} />
-          <div className="grid grid-cols-3 gap-3">
-            <Input label="Country" {...register('country')} />
-            <Input label="State" {...register('state')} />
-            <Input label="City" {...register('city')} />
-          </div>
-          <Input label="ZIP Code" {...register('zip')} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Country of Birth" {...register('countryOfBirth')} />
-            <Input label="Place of Birth" {...register('placeOfBirth')} />
-          </div>
-
-          {/* Emergency contact */}
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Emergency Contact Name" {...register('emergencyContactName')} />
-            <Input label="Emergency Contact Number" {...register('emergencyContact')} />
-          </div>
-          <Input label="Emergency Contact Relation" {...register('emergencyContactRelation')} />
-        </div>
+        <EmployeeFormFields
+          register={register}
+          errors={errors}
+          isEdit={!!editing}
+          badgeId={editing?.badgeId}
+          canSelectCompany={isPlatformAdmin() || isEnterpriseAdmin()}
+          assignableRoles={assignableRoles}
+          companyOptions={companyOptions}
+          departmentOptions={departmentOptions}
+          jobPositionOptions={jobPositionOptions}
+          jobRoleOptions={jobRoleOptions}
+          workTypeOptions={workTypeOptions}
+          shiftOptions={shiftOptions}
+          reportingManagerOptions={reportingManagerOptions}
+        />
       </Modal>
 
       <ConfirmModal

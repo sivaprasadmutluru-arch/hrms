@@ -56,10 +56,10 @@ const ATTENDANCE_GROUP = {
   icon: ClockIcon,
   group: 'attendance',
   children: [
+    { label: 'Dashboard',     to: '/attendance/dashboard' },
     { label: 'Attendance',    to: '/attendance' },
     { label: 'Calendar',      to: '/attendance/calendar' },
     { label: 'Work Records',  to: '/attendance/work-records' },
-    { label: 'Dashboard',     to: '/attendance/dashboard' },
   ],
 }
 
@@ -74,13 +74,13 @@ const LEAVE_GROUP = {
   icon: CalendarDaysIcon,
   group: 'leave',
   children: [
+    { label: 'Dashboard',       to: '/leave/dashboard' },
     { label: 'Leave Requests',  to: '/leave' },
     { label: 'Leave Balance',   to: '/leave/balance' },
     { label: 'Allocations',     to: '/leave/allocations' },
     { label: 'Restrictions',    to: '/leave/restrictions' },
     { label: 'Holidays',        to: '/leave/holidays' },
     { label: 'Company Leaves',  to: '/leave/company-leaves' },
-    { label: 'Dashboard',       to: '/leave/dashboard' },
   ],
 }
 
@@ -95,6 +95,7 @@ const PAYROLL_GROUP = {
   icon: BanknotesIcon,
   group: 'payroll',
   children: [
+    { label: 'Dashboard',      to: '/payroll/dashboard' },
     { label: 'Payroll',        to: '/payroll/payroll' },
     { label: 'Contracts',      to: '/payroll/contracts' },
     { label: 'Payslips',       to: '/payroll/payslips' },
@@ -105,7 +106,6 @@ const PAYROLL_GROUP = {
     { label: 'Reimbursements', to: '/payroll/reimbursements' },
     { label: 'Batch Groups',   to: '/payroll/batch-groups' },
     { label: 'Settings',       to: '/payroll/settings' },
-    { label: 'Dashboard',      to: '/payroll/dashboard' },
   ],
 }
 
@@ -114,12 +114,12 @@ const RECRUITMENT_GROUP = {
   icon: UserPlusIcon,
   group: 'recruitment',
   children: [
+    { label: 'Dashboard',      to: '/recruitment/dashboard' },
     { label: 'Job Posts',      to: '/recruitment/posts' },
     { label: 'Pipeline',       to: '/recruitment/pipeline' },
     { label: 'Skills',         to: '/recruitment/skills' },
     { label: 'Surveys',        to: '/recruitment/surveys' },
     { label: 'Candidate Docs', to: '/recruitment/candidate-docs' },
-    { label: 'Dashboard',      to: '/recruitment/dashboard' },
   ],
 }
 

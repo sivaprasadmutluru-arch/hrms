@@ -80,6 +80,7 @@ import EmployeeSettingsPage from './features/employees/EmployeeSettingsPage'
 import EmployeeNotesPage from './features/employees/EmployeeNotesPage'
 import MyProfilePage from './features/employees/MyProfilePage'
 import AdminProfilePage from './features/employees/AdminProfilePage'
+import EmployeeDetailPage from './features/employees/EmployeeDetailPage'
 import SkillsPage from './features/recruitment/SkillsPage'
 import SurveysPage from './features/recruitment/SurveysPage'
 import CandidateDocumentsPage from './features/recruitment/CandidateDocumentsPage'
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="employees/me" element={<MyProfilePage />} />
           <Route path="admin/profile" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT', 'DEPARTMENT_MANAGER', 'TEAM_LEAD']} element={<AdminProfilePage />} />} />
           <Route path="employees" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<EmployeesPage />} />} />
+          <Route path="employees/:id" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<EmployeeDetailPage />} />} />
           <Route path="org-chart" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<OrgChartPage />} />} />
           <Route path="employees/:id/work-info" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<WorkInfoPage />} />} />
           <Route path="employees/:id/bank-details" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<BankDetailsPage />} />} />
