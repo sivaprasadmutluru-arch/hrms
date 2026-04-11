@@ -1,6 +1,7 @@
 package com.example.demo.attendance.entity;
 
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Organization;
 import com.example.demo.common.entity.BaseEntity;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -32,4 +33,9 @@ public class GraceTime extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
+
+    // Org-level grace: set by ENTERPRISE_ADMIN as a default for all branches that have no branch-level override
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id")
+    private Organization organization;
 }

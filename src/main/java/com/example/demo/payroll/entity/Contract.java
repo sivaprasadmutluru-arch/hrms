@@ -63,7 +63,7 @@ public class Contract extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "contract_status")
-    private ContractStatus contractStatus = ContractStatus.DRAFT;
+    private ContractStatus contractStatus = ContractStatus.ACTIVE;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id")
@@ -83,7 +83,7 @@ public class Contract extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift shift;
+    private ShiftSchedule shift;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "work_type_id")

@@ -12,4 +12,5 @@ public interface LeaveTypeRepository extends JpaRepository<LeaveType, Long>, Jpa
     List<LeaveType> findByCompanyId(Long companyId);
     List<LeaveType> findByCompanyIdAndIsActiveTrue(Long companyId);
     List<LeaveType> findByResetTrue();
+    List<LeaveType> findByAccrualEnabledTrue();
 }

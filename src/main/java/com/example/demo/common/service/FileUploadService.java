@@ -69,6 +69,20 @@ public class FileUploadService {
     }
 
     /**
+     * Store a file scoped to an organization's folder.
+     * Files are stored under: {uploadDir}/{orgSlug}/{subDir}/
+     *
+     * @param file    the multipart file to store
+     * @param orgSlug the organization slug (e.g. "abc-corp"), used as the top-level folder
+     * @param subDir  sub-directory within the org folder (e.g. "logos", "employees")
+     * @return relative path like "abc-corp/logos/uuid_file.png"
+     */
+    public String storeOrgScoped(MultipartFile file, String orgSlug, String subDir) {
+        String safeSlug = orgSlug.toLowerCase().replaceAll("[^a-z0-9_-]", "-");
+        return store(file, safeSlug + "/" + subDir);
+    }
+
+    /**
      * Resolve a relative path to a fully qualified file system path (for serving).
      */
     public Path resolve(String relativePath) {

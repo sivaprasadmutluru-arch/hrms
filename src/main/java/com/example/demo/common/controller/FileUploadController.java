@@ -65,20 +65,20 @@ public class FileUploadController {
 
     /**
      * Serve a stored file by its relative path.
-     * Path variable uses "**" to capture the full sub-path.
+     * Handles paths of any depth: subDir/file.png or orgSlug/subDir/file.png
      */
-    @GetMapping("/{subDir}/{filename}")
+    @GetMapping("/{*filePath}")
     @Operation(summary = "Serve a stored file")
-    public ResponseEntity<Resource> serveFile(
-            @PathVariable String subDir,
-            @PathVariable String filename) throws IOException {
-        Path filePath = fileUploadService.resolve(subDir + "/" + filename);
-        Resource resource = new UrlResource(filePath.toUri());
+    public ResponseEntity<Resource> serveFile(@PathVariable String filePath) throws IOException {
+        String relativePath = filePath.startsWith("/") ? filePath.substring(1) : filePath;
+        Path resolvedPath = fileUploadService.resolve(relativePath);
+        Resource resource = new UrlResource(resolvedPath.toUri());
         if (!resource.exists() || !resource.isReadable()) {
             return ResponseEntity.notFound().build();
         }
-        String contentType = java.nio.file.Files.probeContentType(filePath);
+        String contentType = java.nio.file.Files.probeContentType(resolvedPath);
         if (contentType == null) contentType = "application/octet-stream";
+        String filename = resolvedPath.getFileName().toString();
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")

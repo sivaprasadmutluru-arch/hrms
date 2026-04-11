@@ -4,6 +4,7 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.*;
 import com.example.demo.employee.repository.*;
 import com.example.demo.payroll.entity.EncashmentCondition;
@@ -46,8 +47,9 @@ public class EmployeeExtrasController {
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "Get work information for an employee")
-    public ResponseEntity<EmployeeWorkInformation> getWorkInfo(@PathVariable Long id) {
+    public ResponseEntity<WorkInfoResponse> getWorkInfo(@PathVariable Long id) {
         return workInfoRepository.findByEmployeeId(id)
+                .map(WorkInfoResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

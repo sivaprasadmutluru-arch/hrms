@@ -2,6 +2,7 @@ package com.example.demo.leave.dto;
 
 import com.example.demo.leave.entity.LeaveType.CarryforwardType;
 import com.example.demo.leave.entity.LeaveType.LeaveValidationType;
+import com.example.demo.leave.entity.LeaveType.MidYearJoinerMode;
 import com.example.demo.leave.entity.LeaveType.PaymentType;
 
 public record LeaveTypeDTO(
@@ -12,5 +13,9 @@ public record LeaveTypeDTO(
         CarryforwardType carryforwardType,
         LeaveValidationType leaveValidationType,
         String colorCode,
-        Boolean reset
+        Boolean reset,
+        Boolean accrualEnabled,
+        MidYearJoinerMode midYearJoinerMode,
+        Boolean negativeBalanceAllowed,
+        Double negativeBalanceLimit
 ) {}

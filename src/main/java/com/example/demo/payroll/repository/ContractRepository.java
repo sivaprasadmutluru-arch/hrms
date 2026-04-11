@@ -29,7 +29,7 @@ public interface ContractRepository extends JpaRepository<Contract, Long>, JpaSp
     List<Contract> findAllWithAssociations();
 
     @Query("SELECT c FROM Contract c " +
-           "LEFT JOIN FETCH c.employee " +
+           "LEFT JOIN FETCH c.employee e " +
            "LEFT JOIN FETCH c.company " +
            "LEFT JOIN FETCH c.filingStatus " +
            "LEFT JOIN FETCH c.department " +
@@ -39,6 +39,18 @@ public interface ContractRepository extends JpaRepository<Contract, Long>, JpaSp
            "LEFT JOIN FETCH c.workType " +
            "WHERE c.company.id IN :companyIds")
     List<Contract> findAllWithAssociationsByCompanyIdIn(@Param("companyIds") List<Long> companyIds);
+
+    @Query("SELECT c FROM Contract c " +
+           "LEFT JOIN FETCH c.employee e " +
+           "LEFT JOIN FETCH c.company " +
+           "LEFT JOIN FETCH c.filingStatus " +
+           "LEFT JOIN FETCH c.department " +
+           "LEFT JOIN FETCH c.jobPosition " +
+           "LEFT JOIN FETCH c.jobRole " +
+           "LEFT JOIN FETCH c.shift " +
+           "LEFT JOIN FETCH c.workType " +
+           "WHERE e.company.id IN :companyIds")
+    List<Contract> findAllWithAssociationsByEmployeeCompanyIdIn(@Param("companyIds") List<Long> companyIds);
 
     @Query("SELECT c FROM Contract c " +
            "LEFT JOIN FETCH c.employee " +

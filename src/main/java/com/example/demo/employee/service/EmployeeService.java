@@ -13,11 +13,16 @@ import com.example.demo.base.repository.*;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.dto.EmployeeRequest;
 import com.example.demo.employee.dto.EmployeeResponse;
 import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.entity.EmployeeWorkInformation;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
+import com.example.demo.payroll.entity.Contract;
+import com.example.demo.payroll.repository.ContractRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -28,9 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -50,6 +52,9 @@ public class EmployeeService {
     private final JobRoleRepository jobRoleRepository;
     private final WorkTypeRepository workTypeRepository;
     private final ShiftScheduleRepository shiftScheduleRepository;
+    private final ContractRepository contractRepository;
+    private final FileUploadService fileUploadService;
+    private final EmployeeWorkInformationRepository workInfoRepository;
 
     /**
      * Lists employees visible to the current user based on their access scope.
@@ -144,7 +149,44 @@ public class EmployeeService {
             }
         }
 
-        return EmployeeResponse.from(employeeRepository.save(emp));
+        Employee saved = employeeRepository.save(emp);
+        createDefaultContract(saved, req);
+        createDefaultWorkInfo(saved);
+        return EmployeeResponse.from(saved);
+    }
+
+    private void createDefaultContract(Employee emp, EmployeeRequest req) {
+        Contract contract = new Contract();
+        contract.setEmployee(emp);
+        contract.setCompany(emp.getCompany());
+        contract.setContractName("Contract - " + emp.getFirstName()
+                + (emp.getLastName() != null ? " " + emp.getLastName() : ""));
+        contract.setWage(req.getBasicPay());
+        contract.setWageType(Contract.WageType.MONTHLY);
+        contract.setPayFrequency(Contract.PayFrequency.MONTHLY);
+        contract.setContractStatus(Contract.ContractStatus.DRAFT);
+        contract.setStartDate(emp.getDateJoining());
+        contract.setDepartment(emp.getDepartment());
+        contract.setJobPosition(emp.getJobPosition());
+        contract.setJobRole(emp.getJobRole());
+        contract.setWorkType(emp.getWorkType());
+        contractRepository.save(contract);
+    }
+
+    private void createDefaultWorkInfo(Employee emp) {
+        EmployeeWorkInformation wi = new EmployeeWorkInformation();
+        wi.setEmployee(emp);
+        wi.setCompany(emp.getCompany());
+        wi.setDepartment(emp.getDepartment());
+        wi.setJobPosition(emp.getJobPosition());
+        wi.setJobRole(emp.getJobRole());
+        wi.setWorkType(emp.getWorkType());
+        wi.setShift(emp.getShift());
+        wi.setReportingManager(emp.getReportingManager());
+        wi.setDateJoining(emp.getDateJoining());
+        wi.setWorkEmail(emp.getWorkEmail());
+        wi.setWorkMobile(emp.getWorkPhone());
+        workInfoRepository.save(wi);
     }
 
     @Transactional
@@ -168,12 +210,12 @@ public class EmployeeService {
     @Transactional
     public String uploadPhoto(Long id, MultipartFile file) throws IOException {
         Employee emp = findEmployee(id);
-        String dir = "./media/employees/photos";
-        Files.createDirectories(Paths.get(dir));
-        String filename = UUID.randomUUID() + "_" + file.getOriginalFilename();
-        Path target = Paths.get(dir, filename);
-        Files.copy(file.getInputStream(), target);
-        emp.setPhotoPath("/media/employees/photos/" + filename);
+        Company company = emp.getCompany();
+        Organization org = company != null ? company.getOrganization() : null;
+        String orgSlug = (org != null && org.getSlug() != null) ? org.getSlug() : "default";
+        if (emp.getPhotoPath() != null) fileUploadService.delete(emp.getPhotoPath());
+        String path = fileUploadService.storeOrgScoped(file, orgSlug, "employees");
+        emp.setPhotoPath(path);
         employeeRepository.save(emp);
         return emp.getPhotoPath();
     }

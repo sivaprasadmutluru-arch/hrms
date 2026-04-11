@@ -17,5 +17,6 @@ public interface WorkRecordRepository
 
     List<WorkRecord> findByEmployeeId(Long employeeId);
     List<WorkRecord> findByEmployeeIdAndDateBetween(Long employeeId, LocalDate from, LocalDate to);
+    List<WorkRecord> findByEmployeeIdAndDate(Long employeeId, LocalDate date);
     Page<WorkRecord> findByCompanyId(Long companyId, Pageable pageable);
 }

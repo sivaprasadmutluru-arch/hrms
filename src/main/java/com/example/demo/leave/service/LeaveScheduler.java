@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.time.YearMonth;
 
 /**
  * Mirrors Horilla's scheduler.py leave_reset() task.
@@ -24,6 +25,19 @@ public class LeaveScheduler {
 
     private final AvailableLeaveRepository availableLeaveRepository;
     private final LeaveTypeRepository leaveTypeRepository;
+    private final LeaveAccrualService leaveAccrualService;
+
+    /**
+     * Runs daily at midnight.
+     * On the last day of each month, triggers accrual posting for all accrual-enabled leave types.
+     */
+    @Scheduled(cron = "0 0 0 * * *")
+    public void monthEndAccrual() {
+        LocalDate today = LocalDate.now();
+        if (today.equals(YearMonth.from(today).atEndOfMonth())) {
+            leaveAccrualService.processMonthlyAccrual(today);
+        }
+    }
 
     @Scheduled(cron = "0 0 0 * * *") // midnight daily
     @Transactional

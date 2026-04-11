@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -15,4 +16,5 @@ public interface AttendanceLateComeEarlyOutRepository
     List<AttendanceLateComeEarlyOut> findByAttendanceId(Long attendanceId);
     List<AttendanceLateComeEarlyOut> findByEmployeeId(Long employeeId);
     List<AttendanceLateComeEarlyOut> findByEmployeeIdAndType(Long employeeId, AttendanceLateComeEarlyOut.EntryType type);
+    List<AttendanceLateComeEarlyOut> findByAttendanceIdIn(Collection<Long> attendanceIds);
 }

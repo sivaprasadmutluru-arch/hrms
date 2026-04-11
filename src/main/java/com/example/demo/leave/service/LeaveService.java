@@ -100,8 +100,19 @@ public class LeaveService {
         double forecasted = balance.forcastedLeaves(startDate);
         double totalBalance = availDays + cfDays + forecasted;
         if (days > totalBalance) {
-            throw new BadRequestException(
-                    "Insufficient leave balance. Available: " + totalBalance + ", Requested: " + days);
+            // Check negative balance allowance
+            boolean negAllowed = Boolean.TRUE.equals(leaveType.getNegativeBalanceAllowed());
+            if (negAllowed) {
+                double limit = leaveType.getNegativeBalanceLimit() != null ? leaveType.getNegativeBalanceLimit() : Double.MAX_VALUE;
+                double wouldBeBalance = totalBalance - days;
+                if (wouldBeBalance < -limit) {
+                    throw new BadRequestException(
+                            "Exceeds negative balance limit. Limit: -" + limit + ", Would be: " + wouldBeBalance);
+                }
+            } else {
+                throw new BadRequestException(
+                        "Insufficient leave balance. Available: " + totalBalance + ", Requested: " + days);
+            }
         }
 
         LeaveRequest request = new LeaveRequest();
@@ -237,6 +248,10 @@ public class LeaveService {
         lt.setRequireAttachment(updated.getRequireAttachment());
         lt.setLimitLeave(updated.getLimitLeave());
         lt.setIsEncashable(updated.getIsEncashable());
+        lt.setAccrualEnabled(updated.getAccrualEnabled());
+        lt.setMidYearJoinerMode(updated.getMidYearJoinerMode());
+        lt.setNegativeBalanceAllowed(updated.getNegativeBalanceAllowed());
+        lt.setNegativeBalanceLimit(updated.getNegativeBalanceLimit());
         return leaveTypeRepository.save(lt);
     }
 

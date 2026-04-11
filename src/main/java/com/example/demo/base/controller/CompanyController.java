@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -115,5 +116,14 @@ public class CompanyController {
     public ResponseEntity<Map<String, String>> deactivate(@PathVariable Long id) {
         companyService.deactivate(id);
         return ResponseEntity.ok(Map.of("message", "Company deactivated"));
+    }
+
+    @PostMapping("/{id}/logo")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Upload logo for a Head Office or Branch")
+    public ResponseEntity<Map<String, String>> uploadLogo(@PathVariable Long id,
+                                                          @RequestParam("file") MultipartFile file) {
+        Company company = companyService.uploadLogo(id, file);
+        return ResponseEntity.ok(Map.of("logoPath", company.getLogoPath(), "url", "/api/files/" + company.getLogoPath()));
     }
 }

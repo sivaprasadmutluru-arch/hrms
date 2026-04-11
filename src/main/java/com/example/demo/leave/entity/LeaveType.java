@@ -83,6 +83,25 @@ public class LeaveType extends BaseEntity {
     @Column(name = "is_organization_wide")
     private Boolean isOrganizationWide = false;
 
+    // ─── Accrual Settings ─────────────────────────────────────────────────────
+
+    /** If true, leave accrues monthly instead of being allocated upfront */
+    @Column(name = "accrual_enabled")
+    private Boolean accrualEnabled = false;
+
+    /** How mid-year joiners are handled: MANUAL (HR sets opening balance) or AUTO_PRORATA */
+    @Column(name = "mid_year_joiner_mode")
+    @Enumerated(EnumType.STRING)
+    private MidYearJoinerMode midYearJoinerMode = MidYearJoinerMode.MANUAL;
+
+    /** If true, employees can go negative on leave balance */
+    @Column(name = "negative_balance_allowed")
+    private Boolean negativeBalanceAllowed = false;
+
+    /** Maximum negative balance allowed (null = unlimited when negativeBalanceAllowed=true) */
+    @Column(name = "negative_balance_limit")
+    private Double negativeBalanceLimit;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
@@ -97,5 +116,9 @@ public class LeaveType extends BaseEntity {
 
     public enum LeaveValidationType {
         AUTOMATIC, MANAGER_VALIDATION, HR_VALIDATION
+    }
+
+    public enum MidYearJoinerMode {
+        MANUAL, AUTO_PRORATA
     }
 }

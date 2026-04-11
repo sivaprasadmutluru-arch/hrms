@@ -31,6 +31,13 @@ public class PayslipAutoGenerate extends BaseEntity {
     @Column(name = "generate_day")
     private String generateDay = "1";
 
+    /**
+     * Time of day to auto-generate payslips in HH:mm format (24-hour).
+     * Defaults to "00:00" (midnight). Scheduler checks this every minute.
+     */
+    @Column(name = "generate_time")
+    private String generateTime = "00:00";
+
     /** Email address to notify after generation (extra field not in GCP) */
     @Column(name = "notify_email")
     private String notifyEmail;

@@ -3,6 +3,8 @@ package com.example.demo.attendance.repository;
 import com.example.demo.attendance.entity.Attendance;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -19,4 +21,20 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
     List<Attendance> findByCompanyIdAndAttendanceDate(Long companyId, LocalDate date);
     List<Attendance> findByCompanyIdAndAttendanceDateAndCheckInIsNotNull(Long companyId, LocalDate date);
     List<Attendance> findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(Long companyId, LocalDate date);
+
+    /** Count validated attendances for an employee in a date range */
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED'")
+    Long countValidatedByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    /** Count validated attendances for a specific shift */
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED' AND a.shift.id = :shiftId")
+    Long countValidatedByEmployeeAndPeriodAndShift(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate, @Param("shiftId") Long shiftId);
+
+    /** Count validated attendances for a specific work type */
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED' AND a.workType.id = :workTypeId")
+    Long countValidatedByEmployeeAndPeriodAndWorkType(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate, @Param("workTypeId") Long workTypeId);
+
+    /** Sum approved overtime seconds for an employee in a date range */
+    @Query("SELECT COALESCE(SUM(a.approvedOvertimeSecond), 0) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceOvertimeApprove = true AND a.attendanceValidated = 'APPROVED'")
+    Long sumApprovedOvertimeSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -68,4 +69,7 @@ public class EmployeeRequest {
 
     // Login credentials for the auto-created user account (ignored on update)
     private String password;
+
+    // Basic pay for auto-generated contract on employee creation
+    private BigDecimal basicPay;
 }

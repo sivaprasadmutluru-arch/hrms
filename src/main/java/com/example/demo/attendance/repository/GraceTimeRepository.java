@@ -8,4 +8,5 @@ import java.util.Optional;
 
 public interface GraceTimeRepository extends JpaRepository<GraceTime, Long>, JpaSpecificationExecutor<GraceTime> {
     Optional<GraceTime> findFirstByCompanyIdAndIsDefaultTrue(Long companyId);
+    Optional<GraceTime> findFirstByOrganizationIdAndIsDefaultTrue(Long organizationId);
 }

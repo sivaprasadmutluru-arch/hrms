@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -101,5 +102,14 @@ public class OrganizationController {
     public ResponseEntity<Organization> updateSubscription(@PathVariable Long id,
                                                            @RequestParam SubscriptionPlan plan) {
         return ResponseEntity.ok(organizationService.updateSubscriptionPlan(id, plan));
+    }
+
+    @PostMapping("/{id}/logo")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Upload logo for an organization")
+    public ResponseEntity<Map<String, String>> uploadLogo(@PathVariable Long id,
+                                                          @RequestParam("file") MultipartFile file) {
+        Organization org = organizationService.uploadLogo(id, file);
+        return ResponseEntity.ok(Map.of("logoPath", org.getLogoPath(), "url", "/api/files/" + org.getLogoPath()));
     }
 }

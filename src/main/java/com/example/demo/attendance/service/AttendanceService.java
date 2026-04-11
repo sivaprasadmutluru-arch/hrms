@@ -1,13 +1,18 @@
 package com.example.demo.attendance.service;
 
 import com.example.demo.attendance.dto.AttendanceCalendarDayDto;
+import com.example.demo.attendance.dto.AttendanceRegisterDayDto;
+import com.example.demo.attendance.dto.AttendanceRegisterResponse;
+import com.example.demo.attendance.dto.AttendanceRegisterRowDto;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
 import com.example.demo.attendance.entity.AttendanceLateComeEarlyOut;
 import com.example.demo.attendance.entity.AttendanceOverTime;
+import com.example.demo.attendance.entity.WorkRecord;
 import com.example.demo.attendance.repository.*;
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Organization;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
@@ -55,6 +60,7 @@ public class AttendanceService {
     private final AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
     private final AttendanceOverTimeRepository overtimeRepository;
     private final GraceTimeRepository graceTimeRepository;
+    private final WorkRecordRepository workRecordRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final HolidayRepository holidayRepository;
 
@@ -120,17 +126,92 @@ public class AttendanceService {
                 att.setAttendanceOvertime(worked - att.getMinimumHour());
             }
             attendanceRepository.save(att);
+
+            // Auto-generate WorkRecord for payroll based on actual hours vs shift minimum
+            generateWorkRecord(att, worked);
         }
 
-        // Detect late/early using company grace time (default 0 if not configured)
+        // Detect late/early: check branch-level grace first, then fall back to org-level
         int graceMinutes = 0;
         if (att.getCompany() != null) {
+            Long companyId = att.getCompany().getId();
             graceMinutes = graceTimeRepository
-                    .findFirstByCompanyIdAndIsDefaultTrue(att.getCompany().getId())
+                    .findFirstByCompanyIdAndIsDefaultTrue(companyId)
                     .map(g -> g.getAllowedTimeInSeconds() != null ? g.getAllowedTimeInSeconds() / 60 : 0)
-                    .orElse(0);
+                    .orElseGet(() -> {
+                        Organization org = att.getCompany().getOrganization();
+                        if (org == null) return 0;
+                        return graceTimeRepository
+                                .findFirstByOrganizationIdAndIsDefaultTrue(org.getId())
+                                .map(g -> g.getAllowedTimeInSeconds() != null ? g.getAllowedTimeInSeconds() / 60 : 0)
+                                .orElse(0);
+                    });
         }
         detectLateComeEarlyOut(att.getId(), graceMinutes);
+    }
+
+    /**
+     * Auto-generate or update a WorkRecord from a completed attendance.
+     * Classification: FDP (>= minHours), HDP (>= half minHours), or proportional HDP.
+     * minimumWorkingHour on ShiftSchedule is stored in minutes (e.g. 480 = 8h).
+     */
+    private void generateWorkRecord(Attendance att, double workedHours) {
+        if (att.getEmployee() == null || att.getAttendanceDate() == null) return;
+
+        int atWorkSeconds = (int) (workedHours * 3600);
+        int wh = (int) workedHours;
+        int wm = (int) Math.round((workedHours - wh) * 60);
+        String atWorkStr = String.format("%02d:%02d", wh, wm);
+
+        WorkRecord.WorkRecordType type;
+        double dayPercentage;
+        int minHourSeconds = 0;
+        String minHourStr = "00:00";
+
+        ShiftSchedule shift = att.getShift();
+        if (shift != null && shift.getMinimumWorkingHour() != null) {
+            int minMinutes = shift.getMinimumWorkingHour(); // stored in minutes
+            minHourSeconds = minMinutes * 60;
+            minHourStr = String.format("%02d:%02d", minMinutes / 60, minMinutes % 60);
+            double minHours = minMinutes / 60.0;
+
+            if (workedHours >= minHours) {
+                type = WorkRecord.WorkRecordType.FDP;
+                dayPercentage = 1.0;
+            } else if (workedHours >= minHours / 2.0) {
+                type = WorkRecord.WorkRecordType.HDP;
+                dayPercentage = 0.5;
+            } else {
+                type = WorkRecord.WorkRecordType.HDP;
+                dayPercentage = minHours > 0 ? workedHours / minHours : 0.0;
+            }
+        } else {
+            // No shift assigned — treat any time worked as a full day
+            type = WorkRecord.WorkRecordType.FDP;
+            dayPercentage = 1.0;
+        }
+
+        // Upsert: update existing attendance-based WorkRecord for this date if present
+        List<WorkRecord> existing = workRecordRepository
+                .findByEmployeeIdAndDate(att.getEmployee().getId(), att.getAttendanceDate());
+        WorkRecord wr = existing.stream()
+                .filter(r -> Boolean.TRUE.equals(r.getIsAttendanceRecord()))
+                .findFirst()
+                .orElseGet(WorkRecord::new);
+
+        wr.setEmployee(att.getEmployee());
+        wr.setCompany(att.getCompany());
+        wr.setAttendance(att);
+        wr.setDate(att.getAttendanceDate());
+        wr.setWorkRecordType(type);
+        wr.setAtWorkSecond(atWorkSeconds);
+        wr.setMinHourSecond(minHourSeconds);
+        wr.setAtWork(atWorkStr);
+        wr.setMinHour(minHourStr);
+        wr.setDayPercentage(dayPercentage);
+        wr.setIsAttendanceRecord(true);
+        wr.setLastUpdate(java.time.LocalDateTime.now());
+        workRecordRepository.save(wr);
     }
 
     @Transactional
@@ -473,6 +554,17 @@ public class AttendanceService {
         att.setCheckIn(LocalTime.now());
         att.setCheckInDate(LocalDate.now());
         att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+
+        // Auto-attach employee's assigned shift and derive minimum hours for the day
+        ShiftSchedule shift = employee.getShift();
+        if (shift != null) {
+            att.setShift(shift);
+            if (shift.getMinimumWorkingHour() != null) {
+                // minimumWorkingHour is in minutes; convert to hours for the attendance record
+                att.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
+            }
+        }
+
         return AttendanceResponse.from(attendanceRepository.save(att));
     }
 
@@ -645,6 +737,312 @@ public class AttendanceService {
             }
         }
         return count;
+    }
+
+    // ─── Attendance Register ──────────────────────────────────────────────────
+
+    /**
+     * Build a full monthly register matrix: all employees (company-scoped, optional dept filter)
+     * as rows, each day of the month as columns. Uses identical classification logic as getCalendar()
+     * so data is guaranteed consistent across both views.
+     */
+    @Transactional(readOnly = true)
+    public AttendanceRegisterResponse getRegister(Long companyId, Long departmentId, int year, int month) {
+        LocalDate first = LocalDate.of(year, month, 1);
+        LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
+        LocalDate today = LocalDate.now();
+
+        // 1. Employees
+        List<Employee> employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        if (departmentId != null) {
+            employees = employees.stream()
+                    .filter(e -> e.getDepartment() != null && departmentId.equals(e.getDepartment().getId()))
+                    .collect(Collectors.toList());
+        }
+
+        // 2. All attendance records for company in month (single query)
+        List<Attendance> allAttendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, first, last);
+        // Group by (employeeId -> (date -> attendance))
+        Map<Long, Map<LocalDate, Attendance>> attByEmpDate = new HashMap<>();
+        for (Attendance a : allAttendances) {
+            if (a.getEmployee() == null || a.getAttendanceDate() == null) continue;
+            attByEmpDate
+                    .computeIfAbsent(a.getEmployee().getId(), k -> new HashMap<>())
+                    .put(a.getAttendanceDate(), a);
+        }
+
+        // 3. All late/early records for those attendance IDs (single query)
+        Set<Long> attIds = allAttendances.stream().map(Attendance::getId).collect(Collectors.toSet());
+        Map<Long, List<AttendanceLateComeEarlyOut>> lateByAttId = new HashMap<>();
+        if (!attIds.isEmpty()) {
+            lateComeEarlyOutRepository.findByAttendanceIdIn(attIds)
+                    .forEach(le -> lateByAttId.computeIfAbsent(le.getAttendance().getId(), k -> new ArrayList<>()).add(le));
+        }
+
+        // 4. All approved leaves for company in range (single query)
+        List<LeaveRequest> allLeaves = leaveRequestRepository.findByCompanyIdAndStatus(companyId, LeaveRequest.LeaveStatus.APPROVED);
+        // Group by employeeId -> list of leave requests overlapping this month
+        Map<Long, Map<LocalDate, String>> leaveByEmpDate = new HashMap<>();
+        for (LeaveRequest lr : allLeaves) {
+            if (lr.getStartDate() == null || lr.getEndDate() == null || lr.getEmployee() == null) continue;
+            if (lr.getEndDate().isBefore(first) || lr.getStartDate().isAfter(last)) continue;
+            LocalDate lStart = lr.getStartDate().isBefore(first) ? first : lr.getStartDate();
+            LocalDate lEnd = lr.getEndDate().isAfter(last) ? last : lr.getEndDate();
+            String typeName = lr.getLeaveType() != null ? lr.getLeaveType().getName() : "Leave";
+            Long empId = lr.getEmployee().getId();
+            Map<LocalDate, String> empLeaves = leaveByEmpDate.computeIfAbsent(empId, k -> new HashMap<>());
+            for (LocalDate d = lStart; !d.isAfter(lEnd); d = d.plusDays(1)) {
+                empLeaves.put(d, typeName);
+            }
+        }
+
+        // 5. Holidays for company in month (single query)
+        Map<LocalDate, String> holidayMap = new HashMap<>();
+        List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(companyId, first, last);
+        for (Holiday h : holidays) {
+            if (h.getStartDate() == null) continue;
+            LocalDate hEnd = h.getEndDate() != null ? h.getEndDate() : h.getStartDate();
+            LocalDate hStart = h.getStartDate().isBefore(first) ? first : h.getStartDate();
+            hEnd = hEnd.isAfter(last) ? last : hEnd;
+            for (LocalDate d = hStart; !d.isAfter(hEnd); d = d.plusDays(1)) {
+                holidayMap.put(d, h.getName() != null ? h.getName() : "Holiday");
+            }
+        }
+
+        // 6. Build date list for column headers
+        List<String> dates = new ArrayList<>();
+        for (LocalDate d = first; !d.isAfter(last); d = d.plusDays(1)) {
+            dates.add(d.toString());
+        }
+
+        // 7. Build rows
+        List<AttendanceRegisterRowDto> rows = new ArrayList<>();
+        for (Employee emp : employees) {
+            Map<LocalDate, Attendance> empAtt = attByEmpDate.getOrDefault(emp.getId(), Collections.emptyMap());
+            Map<LocalDate, String> empLeaves = leaveByEmpDate.getOrDefault(emp.getId(), Collections.emptyMap());
+
+            Map<String, AttendanceRegisterDayDto> dayCells = new LinkedHashMap<>();
+            int presentCount = 0, absentCount = 0, lateCount = 0, leaveCount = 0;
+
+            for (LocalDate cur = first; !cur.isAfter(last); cur = cur.plusDays(1)) {
+                AttendanceRegisterDayDto cell = new AttendanceRegisterDayDto();
+                boolean isWeekend = cur.getDayOfWeek().getValue() >= 6;
+
+                if (cur.isAfter(today)) {
+                    cell.setDayType("future");
+                    cell.setDisplayStatus("-");
+                } else if (holidayMap.containsKey(cur)) {
+                    cell.setDayType("holiday");
+                    cell.setDisplayStatus("H");
+                } else {
+                    Attendance att = empAtt.get(cur);
+                    if (att == null) {
+                        if (empLeaves.containsKey(cur)) {
+                            cell.setDayType("on_leave");
+                            cell.setDisplayStatus("OL");
+                            leaveCount++;
+                        } else if (isWeekend) {
+                            cell.setDayType("weekly_off");
+                            cell.setDisplayStatus("WO");
+                        } else {
+                            cell.setDayType("absent");
+                            cell.setDisplayStatus("A");
+                            absentCount++;
+                        }
+                    } else {
+                        cell.setAttendanceId(att.getId());
+                        List<AttendanceLateComeEarlyOut> les = lateByAttId.getOrDefault(att.getId(), Collections.emptyList());
+                        boolean hasLateCome = les.stream().anyMatch(le -> le.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME);
+                        cell.setLate(hasLateCome);
+
+                        // Mirror exact dayType logic from getCalendar()
+                        String dayType;
+                        if (Boolean.TRUE.equals(att.getIsValidateRequestApproved())) {
+                            dayType = "present";
+                        } else if (Boolean.TRUE.equals(att.getIsValidateRequest())) {
+                            dayType = "irregular";
+                        } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.APPROVED) {
+                            dayType = "present";
+                        } else if (att.getAttendanceValidated() == Attendance.AttendanceStatus.REJECTED) {
+                            dayType = "absent";
+                        } else {
+                            dayType = les.isEmpty() ? "present" : "irregular";
+                        }
+                        cell.setDayType(dayType);
+
+                        if (hasLateCome) {
+                            cell.setDisplayStatus("L");
+                            lateCount++;
+                        } else if ("absent".equals(dayType)) {
+                            cell.setDisplayStatus("A");
+                            absentCount++;
+                        } else {
+                            cell.setDisplayStatus("P");
+                            presentCount++;
+                        }
+                    }
+                }
+                dayCells.put(cur.toString(), cell);
+            }
+
+            AttendanceRegisterRowDto row = new AttendanceRegisterRowDto();
+            row.setEmployeeId(emp.getId());
+            row.setName(emp.getFirstName() + (emp.getLastName() != null ? " " + emp.getLastName() : ""));
+            row.setDepartment(emp.getDepartment() != null ? emp.getDepartment().getName() : null);
+            row.setAvatarUrl(emp.getPhotoPath());
+            row.setDays(dayCells);
+            row.setPresentCount(presentCount);
+            row.setAbsentCount(absentCount);
+            row.setLateCount(lateCount);
+            row.setLeaveCount(leaveCount);
+            rows.add(row);
+        }
+
+        String monthLabel = first.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH) + " " + year;
+        AttendanceRegisterResponse response = new AttendanceRegisterResponse();
+        response.setDates(dates);
+        response.setEmployees(rows);
+        response.setYear(year);
+        response.setMonth(month);
+        response.setMonthLabel(monthLabel);
+        return response;
+    }
+
+    /**
+     * Inline-edit a single register cell. Accepted statuses: present, absent, late.
+     * Uses the same attendance record structure so the calendar view stays consistent.
+     */
+    @Transactional
+    public AttendanceRegisterDayDto updateRegisterCell(Long employeeId, LocalDate date, String status, Long companyId) {
+        Attendance att = attendanceRepository.findByEmployeeIdAndAttendanceDate(employeeId, date).orElse(null);
+
+        switch (status.toLowerCase()) {
+            case "absent" -> {
+                if (att != null) {
+                    att.setActive(false);
+                    attendanceRepository.save(att);
+                    // Remove any late/early entries
+                    lateComeEarlyOutRepository.findByAttendanceId(att.getId())
+                            .forEach(le -> lateComeEarlyOutRepository.delete(le));
+                }
+                AttendanceRegisterDayDto absent = new AttendanceRegisterDayDto();
+                absent.setDayType("absent");
+                absent.setDisplayStatus("A");
+                return absent;
+            }
+            case "late" -> {
+                if (att == null) {
+                    Employee emp = employeeRepository.findById(employeeId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
+                    Company company = companyRepository.findById(companyId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+                    att = new Attendance();
+                    att.setEmployee(emp);
+                    att.setCompany(company);
+                    att.setAttendanceDate(date);
+                    att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+                    att = attendanceRepository.save(att);
+                } else {
+                    att.setActive(true);
+                    att = attendanceRepository.save(att);
+                }
+                // Ensure a LATE_COME entry exists
+                final Long attId = att.getId();
+                boolean exists = lateComeEarlyOutRepository.findByAttendanceId(attId).stream()
+                        .anyMatch(le -> le.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME);
+                if (!exists) {
+                    AttendanceLateComeEarlyOut late = new AttendanceLateComeEarlyOut();
+                    late.setAttendance(att);
+                    late.setEmployee(att.getEmployee());
+                    late.setType(AttendanceLateComeEarlyOut.EntryType.LATE_COME);
+                    lateComeEarlyOutRepository.save(late);
+                }
+                AttendanceRegisterDayDto lateDto = new AttendanceRegisterDayDto();
+                lateDto.setAttendanceId(att.getId());
+                lateDto.setDayType("irregular");
+                lateDto.setDisplayStatus("L");
+                lateDto.setLate(true);
+                return lateDto;
+            }
+            default -> { // "present"
+                if (att == null) {
+                    Employee emp = employeeRepository.findById(employeeId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
+                    Company company = companyRepository.findById(companyId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+                    att = new Attendance();
+                    att.setEmployee(emp);
+                    att.setCompany(company);
+                    att.setAttendanceDate(date);
+                    att.setAttendanceValidated(Attendance.AttendanceStatus.APPROVED);
+                    att = attendanceRepository.save(att);
+                } else {
+                    att.setActive(true);
+                    att.setAttendanceValidated(Attendance.AttendanceStatus.APPROVED);
+                    att.setIsValidateRequestApproved(true);
+                    att = attendanceRepository.save(att);
+                    // Remove any late come entries so it shows as pure present
+                    lateComeEarlyOutRepository.findByAttendanceId(att.getId()).stream()
+                            .filter(le -> le.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME)
+                            .forEach(le -> lateComeEarlyOutRepository.delete(le));
+                }
+                AttendanceRegisterDayDto present = new AttendanceRegisterDayDto();
+                present.setAttendanceId(att.getId());
+                present.setDayType("present");
+                present.setDisplayStatus("P");
+                return present;
+            }
+        }
+    }
+
+    /**
+     * Export the register matrix as an Excel file.
+     * Each employee is a row; each date column contains P / A / L / WO / H / OL.
+     */
+    @Transactional(readOnly = true)
+    public void exportRegisterToExcel(Long companyId, Long departmentId, int year, int month,
+                                      HttpServletResponse response) throws IOException {
+        AttendanceRegisterResponse register = getRegister(companyId, departmentId, year, month);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        String filename = "attendance_register_" + register.getMonthLabel().replace(" ", "_") + ".xlsx";
+        response.setHeader("Content-Disposition", "attachment; filename=" + filename);
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet(register.getMonthLabel());
+
+            // Header row: Employee | Dept | <dates...> | P | A | L | Leave
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Employee");
+            header.createCell(1).setCellValue("Department");
+            List<String> dates = register.getDates();
+            for (int i = 0; i < dates.size(); i++) {
+                // Show day number only (e.g. "1", "2") to keep columns narrow
+                String day = dates.get(i).substring(8); // last 2 chars = day
+                header.createCell(2 + i).setCellValue(day.startsWith("0") ? day.substring(1) : day);
+            }
+            int summaryStart = 2 + dates.size();
+            header.createCell(summaryStart).setCellValue("Present");
+            header.createCell(summaryStart + 1).setCellValue("Absent");
+            header.createCell(summaryStart + 2).setCellValue("Late");
+            header.createCell(summaryStart + 3).setCellValue("Leave");
+
+            // Data rows
+            int rowNum = 1;
+            for (AttendanceRegisterRowDto emp : register.getEmployees()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(emp.getName());
+                row.createCell(1).setCellValue(emp.getDepartment() != null ? emp.getDepartment() : "");
+                for (int i = 0; i < dates.size(); i++) {
+                    AttendanceRegisterDayDto cell = emp.getDays().get(dates.get(i));
+                    row.createCell(2 + i).setCellValue(cell != null ? cell.getDisplayStatus() : "-");
+                }
+                row.createCell(summaryStart).setCellValue(emp.getPresentCount());
+                row.createCell(summaryStart + 1).setCellValue(emp.getAbsentCount());
+                row.createCell(summaryStart + 2).setCellValue(emp.getLateCount());
+                row.createCell(summaryStart + 3).setCellValue(emp.getLeaveCount());
+            }
+            workbook.write(response.getOutputStream());
+        }
     }
 
     private String getCellString(Row row, int col) {

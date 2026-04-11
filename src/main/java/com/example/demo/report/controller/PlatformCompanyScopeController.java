@@ -36,13 +36,15 @@ public class PlatformCompanyScopeController {
     @Operation(summary = "List all companies available for scope selection (flat list with type)")
     public ResponseEntity<List<Map<String, Object>>> listSelectableCompanies() {
         List<Company> all = companyRepository.findAll();
-        List<Map<String, Object>> result = all.stream().map(c -> Map.<String, Object>of(
-                "id", c.getId(),
-                "name", c.getName(),
-                "type", c.getCompanyType() != null ? c.getCompanyType().name() : "UNKNOWN",
-                "status", c.getStatus() != null ? c.getStatus().name() : "UNKNOWN",
-                "parentCompanyId", c.getParentCompany() != null ? c.getParentCompany().getId() : null
-        )).toList();
+        List<Map<String, Object>> result = all.stream().map(c -> {
+            Map<String, Object> entry = new java.util.HashMap<>();
+            entry.put("id", c.getId());
+            entry.put("name", c.getName());
+            entry.put("type", c.getCompanyType() != null ? c.getCompanyType().name() : "UNKNOWN");
+            entry.put("status", c.getStatus() != null ? c.getStatus().name() : "UNKNOWN");
+            entry.put("parentCompanyId", c.getParentCompany() != null ? c.getParentCompany().getId() : null);
+            return entry;
+        }).toList();
         return ResponseEntity.ok(result);
     }
 

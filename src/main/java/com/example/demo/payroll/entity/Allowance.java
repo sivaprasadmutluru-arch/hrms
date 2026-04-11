@@ -1,7 +1,7 @@
 package com.example.demo.payroll.entity;
 
 import com.example.demo.base.entity.Company;
-import com.example.demo.base.entity.EmployeeShift;
+import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.base.entity.WorkType;
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
@@ -79,7 +79,7 @@ public class Allowance extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift shift;
+    private ShiftSchedule shift;
 
     @Column(name = "shift_per_attendance_amount")
     private Double shiftPerAttendanceAmount = 0.0;

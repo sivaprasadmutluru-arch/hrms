@@ -16,6 +16,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSp
     long countByCompanyIdAndIsActiveTrue(Long companyId);
     Optional<Employee> findByEmail(String email);
     Optional<Employee> findByBadgeId(String badgeId);
+    Optional<Employee> findByBadgeIdAndCompanyId(String badgeId, Long companyId);
     Optional<Employee> findByUserId(Long userId);
     List<Employee> findByDepartmentId(Long departmentId);
     List<Employee> findByReportingManagerId(Long managerId);

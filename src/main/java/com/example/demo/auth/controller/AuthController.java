@@ -55,6 +55,11 @@ public class AuthController {
                 .orElse(null);
 
         Long companyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
+        Long organizationId = companyId != null
+                ? companyRepository.findById(companyId)
+                        .map(c -> c.getOrganization() != null ? c.getOrganization().getId() : null)
+                        .orElse(null)
+                : null;
 
         // Auto-create an employee profile for admin users who don't have one yet
         Long employeeId = employeeRepository.findByUserId(principal.getId())
@@ -80,6 +85,7 @@ public class AuthController {
         response.put("email", principal.getEmail());
         response.put("roles", roles);
         response.put("companyId", companyId);
+        response.put("organizationId", organizationId);
         response.put("employeeId", employeeId);
         return ResponseEntity.ok(response);
     }

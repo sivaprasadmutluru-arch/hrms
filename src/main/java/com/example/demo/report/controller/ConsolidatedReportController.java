@@ -11,6 +11,8 @@ import com.example.demo.payroll.repository.PayslipRepository;
 import com.example.demo.recruitment.entity.RecruitmentPost;
 import com.example.demo.recruitment.repository.ApplicantRepository;
 import com.example.demo.recruitment.repository.RecruitmentPostRepository;
+import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.payroll.service.PayslipExcelExportService;
 import com.example.demo.report.service.ConsolidatedReportService;
 import com.example.demo.report.util.ExcelExporter;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +44,7 @@ public class ConsolidatedReportController {
 
     private final ConsolidatedReportService reportService;
     private final ExcelExporter excelExporter;
+    private final PayslipExcelExportService payslipExcelExportService;
     private final AttendanceRepository attendanceRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final PayslipRepository payslipRepository;
@@ -98,17 +101,33 @@ public class ConsolidatedReportController {
 
     @GetMapping("/export")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT')")
+    @Transactional(readOnly = true)
     @Operation(summary = "Export report as Excel (.xlsx). type = attendance | leave | payroll")
     public ResponseEntity<byte[]> export(
             @RequestParam String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) throws Exception {
 
         LocalDate resolvedFrom = from != null ? from : LocalDate.now().minusDays(30);
-        LocalDate resolvedTo = to != null ? to : LocalDate.now();
+        LocalDate resolvedTo   = to   != null ? to   : LocalDate.now();
 
-        List<Map<String, Object>> data = reportService.getExportData(type, resolvedFrom, resolvedTo);
-        byte[] bytes = excelExporter.buildSheet(type, data);
+        byte[] bytes;
+        if ("payroll".equalsIgnoreCase(type)) {
+            // Use the same GCP-format green/orange export (one sheet per company)
+            var spec = ScopeFilter.<Payslip>byCompany();
+            List<Payslip> payslips = spec != null
+                    ? payslipRepository.findAll(spec)
+                    : payslipRepository.findAll();
+            payslips = payslips.stream()
+                    .filter(p -> p.getStartDate() != null
+                            && !p.getStartDate().isBefore(resolvedFrom)
+                            && !p.getStartDate().isAfter(resolvedTo))
+                    .toList();
+            bytes = payslipExcelExportService.exportPayslips(payslips, resolvedFrom, resolvedTo);
+        } else {
+            List<Map<String, Object>> data = reportService.getExportData(type, resolvedFrom, resolvedTo);
+            bytes = excelExporter.buildSheet(type, data);
+        }
 
         String filename = type + "_report_" + resolvedFrom + "_to_" + resolvedTo + ".xlsx";
         return ResponseEntity.ok()

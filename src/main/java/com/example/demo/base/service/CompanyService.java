@@ -15,12 +15,14 @@ import com.example.demo.base.repository.OrganizationRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.tenant.SchemaProvisioningService;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -44,6 +46,7 @@ public class CompanyService {
     private final AuthService authService;
     private final UserRoleService userRoleService;
     private final EmployeeRepository employeeRepository;
+    private final FileUploadService fileUploadService;
 
     /**
      * Creates a new Head Office company for an organization.
@@ -231,6 +234,22 @@ public class CompanyService {
      */
     public List<Company> getAllHeadOffices() {
         return companyRepository.findByCompanyType(Company.CompanyType.HEAD_OFFICE);
+    }
+
+    /**
+     * Uploads and stores the logo for a company (Head Office or Branch).
+     * Files are stored under: media/{orgSlug}/logos/
+     */
+    @Transactional
+    public Company uploadLogo(Long companyId, MultipartFile file) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        Organization org = company.getOrganization();
+        String orgSlug = (org != null && org.getSlug() != null) ? org.getSlug() : "default";
+        if (company.getLogoPath() != null) fileUploadService.delete(company.getLogoPath());
+        String path = fileUploadService.storeOrgScoped(file, orgSlug, "logos");
+        company.setLogoPath(path);
+        return companyRepository.save(company);
     }
 
     // --- Private helpers ---

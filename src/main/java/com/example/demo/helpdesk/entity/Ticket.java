@@ -3,6 +3,7 @@ package com.example.demo.helpdesk.entity;
 import com.example.demo.base.entity.Company;
 import com.example.demo.common.entity.BaseEntity;
 import com.example.demo.employee.entity.Employee;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -13,6 +14,7 @@ import lombok.Setter;
 @Setter
 public class Ticket extends BaseEntity {
 
+    @JsonAlias("subject")
     @Column(nullable = false)
     private String title;
 

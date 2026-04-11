@@ -3,6 +3,7 @@ package com.example.demo.attendance.controller;
 import com.example.demo.attendance.entity.*;
 import com.example.demo.attendance.repository.*;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.repository.OrganizationRepository;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -30,6 +31,7 @@ public class AttendanceSettingsController {
     private final AttendanceValidationConditionRepository validationConditionRepository;
     private final AttendanceCommentRepository commentRepository;
     private final CompanyRepository companyRepository;
+    private final OrganizationRepository organizationRepository;
     private final EmployeeRepository employeeRepository;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceGeneralSettingRepository generalSettingRepository;
@@ -50,18 +52,21 @@ public class AttendanceSettingsController {
     }
 
     @PostMapping("/grace-times")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Transactional
-    @Operation(summary = "Create a grace time")
+    @Operation(summary = "Create a grace time. ENTERPRISE_ADMIN sets org-level (populate organization.id); BRANCH_ADMIN sets branch-level (populate company.id). Branch-level overrides org-level for that branch.")
     public ResponseEntity<GraceTime> createGraceTime(@RequestBody GraceTime graceTime) {
         if (graceTime.getCompany() != null && graceTime.getCompany().getId() != null) {
             graceTime.setCompany(companyRepository.getReferenceById(graceTime.getCompany().getId()));
+        }
+        if (graceTime.getOrganization() != null && graceTime.getOrganization().getId() != null) {
+            graceTime.setOrganization(organizationRepository.getReferenceById(graceTime.getOrganization().getId()));
         }
         return ResponseEntity.ok(graceTimeRepository.save(graceTime));
     }
 
     @PutMapping("/grace-times/{id}")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Transactional
     @Operation(summary = "Update a grace time")
     public ResponseEntity<GraceTime> updateGraceTime(@PathVariable Long id, @RequestBody GraceTime updated) {
@@ -76,7 +81,7 @@ public class AttendanceSettingsController {
     }
 
     @DeleteMapping("/grace-times/{id}")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Operation(summary = "Delete a grace time")
     public ResponseEntity<Void> deleteGraceTime(@PathVariable Long id) {
         graceTimeRepository.deleteById(id);

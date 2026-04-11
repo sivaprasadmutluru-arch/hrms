@@ -1,5 +1,6 @@
 package com.example.demo.auth.security;
 
+import com.example.demo.auth.entity.Permission;
 import com.example.demo.auth.entity.Role;
 import com.example.demo.auth.entity.User;
 import com.example.demo.auth.entity.UserRole;
@@ -35,6 +36,14 @@ public class UserPrincipal implements UserDetails {
     private final Collection<? extends GrantedAuthority> authorities;
 
     public UserPrincipal(User user) {
+        this(user, List.of());
+    }
+
+    /**
+     * Constructor used for PLATFORM_SUPER_ADMIN — passes all system permissions
+     * so that every hasAuthority() check passes automatically.
+     */
+    public UserPrincipal(User user, List<Permission> allPermissions) {
         this.id = user.getId();
         this.username = user.getUsername();
         this.email = user.getEmail();
@@ -52,8 +61,11 @@ public class UserPrincipal implements UserDetails {
         });
 
         // Platform Super Admin (isSuperuser flag) always gets the top-level role
+        // plus every permission in the system so all hasAuthority() checks pass.
         if (user.isSuperuser()) {
             auths.add(new SimpleGrantedAuthority("ROLE_" + Role.RoleName.PLATFORM_SUPER_ADMIN.name()));
+            allPermissions.forEach(p ->
+                    auths.add(new SimpleGrantedAuthority(p.getName())));
         }
 
         // Remove duplicates (a user might have the same role in multiple companies)

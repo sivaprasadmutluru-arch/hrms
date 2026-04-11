@@ -38,7 +38,11 @@ public final class LeaveMapper {
                 lt.getCarryforwardType(),
                 lt.getLeaveValidationType(),
                 lt.getColorCode(),
-                lt.getReset()
+                lt.getReset(),
+                lt.getAccrualEnabled(),
+                lt.getMidYearJoinerMode(),
+                lt.getNegativeBalanceAllowed(),
+                lt.getNegativeBalanceLimit()
         );
     }
 

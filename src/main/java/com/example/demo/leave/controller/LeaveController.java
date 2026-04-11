@@ -8,6 +8,7 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.leave.dto.*;
 import com.example.demo.leave.entity.*;
 import com.example.demo.leave.repository.*;
+import com.example.demo.leave.service.LeaveAccrualService;
 import com.example.demo.leave.service.LeaveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,6 +52,8 @@ public class LeaveController {
     private String uploadDir;
 
     private final LeaveService leaveService;
+    private final LeaveAccrualService leaveAccrualService;
+    private final LeaveAccrualLogRepository accrualLogRepository;
     private final AvailableLeaveRepository availableLeaveRepository;
     private final LeaveAllocationRequestRepository allocationRequestRepository;
     private final RestrictLeaveRepository restrictLeaveRepository;
@@ -858,6 +861,30 @@ public class LeaveController {
         result.put("imported", imported);
         result.put("errors", errors);
         return ResponseEntity.ok(result);
+    }
+
+    // ─── Accrual Log ──────────────────────────────────────────────────────────
+
+    @GetMapping("/accrual-log")
+    @PreAuthorize("hasAuthority('leave:view')")
+    @Operation(summary = "Get accrual history for an employee (optionally filtered by leave type)")
+    public ResponseEntity<List<LeaveAccrualLog>> getAccrualLog(
+            @RequestParam Long employeeId,
+            @RequestParam(required = false) Long leaveTypeId) {
+        List<LeaveAccrualLog> logs = leaveTypeId != null
+                ? accrualLogRepository.findByEmployeeIdAndLeaveTypeIdOrderByAccrualDateDesc(employeeId, leaveTypeId)
+                : accrualLogRepository.findByEmployeeIdOrderByAccrualDateDesc(employeeId);
+        return ResponseEntity.ok(logs);
+    }
+
+    @PostMapping("/accrual/run")
+    @PreAuthorize("hasAuthority('leave:manage')")
+    @Operation(summary = "Manually trigger monthly accrual for a specific date (defaults to today)")
+    public ResponseEntity<Map<String, Object>> runAccrual(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate date) {
+        LocalDate target = date != null ? date : LocalDate.now();
+        int posted = leaveAccrualService.processMonthlyAccrual(target);
+        return ResponseEntity.ok(Map.of("posted", posted, "date", target.toString()));
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────

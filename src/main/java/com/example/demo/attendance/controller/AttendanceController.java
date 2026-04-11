@@ -1,6 +1,8 @@
 package com.example.demo.attendance.controller;
 
 import com.example.demo.attendance.dto.AttendanceCalendarDayDto;
+import com.example.demo.attendance.dto.AttendanceRegisterDayDto;
+import com.example.demo.attendance.dto.AttendanceRegisterResponse;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
@@ -285,6 +287,43 @@ public class AttendanceController {
     public ResponseEntity<Map<String, Object>> bulkApproveOvertime(@RequestBody List<Long> ids) {
         int count = attendanceService.bulkApproveOvertime(ids);
         return ResponseEntity.ok(Map.of("approved", count));
+    }
+
+    // ─── Attendance Register ──────────────────────────────────────────────────
+
+    @GetMapping("/register")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Get monthly attendance register matrix for all employees")
+    public ResponseEntity<AttendanceRegisterResponse> getRegister(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam int year,
+            @RequestParam int month) {
+        return ResponseEntity.ok(attendanceService.getRegister(companyId, departmentId, year, month));
+    }
+
+    @PatchMapping("/register/{employeeId}/{date}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Inline-edit a single attendance register cell")
+    public ResponseEntity<AttendanceRegisterDayDto> updateRegisterCell(
+            @PathVariable Long employeeId,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestBody Map<String, String> body,
+            @RequestParam Long companyId) {
+        String status = body.getOrDefault("status", "present");
+        return ResponseEntity.ok(attendanceService.updateRegisterCell(employeeId, date, status, companyId));
+    }
+
+    @GetMapping("/register/export")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Export attendance register matrix to Excel")
+    public void exportRegister(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam int year,
+            @RequestParam int month,
+            HttpServletResponse response) throws IOException {
+        attendanceService.exportRegisterToExcel(companyId, departmentId, year, month, response);
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────

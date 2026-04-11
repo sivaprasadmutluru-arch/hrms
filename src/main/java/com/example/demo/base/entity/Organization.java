@@ -45,6 +45,9 @@ public class Organization extends BaseEntity {
     @Column(name = "max_branches")
     private Integer maxBranches = 5;
 
+    @Column(name = "logo_path")
+    private String logoPath;
+
     public enum OrgStatus {
         ACTIVE,
         INACTIVE,

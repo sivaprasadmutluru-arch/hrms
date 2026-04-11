@@ -97,7 +97,13 @@ public class EmployeeResponse {
         r.setPhotoPath(e.getPhotoPath());
         r.setActive(e.isActive());
         r.setCreatedAt(e.getCreatedAt());
-        if (e.getCompany() != null) { r.setCompanyId(e.getCompany().getId()); r.setCompanyName(e.getCompany().getName()); }
+        if (e.getCompany() != null) {
+            r.setCompanyId(e.getCompany().getId());
+            r.setCompanyName(e.getCompany().getName());
+            if (e.getCompany().getOrganization() != null) {
+                r.setOrganizationName(e.getCompany().getOrganization().getName());
+            }
+        }
         if (e.getDepartment() != null) { r.setDepartmentId(e.getDepartment().getId()); r.setDepartmentName(e.getDepartment().getName()); }
         if (e.getJobPosition() != null) { r.setJobPositionId(e.getJobPosition().getId()); r.setJobPositionName(e.getJobPosition().getName()); }
         if (e.getJobRole() != null) { r.setJobRoleId(e.getJobRole().getId()); r.setJobRoleName(e.getJobRole().getName()); }

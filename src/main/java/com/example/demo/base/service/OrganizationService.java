@@ -7,10 +7,12 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.OrganizationRepository;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +30,16 @@ public class OrganizationService {
     private final OrganizationRepository organizationRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
+    private final FileUploadService fileUploadService;
+
+    @Transactional
+    public Organization uploadLogo(Long id, MultipartFile file) {
+        Organization org = getOrganizationById(id);
+        if (org.getLogoPath() != null) fileUploadService.delete(org.getLogoPath());
+        String path = fileUploadService.storeOrgScoped(file, org.getSlug(), "logos");
+        org.setLogoPath(path);
+        return organizationRepository.save(org);
+    }
 
     public List<Organization> getAllOrganizations() {
         return organizationRepository.findAll();

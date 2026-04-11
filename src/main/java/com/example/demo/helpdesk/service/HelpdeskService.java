@@ -1,7 +1,9 @@
 package com.example.demo.helpdesk.service;
 
+import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.DepartmentRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -10,6 +12,8 @@ import com.example.demo.helpdesk.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +55,14 @@ public class HelpdeskService {
 
     @Transactional
     public Ticket createTicket(Ticket ticket) {
-        if (ticket.getRaisedBy() != null && ticket.getRaisedBy().getId() != null) {
+        // Auto-populate raisedBy from the authenticated user if not explicitly provided
+        if (ticket.getRaisedBy() == null || ticket.getRaisedBy().getId() == null) {
+            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+            if (scope != null && scope.getUserId() != null) {
+                employeeRepository.findByUserId(scope.getUserId())
+                        .ifPresent(ticket::setRaisedBy);
+            }
+        } else {
             ticket.setRaisedBy(employeeRepository.getReferenceById(ticket.getRaisedBy().getId()));
         }
         if (ticket.getAssignedTo() != null && ticket.getAssignedTo().getId() != null) {
