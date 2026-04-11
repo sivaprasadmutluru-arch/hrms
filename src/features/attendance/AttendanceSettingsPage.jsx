@@ -25,9 +25,15 @@ import useAuth from '../../hooks/useAuth'
 
 const TABS = ['Grace Times', 'Validation', 'General', 'Allowed IPs', 'Batches', 'Employee Shifts', 'Track Settings']
 
+const SCOPE_LABEL = (gt) => {
+  if (gt.organization?.id) return 'Organisation'
+  if (gt.company?.id) return 'Branch'
+  return '—'
+}
+
 export default function AttendanceSettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const graceTimes = useSelector(selectGraceTimes)
   const validationConditions = useSelector(selectValidationConditions)
   const generalSettings = useSelector(selectGeneralSettings)
@@ -98,21 +104,41 @@ export default function AttendanceSettingsPage() {
     }
   }, [trackSettings])
 
-  const openCreateGt = () => { setEditingGt(null); gtForm.reset({}); setGtModalOpen(true) }
+  const openCreateGt = () => { setEditingGt(null); gtForm.reset({ isDefault: true, allowedClockIn: true, allowedClockOut: false }); setGtModalOpen(true) }
   const openEditGt = (gt) => {
     setEditingGt(gt)
-    gtForm.reset({ allowedTime: gt.allowedTime, allowedTimeInSeconds: gt.allowedTimeInSeconds,
-      allowedClockIn: gt.allowedClockIn, allowedClockOut: gt.allowedClockOut })
+    gtForm.reset({
+      allowedTime: gt.allowedTime,
+      allowedTimeInSeconds: gt.allowedTimeInSeconds,
+      allowedClockIn: gt.allowedClockIn,
+      allowedClockOut: gt.allowedClockOut,
+      isDefault: gt.isDefault,
+    })
     setGtModalOpen(true)
   }
 
   const onSubmitGt = async (data) => {
     try {
+      const isOrgLevel = isEnterpriseAdmin() || isPlatformAdmin()
+      const payload = {
+        ...data,
+        allowedTimeInSeconds: data.allowedTimeInSeconds ? parseInt(data.allowedTimeInSeconds) : null,
+        isDefault: data.isDefault === true || data.isDefault === 'true',
+        allowedClockIn: data.allowedClockIn === true || data.allowedClockIn === 'true',
+        allowedClockOut: data.allowedClockOut === true || data.allowedClockOut === 'true',
+      }
+      if (!editingGt) {
+        if (isOrgLevel && user?.organizationId) {
+          payload.organization = { id: user.organizationId }
+        } else {
+          payload.company = { id: user?.companyId }
+        }
+      }
       if (editingGt) {
-        await dispatch(updateGraceTime({ id: editingGt.id, data })).unwrap()
+        await dispatch(updateGraceTime({ id: editingGt.id, data: payload })).unwrap()
         toast.success('Grace time updated')
       } else {
-        await dispatch(createGraceTime({ ...data, company: { id: user?.companyId } })).unwrap()
+        await dispatch(createGraceTime(payload)).unwrap()
         toast.success('Grace time created')
       }
       setGtModalOpen(false)
@@ -194,6 +220,18 @@ export default function AttendanceSettingsPage() {
     { accessorKey: 'allowedTimeInSeconds', header: 'Seconds' },
     { accessorKey: 'allowedClockIn', header: 'Clock In', cell: ({ getValue }) => getValue() ? 'Yes' : 'No' },
     { accessorKey: 'allowedClockOut', header: 'Clock Out', cell: ({ getValue }) => getValue() ? 'Yes' : 'No' },
+    { id: 'scope', header: 'Scope', cell: ({ row }) => {
+      const label = SCOPE_LABEL(row.original)
+      return (
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+          label === 'Organisation' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+        }`}>{label}</span>
+      )
+    }},
+    { id: 'isDefault', header: 'Default', cell: ({ row }) => row.original.isDefault
+      ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">Yes</span>
+      : <span className="text-gray-400 text-xs">No</span>
+    },
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openEditGt(row.original)}>Edit</Button>
@@ -289,7 +327,12 @@ export default function AttendanceSettingsPage() {
       {tab === 'Grace Times' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Grace Times</h3>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Grace Times</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Branch-level overrides organisation-level. If no branch grace is set, the organisation default applies.
+              </p>
+            </div>
             <Button onClick={openCreateGt}>+ Add Grace Time</Button>
           </div>
           <DataTable columns={gtColumns} data={graceTimes} loading={loading} />
@@ -407,9 +450,35 @@ export default function AttendanceSettingsPage() {
           </div>
         }>
         <div className="space-y-4">
-          <Input label="Allowed Time (HH:MM:SS)" error={gtForm.formState.errors.allowedTime?.message}
+          {!editingGt && (
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700">
+              {(isEnterpriseAdmin() || isPlatformAdmin())
+                ? 'This will apply as an organisation-wide default. Branches can override it with their own grace time.'
+                : 'This will apply to your branch only.'}
+            </div>
+          )}
+          <Input label="Allowed Time (HH:MM:SS)" placeholder="00:15:00"
+            error={gtForm.formState.errors.allowedTime?.message}
             {...gtForm.register('allowedTime', { required: 'Required' })} />
-          <Input label="Allowed Time in Seconds" type="number" {...gtForm.register('allowedTimeInSeconds')} />
+          <Input label="Allowed Time in Seconds" type="number" placeholder="900"
+            {...gtForm.register('allowedTimeInSeconds', { valueAsNumber: true })} />
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" className="rounded border-gray-300 text-indigo-600"
+                {...gtForm.register('allowedClockIn')} />
+              Apply on Clock In
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" className="rounded border-gray-300 text-indigo-600"
+                {...gtForm.register('allowedClockOut')} />
+              Apply on Clock Out
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" className="rounded border-gray-300 text-indigo-600"
+              {...gtForm.register('isDefault')} />
+            Set as default for this scope
+          </label>
         </div>
       </Modal>
 

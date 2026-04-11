@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchMyCompany, create, update, fetchBranches, selectAll, selectLoading, selectBranches } from './companiesSlice'
+import {
+  fetchAll, fetchMyCompany, create, update, uploadLogo,
+  fetchBranches, selectAll, selectLoading, selectBranches,
+} from './companiesSlice'
 import { fetchWithoutHeadOffice, selectAvailable as selectOrganizations } from '../organizations/organizationsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -10,6 +13,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Spinner from '../../components/common/Spinner'
+import { API_BASE_URL } from '../../config/constants'
 import {
   BuildingOffice2Icon,
   EnvelopeIcon,
@@ -19,17 +23,63 @@ import {
   PlusIcon,
   PencilSquareIcon,
   BuildingStorefrontIcon,
+  CameraIcon,
 } from '@heroicons/react/24/outline'
 import useAuth from '../../hooks/useAuth'
 
-// ─── Branch card (shared) ────────────────────────────────────────────────────
-function BranchCard({ branch, headOfficeId, canEdit, onEdit }) {
+function getLogoUrl(logoPath) {
+  if (!logoPath) return null
+  if (logoPath.startsWith('http')) return logoPath
+  return `${API_BASE_URL}/files/${logoPath}`
+}
+
+// ─── Logo avatar (shared) ────────────────────────────────────────────────────
+function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUpload, className = '' }) {
+  const inputRef = useRef(null)
+  const url = getLogoUrl(logoPath)
+  const sizeMap = { sm: 'w-11 h-11', md: 'w-14 h-14', lg: 'w-16 h-16' }
+  const iconSizeMap = { sm: 'h-5 w-5', md: 'h-7 w-7', lg: 'h-8 w-8' }
+
+  const handleChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file && onUpload) onUpload(file)
+    e.target.value = ''
+  }
+
+  return (
+    <div
+      className={`${sizeMap[size]} rounded-2xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative ${canUpload ? 'cursor-pointer group' : ''} ${className}`}
+      onClick={() => canUpload && inputRef.current?.click()}
+    >
+      {url
+        ? <img src={url} alt="logo" className="w-full h-full object-cover" />
+        : <Icon className={`${iconSizeMap[size]} text-indigo-400`} />
+      }
+      {canUpload && (
+        <>
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <CameraIcon className="h-4 w-4 text-white" />
+          </div>
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Branch card ─────────────────────────────────────────────────────────────
+function BranchCard({ branch, headOfficeId, canEdit, onEdit, onLogoUpload }) {
   return (
     <div className="aspect-square flex flex-col rounded-2xl border border-gray-100 overflow-hidden hover:border-violet-200 hover:shadow-md transition-all group">
       <div className="flex-1 flex flex-col items-center justify-center p-4 bg-gradient-to-br from-violet-50 to-purple-50 group-hover:from-violet-100 group-hover:to-purple-100 transition-colors">
-        <div className="w-14 h-14 rounded-2xl bg-white border border-violet-100 flex items-center justify-center mb-3 shadow-sm">
-          <BuildingStorefrontIcon className="h-7 w-7 text-violet-500" />
-        </div>
+        <LogoAvatar
+          logoPath={branch.logoPath}
+          icon={BuildingStorefrontIcon}
+          size="md"
+          canUpload={canEdit}
+          onUpload={(file) => onLogoUpload(branch.id, file)}
+          className="mb-3"
+        />
         <p className="font-bold text-gray-800 text-sm text-center leading-tight">{branch.name}</p>
         <span className="mt-2 text-xs font-medium px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Branch</span>
       </div>
@@ -61,7 +111,7 @@ function BranchCard({ branch, headOfficeId, canEdit, onEdit }) {
 }
 
 // ─── Enterprise Admin View ───────────────────────────────────────────────────
-function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEditBranch }) {
+function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEditBranch, onLogoUpload }) {
   const branchList = branches[headOffice?.id] || []
   const atLimit = branchList.length >= 5
 
@@ -79,9 +129,14 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           <div className="h-20 bg-gradient-to-br from-indigo-500 to-violet-600" />
           <div className="px-5 pb-5">
             <div className="-mt-8 mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-white shadow-md border-2 border-white flex items-center justify-center">
-                <BuildingOffice2Icon className="h-8 w-8 text-indigo-500" />
-              </div>
+              <LogoAvatar
+                logoPath={headOffice.logoPath}
+                icon={BuildingOffice2Icon}
+                size="lg"
+                canUpload={canAddBranch}
+                onUpload={(file) => onLogoUpload(headOffice.id, file)}
+                className="border-2 border-white shadow-md"
+              />
             </div>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 mb-2 inline-block">
               Head Office
@@ -92,6 +147,9 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                 <MapPinIcon className="h-3.5 w-3.5 flex-shrink-0" />
                 {location}
               </p>
+            )}
+            {canAddBranch && (
+              <p className="text-xs text-gray-400 mt-2">Click logo to change</p>
             )}
           </div>
         </div>
@@ -166,7 +224,6 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
 
       {/* ── RIGHT: Branches panel ── */}
       <div className="flex-1 min-w-0">
-        {/* Branches header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-base font-semibold text-gray-800">Branches</h3>
@@ -183,7 +240,6 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           )}
         </div>
 
-        {/* Empty state */}
         {branchList.length === 0 ? (
           <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl py-16 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center mb-4">
@@ -212,12 +268,16 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                   key={branch.id}
                   className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all group overflow-hidden"
                 >
-                  {/* Card top */}
                   <div className="px-5 pt-5 pb-4">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-50 to-purple-100 border border-violet-100 flex items-center justify-center">
-                        <BuildingStorefrontIcon className="h-5 w-5 text-violet-500" />
-                      </div>
+                      <LogoAvatar
+                        logoPath={branch.logoPath}
+                        icon={BuildingStorefrontIcon}
+                        size="sm"
+                        canUpload={canAddBranch}
+                        onUpload={(file) => onLogoUpload(branch.id, file)}
+                        className="rounded-xl border-violet-100"
+                      />
                       <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-50 text-violet-700">
                         Branch
                       </span>
@@ -244,8 +304,6 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                       )}
                     </div>
                   </div>
-
-                  {/* Card footer */}
                   {canAddBranch && (
                     <div className="border-t border-gray-50 px-4 py-2.5 flex justify-end">
                       <button
@@ -267,8 +325,8 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
   )
 }
 
-// ─── Branches Modal (Super Admin) ────────────────────────────────────────────
-function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBranch, onEditBranch }) {
+// ─── Branches Modal (Super Admin) ─────────────────────────────────────────────
+function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBranch, onEditBranch, onLogoUpload }) {
   const branchList = branches[company?.id] || []
 
   return (
@@ -326,6 +384,7 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
               headOfficeId={company?.id}
               canEdit={canAddBranch}
               onEdit={(b, hid) => { onClose(); onEditBranch(b, hid) }}
+              onLogoUpload={onLogoUpload}
             />
           ))}
         </div>
@@ -334,8 +393,8 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
   )
 }
 
-// ─── Super Admin View ────────────────────────────────────────────────────────
-function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onCreateHeadOffice }) {
+// ─── Super Admin View ──────────────────────────────────────────────────────────
+function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onCreateHeadOffice, onLogoUpload }) {
   const [selected, setSelected] = useState(null)
   const [branchModalOpen, setBranchModalOpen] = useState(false)
   const dispatch = useDispatch()
@@ -351,7 +410,6 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
       {headOffices.length > 0 && (
         <div className="flex gap-4">
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-3">
@@ -375,7 +433,6 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
         </div>
       )}
 
-      {/* Head office grid */}
       {headOffices.length > 0 ? (
         <div className="grid grid-cols-3 gap-4">
           {headOffices.map(company => {
@@ -389,8 +446,14 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                 className="relative cursor-pointer aspect-square flex flex-col rounded-2xl border-2 border-gray-100 overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md hover:border-indigo-200 group"
               >
                 <div className="flex-1 flex flex-col items-center justify-center p-5 bg-gradient-to-br from-indigo-50 to-violet-50 group-hover:from-indigo-100 group-hover:to-violet-100 transition-colors">
-                  <div className="w-16 h-16 rounded-2xl bg-white border border-indigo-100 flex items-center justify-center mb-3 shadow-sm">
-                    <BuildingOffice2Icon className="h-8 w-8 text-indigo-500" />
+                  <div onClick={e => e.stopPropagation()} className="mb-3">
+                    <LogoAvatar
+                      logoPath={company.logoPath}
+                      icon={BuildingOffice2Icon}
+                      size="lg"
+                      canUpload={canAddBranch}
+                      onUpload={(file) => onLogoUpload(company.id, file)}
+                    />
                   </div>
                   <p className="font-bold text-base text-center leading-tight text-gray-800">{company.name}</p>
                   <span className="mt-2 text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
@@ -440,7 +503,6 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
         </div>
       )}
 
-      {/* Branches modal */}
       {selectedCompany && (
         <BranchesModal
           company={selectedCompany}
@@ -450,13 +512,14 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
           canAddBranch={canAddBranch}
           onAddBranch={onAddBranch}
           onEditBranch={onEditBranch}
+          onLogoUpload={onLogoUpload}
         />
       )}
     </div>
   )
 }
 
-// ─── Main Page ───────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CompaniesPage() {
   const dispatch = useDispatch()
   const { isPlatformAdmin, isEnterpriseAdmin, user } = useAuth()
@@ -464,12 +527,17 @@ export default function CompaniesPage() {
   const loading = useSelector(selectLoading)
   const branches = useSelector(selectBranches)
   const organizations = useSelector(selectOrganizations)
+
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('headoffice')
   const [parentId, setParentId] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const logoInputRef = useRef(null)
 
+  const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const canAddBranch = isPlatformAdmin() || isEnterpriseAdmin()
 
   useEffect(() => {
@@ -482,7 +550,6 @@ export default function CompaniesPage() {
     }
   }, [dispatch])
 
-  // Auto-load branches for enterprise admin's head office
   useEffect(() => {
     if (isEnterpriseAdmin() && companies.length > 0) {
       const headOffice = companies.find(c => (c.companyType || c.type) === 'HEAD_OFFICE')
@@ -490,10 +557,21 @@ export default function CompaniesPage() {
     }
   }, [companies])
 
+  const handleLogoUpload = async (companyId, file) => {
+    try {
+      await dispatch(uploadLogo({ id: companyId, file })).unwrap()
+      toast.success('Logo updated')
+    } catch {
+      toast.error('Failed to upload logo')
+    }
+  }
+
   const openBranch = (id) => {
     setModalType('branch')
     setParentId(id)
     setEditTarget(null)
+    setLogoFile(null)
+    setLogoPreview(null)
     reset({})
     setModalOpen(true)
   }
@@ -502,6 +580,8 @@ export default function CompaniesPage() {
     setModalType('branch')
     setParentId(headOfficeId)
     setEditTarget(branch)
+    setLogoFile(null)
+    setLogoPreview(getLogoUrl(branch.logoPath))
     reset({
       name: branch.name,
       email: branch.email,
@@ -520,33 +600,54 @@ export default function CompaniesPage() {
     setModalType('headoffice')
     setParentId(null)
     setEditTarget(null)
+    setLogoFile(null)
+    setLogoPreview(null)
     reset({})
     setModalOpen(true)
   }
 
+  const onLogoFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoFile(file)
+    setLogoPreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
   const onSubmit = async (data) => {
+    setSaving(true)
     try {
+      let savedCompany
       if (editTarget) {
-        await dispatch(update({ id: editTarget.id, data })).unwrap()
-        toast.success('Branch updated')
+        savedCompany = await dispatch(update({ id: editTarget.id, data })).unwrap()
+        toast.success('Updated')
         if (parentId) dispatch(fetchBranches(parentId))
       } else {
         const payload = modalType === 'branch'
           ? { ...data, parentId, type: 'BRANCH' }
           : { ...data, type: 'HEAD_OFFICE', organizationId: Number(data.organizationId) }
-        await dispatch(create(payload)).unwrap()
+        savedCompany = await dispatch(create(payload)).unwrap()
         toast.success(`${modalType === 'branch' ? 'Branch' : 'Head office'} created`)
         if (parentId) dispatch(fetchBranches(parentId))
         else if (isPlatformAdmin()) dispatch(fetchAll({ page: 0, size: 50 }))
       }
+      if (logoFile && savedCompany?.id) {
+        try {
+          await dispatch(uploadLogo({ id: savedCompany.id, file: logoFile })).unwrap()
+        } catch {
+          toast.error('Saved, but logo upload failed')
+        }
+      }
       setModalOpen(false)
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) {
+      toast.error(e || 'Error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const headOffices = companies.filter(c => (c.companyType || c.type) === 'HEAD_OFFICE')
-  const enterpriseHeadOffice = isEnterpriseAdmin()
-    ? headOffices[0] || companies[0]
-    : null
+  const enterpriseHeadOffice = isEnterpriseAdmin() ? headOffices[0] || companies[0] : null
 
   return (
     <div className="space-y-6">
@@ -580,6 +681,7 @@ export default function CompaniesPage() {
           onAddBranch={openBranch}
           onEditBranch={openEditBranch}
           onCreateHeadOffice={openHeadOffice}
+          onLogoUpload={handleLogoUpload}
         />
       )}
 
@@ -590,22 +692,45 @@ export default function CompaniesPage() {
           canAddBranch={canAddBranch}
           onAddBranch={openBranch}
           onEditBranch={openEditBranch}
+          onLogoUpload={handleLogoUpload}
         />
       )}
 
-      {/* Modal */}
+      {/* Create / Edit Modal */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editTarget ? `Edit Branch — ${editTarget.name}` : modalType === 'branch' ? 'New Branch' : 'New Head Office'}
+        title={editTarget ? `Edit — ${editTarget.name}` : modalType === 'branch' ? 'New Branch' : 'New Head Office'}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Save Changes' : 'Create'}</Button>
+            <Button onClick={handleSubmit(onSubmit)} disabled={saving}>
+              {saving ? 'Saving…' : editTarget ? 'Save Changes' : 'Create'}
+            </Button>
           </div>
         }
       >
         <div className="space-y-4">
+          {/* Logo upload */}
+          {(
+            <div className="flex flex-col items-center gap-2 pb-2">
+              <div
+                className="relative w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:border-indigo-400 transition-colors group overflow-hidden bg-gray-50"
+                onClick={() => logoInputRef.current?.click()}
+              >
+                {logoPreview
+                  ? <img src={logoPreview} alt="logo preview" className="w-full h-full object-cover" />
+                  : <BuildingOffice2Icon className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 transition-colors" />
+                }
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CameraIcon className="h-5 w-5 text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">Click to change logo</p>
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={onLogoFileChange} />
+            </div>
+          )}
+
           <Input label="Company Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Email" type="email" {...register('email')} />
@@ -621,6 +746,7 @@ export default function CompaniesPage() {
             <Input label="ZIP" {...register('zip')} />
           </div>
           <Input label="Website" {...register('website')} />
+
           {modalType === 'headoffice' && !editTarget && (
             <Select
               label="Organization"

@@ -2,17 +2,18 @@ import { useEffect, useState } from 'react'
 import api from '../../../services/api'
 import Spinner from '../../../components/common/Spinner'
 
-export default function BonusPointsTab({ employeeId }) {
+export default function BonusPointsTab({ employeeId, companyId }) {
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!employeeId) return
-    api.get(`/employees/${employeeId}/bonus-points`)
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    api.get(`/employees/${employeeId}/bonus-points`, cfg)
       .then(res => setData(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [employeeId])
+  }, [employeeId, companyId])
 
   if (loading) return <div className="flex justify-center py-10"><Spinner /></div>
   if (!data)   return <p className="text-sm text-gray-400 py-6">No bonus points data available.</p>

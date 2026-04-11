@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, selectAll, selectLoading, selectPagination } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, exportWorkInfo, importWorkInfo, selectAll, selectLoading, selectPagination } from './employeesSlice'
+import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
 import { fetchAll as fetchDepartments, selectAll as selectDepartments } from '../departments/departmentsSlice'
@@ -200,6 +201,9 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
   const [selectedCompanyId, setSelectedCompanyId] = useState(null)
+  const [selectedRows, setSelectedRows] = useState([])
+  const [showBulkUpdate, setShowBulkUpdate] = useState(false)
+  const importWorkInfoRef = useRef()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -315,6 +319,7 @@ export default function EmployeesPage() {
       employeeType: data.employeeType || undefined,
       experience: data.experience !== '' && data.experience != null ? Number(data.experience) : undefined,
       children: data.children !== '' && data.children != null ? Number(data.children) : undefined,
+      basicPay: data.basicPay !== '' && data.basicPay != null ? Number(data.basicPay) : undefined,
     }
     try {
       if (editing) {
@@ -349,6 +354,31 @@ export default function EmployeesPage() {
 
   const columns = [
     {
+      id: 'select',
+      header: () => (
+        <input
+          type="checkbox"
+          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          checked={filtered.length > 0 && filtered.every(e => selectedRows.includes(e.id))}
+          onChange={e => setSelectedRows(e.target.checked ? filtered.map(emp => emp.id) : [])}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          checked={selectedRows.includes(row.original.id)}
+          onChange={e => {
+            e.stopPropagation()
+            setSelectedRows(prev =>
+              e.target.checked ? [...prev, row.original.id] : prev.filter(id => id !== row.original.id)
+            )
+          }}
+          onClick={e => e.stopPropagation()}
+        />
+      ),
+    },
+    {
       id: 'name',
       header: 'Employee',
       cell: ({ row }) => (
@@ -381,7 +411,7 @@ export default function EmployeesPage() {
       header: '',
       cell: ({ row }) => (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => navigate(`/employees/${row.original.id}`)}>View</Button>
+          <Button size="sm" variant="secondary" onClick={() => navigate(`/employees/${row.original.id}${row.original.companyId ? `?companyId=${row.original.companyId}` : ''}`)}>View</Button>
           {canManage && (
             <>
               <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
@@ -420,15 +450,38 @@ export default function EmployeesPage() {
           <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
         </div>
         {canManage && (
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Employee
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            {selectedRows.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => setShowBulkUpdate(true)}>
+                Bulk Update ({selectedRows.length})
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => dispatch(exportWorkInfo(user?.companyId))}>Export Work Info</Button>
+            <Button variant="secondary" size="sm" onClick={() => importWorkInfoRef.current?.click()}>Import Work Info</Button>
+            <input
+              ref={importWorkInfoRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={async e => {
+                const f = e.target.files[0]
+                if (!f) return
+                const res = await dispatch(importWorkInfo({ companyId: user?.companyId, file: f }))
+                if (res.error) toast.error(res.payload)
+                else toast.success('Work info imported')
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Employee
+            </button>
+          </div>
         )}
       </div>
 
@@ -543,7 +596,7 @@ export default function EmployeesPage() {
               employee={emp}
               role={roleByEmail[emp.email]}
               canManage={canManage}
-              onView={(e) => navigate(`/employees/${e.id}`)}
+              onView={(e) => navigate(`/employees/${e.id}${e.companyId ? `?companyId=${e.companyId}` : ''}`)}
               onEdit={openEdit}
               onDelete={setDeleteTarget}
             />
@@ -598,6 +651,14 @@ export default function EmployeesPage() {
         message={`Remove "${deleteTarget?.fullName}"? This will deactivate their account.`}
         confirmLabel="Remove"
       />
+
+      {showBulkUpdate && (
+        <BulkUpdateModal
+          employeeIds={selectedRows}
+          onClose={() => setShowBulkUpdate(false)}
+          onSuccess={() => { setSelectedRows([]); load(pagination.page) }}
+        />
+      )}
     </div>
   )
 }

@@ -37,6 +37,49 @@ export const rejectShiftRequest = createAsyncThunk('shiftRequests/reject', async
   }
 })
 
+export const cancelShiftRequest = createAsyncThunk('shiftRequests/cancel', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/shift-requests/${id}/cancel`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to cancel shift request')
+  }
+})
+
+export const bulkApproveShiftRequests = createAsyncThunk('shiftRequests/bulkApprove', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/shift-requests/bulk-approve', { ids })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk approve shift requests')
+  }
+})
+
+export const bulkCancelShiftRequests = createAsyncThunk('shiftRequests/bulkCancel', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/shift-requests/bulk-cancel', { ids })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk cancel shift requests')
+  }
+})
+
+export const exportShiftRequests = createAsyncThunk('shiftRequests/export', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/shift-requests/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'shift-requests.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export shift requests')
+  }
+})
+
 const shiftRequestSlice = createSlice({
   name: 'shiftRequests',
   initialState: { data: [], loading: false, error: null },
@@ -57,6 +100,12 @@ const shiftRequestSlice = createSlice({
         const idx = state.data.findIndex(r => r.id === action.payload.id)
         if (idx !== -1) state.data[idx] = action.payload
       })
+      .addCase(cancelShiftRequest.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = action.payload
+      })
+      .addCase(bulkApproveShiftRequests.fulfilled, (state) => { state.loading = false })
+      .addCase(bulkCancelShiftRequests.fulfilled, (state) => { state.loading = false })
   },
 })
 

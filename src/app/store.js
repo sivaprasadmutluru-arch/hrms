@@ -1,5 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../features/auth/authSlice'
+import twoFactorReducer from '../features/auth/twoFactorSlice'
+import userGroupsReducer from '../features/roles/userGroupsSlice'
+import userPermissionsReducer from '../features/roles/userPermissionsSlice'
+import generalSettingsReducer from '../features/settings/generalSettingsSlice'
+import shiftAllocationsReducer from '../features/attendance/shiftAllocationsSlice'
+import rotatingAssignsReducer from '../features/attendance/rotatingAssignsSlice'
+import platformReducer from '../features/platform/platformSlice'
 import organizationsReducer from '../features/organizations/organizationsSlice'
 import companiesReducer from '../features/companies/companiesSlice'
 import departmentsReducer from '../features/departments/departmentsSlice'
@@ -34,10 +41,18 @@ import outlookAuthReducer from '../features/outlookauth/outlookAuthSlice'
 import accessibilityReducer from '../features/accessibility/accessibilitySlice'
 import viewsReducer from '../features/views/viewsSlice'
 import dynamicFieldsReducer from '../features/dynamicfields/dynamicFieldsSlice'
+import essReducer from '../features/ess/essSlice'
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    twoFactor: twoFactorReducer,
+    userGroups: userGroupsReducer,
+    userPermissions: userPermissionsReducer,
+    generalSettings: generalSettingsReducer,
+    shiftAllocations: shiftAllocationsReducer,
+    rotatingAssigns: rotatingAssignsReducer,
+    platform: platformReducer,
     organizations: organizationsReducer,
     companies: companiesReducer,
     departments: departmentsReducer,
@@ -72,6 +87,7 @@ export const store = configureStore({
     accessibility: accessibilityReducer,
     views: viewsReducer,
     dynamicFields: dynamicFieldsReducer,
+    ess: essReducer,
   },
   devTools: true
 })

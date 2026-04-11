@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -23,19 +23,25 @@ import PayrollTab from './profile-tabs/PayrollTab'
 import BankDetailsTab from './profile-tabs/BankDetailsTab'
 import DocumentsTab from './profile-tabs/DocumentsTab'
 import BonusPointsTab from './profile-tabs/BonusPointsTab'
+import PermissionsTab from './profile-tabs/PermissionsTab'
+import EncashmentConditionTab from './profile-tabs/EncashmentConditionTab'
 
 const TABS = [
-  { key: 'about',     label: 'About' },
-  { key: 'work-info', label: 'Work Info' },
-  { key: 'payroll',   label: 'Payroll' },
-  { key: 'bank',      label: 'Bank Details' },
-  { key: 'documents', label: 'Documents' },
-  { key: 'bonus',     label: 'Bonus Points' },
+  { key: 'about',       label: 'About' },
+  { key: 'work-info',   label: 'Work Info' },
+  { key: 'payroll',     label: 'Payroll' },
+  { key: 'bank',        label: 'Bank Details' },
+  { key: 'documents',   label: 'Documents' },
+  { key: 'bonus',       label: 'Bonus Points' },
+  { key: 'permissions', label: 'Permissions', adminOnly: true },
+  { key: 'encashment',  label: 'Encashment', hrOnly: true },
 ]
 
 export default function EmployeeDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const companyIdParam = searchParams.get('companyId')
   const dispatch = useDispatch()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, user } = useAuth()
 
@@ -61,11 +67,12 @@ export default function EmployeeDetailPage() {
 
   useEffect(() => {
     setLoading(true)
-    api.get(`/employees/${id}`)
+    const config = companyIdParam ? { headers: { 'X-Company-Id': companyIdParam } } : {}
+    api.get(`/employees/${id}`, config)
       .then(res => setProfile(res.data))
       .catch(() => toast.error('Failed to load employee profile'))
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, companyIdParam])
 
   useEffect(() => {
     if (isPlatformAdmin()) dispatch(fetchAll_companies({ page: 0, size: 100 }))
@@ -158,7 +165,9 @@ export default function EmployeeDetailPage() {
         experience:         data.experience !== '' && data.experience != null ? Number(data.experience) : undefined,
         children:           data.children   !== '' && data.children   != null ? Number(data.children)   : undefined,
       }
-      const res = await api.put(`/employees/${profile.id}`, payload)
+      const companyId = profile.companyId || companyIdParam
+      const config = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+      const res = await api.put(`/employees/${profile.id}`, payload, config)
       setProfile(res.data)
       setModalOpen(false)
       toast.success('Employee updated')
@@ -173,9 +182,13 @@ export default function EmployeeDetailPage() {
     setUploading(true)
     try {
       const form = new FormData()
-      form.append('photo', file)
+      form.append('file', file)
+      const photoCompanyId = profile.companyId || companyIdParam
       const res = await api.post(`/employees/${profile.id}/photo`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(photoCompanyId ? { 'X-Company-Id': photoCompanyId } : {}),
+        },
       })
       setProfile(prev => ({ ...prev, photoPath: res.data?.photoPath ?? res.data }))
       toast.success('Photo updated')
@@ -190,7 +203,7 @@ export default function EmployeeDetailPage() {
   const photoUrl = profile?.photoPath
     ? (profile.photoPath.startsWith('http')
         ? profile.photoPath
-        : `${API_BASE_URL.replace('/api', '')}${profile.photoPath}`)
+        : `${API_BASE_URL}/files/${profile.photoPath}`)
     : null
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>
@@ -343,7 +356,11 @@ export default function EmployeeDetailPage() {
 
             {/* Tab bar */}
             <div className="flex border-b border-gray-200 overflow-x-auto">
-              {TABS.map(tab => (
+              {TABS.filter(tab => {
+                if (tab.adminOnly && !(isPlatformAdmin() || isEnterpriseAdmin())) return false
+                if (tab.hrOnly && !(isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager())) return false
+                return true
+              }).map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
@@ -360,12 +377,14 @@ export default function EmployeeDetailPage() {
 
             {/* Tab content */}
             <div className="p-6">
-              {activeTab === 'about'     && <AboutTab profile={profile} />}
-              {activeTab === 'work-info' && <WorkInfoTab employeeId={profile.id} />}
-              {activeTab === 'payroll'   && <PayrollTab employeeId={profile.id} />}
-              {activeTab === 'bank'      && <BankDetailsTab employeeId={profile.id} />}
-              {activeTab === 'documents' && <DocumentsTab employeeId={profile.id} />}
-              {activeTab === 'bonus'     && <BonusPointsTab employeeId={profile.id} />}
+              {activeTab === 'about'       && <AboutTab profile={profile} />}
+              {activeTab === 'work-info'   && <WorkInfoTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'payroll'     && <PayrollTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'bank'        && <BankDetailsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'documents'   && <DocumentsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'bonus'       && <BonusPointsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'permissions' && <PermissionsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'encashment'  && <EncashmentConditionTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
             </div>
           </div>
         </div>

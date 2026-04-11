@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchAll, markRead, markAllRead, selectAll, selectLoading } from './notificationsSlice'
+import { fetchAll, markRead, markAllRead, deleteNotification, deleteAllNotifications, selectAll, selectLoading } from './notificationsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Card from '../../components/common/Card'
 import Spinner from '../../components/common/Spinner'
 import EmptyState from '../../components/common/EmptyState'
 import { formatDateTime } from '../../utils/formatters'
-import { BellIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { BellIcon, CheckIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
 export default function NotificationsPage() {
@@ -23,13 +23,30 @@ export default function NotificationsPage() {
   const handleMarkAll = async () => {
     try { await dispatch(markAllRead()).unwrap(); toast.success('All marked as read') } catch { toast.error('Failed') }
   }
+  const handleDelete = async (id) => {
+    // Optimistic: slice already removes it
+    dispatch(deleteNotification(id))
+  }
+  const handleDeleteAll = async () => {
+    if (!window.confirm('Delete all notifications?')) return
+    try { await dispatch(deleteAllNotifications()).unwrap(); toast.success('All notifications cleared') } catch { toast.error('Failed') }
+  }
 
   if (loading) return <Spinner className="py-16" />
 
   return (
     <div>
       <PageHeader title="Notifications" subtitle="Your recent notifications"
-        actions={notifications.some(n => !n.isRead) && <Button variant="secondary" onClick={handleMarkAll}><CheckIcon className="h-4 w-4 mr-1" />Mark All Read</Button>} />
+        actions={
+          <div className="flex gap-2">
+            {notifications.some(n => !n.isRead) && (
+              <Button variant="secondary" onClick={handleMarkAll}><CheckIcon className="h-4 w-4 mr-1" />Mark All Read</Button>
+            )}
+            {notifications.length > 0 && (
+              <Button variant="danger" onClick={handleDeleteAll}><TrashIcon className="h-4 w-4 mr-1" />Clear All</Button>
+            )}
+          </div>
+        } />
       {notifications.length === 0 ? (
         <EmptyState title="No notifications" description="You're all caught up!" />
       ) : (
@@ -47,11 +64,16 @@ export default function NotificationsPage() {
                     <p className="text-xs text-gray-400 mt-1">{formatDateTime(n.createdAt)}</p>
                   </div>
                 </div>
-                {!n.isRead && (
-                  <button onClick={() => handleMarkRead(n.id)} className="flex-shrink-0 text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
-                    Mark read
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!n.isRead && (
+                    <button onClick={() => handleMarkRead(n.id)} className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                      Mark read
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(n.id)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
+                    <XMarkIcon className="h-4 w-4" />
                   </button>
-                )}
+                </div>
               </div>
             </Card>
           ))}

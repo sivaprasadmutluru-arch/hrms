@@ -360,6 +360,29 @@ export const annualLeaveReset = createAsyncThunk('leave/annualLeaveReset', async
   }
 })
 
+// ─── Accrual ──────────────────────────────────────────────────────────────
+
+export const fetchAccrualLog = createAsyncThunk('leave/fetchAccrualLog', async ({ employeeId, leaveTypeId }, { rejectWithValue }) => {
+  try {
+    const params = { employeeId }
+    if (leaveTypeId) params.leaveTypeId = leaveTypeId
+    const res = await api.get('/leave/accrual-log', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch accrual log')
+  }
+})
+
+export const runManualAccrual = createAsyncThunk('leave/runManualAccrual', async (date, { rejectWithValue }) => {
+  try {
+    const params = date ? { date } : {}
+    const res = await api.post('/leave/accrual/run', null, { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to run accrual')
+  }
+})
+
 // ─── Holidays ─────────────────────────────────────────────────────────────
 
 export const fetchHolidays = createAsyncThunk('leave/fetchHolidays', async (params, { rejectWithValue }) => {
@@ -377,6 +400,36 @@ export const updateHoliday = createAsyncThunk('leave/updateHoliday', async ({ id
 export const deleteHoliday = createAsyncThunk('leave/deleteHoliday', async (id, { rejectWithValue }) => {
   try { await api.delete(`/leave/holidays/${id}`); return id }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
+export const exportHolidays = createAsyncThunk('leave/exportHolidays', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/leave/holidays/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'holidays.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export holidays')
+  }
+})
+
+export const importHolidays = createAsyncThunk('leave/importHolidays', async ({ companyId, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/leave/holidays/import', formData, {
+      params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to import holidays')
+  }
 })
 
 // ─── Company Leaves ────────────────────────────────────────────────────────
@@ -451,6 +504,7 @@ const leaveSlice = createSlice({
     companyLeaves: [],
     leaveDashboard: null,
     clashResult: null,
+    accrualLog: [],
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -667,6 +721,12 @@ const leaveSlice = createSlice({
       // Leave Dashboard / Clash Check
       .addCase(fetchLeaveDashboard.fulfilled, (state, action) => { state.leaveDashboard = action.payload })
       .addCase(checkLeaveClash.fulfilled, (state, action) => { state.clashResult = action.payload })
+
+      // Accrual
+      .addCase(fetchAccrualLog.fulfilled, (state, action) => { state.accrualLog = action.payload })
+      .addCase(runManualAccrual.pending, (state) => { state.loading = true })
+      .addCase(runManualAccrual.fulfilled, (state) => { state.loading = false })
+      .addCase(runManualAccrual.rejected, (state, action) => { state.loading = false; state.error = action.payload })
   },
 })
 
@@ -684,4 +744,5 @@ export const selectLeaveRequestFiles = (state) => state.leave.leaveRequestFiles
 export const selectAllocationRequestComments = (state) => state.leave.allocationRequestComments
 export const selectConditionApprovals = (state) => state.leave.conditionApprovals
 export const selectPastLeaveRestrict = (state) => state.leave.pastLeaveRestrict
+export const selectAccrualLog = (state) => state.leave.accrualLog
 export default leaveSlice.reducer

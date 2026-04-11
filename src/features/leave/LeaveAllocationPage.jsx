@@ -6,6 +6,7 @@ import {
   fetchAllocationRequests, createAllocationRequest, approveAllocationRequest,
   rejectAllocationRequest, fetchLeaveTypes, selectAllocationRequests, selectLoading
 } from './leaveSlice'
+import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -22,6 +23,7 @@ export default function LeaveAllocationPage() {
   const allocationRequests = useSelector(selectAllocationRequests)
   const loading = useSelector(selectLoading)
   const leaveTypes = useSelector(s => s.leave.leaveTypes)
+  const employees = useSelector(selectEmployees)
   const [modalOpen, setModalOpen] = useState(false)
   const [rejectModal, setRejectModal] = useState({ open: false, id: null, reason: '' })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -29,6 +31,7 @@ export default function LeaveAllocationPage() {
   useEffect(() => {
     dispatch(fetchAllocationRequests())
     dispatch(fetchLeaveTypes())
+    dispatch(fetchEmployees({ page: 0, size: 200 }))
   }, [dispatch])
 
   const handleApprove = async (id) => {
@@ -111,7 +114,8 @@ export default function LeaveAllocationPage() {
           </div>
         }>
         <div className="space-y-4">
-          <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
+          <Select label="Employee" options={employees.map(e => ({ value: e.id, label: e.fullName || e.email }))}
+            error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
           <Select label="Leave Type" options={leaveTypes.map(lt => ({ value: lt.id, label: lt.name }))}
             error={errors.leaveTypeId?.message} {...register('leaveTypeId', { required: 'Required' })} />
           <Input label="Days Requested" type="number" step="0.5"

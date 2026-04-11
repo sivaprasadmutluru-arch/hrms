@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchWorkTypeRequests, createWorkTypeRequest, approveWorkTypeRequest, rejectWorkTypeRequest,
+  cancelWorkTypeRequest, bulkApproveWorkTypeRequests, bulkCancelWorkTypeRequests, exportWorkTypeRequests,
   selectWorkTypeRequests, selectWorkTypeRequestsLoading
 } from './workTypeRequestSlice'
 import PageHeader from '../../components/common/PageHeader'
@@ -22,9 +23,23 @@ export default function WorkTypeRequestsPage() {
   const requests = useSelector(selectWorkTypeRequests)
   const loading = useSelector(selectWorkTypeRequestsLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchWorkTypeRequests()) }, [dispatch])
+
+  const toggleRow = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+  const handleBulkApprove = async () => {
+    const res = await dispatch(bulkApproveWorkTypeRequests(selectedIds))
+    if (res.error) toast.error(res.payload)
+    else { toast.success(`${selectedIds.length} requests approved`); setSelectedIds([]); dispatch(fetchWorkTypeRequests()) }
+  }
+  const handleBulkCancel = async () => {
+    const res = await dispatch(bulkCancelWorkTypeRequests(selectedIds))
+    if (res.error) toast.error(res.payload)
+    else { toast.success(`${selectedIds.length} requests cancelled`); setSelectedIds([]); dispatch(fetchWorkTypeRequests()) }
+  }
+  const handleExport = () => dispatch(exportWorkTypeRequests(user?.companyId))
 
   const handleApprove = async (id) => {
     try { await dispatch(approveWorkTypeRequest(id)).unwrap(); toast.success('Approved') }
@@ -75,7 +90,22 @@ export default function WorkTypeRequestsPage() {
   return (
     <div>
       <PageHeader title="Work Type Requests" subtitle="Employee work type change requests"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>} />
+        actions={
+          <div className="flex gap-2">
+            {!isEmp && <Button variant="secondary" onClick={handleExport}>Export</Button>}
+            <Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>
+          </div>
+        } />
+
+      {selectedIds.length > 0 && !isEmp && (
+        <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-lg mb-3">
+          <span className="text-sm text-indigo-700">{selectedIds.length} selected</span>
+          <Button size="sm" onClick={handleBulkApprove}>Approve Selected</Button>
+          <Button size="sm" variant="danger" onClick={handleBulkCancel}>Cancel Selected</Button>
+          <button onClick={() => setSelectedIds([])} className="text-xs text-indigo-500 ml-auto">Clear</button>
+        </div>
+      )}
+
       <DataTable columns={columns} data={requests} loading={loading} />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Request Work Type Change"
         footer={

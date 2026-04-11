@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchHolidays, createHoliday, updateHoliday, deleteHoliday } from './leaveSlice'
+import { fetchHolidays, createHoliday, updateHoliday, deleteHoliday, exportHolidays, importHolidays } from './leaveSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -17,6 +17,16 @@ export default function HolidaysPage() {
   const holidays = useSelector(s => s.leave.holidays)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const importRef = useRef()
+
+  const handleExport = () => dispatch(exportHolidays(companyId))
+  const handleImport = async (file) => {
+    const res = await dispatch(importHolidays({ companyId, file }))
+    if (res.error) { toast.error(res.payload); return }
+    const { imported = 0, errors: errs = [] } = res.payload || {}
+    toast.success(`Imported ${imported} holidays${errs.length ? `, ${errs.length} errors` : ''}`)
+    dispatch(fetchHolidays({ companyId }))
+  }
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -65,7 +75,18 @@ export default function HolidaysPage() {
   return (
     <div>
       <PageHeader title="Holidays" subtitle="Manage company holidays">
-        <Button onClick={openCreate}>Add Holiday</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={handleExport}>Export</Button>
+          <Button variant="secondary" onClick={() => importRef.current?.click()}>Import</Button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={e => { const f = e.target.files[0]; if (f) handleImport(f); e.target.value = '' }}
+          />
+          <Button onClick={openCreate}>Add Holiday</Button>
+        </div>
       </PageHeader>
       <DataTable columns={columns} data={holidays} />
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Holiday' : 'New Holiday'}>

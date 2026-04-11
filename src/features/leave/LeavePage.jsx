@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchAll, create, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
-  cancelLeave, bulkAllocateLeave, annualLeaveReset,
+  cancelLeave, bulkAllocateLeave, annualLeaveReset, runManualAccrual,
   fetchLeaveRequestComments, addLeaveRequestComment, deleteLeaveRequestComment,
   fetchConditionApprovals, addConditionApproval, approveConditionStep, rejectConditionStep,
   fetchLeaveRequestFiles, uploadLeaveRequestFile, deleteLeaveRequestFile,
@@ -153,6 +153,8 @@ export default function LeavePage() {
   const openCreateType = () => setTypeModal({
     name: '', totalDays: '', paymentType: 'PAID',
     carryforwardType: 'NO_CARRYFORWARD', leaveValidationType: 'AUTOMATIC', colorCode: '',
+    accrualEnabled: false, midYearJoinerMode: 'MANUAL',
+    negativeBalanceAllowed: false, negativeBalanceLimit: '',
   })
   const openEditType = (lt) => setTypeModal({
     id: lt.id, name: lt.name, totalDays: String(lt.totalDays ?? ''),
@@ -160,11 +162,21 @@ export default function LeavePage() {
     carryforwardType: lt.carryforwardType || 'NO_CARRYFORWARD',
     leaveValidationType: lt.leaveValidationType || 'AUTOMATIC',
     colorCode: lt.colorCode || '',
+    accrualEnabled: lt.accrualEnabled || false,
+    midYearJoinerMode: lt.midYearJoinerMode || 'MANUAL',
+    negativeBalanceAllowed: lt.negativeBalanceAllowed || false,
+    negativeBalanceLimit: lt.negativeBalanceLimit != null ? String(lt.negativeBalanceLimit) : '',
   })
   const submitTypeModal = async () => {
-    const { id, name, totalDays, paymentType, carryforwardType, leaveValidationType, colorCode } = typeModal
+    const { id, name, totalDays, paymentType, carryforwardType, leaveValidationType, colorCode,
+            accrualEnabled, midYearJoinerMode, negativeBalanceAllowed, negativeBalanceLimit } = typeModal
     if (!name.trim() || !totalDays) { toast.error('Name and days are required'); return }
-    const payload = { name, totalDays: Number(totalDays), paymentType, carryforwardType, leaveValidationType, colorCode: colorCode || null }
+    const payload = {
+      name, totalDays: Number(totalDays), paymentType, carryforwardType, leaveValidationType,
+      colorCode: colorCode || null, accrualEnabled, midYearJoinerMode,
+      negativeBalanceAllowed,
+      negativeBalanceLimit: negativeBalanceAllowed && negativeBalanceLimit ? Number(negativeBalanceLimit) : null,
+    }
     try {
       if (id) {
         await dispatch(updateLeaveType({ id, data: payload })).unwrap()
@@ -175,6 +187,14 @@ export default function LeavePage() {
       }
       setTypeModal(null)
     } catch (e) { toast.error(e || 'Failed') }
+  }
+
+  const handleRunAccrual = async () => {
+    if (!window.confirm('Run monthly accrual for today? This credits leave to all accrual-enabled leave types.')) return
+    try {
+      const result = await dispatch(runManualAccrual()).unwrap()
+      toast.success(`Accrual complete: ${result.posted} credits posted`)
+    } catch (e) { toast.error(e || 'Accrual failed') }
   }
   const handleDeleteType = async (id) => {
     if (!window.confirm('Delete this leave type? This cannot be undone.')) return
@@ -298,7 +318,8 @@ export default function LeavePage() {
       </>}
       {tab === 'Types' && (
         <>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <Button variant="secondary" onClick={handleRunAccrual}>Run Accrual</Button>
             <Button onClick={openCreateType}>+ Add Type</Button>
           </div>
           <DataTable columns={typeColumns} data={leaveTypes} loading={loading} />
@@ -364,6 +385,40 @@ export default function LeavePage() {
               onChange={e => setTypeModal(m => ({ ...m, leaveValidationType: e.target.value }))} />
             <Input label="Color code (optional)" placeholder="#4f46e5" value={typeModal.colorCode}
               onChange={e => setTypeModal(m => ({ ...m, colorCode: e.target.value }))} />
+
+            <div className="border-t pt-4 mt-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Accrual Settings</p>
+              <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+                <input type="checkbox" checked={!!typeModal.accrualEnabled}
+                  onChange={e => setTypeModal(m => ({ ...m, accrualEnabled: e.target.checked }))} />
+                Enable monthly accrual (leave earned gradually, not upfront)
+              </label>
+              {typeModal.accrualEnabled && (
+                <>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Monthly rate = {typeModal.totalDays ? (Number(typeModal.totalDays) / 12).toFixed(1) : '?'} days/month
+                  </p>
+                  <Select label="Mid-year joiner mode"
+                    options={[
+                      { value: 'MANUAL', label: 'Manual (HR sets opening balance; skip joining month)' },
+                      { value: 'AUTO_PRORATA', label: 'Auto pro-rata (system calculates joining month)' },
+                    ]}
+                    value={typeModal.midYearJoinerMode}
+                    onChange={e => setTypeModal(m => ({ ...m, midYearJoinerMode: e.target.value }))} />
+                </>
+              )}
+              <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer">
+                <input type="checkbox" checked={!!typeModal.negativeBalanceAllowed}
+                  onChange={e => setTypeModal(m => ({ ...m, negativeBalanceAllowed: e.target.checked }))} />
+                Allow negative balance
+              </label>
+              {typeModal.negativeBalanceAllowed && (
+                <Input label="Max negative balance (days)" type="number" min="0" step="0.5"
+                  value={typeModal.negativeBalanceLimit}
+                  onChange={e => setTypeModal(m => ({ ...m, negativeBalanceLimit: e.target.value }))}
+                  className="mt-2" />
+              )}
+            </div>
           </div>
         )}
       </Modal>

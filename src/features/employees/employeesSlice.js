@@ -79,6 +79,69 @@ export const fetchEmployeeDashboard = createAsyncThunk('employees/fetchDashboard
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to fetch dashboard') }
 })
 
+export const exportWorkInfo = createAsyncThunk('employees/exportWorkInfo', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/employees/work-info/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'work-info.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export work info')
+  }
+})
+
+export const importWorkInfo = createAsyncThunk('employees/importWorkInfo', async ({ companyId, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/employees/work-info/import', formData, {
+      params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to import work info')
+  }
+})
+
+export const bulkUpdateEmployees = createAsyncThunk('employees/bulkUpdate', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/employees/bulk-update', data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk update employees')
+  }
+})
+
+export const fetchEncashmentCondition = createAsyncThunk('employees/fetchEncashmentCondition', async ({ id, companyId }, { rejectWithValue }) => {
+  try {
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    const res = await api.get(`/employees/${id}/encashment-condition`, cfg)
+    return res.data
+  } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to fetch encashment condition') }
+})
+
+export const upsertEncashmentCondition = createAsyncThunk('employees/upsertEncashmentCondition', async ({ id, data, companyId }, { rejectWithValue }) => {
+  try {
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    const res = await api.post(`/employees/${id}/encashment-condition`, data, cfg)
+    return res.data
+  } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to save encashment condition') }
+})
+
+export const deleteEncashmentCondition = createAsyncThunk('employees/deleteEncashmentCondition', async ({ id, companyId }, { rejectWithValue }) => {
+  try {
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    await api.delete(`/employees/${id}/encashment-condition`, cfg)
+    return id
+  } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete encashment condition') }
+})
+
 const employeesSlice = createSlice({
   name: 'employees',
   initialState: {
@@ -88,6 +151,7 @@ const employeesSlice = createSlice({
     error: null,
     orgChart: [],
     employeeDashboard: null,
+    encashmentCondition: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -144,6 +208,9 @@ const employeesSlice = createSlice({
       .addCase(uploadPhoto.rejected, (state, action) => { state.loading = false; state.error = action.payload })
       .addCase(fetchOrgChart.fulfilled, (state, action) => { state.orgChart = action.payload })
       .addCase(fetchEmployeeDashboard.fulfilled, (state, action) => { state.employeeDashboard = action.payload })
+      .addCase(fetchEncashmentCondition.fulfilled, (state, action) => { state.encashmentCondition = action.payload })
+      .addCase(upsertEncashmentCondition.fulfilled, (state, action) => { state.encashmentCondition = action.payload })
+      .addCase(deleteEncashmentCondition.fulfilled, (state) => { state.encashmentCondition = null })
   },
 })
 

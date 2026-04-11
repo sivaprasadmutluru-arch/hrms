@@ -64,6 +64,15 @@ const FIELD_OPTIONS = [
   { value: 'contract_set__department__department', label: 'Department on Contract' },
 ]
 
+function DetailRow({ label, value }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-sm font-medium text-gray-800">{value ?? '—'}</p>
+    </div>
+  )
+}
+
 export default function ContractsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
@@ -81,6 +90,7 @@ export default function ContractsPage() {
   const [condModalOpen, setCondModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [editingCond, setEditingCond] = useState(null)
+  const [viewContract, setViewContract] = useState(null)
 
   const filingStatuses = useSelector(selectFilingStatuses)
 
@@ -112,7 +122,7 @@ export default function ContractsPage() {
     finally { setEmployeesLoading(false) }
   }
 
-  const openCreate = () => { setEditing(null); reset({}); setModalOpen(true); loadEmployees() }
+  const openCreate = () => { setEditing(null); reset({ contractStatus: 'ACTIVE' }); setModalOpen(true); loadEmployees() }
   const openEdit = (row) => {
     setEditing(row)
     reset({ ...row, employeeId: row.employee?.id, filingStatusId: row.filingStatus?.id })
@@ -232,7 +242,7 @@ export default function ContractsPage() {
 
       {tab === 'Contracts' && (
         <>
-          <DataTable columns={columns} data={contracts} loading={loading} />
+          <DataTable columns={columns} data={contracts} loading={loading} onRowClick={row => setViewContract(row)} />
           <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
         </>
       )}
@@ -309,6 +319,76 @@ export default function ContractsPage() {
             </div>
           </div>
         </div>
+      </Modal>
+
+      {/* Contract Detail View Modal */}
+      <Modal open={!!viewContract} onClose={() => setViewContract(null)} title="Contract Details" size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setViewContract(null)}>Close</Button>
+            <Button onClick={() => { openEdit(viewContract); setViewContract(null) }}>Edit</Button>
+          </div>
+        }>
+        {viewContract && (
+          <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Basic Info</h4>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <DetailRow label="Employee" value={viewContract.employee ? `${viewContract.employee.firstName || ''} ${viewContract.employee.lastName || ''}`.trim() : '—'} />
+                <DetailRow label="Contract Name" value={viewContract.contractName} />
+                <DetailRow label="Wage Type" value={viewContract.wageType} />
+                <DetailRow label="Pay Frequency" value={viewContract.payFrequency} />
+                <DetailRow label="Wage" value={formatCurrency(viewContract.wage)} />
+                <DetailRow label="Status" value={<Badge label={viewContract.contractStatus || 'Draft'} variant={getStatusVariant(viewContract.contractStatus)} />} />
+                <DetailRow label="Start Date" value={formatDate(viewContract.startDate)} />
+                <DetailRow label="End Date" value={formatDate(viewContract.endDate)} />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Allowances</h4>
+              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                <DetailRow label="Housing" value={formatCurrency(viewContract.housingAllowance)} />
+                <DetailRow label="Transport" value={formatCurrency(viewContract.transportAllowance)} />
+                <DetailRow label="Other" value={formatCurrency(viewContract.otherAllowance)} />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Tax & Notice</h4>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <DetailRow label="Filing Status" value={viewContract.filingStatus?.filingStatus || '—'} />
+                <DetailRow label="Notice Period" value={viewContract.noticePeriodInDays ? `${viewContract.noticePeriodInDays} days` : '—'} />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Leave Deduction</h4>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <DetailRow label="Deduct from Basic Pay" value={viewContract.deductLeaveFromBasicPay ? 'Yes' : 'No'} />
+                <DetailRow label="Calculate Daily Amount" value={viewContract.calculateDailyLeaveAmount ? 'Yes' : 'No'} />
+                {(viewContract.deductLeaveFromBasicPay || viewContract.calculateDailyLeaveAmount) && (
+                  <DetailRow label="Deduction per Leave" value={formatCurrency(viewContract.deductionForOneLeaveAmount)} />
+                )}
+              </div>
+            </div>
+
+            {(viewContract.contractDocument || viewContract.note) && (
+              <div className="border-t pt-4">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Document & Notes</h4>
+                <div className="space-y-3">
+                  {viewContract.contractDocument && <DetailRow label="Document" value={viewContract.contractDocument} />}
+                  {viewContract.note && (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Note</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{viewContract.note}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* Condition Modal */}

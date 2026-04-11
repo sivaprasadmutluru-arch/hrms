@@ -40,3 +40,16 @@ export const LEAVE_TYPES = ['ANNUAL', 'SICK', 'MATERNITY', 'PATERNITY', 'UNPAID'
 export const TICKET_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT']
 
 export const TASK_STAGES = ['TODO', 'IN_PROGRESS', 'TESTING', 'DONE']
+
+export const PERMISSIONS = [
+  'attendance:view', 'attendance:manage',
+  'leave:view', 'leave:approve',
+  'payroll:view', 'payroll:manage',
+  'recruitment:view', 'recruitment:manage',
+  'employee:view', 'employee:manage',
+  'helpdesk:view', 'helpdesk:manage',
+  'report:view',
+  'asset:view', 'asset:manage',
+  'project:view', 'project:manage',
+  'pms:view', 'pms:manage',
+]

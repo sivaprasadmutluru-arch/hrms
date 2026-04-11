@@ -1,8 +1,9 @@
-import { BellIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { BellIcon } from '@heroicons/react/24/outline'
 import { useSelector } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Avatar from '../common/Avatar'
 import useAuth from '../../hooks/useAuth'
+import CompanySwitcher from './CompanySwitcher'
 
 function useBreadcrumb() {
   const { pathname } = useLocation()
@@ -12,6 +13,7 @@ function useBreadcrumb() {
 
 export default function Topbar() {
   const { user, logout } = useAuth()
+  const auth = useAuth()
   const navigate = useNavigate()
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
   const breadcrumbs = useBreadcrumb()
@@ -29,11 +31,12 @@ export default function Topbar() {
         ))}
       </nav>
       <div className="flex items-center gap-3">
+        {auth.isPlatformAdmin?.() && <CompanySwitcher />}
         <button onClick={() => navigate('/notifications')} className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <BellIcon className="h-5 w-5 text-gray-500" />
           {unreadCount > 0 && <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">{unreadCount}</span>}
         </button>
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/notifications')}>
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/settings/account')}>
           <Avatar name={user?.name || user?.username || 'User'} size="sm" />
           <span className="text-sm font-medium text-gray-700 hidden sm:block">{user?.name || user?.username}</span>
         </div>

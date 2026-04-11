@@ -299,6 +299,32 @@ export const deleteWorkRecord = createAsyncThunk('attendance/deleteWorkRecord', 
   }
 })
 
+// ─── Register ──────────────────────────────────────────────────────────────
+
+export const fetchRegister = createAsyncThunk('attendance/fetchRegister', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/register', {
+      params,
+      headers: { 'X-Company-Id': params.companyId },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance register')
+  }
+})
+
+export const updateRegisterCell = createAsyncThunk('attendance/updateRegisterCell', async ({ employeeId, date, status, companyId }, { rejectWithValue }) => {
+  try {
+    const res = await api.patch(`/attendance/register/${employeeId}/${date}`, { status }, {
+      params: { companyId },
+      headers: { 'X-Company-Id': companyId },
+    })
+    return { employeeId, date, cell: res.data }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update attendance cell')
+  }
+})
+
 // ─── Calendar ──────────────────────────────────────────────────────────────
 
 export const fetchCalendar = createAsyncThunk('attendance/fetchCalendar', async ({ year, month, employeeId }, { rejectWithValue }) => {
@@ -423,6 +449,8 @@ const attendanceSlice = createSlice({
     comments: [],
     calendarDays: [],
     calendarLoading: false,
+    register: null,
+    registerLoading: false,
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
@@ -566,6 +594,17 @@ const attendanceSlice = createSlice({
       .addCase(fetchCalendar.fulfilled, (state, action) => { state.calendarLoading = false; state.calendarDays = action.payload })
       .addCase(fetchCalendar.rejected, (state) => { state.calendarLoading = false })
 
+      // Register
+      .addCase(fetchRegister.pending, (state) => { state.registerLoading = true })
+      .addCase(fetchRegister.fulfilled, (state, action) => { state.registerLoading = false; state.register = action.payload })
+      .addCase(fetchRegister.rejected, (state) => { state.registerLoading = false })
+      .addCase(updateRegisterCell.fulfilled, (state, action) => {
+        if (!state.register) return
+        const { employeeId, date, cell } = action.payload
+        const row = state.register.employees.find(e => e.employeeId === employeeId)
+        if (row) row.days[date] = cell
+      })
+
       // Overtime
       .addCase(fetchOvertime.fulfilled, (state, action) => { state.overtimeRecords = action.payload })
       .addCase(approveOvertime.fulfilled, (state, action) => {
@@ -601,4 +640,6 @@ export const selectComments = (state) => state.attendance.comments
 export const selectOvertimeRecords = (state) => state.attendance.overtimeRecords
 export const selectCalendarDays = (state) => state.attendance.calendarDays
 export const selectCalendarLoading = (state) => state.attendance.calendarLoading
+export const selectRegister = (state) => state.attendance.register
+export const selectRegisterLoading = (state) => state.attendance.registerLoading
 export default attendanceSlice.reducer

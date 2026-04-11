@@ -2,7 +2,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { fetchPayslips, exportPayslipsExcel, selectLoading, selectExportingExcel } from './payrollSlice'
+import {
+  fetchPayslips, exportPayslipsExcel, generatePayslip, generateBulkPayslips,
+  selectLoading, selectExportingExcel,
+} from './payrollSlice'
+import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
 import { useForm } from 'react-hook-form'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -11,6 +15,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import { formatCurrency } from '../../utils/formatters'
 import { API_BASE_URL } from '../../config/constants'
+import useAuth from '../../hooks/useAuth'
 
 const STATUS_VARIANT = {
   PAID: 'success',
@@ -29,16 +34,26 @@ function groupStatus(payslips) {
 
 export default function PayrollPage() {
   const dispatch = useDispatch()
+  const { user } = useAuth()
+  const companyId = user?.companyId
   const payslips = useSelector(s => s.payroll.payslips)
+  const employees = useSelector(selectEmployees)
   const loading = useSelector(selectLoading)
   const exportingExcel = useSelector(selectExportingExcel)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [exportingGroupKey, setExportingGroupKey] = useState(null)
   const [exportModal, setExportModal] = useState(false)
+  const [generateModal, setGenerateModal] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const { register: regExport, handleSubmit: handleExportSubmit, reset: resetExport } = useForm()
+  const { register: regGen, handleSubmit: handleGenSubmit, reset: resetGen, watch: watchGen } = useForm({
+    defaultValues: { mode: 'bulk' },
+  })
+  const genMode = watchGen('mode')
 
   useEffect(() => {
     dispatch(fetchPayslips({ page: 0, size: 500 }))
+    dispatch(fetchEmployees({ page: 0, size: 500 }))
   }, [dispatch])
 
   // Group payslips by groupName, fall back to period key
@@ -110,6 +125,29 @@ export default function PayrollPage() {
     }
   }
 
+  const handleGenerate = async (formData) => {
+    if (!companyId) return toast.error('Company not found')
+    if (!formData.startDate || !formData.endDate) return toast.error('Start and end dates are required')
+    setGenerating(true)
+    try {
+      if (formData.mode === 'bulk') {
+        await dispatch(generateBulkPayslips({ companyId, startDate: formData.startDate, endDate: formData.endDate })).unwrap()
+        toast.success('Payslips generated for all active employees')
+      } else {
+        if (!formData.employeeId) return toast.error('Select an employee')
+        await dispatch(generatePayslip({ employeeId: formData.employeeId, startDate: formData.startDate, endDate: formData.endDate, companyId })).unwrap()
+        toast.success('Payslip generated')
+      }
+      setGenerateModal(false)
+      resetGen({ mode: 'bulk' })
+      dispatch(fetchPayslips({ page: 0, size: 500 }))
+    } catch (e) {
+      toast.error(e || 'Generation failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const handleExportGroup = async (e, group) => {
     e.stopPropagation()
     setExportingGroupKey(group.key)
@@ -132,9 +170,14 @@ export default function PayrollPage() {
         title="Payroll"
         subtitle="Payroll runs grouped by batch and pay period"
         actions={
-          <Button variant="secondary" onClick={() => { resetExport(); setExportModal(true) }} disabled={exportingExcel}>
-            {exportingExcel ? 'Exporting…' : 'Export Excel'}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => { resetGen({ mode: 'bulk' }); setGenerateModal(true) }}>
+              Generate Payroll
+            </Button>
+            <Button variant="secondary" onClick={() => { resetExport(); setExportModal(true) }} disabled={exportingExcel}>
+              {exportingExcel ? 'Exporting…' : 'Export Excel'}
+            </Button>
+          </div>
         }
       />
 
@@ -213,6 +256,9 @@ export default function PayrollPage() {
                         <tr>
                           <th className="px-5 py-2 text-left font-medium">Employee</th>
                           <th className="px-4 py-2 text-right font-medium">Basic Pay</th>
+                          <th className="px-4 py-2 text-right font-medium">Housing</th>
+                          <th className="px-4 py-2 text-right font-medium">Transport</th>
+                          <th className="px-4 py-2 text-right font-medium">Other Allow.</th>
                           <th className="px-4 py-2 text-right font-medium">Gross Pay</th>
                           <th className="px-4 py-2 text-right font-medium">Deductions</th>
                           <th className="px-4 py-2 text-right font-medium">Net Pay</th>
@@ -224,10 +270,19 @@ export default function PayrollPage() {
                         {group.payslips.map(p => {
                           const emp = p.employee
                           const name = emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || '—' : '—'
+                          let payHead = null
+                          try { payHead = p.payHeadData ? JSON.parse(p.payHeadData) : null } catch { /* ignore */ }
+                          const allowances = payHead?.allowances ?? []
+                          const housingAllow = p.housingAllowance || allowances.find(a => a.title?.toLowerCase().includes('housing'))?.amount || 0
+                          const transportAllow = p.transportAllowance || allowances.find(a => a.title?.toLowerCase().includes('transport'))?.amount || 0
+                          const otherAllow = p.otherAllowance || allowances.find(a => a.title?.toLowerCase().includes('other'))?.amount || 0
                           return (
                             <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                               <td className="px-5 py-2.5 font-medium text-gray-800">{name}</td>
                               <td className="px-4 py-2.5 text-right text-gray-600">{formatCurrency(p.basicPay)}</td>
+                              <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(housingAllow)}</td>
+                              <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(transportAllow)}</td>
+                              <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(otherAllow)}</td>
                               <td className="px-4 py-2.5 text-right text-gray-600">{formatCurrency(p.grossPay)}</td>
                               <td className="px-4 py-2.5 text-right text-red-600">{formatCurrency(p.deduction)}</td>
                               <td className="px-4 py-2.5 text-right font-semibold text-emerald-700">{formatCurrency(p.netPay)}</td>
@@ -245,6 +300,9 @@ export default function PayrollPage() {
                         <tr>
                           <td className="px-5 py-2.5 text-gray-500">Total ({group.payslips.length})</td>
                           <td className="px-4 py-2.5 text-right text-gray-500">—</td>
+                          <td className="px-4 py-2.5 text-right text-emerald-600">—</td>
+                          <td className="px-4 py-2.5 text-right text-emerald-600">—</td>
+                          <td className="px-4 py-2.5 text-right text-emerald-600">—</td>
                           <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(group.totalGross)}</td>
                           <td className="px-4 py-2.5 text-right text-red-600">{formatCurrency(group.totalDeductions)}</td>
                           <td className="px-4 py-2.5 text-right text-emerald-700">{formatCurrency(group.totalNet)}</td>
@@ -259,6 +317,52 @@ export default function PayrollPage() {
           })}
         </div>
       )}
+
+      {/* Generate Payroll Modal */}
+      <Modal
+        open={generateModal}
+        onClose={() => setGenerateModal(false)}
+        title="Generate Payroll"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setGenerateModal(false)}>Cancel</Button>
+            <Button onClick={handleGenSubmit(handleGenerate)} disabled={generating}>
+              {generating ? 'Generating…' : 'Generate'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mode</label>
+            <select
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...regGen('mode')}
+            >
+              <option value="bulk">All active employees</option>
+              <option value="single">Single employee</option>
+            </select>
+          </div>
+          {genMode === 'single' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+              <select
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                {...regGen('employeeId')}
+              >
+                <option value="">— Select employee —</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {[emp.firstName, emp.lastName].filter(Boolean).join(' ') || `Employee #${emp.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <Input label="Pay Period Start" type="date" {...regGen('startDate')} />
+          <Input label="Pay Period End" type="date" {...regGen('endDate')} />
+        </div>
+      </Modal>
 
       {/* Export Excel Modal */}
       <Modal

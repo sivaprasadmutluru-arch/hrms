@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { fetchPayslips, fetchEmployeePayslips, confirmPayslip, markPaid, generatePayslip, generateBulkPayslips, selectLoading, sendPayslipEmail } from './payrollSlice'
+import { fetchPayslips, fetchEmployeePayslips, confirmPayslip, markPaid, generatePayslip, generateBulkPayslips, selectLoading, sendPayslipEmail, exportPayslipsExcel, downloadExportImportFormat } from './payrollSlice'
 import { useForm } from 'react-hook-form'
 import Input from '../../components/common/Input'
 import useAuth from '../../hooks/useAuth'
@@ -9,11 +10,12 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
+import PdfPreviewModal from '../../components/common/PdfPreviewModal'
 import { formatCurrency } from '../../utils/formatters'
-import { API_BASE_URL } from '../../config/constants'
 import {
   DocumentTextIcon,
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
   EnvelopeIcon,
   CheckCircleIcon,
   CurrencyDollarIcon,
@@ -28,12 +30,14 @@ const STATUS_VARIANT = {
 
 export default function PayslipsPage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { user, isEmployee } = useAuth()
   const isEmp = isEmployee()
   const payslips = useSelector(s => s.payroll.payslips)
   const loading = useSelector(selectLoading)
   const [detail, setDetail] = useState(null)
   const [genModal, setGenModal] = useState(false)
+  const [pdfPreviewId, setPdfPreviewId] = useState(null)
   const [search, setSearch] = useState('')
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -55,22 +59,7 @@ export default function PayslipsPage() {
     try { await dispatch(sendPayslipEmail(id)).unwrap(); toast.success('Email sent') } catch (e) { toast.error(e || 'Failed to send email') }
   }
 
-  const handleDownloadPdf = (id) => {
-    const token = localStorage.getItem('token')
-    fetch(`${API_BASE_URL}/payroll/payslips/${id}/pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => res.blob())
-      .then(blob => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `payslip-${id}.pdf`
-        a.click()
-        URL.revokeObjectURL(url)
-      })
-      .catch(() => toast.error('PDF download failed'))
-  }
+  const handleDownloadPdf = (id) => setPdfPreviewId(id)
 
   const handleBulkGenerate = async (formData) => {
     try {
@@ -207,15 +196,32 @@ export default function PayslipsPage() {
           </p>
         </div>
         {!isEmp && (
-          <button
-            onClick={() => { reset({}); setGenModal(true) }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Generate Payslips
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => dispatch(exportPayslipsExcel({})).unwrap().catch(() => toast.error('Export failed'))}
+              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+              title="Export to Excel"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" />
+              Export Excel
+            </button>
+            <button
+              onClick={() => navigate('/payroll/import')}
+              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <ArrowUpTrayIcon className="w-4 h-4" />
+              Import
+            </button>
+            <button
+              onClick={() => { reset({}); setGenModal(true) }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Generate Payslips
+            </button>
+          </div>
         )}
       </div>
 
@@ -287,8 +293,16 @@ export default function PayslipsPage() {
         {detail && (() => {
           let payHead = null
           try { payHead = detail.payHeadData ? JSON.parse(detail.payHeadData) : null } catch { /* ignore */ }
-          const unpaidLeaveDeduction = payHead?.unpaidLeaveDeduction ?? 0
-          const deductionLines = payHead?.deductions ?? []
+          const unpaidLeaveDeduction = payHead?.loss_of_pay ?? 0
+          const allowanceLines = payHead?.allowances ?? []
+          const deductionLines = [
+            ...(payHead?.pretax_deductions ?? []),
+            ...(payHead?.tax_deductions ?? []),
+            ...(payHead?.post_tax_deductions ?? []),
+            ...(payHead?.net_deductions ?? []),
+          ]
+          const wageType = payHead?.wage_type ?? 'MONTHLY'
+          const workedUnits = payHead?.worked_units ?? 0
           const name = detail.employee
             ? `${detail.employee.firstName || ''} ${detail.employee.lastName || ''}`.trim()
             : '—'
@@ -327,10 +341,38 @@ export default function PayslipsPage() {
               <div className="my-3 border-t border-gray-100" />
 
               {/* Earnings */}
+              {wageType === 'HOURLY' && (
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-gray-500">Hours Worked</span>
+                  <span className="font-medium text-gray-800">{workedUnits.toFixed(2)} hrs</span>
+                </div>
+              )}
+              {wageType === 'DAILY' && (
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-gray-500">Days Worked</span>
+                  <span className="font-medium text-gray-800">{workedUnits.toFixed(2)} days</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm py-1">
-                <span className="text-gray-500">Basic Pay</span>
+                <span className="text-gray-500">
+                  {wageType === 'HOURLY' ? 'Basic Pay (Hourly)' : wageType === 'DAILY' ? 'Basic Pay (Daily)' : 'Basic Pay'}
+                </span>
                 <span className="font-medium text-gray-800">{formatCurrency(detail.basicPay)}</span>
               </div>
+              
+              {/* Allowances */}
+              {allowanceLines.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 my-2">
+                  <p className="text-xs font-semibold text-emerald-800 mb-2">Allowances</p>
+                  {allowanceLines.map((a, i) => (
+                    <div key={i} className="flex justify-between text-sm py-1 text-emerald-700">
+                      <span className="font-medium">{a.title}</span>
+                      <span>+{formatCurrency(a.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
               {Number(unpaidLeaveDeduction) > 0 && (
                 <div className="flex justify-between text-sm py-1 text-red-500">
                   <span>Unpaid Leave Deduction</span>
@@ -343,9 +385,9 @@ export default function PayslipsPage() {
               </div>
 
               {/* Deductions */}
-              {deductionLines.filter(d => d.type !== 'UNPAID_LEAVE').map((d, i) => (
+              {deductionLines.map((d, i) => (
                 <div key={i} className="flex justify-between text-sm py-1 text-red-500">
-                  <span>{d.name}</span>
+                  <span>{d.title}</span>
                   <span>-{formatCurrency(d.amount)}</span>
                 </div>
               ))}
@@ -367,11 +409,11 @@ export default function PayslipsPage() {
               {/* Actions */}
               <div className="flex gap-2 pt-4">
                 <button
-                  onClick={() => handleDownloadPdf(detail.id)}
+                  onClick={() => { setDetail(null); setPdfPreviewId(detail.id) }}
                   className="flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
                 >
                   <ArrowDownTrayIcon className="h-4 w-4" />
-                  Download PDF
+                  View / Download PDF
                 </button>
                 {!isEmp && (
                   <button
@@ -387,6 +429,13 @@ export default function PayslipsPage() {
           )
         })()}
       </Modal>
+
+      {/* PDF Preview Modal */}
+      <PdfPreviewModal
+        open={!!pdfPreviewId}
+        onClose={() => setPdfPreviewId(null)}
+        payslipId={pdfPreviewId}
+      />
 
       {/* Bulk Generate Modal */}
       <Modal

@@ -5,6 +5,11 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import LoginPage from './features/auth/LoginPage'
 import ForgotPasswordPage from './features/auth/ForgotPasswordPage'
 import ForbiddenPage from './features/auth/ForbiddenPage'
+import AccountSettingsPage from './features/auth/AccountSettingsPage'
+import GeneralSettingsPage from './features/settings/GeneralSettingsPage'
+import UserGroupsPage from './features/roles/UserGroupsPage'
+import ShiftAllocationsPage from './features/attendance/ShiftAllocationsPage'
+import RotatingShiftAssignsPage from './features/attendance/RotatingShiftAssignsPage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import OrganizationsPage from './features/organizations/OrganizationsPage'
 import SubscriptionPage from './features/organizations/SubscriptionPage'
@@ -19,6 +24,7 @@ import LeavePage from './features/leave/LeavePage'
 import ContractsPage from './features/payroll/ContractsPage'
 import PayslipsPage from './features/payroll/PayslipsPage'
 import PayrollPage from './features/payroll/PayrollPage'
+import AutomatedPayrollPage from './features/payroll/AutomatedPayrollPage'
 import AssetsPage from './features/assets/AssetsPage'
 import AssetDetailPage from './features/assets/AssetDetailPage'
 import ProjectsPage from './features/projects/ProjectsPage'
@@ -75,6 +81,7 @@ import ApprovalConditionsPage from './features/companies/ApprovalConditionsPage'
 import TimeSheetsPage from './features/projects/TimeSheetsPage'
 import WorkRecordsPage from './features/attendance/WorkRecordsPage'
 import AttendanceCalendarPage from './features/attendance/AttendanceCalendarPage'
+import AttendanceRegisterPage from './features/attendance/AttendanceRegisterPage'
 import PayrollSettingsPage from './features/payroll/PayrollSettingsPage'
 import EmployeeSettingsPage from './features/employees/EmployeeSettingsPage'
 import EmployeeNotesPage from './features/employees/EmployeeNotesPage'
@@ -103,11 +110,13 @@ import AssetCategoriesPage from './features/assets/AssetCategoriesPage'
 import AssetRequestsPage from './features/assets/AssetRequestsPage'
 import PayrollBatchGroupsPage from './features/payroll/PayrollBatchGroupsPage'
 import PayrollDashboardPage from './features/payroll/PayrollDashboardPage'
+import PayslipImportPage from './features/payroll/PayslipImportPage'
 import AttendanceDashboardPage from './features/attendance/AttendanceDashboardPage'
 import RecruitmentPipelinePage from './features/recruitment/RecruitmentPipelinePage'
 import RecruitmentDashboardPage from './features/recruitment/RecruitmentDashboardPage'
 import LinkedInSettingsPage from './features/recruitment/LinkedInSettingsPage'
 import OrgChartPage from './features/employees/OrgChartPage'
+import ESSPage from './features/ess/ESSPage'
 
 export default function App() {
   return (
@@ -171,6 +180,8 @@ export default function App() {
 
           {/* Finance routes */}
           <Route path="payroll/payroll"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollPage />} />} />
+          <Route path="payroll/manual"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollPage />} />} />
+          <Route path="payroll/automated"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AutomatedPayrollPage />} />} />
           <Route path="payroll/contracts"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<ContractsPage />} />} />
           <Route path="payroll/tax-settings"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<TaxSettingsPage />} />} />
           <Route path="payroll/loans"          element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT', 'EMPLOYEE']} element={<LoansPage />} />} />
@@ -184,10 +195,14 @@ export default function App() {
           {/* Reports — admin and managers */}
           <Route path="reports" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<ReportsPage />} />} />
 
+          {/* ESS — available to all authenticated employees */}
+          <Route path="ess" element={<ESSPage />} />
+
           {/* Accessible to all authenticated users */}
           <Route path="attendance/dashboard"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceDashboardPage />} />} />
           <Route path="attendance"                  element={<AttendancePage />} />
           <Route path="attendance/calendar"         element={<AttendanceCalendarPage />} />
+          <Route path="attendance/register"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceRegisterPage />} />} />
           <Route path="attendance/settings"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceSettingsPage />} />} />
           <Route path="attendance/work-records"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<WorkRecordsPage />} />} />
           <Route path="shift-requests"              element={<ShiftRequestsPage />} />
@@ -201,6 +216,7 @@ export default function App() {
           <Route path="leave/company-leaves"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<CompanyLeavesPage />} />} />
           <Route path="leave/dashboard"          element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<LeaveDashboardPage />} />} />
           <Route path="payroll/payslips"         element={<PayslipsPage />} />
+          <Route path="payroll/import"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<PayslipImportPage />} />} />
           <Route path="assets"                   element={<AssetsPage />} />
           <Route path="assets/:id"               element={<AssetDetailPage />} />
           <Route path="assets/categories"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AssetCategoriesPage />} />} />
@@ -244,6 +260,14 @@ export default function App() {
           <Route path="settings/outlook-auth"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<OutlookAuthPage />} />} />
           <Route path="settings/accessibility"  element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<AccessibilityPage />} />} />
           <Route path="settings/dynamic-fields" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DynamicFieldsPage />} />} />
+
+          {/* New super admin features */}
+          <Route path="settings/account" element={<AccountSettingsPage />} />
+          <Route path="settings/general" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<GeneralSettingsPage />} />} />
+          <Route path="roles/user-groups" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<UserGroupsPage />} />} />
+          <Route path="attendance/shift-allocations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<ShiftAllocationsPage />} />} />
+          <Route path="attendance/rotating-shifts" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RotatingShiftAssignsPage />} />} />
+          <Route path="attendance/rotating-work-types" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RotatingShiftAssignsPage />} />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -113,6 +113,19 @@ export const deleteApprovalCondition = createAsyncThunk('companies/deleteApprova
   }
 })
 
+export const uploadLogo = createAsyncThunk('companies/uploadLogo', async ({ id, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post(`/companies/${id}/logo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return { id, logoPath: res.data.logoPath }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to upload logo')
+  }
+})
+
 const companiesSlice = createSlice({
   name: 'companies',
   initialState: {
@@ -192,6 +205,19 @@ const companiesSlice = createSlice({
       })
       .addCase(deleteApprovalCondition.fulfilled, (state, action) => {
         state.approvalConditions = state.approvalConditions.filter(c => c.id !== action.payload)
+      })
+
+      .addCase(uploadLogo.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], logoPath: action.payload.logoPath }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, logoPath: action.payload.logoPath }
+        // Update logoPath in branches cache too
+        for (const hoId of Object.keys(state.branches)) {
+          const bIdx = state.branches[hoId]?.findIndex(b => b.id === action.payload.id)
+          if (bIdx !== undefined && bIdx !== -1) {
+            state.branches[hoId][bIdx] = { ...state.branches[hoId][bIdx], logoPath: action.payload.logoPath }
+          }
+        }
       })
   },
 })

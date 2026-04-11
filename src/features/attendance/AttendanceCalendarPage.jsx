@@ -149,10 +149,12 @@ export default function AttendanceCalendarPage() {
                   const typeMeta = DAY_TYPE[dayType] || DAY_TYPE.future
                   const isSelected = selectedDate === dateStr
 
+                  const isLate = !isFuture && data?.types?.includes('LATE_COME')
+
                   return (
                     <div
                       key={dateStr}
-                      className="flex justify-center items-center py-1"
+                      className="relative flex justify-center items-center py-1"
                     >
                       <button
                         onClick={() => !isFuture && setSelectedDate(isSelected ? null : dateStr)}
@@ -166,10 +168,15 @@ export default function AttendanceCalendarPage() {
                           ${isSelected ? 'ring-2 ring-offset-1 ring-indigo-500 scale-110' : ''}
                           ${isToday && !isFuture ? 'ring-2 ring-offset-1 ring-white shadow-md' : ''}
                         `}
-                        title={data?.leaveTypeName || data?.holidayName || typeMeta.label}
+                        title={data?.leaveTypeName || data?.holidayName || (isLate ? 'Late Come' : typeMeta.label)}
                       >
                         {day}
                       </button>
+                      {isLate && (
+                        <span className="absolute bottom-0 right-1/2 translate-x-4 translate-y-0.5 w-4 h-4 rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white pointer-events-none">
+                          L
+                        </span>
+                      )}
                     </div>
                   )
                 })}

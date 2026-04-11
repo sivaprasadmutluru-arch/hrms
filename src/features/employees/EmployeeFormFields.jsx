@@ -127,7 +127,7 @@ export default function EmployeeFormFields({
           {...register('employeeType')} />
       </div>
 
-      {/* Create-only: password + role */}
+      {/* Create-only: password + role + basic pay */}
       {!isEdit && (
         <>
           <div className="grid grid-cols-2 gap-3">
@@ -147,6 +147,12 @@ export default function EmployeeFormFields({
               options={[{ value: '', label: 'None' }, ...ACCESS_SCOPE_OPTIONS]}
               {...register('accessScope')} />
           </div>
+          <Input
+            label="Basic Pay (Monthly)"
+            type="number"
+            placeholder="e.g. 5000"
+            {...register('basicPay')}
+          />
         </>
       )}
 

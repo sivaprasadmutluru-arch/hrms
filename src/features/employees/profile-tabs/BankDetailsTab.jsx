@@ -14,21 +14,22 @@ const Field = ({ label, value }) => (
   </div>
 )
 
-export default function BankDetailsTab({ employeeId }) {
+export default function BankDetailsTab({ employeeId, companyId }) {
   const [details, setDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
 
   const { register, handleSubmit, reset } = useForm()
+  const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
 
   const load = () => {
-    api.get(`/employees/${employeeId}/bank-details`)
+    api.get(`/employees/${employeeId}/bank-details`, cfg)
       .then(res => setDetails(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { if (employeeId) load() }, [employeeId])
+  useEffect(() => { if (employeeId) load() }, [employeeId, companyId])
 
   useEffect(() => {
     if (!modalOpen || !details) return
@@ -48,7 +49,7 @@ export default function BankDetailsTab({ employeeId }) {
   const onSubmit = async (data) => {
     try {
       const method = details ? 'put' : 'post'
-      const res = await api[method](`/employees/${employeeId}/bank-details`, data)
+      const res = await api[method](`/employees/${employeeId}/bank-details`, data, cfg)
       setDetails(res.data)
       setModalOpen(false)
       toast.success('Bank details updated')

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../../services/api'
 import Spinner from '../../../components/common/Spinner'
 import { formatDate, formatCurrency } from '../../../utils/formatters'
+import useAuth from '../../../hooks/useAuth'
 
 const Section = ({ title, children }) => (
   <div className="mb-6">
@@ -17,23 +19,50 @@ const Field = ({ label, value }) => (
   </div>
 )
 
-export default function WorkInfoTab({ employeeId }) {
+export default function WorkInfoTab({ employeeId, companyId }) {
   const [info, setInfo]       = useState(null)
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager } = useAuth()
+  const canEdit = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
     if (!employeeId) return
-    api.get(`/employees/${employeeId}/work-info`)
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    api.get(`/employees/${employeeId}/work-info`, cfg)
       .then(res => setInfo(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [employeeId])
+  }, [employeeId, companyId])
 
   if (loading) return <div className="flex justify-center py-10"><Spinner /></div>
-  if (!info)   return <p className="text-sm text-gray-400 py-6">No work information available.</p>
+
+  if (!info) return (
+    <div className="py-6 flex flex-col items-start gap-3">
+      <p className="text-sm text-gray-400">No work information available.</p>
+      {canEdit && (
+        <button
+          onClick={() => navigate(`/employees/${employeeId}/work-info`)}
+          className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+        >
+          + Add Work Information
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-2">
+      {canEdit && (
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => navigate(`/employees/${employeeId}/work-info`)}
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            Edit
+          </button>
+        </div>
+      )}
       <Section title="Assignment">
         <Field label="Department"        value={info.departmentName} />
         <Field label="Job Position"      value={info.jobPositionName} />

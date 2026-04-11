@@ -27,6 +27,23 @@ export const markAllRead = createAsyncThunk('notifications/markAllRead', async (
   }
 })
 
+export const deleteNotification = createAsyncThunk('notifications/deleteOne', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/notifications/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete notification')
+  }
+})
+
+export const deleteAllNotifications = createAsyncThunk('notifications/deleteAll', async (_, { rejectWithValue }) => {
+  try {
+    await api.delete('/notifications')
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete all notifications')
+  }
+})
+
 const notificationsSlice = createSlice({
   name: 'notifications',
   initialState: {
@@ -68,6 +85,16 @@ const notificationsSlice = createSlice({
         state.unreadCount = 0
       })
       .addCase(markAllRead.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(deleteNotification.fulfilled, (state, action) => {
+        state.data = state.data.filter((n) => n.id !== action.payload)
+        state.unreadCount = state.data.filter((n) => !n.isRead).length
+      })
+
+      .addCase(deleteAllNotifications.fulfilled, (state) => {
+        state.data = []
+        state.unreadCount = 0
+      })
   },
 })
 

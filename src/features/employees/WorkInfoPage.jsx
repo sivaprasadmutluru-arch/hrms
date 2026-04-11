@@ -38,11 +38,11 @@ export default function WorkInfoPage() {
       if (res.payload && !res.error) {
         const wi = res.payload
         reset({
-          departmentId: wi.department?.id ?? '',
-          jobPositionId: wi.jobPosition?.id ?? '',
-          shiftId: wi.shift?.id ?? '',
-          workTypeId: wi.workType?.id ?? '',
-          reportingManagerId: wi.reportingManager?.id ?? '',
+          departmentId: wi.departmentId ?? '',
+          jobPositionId: wi.jobPositionId ?? '',
+          shiftId: wi.shiftId ?? '',
+          workTypeId: wi.workTypeId ?? '',
+          reportingManagerId: wi.reportingManagerId ?? '',
           location: wi.location ?? '',
           dateJoining: wi.dateJoining ?? '',
           contractEndDate: wi.contractEndDate ?? '',

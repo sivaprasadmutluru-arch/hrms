@@ -37,6 +37,49 @@ export const rejectWorkTypeRequest = createAsyncThunk('workTypeRequests/reject',
   }
 })
 
+export const cancelWorkTypeRequest = createAsyncThunk('workTypeRequests/cancel', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/work-type-requests/${id}/cancel`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to cancel work type request')
+  }
+})
+
+export const bulkApproveWorkTypeRequests = createAsyncThunk('workTypeRequests/bulkApprove', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/work-type-requests/bulk-approve', { ids })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk approve work type requests')
+  }
+})
+
+export const bulkCancelWorkTypeRequests = createAsyncThunk('workTypeRequests/bulkCancel', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/work-type-requests/bulk-cancel', { ids })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to bulk cancel work type requests')
+  }
+})
+
+export const exportWorkTypeRequests = createAsyncThunk('workTypeRequests/export', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/work-type-requests/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'work-type-requests.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export work type requests')
+  }
+})
+
 const workTypeRequestSlice = createSlice({
   name: 'workTypeRequests',
   initialState: { data: [], loading: false, error: null },
@@ -57,6 +100,12 @@ const workTypeRequestSlice = createSlice({
         const idx = state.data.findIndex(r => r.id === action.payload.id)
         if (idx !== -1) state.data[idx] = action.payload
       })
+      .addCase(cancelWorkTypeRequest.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = action.payload
+      })
+      .addCase(bulkApproveWorkTypeRequests.fulfilled, (state) => { state.loading = false })
+      .addCase(bulkCancelWorkTypeRequests.fulfilled, (state) => { state.loading = false })
   },
 })
 

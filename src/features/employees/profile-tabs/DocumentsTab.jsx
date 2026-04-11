@@ -4,17 +4,21 @@ import Spinner from '../../../components/common/Spinner'
 import { formatDate } from '../../../utils/formatters'
 import { API_BASE_URL } from '../../../config/constants'
 
-export default function DocumentsTab({ employeeId }) {
+export default function DocumentsTab({ employeeId, companyId }) {
   const [docs, setDocs]       = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!employeeId) return
-    api.get('/documents', { params: { employeeId } })
+    const cfg = {
+      params: { employeeId },
+      ...(companyId ? { headers: { 'X-Company-Id': companyId } } : {}),
+    }
+    api.get('/documents', cfg)
       .then(res => setDocs(Array.isArray(res.data) ? res.data : res.data?.content ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [employeeId])
+  }, [employeeId, companyId])
 
   if (loading) return <div className="flex justify-center py-10"><Spinner /></div>
   if (!docs.length) return <p className="text-sm text-gray-400 py-6">No documents uploaded.</p>
