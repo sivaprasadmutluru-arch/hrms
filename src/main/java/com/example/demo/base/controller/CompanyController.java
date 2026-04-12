@@ -35,7 +35,7 @@ public class CompanyController {
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "List all companies across all organizations (Prabha Tech only)")
     public ResponseEntity<List<Company>> listAll() {
-        return ResponseEntity.ok(companyRepository.findAll());
+        return ResponseEntity.ok(companyRepository.findByIsActiveTrue());
     }
 
     @GetMapping("/head-offices")

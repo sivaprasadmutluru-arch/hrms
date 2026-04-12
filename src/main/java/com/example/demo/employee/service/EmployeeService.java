@@ -24,23 +24,36 @@ import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.repository.ContractRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmployeeService {
+
+    // Self-reference through Spring proxy so @Transactional works on internal calls (bulkImport → create)
+    @Lazy
+    @Autowired
+    private EmployeeService self;
 
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
@@ -89,8 +102,9 @@ public class EmployeeService {
         return EmployeeResponse.from(findEmployee(id));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EmployeeResponse create(EmployeeRequest req) {
+        log.info("[create] email={} companyId={}", req.getEmail(), req.getCompanyId());
         if (req.getEmail() != null && employeeRepository.findByEmail(req.getEmail()).isPresent()) {
             throw new BadRequestException("Employee with this email already exists");
         }
@@ -122,8 +136,10 @@ public class EmployeeService {
         // Auto-create a linked user account if email is provided
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
             boolean[] isNewUser = {false};
+            log.info("[create] looking up user by email={}", req.getEmail());
             User user = userRepository.findByEmail(req.getEmail()).orElseGet(() -> {
                 isNewUser[0] = true;
+                log.info("[create] user not found, registering new user for email={}", req.getEmail());
                 RegisterRequest reg = new RegisterRequest();
                 reg.setUsername(req.getEmail());
                 reg.setEmail(req.getEmail());
@@ -139,7 +155,9 @@ public class EmployeeService {
             // Assign role: use selected role, or default to EMPLOYEE+SELF for new users
             Role.RoleName roleName = req.getRole() != null ? req.getRole() : (isNewUser[0] ? Role.RoleName.EMPLOYEE : null);
             UserRole.AccessScope scope = req.getAccessScope() != null ? req.getAccessScope() : (isNewUser[0] ? UserRole.AccessScope.SELF : null);
+            log.info("[create] isNewUser={} roleName={} scope={} userId={} companyId={}", isNewUser[0], roleName, scope, user.getId(), req.getCompanyId());
             if (roleName != null && scope != null && !userRoleService.hasRole(user.getId(), req.getCompanyId(), roleName)) {
+                log.info("[create] assigning role={} to userId={}", roleName, user.getId());
                 AssignRoleRequest roleReq = new AssignRoleRequest();
                 roleReq.setUserId(user.getId());
                 roleReq.setRoleName(roleName);
@@ -149,10 +167,41 @@ public class EmployeeService {
             }
         }
 
+        log.info("[create] saving employee firstName={} companyId={}", emp.getFirstName(), req.getCompanyId());
         Employee saved = employeeRepository.save(emp);
+        log.info("[create] saved employee id={}, creating contract & workInfo", saved.getId());
         createDefaultContract(saved, req);
         createDefaultWorkInfo(saved);
+        log.info("[create] done for employee id={}", saved.getId());
         return EmployeeResponse.from(saved);
+    }
+
+    public Map<String, Object> bulkImport(List<EmployeeRequest> requests) {
+        int success = 0;
+        List<Map<String, String>> failures = new ArrayList<>();
+        for (int i = 0; i < requests.size(); i++) {
+            EmployeeRequest req = requests.get(i);
+            try {
+                log.info("[bulkImport] row {} — creating employee: firstName={} email={} companyId={}",
+                        i + 2, req.getFirstName(), req.getEmail(), req.getCompanyId());
+                self.create(req);
+                success++;
+                log.info("[bulkImport] row {} — success", i + 2);
+            } catch (Exception e) {
+                log.warn("[bulkImport] row {} — FAILED: {}", i + 2, e.getMessage(), e);
+                Map<String, String> err = new LinkedHashMap<>();
+                err.put("row", String.valueOf(i + 2)); // +2: 1-indexed + header row
+                err.put("email", req.getEmail() != null ? req.getEmail() : "");
+                err.put("reason", e.getMessage());
+                failures.add(err);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalRows", requests.size());
+        result.put("successCount", success);
+        result.put("failureCount", failures.size());
+        result.put("failures", failures);
+        return result;
     }
 
     private void createDefaultContract(Employee emp, EmployeeRequest req) {
@@ -162,10 +211,16 @@ public class EmployeeService {
         contract.setContractName("Contract - " + emp.getFirstName()
                 + (emp.getLastName() != null ? " " + emp.getLastName() : ""));
         contract.setWage(req.getBasicPay());
-        contract.setWageType(Contract.WageType.MONTHLY);
+        contract.setHousingAllowance(req.getHousingAllowance());
+        contract.setTransportAllowance(req.getTransportAllowance());
+        contract.setOtherAllowance(req.getOtherAllowance());
+        contract.setTotalSalary(req.getTotalSalary());
+        contract.setSalaryPerHour(req.getSalaryPerHour());
+        contract.setWageType(req.getWageType() != null ? req.getWageType() : Contract.WageType.MONTHLY);
         contract.setPayFrequency(Contract.PayFrequency.MONTHLY);
         contract.setContractStatus(Contract.ContractStatus.DRAFT);
         contract.setStartDate(emp.getDateJoining());
+        contract.setEndDate(req.getContractEndDate());
         contract.setDepartment(emp.getDepartment());
         contract.setJobPosition(emp.getJobPosition());
         contract.setJobRole(emp.getJobRole());

@@ -82,6 +82,10 @@ public class LoanAccount extends BaseEntity {
     @JoinColumn(name = "company_id")
     private Company company;
 
+    /** Computed at query time — not persisted. Mirrors GCP installment_ratio numerator. */
+    @Transient
+    private Integer paidInstallments;
+
     public enum LoanType {
         LOAN, ADVANCED_SALARY, FINE
     }

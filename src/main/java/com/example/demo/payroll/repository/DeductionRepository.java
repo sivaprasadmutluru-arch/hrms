@@ -24,4 +24,8 @@ public interface DeductionRepository extends JpaRepository<Deduction, Long>, Jpa
     /** includeActiveEmployees deductions that do NOT exclude this employee */
     @Query("SELECT DISTINCT d FROM Deduction d WHERE d.includeActiveEmployees = true AND d.company.id = :companyId AND :employeeId NOT IN (SELECT e.id FROM d.excludeEmployees e)")
     List<Deduction> findActiveEmployeeNotExcluded(@Param("employeeId") Long employeeId, @Param("companyId") Long companyId);
+
+    /** Compensation deductions (update_compensation IS NOT NULL) specifically assigned to this employee (mirrors GCP update_compensation_deduction) */
+    @Query("SELECT DISTINCT d FROM Deduction d JOIN d.specificEmployees se WHERE se.id = :employeeId AND d.company.id = :companyId AND d.updateCompensation IS NOT NULL")
+    List<Deduction> findCompensationDeductionsForEmployee(@Param("employeeId") Long employeeId, @Param("companyId") Long companyId);
 }

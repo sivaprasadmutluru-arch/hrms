@@ -20,7 +20,6 @@
 | `employee.ho` | `Pass@123` | EMPLOYEE | SELF | raj.kumar@yuwatech.com |
 
 ### Bangalore Branch
-
 | Username | Password | Role | Scope | Email |
 |----------|----------|------|-------|-------|
 | `branch.admin.blr` | `Pass@123` | BRANCH_ADMIN | BRANCH | priya.suresh@yuwatech.com |

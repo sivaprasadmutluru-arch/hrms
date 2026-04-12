@@ -124,12 +124,15 @@ public class PayslipExcelExportService {
             double lop        = phdDouble(phd, "loss_of_pay", 0);
             double loanRec    = phdDouble(phd, "loan_recovery", 0)
                               + phdDouble(phd, "salary_advance_deduction", 0);
-            double deduction  = safe(p.getDeduction()).doubleValue() - lop - loanRec;
-            if (deduction < 0) deduction = 0;
+            double otherDeduction = phdDouble(phd, "other_deduction", -1);
+            if (otherDeduction < 0) {
+                otherDeduction = safe(p.getDeduction()).doubleValue() - lop - loanRec;
+                if (otherDeduction < 0) otherDeduction = 0;
+            }
             double overtime   = phdDouble(phd, "overtime_pay", phdDouble(phd, "overtime", 0));
             double salAdv     = phdDouble(phd, "salary_advance", 0);
             double bonus      = phdDouble(phd, "bonus", 0);
-            double netPay     = safe(p.getNetPay()).doubleValue();
+            double netPay     = grossPay - (lop + loanRec + otherDeduction) + (overtime + salAdv + bonus);
 
             Row row = sheet.createRow(rowNum++);
             row.setHeightInPoints(18);
@@ -145,7 +148,7 @@ public class PayslipExcelExportService {
             createNumCell(row, 8,  fmtD(paidDays),   orangeData);
             createNumCell(row, 9,  fmtD(lop),        orangeData);
             createNumCell(row, 10, fmtD(loanRec),    orangeData);
-            createNumCell(row, 11, fmtD(deduction),  orangeData);
+            createNumCell(row, 11, fmtD(otherDeduction),  orangeData);
             createNumCell(row, 12, fmtD(overtime),   orangeData);
             createNumCell(row, 13, fmtD(salAdv),     orangeData);
             createNumCell(row, 14, fmtD(bonus),      orangeData);
@@ -254,24 +257,43 @@ public class PayslipExcelExportService {
         BigDecimal totalNetPay = BigDecimal.ZERO;
         Map<String, BigDecimal> deptTotals = new LinkedHashMap<>();
 
+        ObjectMapper om = new ObjectMapper();
         for (Payslip p : payslips) {
             Row row = sheet.createRow(rowNum++);
             row.setHeightInPoints(18);
-            BigDecimal allowance = safe(p.getGrossPay()).subtract(safe(p.getBasicPay()));
+            BigDecimal allowance = safe(p.getHousingAllowance())
+                    .add(safe(p.getTransportAllowance()))
+                    .add(safe(p.getOtherAllowance()));
             String dept = department(p);
 
-            createCell(row, 0, employeeName(p),        dataStyle);
-            createCell(row, 1, str(p.getStartDate()),   dataStyle);
-            createCell(row, 2, str(p.getEndDate()),     dataStyle);
-            createCell(row, 3, amount(p.getBasicPay()), amtStyle);
-            createCell(row, 4, amount(p.getDeduction()),amtStyle);
-            createCell(row, 5, fmt(allowance),          amtStyle);
-            createCell(row, 6, amount(p.getGrossPay()), amtStyle);
-            createCell(row, 7, amount(p.getNetPay()),   amtStyle);
-            createCell(row, 8, status(p),               dataStyle);
+            Map<String, Object> phd = parsePhd(p.getPayHeadData(), om);
+            double lopD      = phdDouble(phd, "loss_of_pay", 0);
+            double loanRecD  = phdDouble(phd, "loan_recovery", 0)
+                             + phdDouble(phd, "salary_advance_deduction", 0);
+            double otherDedD = phdDouble(phd, "other_deduction", -1);
+            if (otherDedD < 0) {
+                otherDedD = safe(p.getDeduction()).doubleValue() - lopD - loanRecD;
+                if (otherDedD < 0) otherDedD = 0;
+            }
+            double overtimeD = phdDouble(phd, "overtime_pay", phdDouble(phd, "overtime", 0));
+            double salAdvD   = phdDouble(phd, "salary_advance", 0);
+            double bonusD    = phdDouble(phd, "bonus", 0);
+            BigDecimal computedNet = safe(p.getGrossPay())
+                    .subtract(BigDecimal.valueOf(lopD + loanRecD + otherDedD))
+                    .add(BigDecimal.valueOf(overtimeD + salAdvD + bonusD));
 
-            totalNetPay = totalNetPay.add(safe(p.getNetPay()));
-            deptTotals.merge(dept.isEmpty() ? "Unknown" : dept, safe(p.getNetPay()), BigDecimal::add);
+            createCell(row, 0, employeeName(p),         dataStyle);
+            createCell(row, 1, str(p.getStartDate()),    dataStyle);
+            createCell(row, 2, str(p.getEndDate()),      dataStyle);
+            createCell(row, 3, amount(p.getBasicPay()),  amtStyle);
+            createCell(row, 4, amount(p.getDeduction()), amtStyle);
+            createCell(row, 5, fmt(allowance),           amtStyle);
+            createCell(row, 6, amount(p.getGrossPay()),  amtStyle);
+            createCell(row, 7, fmt(computedNet),         amtStyle);
+            createCell(row, 8, status(p),                dataStyle);
+
+            totalNetPay = totalNetPay.add(computedNet);
+            deptTotals.merge(dept.isEmpty() ? "Unknown" : dept, computedNet, BigDecimal::add);
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -556,15 +578,15 @@ public class PayslipExcelExportService {
                 // I = Gross Salary: =SUM(D:G)
                 createFormulaCell(row, 8, "=SUM(D" + excelRow + ":G" + excelRow + ")", orangeData);
 
-                // J, K, L = Loss of Pay, salary_advance_loan_recovery, Deduction (blank)
-                createCell(row, 9,  "", orangeData);
-                createCell(row, 10, "", orangeData);
-                createCell(row, 11, "", orangeData);
+                // J, K, L = Loss of Pay, salary_advance_loan_recovery, Deduction (user-editable numeric)
+                createInputCell(row, 9,  orangeData);
+                createInputCell(row, 10, orangeData);
+                createInputCell(row, 11, orangeData);
 
-                // M, N, O = Overtime, salary_advance, bonus (blank)
-                createCell(row, 12, "", orangeData);
-                createCell(row, 13, "", orangeData);
-                createCell(row, 14, "", orangeData);
+                // M, N, O = Overtime, salary_advance, bonus (user-editable numeric)
+                createInputCell(row, 12, orangeData);
+                createInputCell(row, 13, orangeData);
+                createInputCell(row, 14, orangeData);
 
                 // P = Net Salary: =I - SUM(J:L) + SUM(M:O)
                 createFormulaCell(row, 15,
@@ -602,7 +624,14 @@ public class PayslipExcelExportService {
 
     private void createFormulaCell(Row row, int col, String formula, CellStyle style) {
         Cell cell = row.createCell(col);
-        cell.setCellFormula(formula);
+        // POI 5.x setCellFormula must NOT include the leading '='
+        cell.setCellFormula(formula.startsWith("=") ? formula.substring(1) : formula);
+        cell.setCellStyle(style);
+    }
+
+    /** Creates a blank NUMERIC cell so Excel treats user-entered values as numbers (not text). */
+    private void createInputCell(Row row, int col, CellStyle style) {
+        Cell cell = row.createCell(col, CellType.BLANK);
         cell.setCellStyle(style);
     }
 

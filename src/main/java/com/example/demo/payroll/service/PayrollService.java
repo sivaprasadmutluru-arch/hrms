@@ -24,8 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Month;
+import java.time.Year;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -375,10 +377,11 @@ public class PayrollService {
             );
         }
         amount = applyMaxLimit(amount, a.getHasMaxLimit(), a.getMaximumAmount());
+        // GCP if_condition_on: for Allowances, gross_pay is always 0 (not computed)
         amount = applyIfCondition(amount,
                 a.getIfChoice(), a.getIfCondition(),
                 a.getIfAmount(), a.getStartRange(), a.getEndRange(),
-                basicPay, grossPay);
+                basicPay, 0.0);
         return amount;
     }
 
@@ -437,26 +440,28 @@ public class PayrollService {
         double workedUnits  = 0.0;
         Contract.WageType wageType = Contract.WageType.MONTHLY;
 
+        // Pre-compute working-day counts used by wage calculation, LOP, and pro-rata (all wage types need these)
+        int workingDaysInMonth  = countWorkingDays(startDate.withDayOfMonth(1),
+                startDate.withDayOfMonth(startDate.lengthOfMonth()));
+        int workingDaysInPeriod = countWorkingDays(startDate, endDate);
+
         if (contract != null && contract.getWage() != null) {
             contractWage = contract.getWage().doubleValue();
             wageType = contract.getWageType() != null ? contract.getWageType() : Contract.WageType.MONTHLY;
 
             if (wageType == Contract.WageType.HOURLY) {
-                List<WorkRecord> workRecords = workRecordRepository
-                        .findByEmployeeIdAndDateBetween(employeeId, startDate, endDate);
-                int totalSec = workRecords.stream()
-                        .mapToInt(wr -> wr.getAtWorkSecond() != null ? wr.getAtWorkSecond() : 0).sum();
-                workedUnits = totalSec / 3600.0;
+                // GCP hourly_computation: sum (at_work_second - overtime_second) — overtime excluded from basic pay
+                long netWorkedSec = attendanceRepository.sumNetWorkedSecondsByEmployeeAndPeriod(employeeId, startDate, endDate);
+                workedUnits = netWorkedSec / 3600.0;
                 basicPay = contractWage * workedUnits;
             } else if (wageType == Contract.WageType.DAILY) {
-                List<WorkRecord> workRecords = workRecordRepository
-                        .findByEmployeeIdAndDateBetween(employeeId, startDate, endDate);
-                workedUnits = workRecords.stream()
-                        .mapToDouble(wr -> wr.getDayPercentage() != null ? wr.getDayPercentage() : 0.0).sum();
-                basicPay = contractWage * workedUnits;
+                // GCP daily_computation: wage × total_working_days (schedule-based, not attendance-based)
+                workedUnits = workingDaysInPeriod;
+                basicPay = contractWage * workingDaysInPeriod;
             } else {
-                // MONTHLY — use full wage
-                basicPay = contractWage;
+                // MONTHLY — prorate by working days (mirrors GCP months_between_range: working_days_on_period * per_day_amount)
+                double perDayAmount = workingDaysInMonth > 0 ? contractWage / workingDaysInMonth : contractWage;
+                basicPay = perDayAmount * workingDaysInPeriod;
             }
         }
 
@@ -479,7 +484,8 @@ public class PayrollService {
             if (unpaidDays > 0) {
                 double dailyRate;
                 if (Boolean.TRUE.equals(contract.getCalculateDailyLeaveAmount())) {
-                    dailyRate = basicPay / periodDays;
+                    // GCP: daily rate = wage / working_days_in_month (not calendar days)
+                    dailyRate = workingDaysInMonth > 0 ? contractWage / workingDaysInMonth : 0.0;
                 } else if (contract.getDeductionForOneLeaveAmount() != null
                         && contract.getDeductionForOneLeaveAmount().compareTo(BigDecimal.ZERO) > 0) {
                     dailyRate = contract.getDeductionForOneLeaveAmount().doubleValue();
@@ -490,14 +496,21 @@ public class PayrollService {
                 basicPay  = Math.max(0.0, basicPay - lossOfPay);
             }
         }
-        paidDays = periodDays - unpaidDays;
+        // GCP monthly_computation: paid_days = working_days_on_period - unpaid_leaves (not calendar days)
+        paidDays = workingDaysInPeriod - unpaidDays;
         basicPay = round2(basicPay);
 
         // ── 2. Basic-pay compensation deductions ─────────────────────────────
-        // Deductions with updateCompensation="basic_pay" reduce basic pay directly
+        // GCP update_compensation_deduction: only specific_employees, not conditional/active
         List<Deduction> allDeductions = gatherApplicableDeductions(employee, companyId, startDate, endDate, false);
+        List<Deduction> compensationDeductions = deductionRepository
+                .findCompensationDeductionsForEmployee(employee.getId(), companyId)
+                .stream()
+                .filter(d -> d.getOneTimeDate() == null
+                        || (!d.getOneTimeDate().isBefore(startDate) && !d.getOneTimeDate().isAfter(endDate)))
+                .collect(Collectors.toList());
         List<Map<String, Object>> basicPayDeductionLines = new ArrayList<>();
-        for (Deduction d : allDeductions) {
+        for (Deduction d : compensationDeductions) {
             if ("basic_pay".equals(d.getUpdateCompensation())) {
                 double amt = computeDeductionAmount(d, basicPay, 0.0, 0.0, employee, startDate, endDate);
                 if (amt > 0) {
@@ -509,9 +522,11 @@ public class PayrollService {
         basicPay = round2(basicPay);
 
         // ── 3. Allowances ─────────────────────────────────────────────────────
-        double housingAllowance   = contract != null && contract.getHousingAllowance()   != null ? contract.getHousingAllowance().doubleValue()   : 0.0;
-        double transportAllowance = contract != null && contract.getTransportAllowance() != null ? contract.getTransportAllowance().doubleValue() : 0.0;
-        double otherAllowance     = contract != null && contract.getOtherAllowance()     != null ? contract.getOtherAllowance().doubleValue()     : 0.0;
+        // GCP get_fixed_contract_allowances: pro-rate by paid_days / calendar_days_in_month
+        double proRataFactor      = monthDays > 0 ? paidDays / monthDays : 1.0;
+        double housingAllowance   = round2((contract != null && contract.getHousingAllowance()   != null ? contract.getHousingAllowance().doubleValue()   : 0.0) * proRataFactor);
+        double transportAllowance = round2((contract != null && contract.getTransportAllowance() != null ? contract.getTransportAllowance().doubleValue() : 0.0) * proRataFactor);
+        double otherAllowance     = round2((contract != null && contract.getOtherAllowance()     != null ? contract.getOtherAllowance().doubleValue()     : 0.0) * proRataFactor);
 
         List<Allowance> applicableAllowances = gatherApplicableAllowances(employee, companyId, startDate, endDate);
         List<Map<String, Object>> allowanceLines = new ArrayList<>();
@@ -534,7 +549,7 @@ public class PayrollService {
 
         // ── 4b. Gross-pay compensation deductions ────────────────────────────
         List<Map<String, Object>> grossPayDeductionLines = new ArrayList<>();
-        for (Deduction d : allDeductions) {
+        for (Deduction d : compensationDeductions) {
             if ("gross_pay".equals(d.getUpdateCompensation())) {
                 double amt = computeDeductionAmount(d, basicPay, grossPay, 0.0, employee, startDate, endDate);
                 if (amt > 0) {
@@ -568,46 +583,37 @@ public class PayrollService {
 
             double amt = computeDeductionAmount(d, basicPay, grossPay, 0.0, employee, startDate, endDate);
 
+            double empRate = d.getEmployerRate() != null ? d.getEmployerRate() : 0.0;
             if (Boolean.TRUE.equals(d.getIsPretax()) && !Boolean.TRUE.equals(d.getIsTax())) {
                 // Pretax deductions
                 totalPretax += amt;
-                pretaxDeductionLines.add(Map.of(
-                        "deduction_id",               d.getId(),
-                        "title",                      d.getTitle(),
-                        "is_pretax",                  true,
-                        "amount",                     round2(amt),
-                        "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-                ));
+                pretaxDeductionLines.add(deductionLineWithContribution(d, amt, empRate));
             } else if (!Boolean.TRUE.equals(d.getIsPretax()) && Boolean.TRUE.equals(d.getIsTax())) {
                 // Tax deductions
                 totalTax += amt;
-                taxDeductionLines.add(Map.of(
-                        "deduction_id",               d.getId(),
-                        "title",                      d.getTitle(),
-                        "is_tax",                     true,
-                        "amount",                     round2(amt),
-                        "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-                ));
+                Map<String, Object> taxLine = new LinkedHashMap<>();
+                taxLine.put("deduction_id",                d.getId());
+                taxLine.put("title",                       d.getTitle());
+                taxLine.put("is_tax",                      true);
+                taxLine.put("amount",                      round2(amt));
+                taxLine.put("employer_contribution_rate",  empRate);
+                taxLine.put("employer_contribution_amount", round2(amt * empRate / 100.0));
+                taxDeductionLines.add(taxLine);
             } else if (!Boolean.TRUE.equals(d.getIsPretax()) && !Boolean.TRUE.equals(d.getIsTax())) {
                 if ("net_pay".equals(d.getBasedOn())) {
-                    // net_deductions computed after net pay is known
-                    netDeductionLines.add(Map.of(
-                            "deduction_id",               d.getId(),
-                            "title",                      d.getTitle(),
-                            "is_pretax",                  false,
-                            "amount",                     0.0,          // placeholder — recalculated below
-                            "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0,
-                            "_deduction",                 d             // temp reference
-                    ));
+                    // net_deductions computed after net pay is known — store deduction ref for later
+                    Map<String, Object> placeholder = new LinkedHashMap<>();
+                    placeholder.put("deduction_id",               d.getId());
+                    placeholder.put("title",                      d.getTitle());
+                    placeholder.put("is_pretax",                  false);
+                    placeholder.put("amount",                     0.0);
+                    placeholder.put("employer_contribution_rate", empRate);
+                    placeholder.put("employer_contribution_amount", 0.0);
+                    placeholder.put("_deduction",                 d);
+                    netDeductionLines.add(placeholder);
                 } else {
                     totalPostTax += amt;
-                    postTaxDeductionLines.add(Map.of(
-                            "deduction_id",               d.getId(),
-                            "title",                      d.getTitle(),
-                            "is_pretax",                  false,
-                            "amount",                     round2(amt),
-                            "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-                    ));
+                    postTaxDeductionLines.add(deductionLineWithContribution(d, amt, empRate));
                 }
             }
         }
@@ -616,12 +622,13 @@ public class PayrollService {
         double taxableGrossPay = round2(grossPay - nonTaxableAllowanceTotal - totalPretax);
         Long contractFilingStatusId = (contract != null && contract.getFilingStatus() != null)
                 ? contract.getFilingStatus().getId() : null;
-        double federalTax = calculateTax(taxableGrossPay, companyId, contractFilingStatusId);
+        double federalTax = calculateTax(taxableGrossPay, companyId, contractFilingStatusId, startDate, endDate);
 
         // ── 8. Loan installments ──────────────────────────────────────────────
         List<LoanAccount> activeLoans = loanAccountRepository.findByEmployeeIdAndSettledFalse(employeeId);
         double totalLoanDeduction = 0.0;
         List<Map<String, Object>> loanLines = new ArrayList<>();
+        Set<Deduction> installmentDeductions = new HashSet<>();
         for (LoanAccount loan : activeLoans) {
             if (loan.getInstallmentAmount() != null
                     && loan.getInstallmentStartDate() != null
@@ -629,6 +636,14 @@ public class PayrollService {
                 double la = loan.getInstallmentAmount().doubleValue();
                 totalLoanDeduction += la;
                 loanLines.add(Map.of("title", loan.getTitle(), "amount", la, "type", "LOAN"));
+                // GCP: track which installment Deduction objects were applied (for installment_ratio)
+                if (loan.getDeductionIds() != null) {
+                    loan.getDeductionIds().stream()
+                            .filter(d -> d.getOneTimeDate() != null
+                                    && !d.getOneTimeDate().isBefore(startDate)
+                                    && !d.getOneTimeDate().isAfter(endDate))
+                            .forEach(installmentDeductions::add);
+                }
             }
         }
 
@@ -650,7 +665,8 @@ public class PayrollService {
         }
 
         // ── 10. Preliminary net pay (before net_pay deductions) ───────────────
-        double totalDeductionsBeforeNet = lossOfPay + totalPretax + totalTax + federalTax + totalPostTax + totalLoanDeduction;
+        // LOP is already baked into basicPay (subtracted above) — do not double-count it here
+        double totalDeductionsBeforeNet = totalPretax + totalTax + federalTax + totalPostTax + totalLoanDeduction;
         double prelimNetPay = round2(grossPay - totalDeductionsBeforeNet + totalReimbursement);
 
         // ── 11. Net-pay deductions (based_on="net_pay") ───────────────────────
@@ -659,33 +675,24 @@ public class PayrollService {
         for (Map<String, Object> placeholder : netDeductionLines) {
             Deduction d = (Deduction) placeholder.get("_deduction");
             double amt = computeDeductionAmount(d, basicPay, grossPay, prelimNetPay, employee, startDate, endDate);
+            double empRate = d.getEmployerRate() != null ? d.getEmployerRate() : 0.0;
             totalNetDeductions += amt;
-            finalNetDeductionLines.add(Map.of(
-                    "deduction_id",               d.getId(),
-                    "title",                      d.getTitle(),
-                    "is_pretax",                  false,
-                    "amount",                     round2(amt),
-                    "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-            ));
+            finalNetDeductionLines.add(deductionLineWithContribution(d, amt, empRate));
         }
 
-        // Also check for updateCompensation="net_pay" deductions
-        for (Deduction d : allDeductions) {
+        // Also check for updateCompensation="net_pay" deductions (specific employees only, mirrors GCP)
+        for (Deduction d : compensationDeductions) {
             if ("net_pay".equals(d.getUpdateCompensation())) {
                 double amt = computeDeductionAmount(d, basicPay, grossPay, prelimNetPay, employee, startDate, endDate);
+                double empRate = d.getEmployerRate() != null ? d.getEmployerRate() : 0.0;
                 totalNetDeductions += amt;
-                finalNetDeductionLines.add(Map.of(
-                        "deduction_id",               d.getId(),
-                        "title",                      d.getTitle(),
-                        "is_pretax",                  false,
-                        "amount",                     round2(amt),
-                        "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-                ));
+                finalNetDeductionLines.add(deductionLineWithContribution(d, amt, empRate));
             }
         }
 
         // ── 12. Final Net Pay ─────────────────────────────────────────────────
-        double totalDeductions = round2(lossOfPay + totalPretax + totalTax + federalTax
+        // LOP is embedded in basicPay (not a separate deduction line), matching GCP behaviour
+        double totalDeductions = round2(totalPretax + totalTax + federalTax
                 + totalPostTax + totalNetDeductions + totalLoanDeduction);
         double netPay = round2(grossPay - totalDeductions + totalReimbursement);
 
@@ -700,7 +707,7 @@ public class PayrollService {
         payHeadData.put("housing_allowance",       round2(housingAllowance));
         payHeadData.put("transport_allowance",     round2(transportAllowance));
         payHeadData.put("other_allowance",         round2(otherAllowance));
-        payHeadData.put("taxable_gross_pay",       Map.of("taxable_gross_pay", round2(taxableGrossPay)));
+        payHeadData.put("taxable_gross_pay",       round2(taxableGrossPay));
         payHeadData.put("net_pay",                 round2(netPay));
         payHeadData.put("allowances",              allowanceLines);
         payHeadData.put("paid_days",               round2(paidDays));
@@ -744,6 +751,11 @@ public class PayrollService {
         }
 
         Payslip savedPayslip = payslipRepository.save(payslip);
+        // GCP: link installment Deduction objects so installment_ratio() works correctly
+        if (!installmentDeductions.isEmpty()) {
+            savedPayslip.setInstallmentIds(installmentDeductions);
+            savedPayslip = payslipRepository.save(savedPayslip);
+        }
         eventPublisher.publishEvent(new PayslipGeneratedEvent(this, savedPayslip));
         return savedPayslip;
     }
@@ -766,9 +778,14 @@ public class PayrollService {
     }
 
     /**
-     * Calculate income tax using progressive brackets (same as before).
+     * Calculate income tax using progressive brackets with annualization.
+     * Mirrors GCP calculate_taxable_amount:
+     *   1. Annualize the period income → yearly_income = income / numDays * daysInYear
+     *   2. Apply tax brackets to yearly income
+     *   3. Convert back → federal_tax_for_period = (yearly_tax / daysInYear) * numDays
      */
-    private double calculateTax(double taxableIncome, Long companyId, Long contractFilingStatusId) {
+    private double calculateTax(double taxableIncome, Long companyId, Long contractFilingStatusId,
+                                LocalDate startDate, LocalDate endDate) {
         Long filingStatusId = contractFilingStatusId;
         if (filingStatusId == null) {
             List<FilingStatus> filingStatuses = filingStatusRepository.findByCompanyId(companyId);
@@ -779,15 +796,23 @@ public class PayrollService {
         if (brackets.isEmpty()) return 0.0;
         brackets.sort(Comparator.comparingDouble(TaxBracket::getMinIncome));
 
-        double tax = 0.0;
+        // Annualize
+        long numDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        int daysInYear = Year.isLeap(startDate.getYear()) ? 366 : 365;
+        double yearlyIncome = round2(taxableIncome / numDays * daysInYear);
+
+        // Apply brackets to yearly income
+        double yearlyTax = 0.0;
         for (TaxBracket bracket : brackets) {
             double bracketMin = bracket.getMinIncome();
             double bracketMax = bracket.getMaxIncome() != null ? bracket.getMaxIncome() : Double.MAX_VALUE;
-            if (taxableIncome <= bracketMin) break;
-            double taxableInBracket = Math.min(taxableIncome, bracketMax) - bracketMin;
-            tax += taxableInBracket * (bracket.getTaxRate() / 100.0);
+            if (yearlyIncome <= bracketMin) break;
+            double taxableInBracket = Math.min(yearlyIncome, bracketMax) - bracketMin;
+            yearlyTax += taxableInBracket * (bracket.getTaxRate() / 100.0);
         }
-        return round2(tax);
+
+        // Convert back to period
+        return round2((yearlyTax / daysInYear) * numDays);
     }
 
     /**
@@ -820,13 +845,32 @@ public class PayrollService {
         return Math.round(val * 100.0) / 100.0;
     }
 
+    /** Count Mon–Fri working days between start and end inclusive (mirrors GCP get_working_days basic weekday count) */
+    private int countWorkingDays(LocalDate start, LocalDate end) {
+        int count = 0;
+        LocalDate d = start;
+        while (!d.isAfter(end)) {
+            DayOfWeek dow = d.getDayOfWeek();
+            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) count++;
+            d = d.plusDays(1);
+        }
+        return count;
+    }
+
     private Map<String, Object> deductionLine(Deduction d, double amount) {
-        return Map.of(
-                "deduction_id",               d.getId(),
-                "title",                      d.getTitle(),
-                "is_pretax",                  Boolean.TRUE.equals(d.getIsPretax()),
-                "amount",                     round2(amount),
-                "employer_contribution_rate", d.getEmployerRate() != null ? d.getEmployerRate() : 0.0
-        );
+        double empRate = d.getEmployerRate() != null ? d.getEmployerRate() : 0.0;
+        return deductionLineWithContribution(d, amount, empRate);
+    }
+
+    /** GCP calculate_employer_contribution: includes computed employer_contribution_amount */
+    private Map<String, Object> deductionLineWithContribution(Deduction d, double amount, double empRate) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("deduction_id",                d.getId());
+        line.put("title",                       d.getTitle());
+        line.put("is_pretax",                   Boolean.TRUE.equals(d.getIsPretax()));
+        line.put("amount",                      round2(amount));
+        line.put("employer_contribution_rate",  empRate);
+        line.put("employer_contribution_amount", round2(amount * empRate / 100.0));
+        return line;
     }
 }

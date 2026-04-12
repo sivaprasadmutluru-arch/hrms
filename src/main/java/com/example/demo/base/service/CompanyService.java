@@ -226,14 +226,14 @@ public class CompanyService {
         if (!headOffice.isHeadOffice()) {
             throw new BadRequestException("Company '" + headOffice.getName() + "' is not a Head Office");
         }
-        return companyRepository.findByParentCompanyId(headOfficeId);
+        return companyRepository.findByParentCompanyIdAndIsActiveTrue(headOfficeId);
     }
 
     /**
      * Gets all Head Offices (one per organization).
      */
     public List<Company> getAllHeadOffices() {
-        return companyRepository.findByCompanyType(Company.CompanyType.HEAD_OFFICE);
+        return companyRepository.findByCompanyTypeAndIsActiveTrue(Company.CompanyType.HEAD_OFFICE);
     }
 
     /**

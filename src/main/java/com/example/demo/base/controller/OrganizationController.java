@@ -82,6 +82,14 @@ public class OrganizationController {
         return ResponseEntity.ok(Map.of("message", "Organization suspended"));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Delete an organization (must have no companies)")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        organizationService.deleteOrganization(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/stats")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "Get stats for an organization: branch count, employee count")

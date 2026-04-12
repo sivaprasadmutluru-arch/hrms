@@ -12,6 +12,7 @@ import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.JwtTokenProvider;
 import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Organization;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
@@ -72,6 +73,15 @@ public class AuthService {
                         .map(Company::getId)
                         .findFirst()
                         .orElse(null));
+
+        // Block login if the user's organization is suspended (Platform Super Admin is exempt)
+        if (companyId != null && !roles.contains("PLATFORM_SUPER_ADMIN")) {
+            companyRepository.findOrgStatusByCompanyId(companyId).ifPresent(orgStatus -> {
+                if (Organization.OrgStatus.SUSPENDED.equals(orgStatus)) {
+                    throw new BadRequestException("ORGANIZATION_SUSPENDED");
+                }
+            });
+        }
 
         Long employeeId = employeeRepository.findByUserId(principal.getId())
                 .map(e -> e.getId())

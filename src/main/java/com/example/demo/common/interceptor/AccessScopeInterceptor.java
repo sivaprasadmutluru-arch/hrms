@@ -6,6 +6,7 @@ import com.example.demo.auth.repository.CrossBranchAccessGrantRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Organization;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.context.CompanyContext;
@@ -62,6 +63,23 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             // No user or no company context — allow the request to proceed
             // Security is still enforced by @PreAuthorize annotations
             return true;
+        }
+
+        // Step 2b: Block access if the user's organization is suspended (Platform Super Admin is exempt)
+        boolean isPlatformAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"));
+        if (!isPlatformAdmin) {
+            Organization.OrgStatus orgStatus = companyRepository.findOrgStatusByCompanyId(companyId).orElse(null);
+            if (Organization.OrgStatus.SUSPENDED.equals(orgStatus)) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                try {
+                    response.getWriter().write("{\"status\":403,\"message\":\"ORGANIZATION_SUSPENDED\"}");
+                } catch (java.io.IOException e) {
+                    log.error("Failed to write suspension response", e);
+                }
+                return false;
+            }
         }
 
         // Step 3: Set legacy CompanyContext for backward compatibility

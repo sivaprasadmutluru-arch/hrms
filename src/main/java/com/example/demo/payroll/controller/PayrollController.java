@@ -535,7 +535,18 @@ public class PayrollController {
     @Operation(summary = "List loan accounts (company-scoped)")
     public ResponseEntity<List<LoanAccount>> listLoans() {
         var spec = ScopeFilter.<LoanAccount>byEmployee();
-        return ResponseEntity.ok(spec != null ? loanAccountRepository.findAll(spec) : loanAccountRepository.findAll());
+        List<LoanAccount> loans = spec != null ? loanAccountRepository.findAll(spec) : loanAccountRepository.findAll();
+        // Populate paidInstallments (mirrors GCP installment_ratio numerator)
+        for (LoanAccount loan : loans) {
+            if (loan.getDeductionIds() != null && !loan.getDeductionIds().isEmpty()) {
+                List<Long> deductionIds = loan.getDeductionIds().stream()
+                        .map(d -> d.getId()).collect(java.util.stream.Collectors.toList());
+                loan.setPaidInstallments((int) payslipRepository.countByInstallmentIdIn(deductionIds));
+            } else {
+                loan.setPaidInstallments(0);
+            }
+        }
+        return ResponseEntity.ok(loans);
     }
 
     @PostMapping("/loans")

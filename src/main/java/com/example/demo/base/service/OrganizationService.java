@@ -1,5 +1,9 @@
 package com.example.demo.base.service;
 
+import com.example.demo.auth.entity.UserGroup;
+import com.example.demo.auth.repository.CrossBranchAccessGrantRepository;
+import com.example.demo.auth.repository.UserGroupRepository;
+import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.enums.SubscriptionPlan;
@@ -9,6 +13,8 @@ import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
 import com.example.demo.employee.repository.EmployeeRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Business logic for managing client organizations on the Prabha Tech platform.
@@ -31,6 +38,12 @@ public class OrganizationService {
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
     private final FileUploadService fileUploadService;
+    private final UserRoleRepository userRoleRepository;
+    private final UserGroupRepository userGroupRepository;
+    private final CrossBranchAccessGrantRepository crossBranchAccessGrantRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Transactional
     public Organization uploadLogo(Long id, MultipartFile file) {
@@ -122,10 +135,54 @@ public class OrganizationService {
         organizationRepository.save(org);
         // Cascade: suspend all companies under this org
         companyRepository.findByOrganizationId(id).forEach(company -> {
-            company.setStatus(Company.CompanyStatus.INACTIVE);
+            company.setStatus(Company.CompanyStatus.SUSPENDED);
             company.setActive(false);
             companyRepository.save(company);
         });
+    }
+
+    @Transactional
+    public void deleteOrganization(Long id) {
+        Organization org = getOrganizationById(id);
+        List<Company> companies = companyRepository.findByOrganizationId(id);
+
+        if (!companies.isEmpty()) {
+            List<Long> companyIds = companies.stream().map(Company::getId).collect(Collectors.toList());
+
+            // Delete public-schema records that reference these companies
+            crossBranchAccessGrantRepository.deleteAllInBatch(
+                    crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
+
+            var groups = userGroupRepository.findByCompanyIdIn(companyIds);
+            groups.forEach(g -> g.setCompany(null));
+            userGroupRepository.saveAll(groups);
+
+            userRoleRepository.deleteAllInBatch(
+                    userRoleRepository.findByCompanyIdIn(companyIds));
+
+            // Delete employees for each company (use deleteAllInBatch so the DELETE
+            // is flushed to the DB immediately, before the company rows are deleted below)
+            companies.forEach(c -> employeeRepository.deleteAllInBatch(
+                    employeeRepository.findByCompanyId(c.getId())));
+
+            // Delete branches first (FK to head office), then head offices.
+            // Use deleteAllInBatch to bypass JPA cascade and issue a direct DELETE.
+            List<Company> branches = companies.stream().filter(Company::isBranch).collect(Collectors.toList());
+            List<Company> headOffices = companies.stream().filter(Company::isHeadOffice).collect(Collectors.toList());
+            companyRepository.deleteAllInBatch(branches);
+            companyRepository.deleteAllInBatch(headOffices);
+
+            // Evict all stale managed entities (Company objects deleted above are still in
+            // session). Without this, Hibernate sees them at flush time referencing a
+            // now-removed Organization and throws TransientObjectException.
+            entityManager.clear();
+        }
+
+        if (org.getLogoPath() != null) {
+            fileUploadService.delete(org.getLogoPath());
+        }
+        // Re-fetch org because entityManager.clear() detached it
+        organizationRepository.deleteById(id);
     }
 
     /** Updates the subscription plan for an organization. Only PLATFORM_SUPER_ADMIN should call this. */

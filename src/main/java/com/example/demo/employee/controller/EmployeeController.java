@@ -23,8 +23,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import com.example.demo.payroll.entity.Contract;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -39,6 +42,7 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/employees")
 @RequiredArgsConstructor
@@ -194,41 +198,264 @@ public class EmployeeController {
 
     @PostMapping("/import")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Transactional
-    @Operation(summary = "Import employees from an Excel file")
+    @Operation(summary = "Import employees from an Excel file. Columns: firstName, lastName, email, phone, department, jobPosition, workType, shift, employeeType, dateJoining (yyyy-MM-dd)")
     public ResponseEntity<Map<String, Object>> importEmployees(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long companyId) throws IOException {
-        com.example.demo.base.entity.Company company = companyRepository.getReferenceById(companyId);
 
-        List<Employee> imported = new ArrayList<>();
-        try (org.apache.poi.ss.usermodel.Workbook wb = new XSSFWorkbook(file.getInputStream())) {
+        log.info("[importEmployees] companyId={} file={} size={}", companyId, file.getOriginalFilename(), file.getSize());
+
+        var departments  = departmentRepository.findByCompanyId(companyId);
+        var jobPositions = jobPositionRepository.findByCompanyId(companyId);
+        var shifts       = shiftScheduleRepository.findByCompanyId(companyId);
+
+        List<EmployeeRequest> requests = new ArrayList<>();
+        try (Workbook wb = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = wb.getSheetAt(0);
+            log.info("[importEmployees] sheet rows={}", sheet.getLastRowNum());
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
                 String firstName = getCellStr(row, 0);
-                String email = getCellStr(row, 1);
                 if (firstName == null || firstName.isBlank()) continue;
-                Employee emp = new Employee();
-                emp.setFirstName(firstName);
-                emp.setEmail(email);
-                emp.setCompany(company);
-                imported.add(emp);
+
+                // Columns: 0=FirstName 1=LastName 2=Email 3=Phone 4=Gender
+                //          5=Department 6=JobPosition 7=Shift 8=WageType 9=EmployeeType
+                //          10=Location 11=DateJoining 12=BasicSalary 13=HousingAllowance
+                //          14=TransportAllowance 15=OtherAllowance 16=TotalSalary
+                //          17=SalaryPerHour(skip) 18=ContractEndDate
+                EmployeeRequest req = new EmployeeRequest();
+                req.setFirstName(firstName);
+                req.setLastName(getCellStr(row, 1));
+                req.setEmail(getCellStr(row, 2));
+                String phone = getCellStr(row, 3);
+                req.setPhone(phone);
+                req.setPassword(phone);
+                req.setCompanyId(companyId);
+
+                String genderStr = getCellStr(row, 4);
+                if (genderStr != null && !genderStr.isBlank()) {
+                    try { req.setGender(Employee.Gender.valueOf(genderStr.trim().toUpperCase())); }
+                    catch (IllegalArgumentException ignored) {}
+                }
+
+                String deptName = getCellStr(row, 5);
+                if (deptName != null && !deptName.isBlank()) {
+                    departments.stream().filter(d -> deptName.trim().equalsIgnoreCase(d.getName()))
+                            .findFirst().ifPresent(d -> req.setDepartmentId(d.getId()));
+                }
+
+                String jobPosName = getCellStr(row, 6);
+                if (jobPosName != null && !jobPosName.isBlank()) {
+                    jobPositions.stream().filter(jp -> jobPosName.trim().equalsIgnoreCase(jp.getName()))
+                            .findFirst().ifPresent(jp -> req.setJobPositionId(jp.getId()));
+                }
+
+                String shiftName = getCellStr(row, 7);
+                if (shiftName != null && !shiftName.isBlank()) {
+                    shifts.stream().filter(s -> shiftName.trim().equalsIgnoreCase(s.getName()))
+                            .findFirst().ifPresent(s -> req.setShiftId(s.getId()));
+                }
+
+                String wageTypeStr = getCellStr(row, 8);
+                if (wageTypeStr != null && !wageTypeStr.isBlank()) {
+                    try { req.setWageType(Contract.WageType.valueOf(wageTypeStr.trim().toUpperCase())); }
+                    catch (IllegalArgumentException ignored) {}
+                }
+
+                String empTypeStr = getCellStr(row, 9);
+                if (empTypeStr != null && !empTypeStr.isBlank()) {
+                    try { req.setEmployeeType(Employee.EmployeeType.valueOf(empTypeStr.trim().toUpperCase())); }
+                    catch (IllegalArgumentException ignored) {}
+                }
+
+                req.setCity(getCellStr(row, 10));
+
+                String dateJoiningStr = getCellStr(row, 11);
+                if (dateJoiningStr != null && !dateJoiningStr.isBlank()) {
+                    try { req.setDateJoining(LocalDate.parse(dateJoiningStr.trim())); } catch (Exception ignored) {}
+                }
+
+                req.setBasicPay(getCellDecimal(row, 12));
+                req.setHousingAllowance(getCellDecimal(row, 13));
+                req.setTransportAllowance(getCellDecimal(row, 14));
+                req.setOtherAllowance(getCellDecimal(row, 15));
+                req.setTotalSalary(getCellDecimal(row, 16));
+                req.setSalaryPerHour(getCellDecimal(row, 17));
+
+                String contractEndStr = getCellStr(row, 18);
+                if (contractEndStr != null && !contractEndStr.isBlank()) {
+                    try { req.setContractEndDate(LocalDate.parse(contractEndStr.trim())); } catch (Exception ignored) {}
+                }
+
+                log.info("[importEmployees] row {} → firstName={} lastName={} email={} companyId={}",
+                        i + 1, req.getFirstName(), req.getLastName(), req.getEmail(), req.getCompanyId());
+                requests.add(req);
             }
         }
-        employeeRepository.saveAll(imported);
-        return ResponseEntity.ok(Map.of("count", imported.size()));
+
+        log.info("[importEmployees] parsed {} requests, calling bulkImport", requests.size());
+        Map<String, Object> result = employeeService.bulkImport(requests);
+        log.info("[importEmployees] result={}", result);
+        return ResponseEntity.ok(result);
+    }
+
+    private void setBorders(XSSFCellStyle style, XSSFColor color) {
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        style.setTopBorderColor(color);
+        style.setBottomBorderColor(color);
+        style.setLeftBorderColor(color);
+        style.setRightBorderColor(color);
     }
 
     private String getCellStr(Row row, int col) {
         Cell cell = row.getCell(col);
         if (cell == null) return null;
         return switch (cell.getCellType()) {
-            case STRING -> cell.getStringCellValue();
-            case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());
+            case STRING -> cell.getStringCellValue().trim();
+            case NUMERIC -> {
+                double v = cell.getNumericCellValue();
+                yield (v == Math.floor(v)) ? String.valueOf((long) v) : String.valueOf(v);
+            }
             default -> null;
         };
+    }
+
+    private java.math.BigDecimal getCellDecimal(Row row, int col) {
+        Cell cell = row.getCell(col);
+        if (cell == null) return null;
+        try {
+            return switch (cell.getCellType()) {
+                case NUMERIC -> java.math.BigDecimal.valueOf(cell.getNumericCellValue());
+                case STRING -> {
+                    String s = cell.getStringCellValue().trim();
+                    yield s.isBlank() ? null : new java.math.BigDecimal(s);
+                }
+                default -> null;
+            };
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    // ─── Import Template ──────────────────────────────────────────────────────
+
+    @GetMapping("/import/template")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Download the Excel template for bulk employee import")
+    public void downloadImportTemplate(jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition", "attachment; filename=employee_import_template.xlsx");
+
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            XSSFSheet sheet = wb.createSheet("Employees");
+            sheet.setDefaultRowHeightInPoints(18);
+
+            // ── Theme colours ──────────────────────────────────────────
+            // Primary: indigo-600 #4F46E5
+            XSSFColor indigo     = new XSSFColor(new byte[]{(byte)79,  (byte)70,  (byte)229}, null);
+            // Light bg: indigo-50 #EEF2FF
+            XSSFColor indigoLight= new XSSFColor(new byte[]{(byte)238,(byte)242,(byte)255}, null);
+            // Hint row: slate-100 #F1F5F9
+            XSSFColor slateLight = new XSSFColor(new byte[]{(byte)241,(byte)245,(byte)249}, null);
+            // Border: gray-300 #D1D5DB
+            XSSFColor borderGray = new XSSFColor(new byte[]{(byte)209,(byte)213,(byte)219}, null);
+
+            // ── Reusable styles ────────────────────────────────────────
+            // Header style
+            XSSFCellStyle headerStyle = wb.createCellStyle();
+            XSSFFont headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(indigo);
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            headerStyle.setBorderBottom(BorderStyle.MEDIUM);
+            headerStyle.setBottomBorderColor(indigo);
+
+            // Hint style (allowed values row)
+            XSSFCellStyle hintStyle = wb.createCellStyle();
+            XSSFFont hintFont = wb.createFont();
+            hintFont.setItalic(true);
+            hintFont.setFontHeightInPoints((short) 9);
+            hintFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+            hintStyle.setFont(hintFont);
+            hintStyle.setFillForegroundColor(slateLight);
+            hintStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            hintStyle.setAlignment(HorizontalAlignment.CENTER);
+            hintStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            setBorders(hintStyle, borderGray);
+
+            // Sample data style
+            XSSFCellStyle sampleStyle = wb.createCellStyle();
+            XSSFFont sampleFont = wb.createFont();
+            sampleFont.setFontHeightInPoints((short) 10);
+            sampleStyle.setFont(sampleFont);
+            sampleStyle.setFillForegroundColor(indigoLight);
+            sampleStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            sampleStyle.setAlignment(HorizontalAlignment.LEFT);
+            sampleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            setBorders(sampleStyle, borderGray);
+
+            // Numeric sample style (right-aligned)
+            XSSFCellStyle numStyle = wb.createCellStyle();
+            numStyle.cloneStyleFrom(sampleStyle);
+            numStyle.setAlignment(HorizontalAlignment.RIGHT);
+
+            // ── Column definitions ─────────────────────────────────────
+            // {header, hint, sample value, isNumeric, width (chars*256)}
+            Object[][] cols = {
+                {"First Name*",                    "Text",                                   "John",              false, 5500},
+                {"Last Name",                      "Text",                                   "Doe",               false, 5000},
+                {"Email*",                         "Valid email address",                    "john.doe@acme.com", false, 7500},
+                {"Phone*",                         "Digits only",                            "9876543210",        false, 5500},
+                {"Gender",                         "MALE / FEMALE / OTHER",                  "MALE",              false, 5500},
+                {"Department",                     "Must match existing department name",    "Engineering",       false, 7000},
+                {"Job Position",                   "Must match existing job position name",  "Software Engineer", false, 7500},
+                {"Shift",                          "Must match existing shift name",         "Morning Shift",     false, 6500},
+                {"Wage Type",                      "MONTHLY / HOURLY / DAILY",               "MONTHLY",           false, 5500},
+                {"Employee Type",                  "FULL_TIME / PART_TIME / CONTRACT / INTERN","FULL_TIME",       false, 6500},
+                {"Location",                       "City / Office location",                 "Dubai",             false, 5500},
+                {"Date of Joining",                "yyyy-MM-dd",                             "2024-01-15",        false, 6500},
+                {"Basic Salary",                   "Number",                                 5000.00,             true,  5500},
+                {"Housing Allowance",              "Number",                                 1000.00,             true,  6500},
+                {"Transport Allowance",            "Number",                                 500.00,              true,  6500},
+                {"Other Allowance",                "Number",                                 200.00,              true,  5500},
+                {"Total Salary",                   "Number (sum of all components)",         6700.00,             true,  5500},
+                {"Salary Per Hour",                "Number",                                 25.00,               true,  6500},
+                {"Contract End Date",              "yyyy-MM-dd  (leave blank if permanent)", "2025-01-14",        false, 7000},
+            };
+
+            // ── Row 0: Headers ─────────────────────────────────────────
+            XSSFRow headerRow = sheet.createRow(0);
+            headerRow.setHeightInPoints(24);
+            for (int c = 0; c < cols.length; c++) {
+                XSSFCell cell = headerRow.createCell(c);
+                cell.setCellValue((String) cols[c][0]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(c, (int) cols[c][4]);
+            }
+
+            // ── Row 1: Hints ───────────────────────────────────────────
+            XSSFRow hintRow = sheet.createRow(1);
+            hintRow.setHeightInPoints(16);
+            for (int c = 0; c < cols.length; c++) {
+                XSSFCell cell = hintRow.createCell(c);
+                cell.setCellValue((String) cols[c][1]);
+                cell.setCellStyle(hintStyle);
+            }
+
+            // Freeze header + hint rows
+            sheet.createFreezePane(0, 2);
+
+            wb.write(response.getOutputStream());
+        }
     }
 
     // ─── Export ───────────────────────────────────────────────────────────────
@@ -324,6 +551,11 @@ public class EmployeeController {
         int updated = 0;
         List<String> errors = new ArrayList<>();
 
+        var departments = departmentRepository.findByCompanyId(companyId);
+        var jobPositions = jobPositionRepository.findByCompanyId(companyId);
+        var shifts = shiftScheduleRepository.findByCompanyId(companyId);
+        var workTypes = workTypeRepository.findByCompanyId(companyId);
+
         try (org.apache.poi.ss.usermodel.Workbook wb = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = wb.getSheetAt(0);
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -356,7 +588,7 @@ public class EmployeeController {
 
                 String deptName = getCellStr(row, 1);
                 if (deptName != null && !deptName.isBlank()) {
-                    departmentRepository.findAll().stream()
+                    departments.stream()
                             .filter(d -> deptName.trim().equalsIgnoreCase(d.getName()))
                             .findFirst()
                             .ifPresent(wi::setDepartment);
@@ -364,7 +596,7 @@ public class EmployeeController {
 
                 String jobPosName = getCellStr(row, 2);
                 if (jobPosName != null && !jobPosName.isBlank()) {
-                    jobPositionRepository.findAll().stream()
+                    jobPositions.stream()
                             .filter(jp -> jobPosName.trim().equalsIgnoreCase(jp.getName()))
                             .findFirst()
                             .ifPresent(wi::setJobPosition);
@@ -372,7 +604,7 @@ public class EmployeeController {
 
                 String shiftName = getCellStr(row, 3);
                 if (shiftName != null && !shiftName.isBlank()) {
-                    shiftScheduleRepository.findAll().stream()
+                    shifts.stream()
                             .filter(s -> shiftName.trim().equalsIgnoreCase(s.getName()))
                             .findFirst()
                             .ifPresent(wi::setShift);
@@ -380,7 +612,7 @@ public class EmployeeController {
 
                 String workTypeName = getCellStr(row, 4);
                 if (workTypeName != null && !workTypeName.isBlank()) {
-                    workTypeRepository.findAll().stream()
+                    workTypes.stream()
                             .filter(wt -> workTypeName.trim().equalsIgnoreCase(wt.getName()))
                             .findFirst()
                             .ifPresent(wi::setWorkType);

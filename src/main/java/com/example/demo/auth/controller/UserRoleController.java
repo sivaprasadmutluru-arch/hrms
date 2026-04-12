@@ -23,7 +23,7 @@ public class UserRoleController {
     private final UserRoleService userRoleService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Operation(summary = "Get all user-role assignments")
     public ResponseEntity<List<UserRoleDto>> getAll() {
         return ResponseEntity.ok(userRoleService.getAllAssignments());

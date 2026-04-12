@@ -56,6 +56,9 @@ public class Contract extends BaseEntity {
     @Column(name = "total_salary", precision = 12, scale = 2)
     private BigDecimal totalSalary;
 
+    @Column(name = "salary_per_hour", precision = 12, scale = 4)
+    private BigDecimal salaryPerHour;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "filing_status_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})

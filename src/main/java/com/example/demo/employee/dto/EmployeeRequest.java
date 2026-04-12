@@ -3,6 +3,7 @@ package com.example.demo.employee.dto;
 import com.example.demo.auth.entity.Role;
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.employee.entity.Employee;
+import com.example.demo.payroll.entity.Contract;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -70,6 +71,13 @@ public class EmployeeRequest {
     // Login credentials for the auto-created user account (ignored on update)
     private String password;
 
-    // Basic pay for auto-generated contract on employee creation
+    // Contract fields for auto-generated contract on employee creation
     private BigDecimal basicPay;
+    private BigDecimal housingAllowance;
+    private BigDecimal transportAllowance;
+    private BigDecimal otherAllowance;
+    private BigDecimal totalSalary;
+    private BigDecimal salaryPerHour;
+    private LocalDate contractEndDate;
+    private Contract.WageType wageType;
 }
