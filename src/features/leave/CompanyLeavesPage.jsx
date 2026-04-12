@@ -8,6 +8,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function CompanyLeavesPage() {
@@ -17,6 +18,7 @@ export default function CompanyLeavesPage() {
   const companyLeaves = useSelector(s => s.leave.companyLeaves)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -59,10 +61,12 @@ export default function CompanyLeavesPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this company leave?')) return
-    try { await dispatch(deleteCompanyLeave(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteCompanyLeave(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -110,6 +114,14 @@ export default function CompanyLeavesPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Company Leave"
+        message="Are you sure you want to delete this company leave? This cannot be undone."
+        confirmLabel="Delete"
+      />
     </div>
   )
 }

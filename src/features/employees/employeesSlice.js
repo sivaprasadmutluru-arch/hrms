@@ -57,9 +57,7 @@ export const uploadPhoto = createAsyncThunk('employees/uploadPhoto', async ({ id
   try {
     const formData = new FormData()
     formData.append('photo', file)
-    const res = await api.post(`/employees/${id}/photo`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const res = await api.post(`/employees/${id}/photo`, formData)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to upload photo')
@@ -99,13 +97,44 @@ export const importWorkInfo = createAsyncThunk('employees/importWorkInfo', async
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await api.post('/employees/work-info/import', formData, {
-      params: { companyId },
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const res = await api.post('/employees/work-info/import', formData, { params: { companyId } })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to import work info')
+  }
+})
+
+export const downloadImportTemplate = createAsyncThunk('employees/downloadImportTemplate', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/employees/import/template', { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'employee_import_template.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download template')
+  }
+})
+
+export const importEmployees = createAsyncThunk('employees/importEmployees', async ({ companyId, file }, { rejectWithValue }) => {
+  try {
+    console.log('[importEmployees] starting', { companyId, fileName: file?.name, fileSize: file?.size })
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/employees/import', formData, { params: { companyId } })
+    console.log('[importEmployees] response', res.data)
+    return res.data
+  } catch (err) {
+    console.error('[importEmployees] error', {
+      status: err.response?.status,
+      data: err.response?.data,
+      message: err.message,
+    })
+    return rejectWithValue(err.response?.data?.message || 'Failed to import employees')
   }
 })
 

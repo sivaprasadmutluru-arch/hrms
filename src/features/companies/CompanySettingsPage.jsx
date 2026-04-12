@@ -13,6 +13,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const TABS = ['Email Config', 'Tags', 'Penalty Accounts']
@@ -32,6 +33,7 @@ export default function CompanySettingsPage() {
   const [editingTag, setEditingTag] = useState(null)
   const [penaltyModal, setPenaltyModal] = useState(false)
   const [editingPenalty, setEditingPenalty] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const emailForm = useForm()
   const { register: regTag, handleSubmit: handleTagSubmit, reset: resetTag, formState: { errors: errTag } } = useForm()
@@ -83,11 +85,7 @@ export default function CompanySettingsPage() {
       setTagModal(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeleteTag = async (id) => {
-    if (!window.confirm('Delete tag?')) return
-    try { await dispatch(deleteTag(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
-  }
+  const handleDeleteTag = (id) => setConfirmModal({ open: true, id, action: 'tag' })
 
   const openCreatePenalty = () => { setEditingPenalty(null); resetPenalty({}); setPenaltyModal(true) }
   const openEditPenalty = (p) => { setEditingPenalty(p); resetPenalty({ title: p.title, deductFrom: p.deductFrom, deductionAmount: p.deductionAmount, description: p.description }); setPenaltyModal(true) }
@@ -103,10 +101,14 @@ export default function CompanySettingsPage() {
       setPenaltyModal(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeletePenalty = async (id) => {
-    if (!window.confirm('Delete penalty account?')) return
-    try { await dispatch(deletePenaltyAccount(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
+  const handleDeletePenalty = (id) => setConfirmModal({ open: true, id, action: 'penalty' })
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'tag') { await dispatch(deleteTag(id)).unwrap(); toast.success('Deleted') }
+      else if (action === 'penalty') { await dispatch(deletePenaltyAccount(id)).unwrap(); toast.success('Deleted') }
+    } catch (e) { toast.error(e || 'Error') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const tagColumns = [
@@ -212,6 +214,15 @@ export default function CompanySettingsPage() {
           </Modal>
         </div>
       )}
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'tag' ? 'Delete Tag' : 'Delete Penalty Account'}
+        message={confirmModal.action === 'tag' ? 'Are you sure you want to delete this tag?' : 'Are you sure you want to delete this penalty account?'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
     </div>
   )
 }

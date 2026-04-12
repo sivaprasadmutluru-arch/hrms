@@ -8,6 +8,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function HolidaysPage() {
@@ -17,6 +18,7 @@ export default function HolidaysPage() {
   const holidays = useSelector(s => s.leave.holidays)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const importRef = useRef()
 
   const handleExport = () => dispatch(exportHolidays(companyId))
@@ -50,10 +52,12 @@ export default function HolidaysPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this holiday?')) return
-    try { await dispatch(deleteHoliday(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteHoliday(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -103,6 +107,14 @@ export default function HolidaysPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Holiday"
+        message="Are you sure you want to delete this holiday? This cannot be undone."
+        confirmLabel="Delete"
+      />
     </div>
   )
 }

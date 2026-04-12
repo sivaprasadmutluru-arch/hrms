@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, exportWorkInfo, importWorkInfo, selectAll, selectLoading, selectPagination } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, importEmployees, downloadImportTemplate, selectAll, selectLoading, selectPagination } from './employeesSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
@@ -203,7 +203,7 @@ export default function EmployeesPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
   const [showBulkUpdate, setShowBulkUpdate] = useState(false)
-  const importWorkInfoRef = useRef()
+  const importEmployeesRef = useRef()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -456,19 +456,24 @@ export default function EmployeesPage() {
                 Bulk Update ({selectedRows.length})
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={() => dispatch(exportWorkInfo(user?.companyId))}>Export Work Info</Button>
-            <Button variant="secondary" size="sm" onClick={() => importWorkInfoRef.current?.click()}>Import Work Info</Button>
+            <Button variant="secondary" size="sm" onClick={() => dispatch(downloadImportTemplate())}>Download Template</Button>
+            <Button variant="secondary" size="sm" onClick={() => importEmployeesRef.current?.click()}>Import Employees</Button>
             <input
-              ref={importWorkInfoRef}
+              ref={importEmployeesRef}
               type="file"
               accept=".xlsx"
               className="hidden"
               onChange={async e => {
                 const f = e.target.files[0]
                 if (!f) return
-                const res = await dispatch(importWorkInfo({ companyId: user?.companyId, file: f }))
-                if (res.error) toast.error(res.payload)
-                else toast.success('Work info imported')
+                const res = await dispatch(importEmployees({ companyId: user?.companyId, file: f }))
+                if (res.error) {
+                  toast.error(res.payload)
+                } else {
+                  const { successCount, failureCount } = res.payload
+                  toast.success(`Imported ${successCount} employee(s)${failureCount > 0 ? `, ${failureCount} failed` : ''}`)
+                  dispatch(fetchAll({ page: 0, size: 20 }))
+                }
                 e.target.value = ''
               }}
             />

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function BiometricEmployeesPage() {
   const dispatch = useDispatch()
@@ -19,6 +20,7 @@ export default function BiometricEmployeesPage() {
   const loading = useSelector(selectBiometricLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -40,10 +42,11 @@ export default function BiometricEmployeesPage() {
     setModalOpen(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Remove this biometric employee?')) return
-    try { await dispatch(deleteBiometricEmployee(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteBiometricEmployee(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -88,7 +91,15 @@ export default function BiometricEmployeesPage() {
       <PageHeader title="Biometric Employees" subtitle="Employees registered on biometric devices"
         actions={<Button onClick={openCreate}>+ Add Employee</Button>} />
       <DataTable columns={columns} data={employees} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Remove Biometric Employee"
+        message="Are you sure you want to remove this biometric employee record?"
+        confirmLabel="Remove"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Biometric Employee' : 'Add Biometric Employee'}
         footer={
           <div className="flex justify-end gap-2">

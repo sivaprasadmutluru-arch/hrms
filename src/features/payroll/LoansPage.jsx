@@ -10,6 +10,7 @@ import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
 
@@ -31,6 +32,7 @@ export default function LoansPage() {
   const loans = useSelector(selectLoans)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
     defaultValues: { isFixed: true }
   })
@@ -39,16 +41,16 @@ export default function LoansPage() {
 
   useEffect(() => { dispatch(fetchLoans()) }, [dispatch])
 
-  const handleSettle = async (id) => {
-    if (!window.confirm('Mark this loan as settled?')) return
-    try { await dispatch(settleLoan(id)).unwrap(); toast.success('Loan settled') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
+  const handleSettle = (id) => setConfirmModal({ open: true, id, action: 'settle' })
+  const handleDelete = (id) => setConfirmModal({ open: true, id, action: 'delete' })
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this loan?')) return
-    try { await dispatch(deleteLoan(id)).unwrap(); toast.success('Loan deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const onConfirmAction = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'settle') { await dispatch(settleLoan(id)).unwrap(); toast.success('Loan settled') }
+      else if (action === 'delete') { await dispatch(deleteLoan(id)).unwrap(); toast.success('Loan deleted') }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -73,7 +75,23 @@ export default function LoansPage() {
     }},
     { accessorKey: 'loanAmount', header: 'Amount', cell: ({ getValue }) => getValue() ? `$${getValue()}` : '—' },
     { accessorKey: 'installmentAmount', header: 'Installment', cell: ({ getValue }) => getValue() ? `$${getValue()}` : '—' },
-    { accessorKey: 'installments', header: 'Installments' },
+    { id: 'progress', header: 'Progress', cell: ({ row }) => {
+      const total = row.original.installments || 0
+      const paid = row.original.paidInstallments ?? null
+      if (!total) return '—'
+      if (paid !== null) {
+        const pct = Math.round((paid / total) * 100)
+        return (
+          <div className="flex items-center gap-2 min-w-[90px]">
+            <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+              <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-xs text-gray-500 whitespace-nowrap">{paid}/{total}</span>
+          </div>
+        )
+      }
+      return <span className="text-xs text-gray-500">{total} installments</span>
+    }},
     { accessorKey: 'providedDate', header: 'Provided', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'settled', header: 'Status', cell: ({ getValue }) => (
       <Badge label={getValue() ? 'Settled' : 'Active'} variant={getValue() ? 'success' : 'warning'} />
@@ -126,6 +144,15 @@ export default function LoansPage() {
           <Select label="Apply On" options={APPLY_ON_OPTIONS} {...register('applyOn')} />
         </div>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmAction}
+        title={confirmModal.action === 'settle' ? 'Settle Loan' : 'Delete Loan'}
+        message={confirmModal.action === 'settle' ? 'Mark this loan as settled? This action cannot be undone.' : 'Are you sure you want to delete this loan? This cannot be undone.'}
+        confirmLabel={confirmModal.action === 'settle' ? 'Settle' : 'Delete'}
+        loading={loading}
+      />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function SurveysPage() {
@@ -20,6 +21,7 @@ export default function SurveysPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchSurveyTemplates(user?.companyId)) }, [dispatch, user?.companyId])
@@ -40,10 +42,11 @@ export default function SurveysPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this template?')) return
-    try { await dispatch(deleteSurveyTemplate(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteSurveyTemplate(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Error') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -62,6 +65,15 @@ export default function SurveysPage() {
       <PageHeader title="Survey Templates" subtitle="Reusable survey templates for job applications"
         actions={<Button onClick={openCreate}>+ Add Template</Button>} />
       <DataTable columns={columns} data={templates} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Survey Template"
+        message="Are you sure you want to delete this survey template? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Template' : 'Add Template'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">

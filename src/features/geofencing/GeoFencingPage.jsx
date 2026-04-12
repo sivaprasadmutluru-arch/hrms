@@ -9,6 +9,7 @@ import {
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function GeoFencingPage() {
@@ -18,6 +19,7 @@ export default function GeoFencingPage() {
   const checkResult = useSelector(selectCheckResult)
   const loading = useSelector(selectGeoFencingLoading)
 
+  const [confirmModal, setConfirmModal] = useState({ open: false })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: registerCheck, handleSubmit: handleCheckSubmit } = useForm()
 
@@ -51,10 +53,11 @@ export default function GeoFencingPage() {
     } catch (e) { toast.error(e || 'Failed to save') }
   }
 
-  const handleDelete = async () => {
-    if (!config?.id || !window.confirm('Delete geofencing configuration?')) return
+  const handleDelete = () => { if (config?.id) setConfirmModal({ open: true }) }
+  const onConfirmDelete = async () => {
     try { await dispatch(deleteGeoFencing(config.id)).unwrap(); toast.success('Deleted'); reset({}) }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false }) }
   }
 
   const onCheckLocation = async (data) => {
@@ -123,6 +126,15 @@ export default function GeoFencingPage() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false })}
+        onConfirm={onConfirmDelete}
+        title="Delete Geofencing Configuration"
+        message="Are you sure you want to delete the geofencing configuration? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
     </div>
   )
 }

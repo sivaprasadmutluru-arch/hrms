@@ -20,6 +20,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
@@ -55,6 +56,7 @@ export default function LeavePage() {
   const [bulkModal, setBulkModal] = useState({ open: false, leaveTypeId: '', days: '', year: String(new Date().getFullYear()) })
   // Annual reset modal state
   const [resetModal, setResetModal] = useState({ open: false, year: String(new Date().getFullYear()) })
+  const [confirmModal, setConfirmModal] = useState({ open: false, action: null, id: null })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: regApproval, handleSubmit: handleApprovalSubmit, reset: resetApproval, formState: { errors: approvalErrors } } = useForm()
@@ -110,10 +112,24 @@ export default function LeavePage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleCancel = async (id) => {
-    if (!window.confirm('Cancel this leave request?')) return
-    try { await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20 })) }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleCancel = (id) => setConfirmModal({ open: true, action: 'cancel', id })
+
+  const onConfirmAction = async () => {
+    const { action, id } = confirmModal
+    try {
+      if (action === 'cancel') {
+        await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20 }))
+      } else if (action === 'accrual') {
+        const result = await dispatch(runManualAccrual()).unwrap()
+        toast.success(`Accrual complete: ${result.posted} credits posted`)
+      } else if (action === 'deleteType') {
+        await dispatch(deleteLeaveType(id)).unwrap(); toast.success('Leave type deleted')
+      } else if (action === 'deleteComment') {
+        await dispatch(deleteLeaveRequestComment({ requestId: selectedRequest.id, commentId: id })).unwrap()
+        dispatch(fetchLeaveRequestComments(selectedRequest.id))
+      }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, action: null, id: null }) }
   }
 
   const handleBulkAllocate = () => {
@@ -189,20 +205,8 @@ export default function LeavePage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleRunAccrual = async () => {
-    if (!window.confirm('Run monthly accrual for today? This credits leave to all accrual-enabled leave types.')) return
-    try {
-      const result = await dispatch(runManualAccrual()).unwrap()
-      toast.success(`Accrual complete: ${result.posted} credits posted`)
-    } catch (e) { toast.error(e || 'Accrual failed') }
-  }
-  const handleDeleteType = async (id) => {
-    if (!window.confirm('Delete this leave type? This cannot be undone.')) return
-    try {
-      await dispatch(deleteLeaveType(id)).unwrap()
-      toast.success('Leave type deleted')
-    } catch (e) { toast.error(e || 'Failed to delete') }
-  }
+  const handleRunAccrual = () => setConfirmModal({ open: true, action: 'accrual', id: null })
+  const handleDeleteType = (id) => setConfirmModal({ open: true, action: 'deleteType', id })
 
   const onSubmit = async (formData) => {
     try {
@@ -223,13 +227,7 @@ export default function LeavePage() {
     } catch { toast.error('Failed to add comment') }
   }
 
-  const handleDeleteComment = async (commentId) => {
-    if (!window.confirm('Delete this comment?')) return
-    try {
-      await dispatch(deleteLeaveRequestComment({ requestId: selectedRequest.id, commentId })).unwrap()
-      dispatch(fetchLeaveRequestComments(selectedRequest.id))
-    } catch { toast.error('Failed') }
-  }
+  const handleDeleteComment = (commentId) => setConfirmModal({ open: true, action: 'deleteComment', id: commentId })
 
   const onAddApprovalStep = async (formData) => {
     try {
@@ -595,6 +593,25 @@ export default function LeavePage() {
           </div>
         )}
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, action: null, id: null })}
+        onConfirm={onConfirmAction}
+        title={
+          confirmModal.action === 'cancel' ? 'Cancel Leave Request' :
+          confirmModal.action === 'accrual' ? 'Run Monthly Accrual' :
+          confirmModal.action === 'deleteType' ? 'Delete Leave Type' :
+          'Delete Comment'
+        }
+        message={
+          confirmModal.action === 'cancel' ? 'Are you sure you want to cancel this leave request?' :
+          confirmModal.action === 'accrual' ? 'Run monthly accrual for today? This credits leave to all accrual-enabled leave types.' :
+          confirmModal.action === 'deleteType' ? 'Delete this leave type? This cannot be undone.' :
+          'Are you sure you want to delete this comment?'
+        }
+        confirmLabel={confirmModal.action === 'cancel' ? 'Cancel Leave' : confirmModal.action === 'accrual' ? 'Run Accrual' : 'Delete'}
+        loading={loading}
+      />
     </div>
   )
 }

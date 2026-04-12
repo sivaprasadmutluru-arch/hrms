@@ -611,10 +611,12 @@ const payrollSlice = createSlice({
       .addCase(fetchAutoPayslips.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(deletePayslip.fulfilled, (state, action) => {
+        state.payslips = state.payslips.filter(p => p.id !== action.payload)
         state.autoPayslips = state.autoPayslips.filter(p => p.id !== action.payload)
       })
       .addCase(deletePayslipGroup.fulfilled, (state, action) => {
         const deletedIds = new Set(action.payload)
+        state.payslips = state.payslips.filter(p => !deletedIds.has(p.id))
         state.autoPayslips = state.autoPayslips.filter(p => !deletedIds.has(p.id))
       })
 
@@ -629,21 +631,21 @@ const payrollSlice = createSlice({
       })
       .addCase(fetchEmployeePayslips.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
-      .addCase(confirmPayslip.pending, (state) => { state.loading = true; state.error = null })
       .addCase(confirmPayslip.fulfilled, (state, action) => {
-        state.loading = false
         const idx = state.payslips.findIndex((item) => item.id === action.payload.id)
         if (idx !== -1) state.payslips[idx] = action.payload
+        const aIdx = state.autoPayslips.findIndex((item) => item.id === action.payload.id)
+        if (aIdx !== -1) state.autoPayslips[aIdx] = action.payload
       })
-      .addCase(confirmPayslip.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(confirmPayslip.rejected, (state, action) => { state.error = action.payload })
 
-      .addCase(markPaid.pending, (state) => { state.loading = true; state.error = null })
       .addCase(markPaid.fulfilled, (state, action) => {
-        state.loading = false
         const idx = state.payslips.findIndex((item) => item.id === action.payload.id)
         if (idx !== -1) state.payslips[idx] = action.payload
+        const aIdx = state.autoPayslips.findIndex((item) => item.id === action.payload.id)
+        if (aIdx !== -1) state.autoPayslips[aIdx] = action.payload
       })
-      .addCase(markPaid.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(markPaid.rejected, (state, action) => { state.error = action.payload })
 
       .addCase(fetchFilingStatuses.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchFilingStatuses.fulfilled, (state, action) => { state.loading = false; state.filingStatuses = action.payload.content || action.payload })

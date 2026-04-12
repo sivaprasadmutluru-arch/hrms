@@ -14,6 +14,7 @@ import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const BASED_ON_OPTIONS = [
   { value: 'basic_pay', label: 'Basic Pay' },
@@ -58,6 +59,7 @@ export default function DeductionsPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
     defaultValues: { isFixed: true, isPretax: true, isTax: false, isConditionBased: false, includeActiveEmployees: false, hasMaxLimit: false }
@@ -86,10 +88,11 @@ export default function DeductionsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this deduction?')) return
-    try { await dispatch(deleteDeduction(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteDeduction(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch { toast.error('Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -120,7 +123,15 @@ export default function DeductionsPage() {
       <PageHeader title="Deductions" subtitle="Salary deductions configuration"
         actions={<Button onClick={openCreate}>+ New Deduction</Button>} />
       <DataTable columns={columns} data={deductions} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Deduction"
+        message="Are you sure you want to delete this deduction? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={editing ? 'Edit Deduction' : 'New Deduction'} size="lg"
         footer={

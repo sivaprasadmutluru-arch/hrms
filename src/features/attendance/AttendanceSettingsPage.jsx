@@ -22,6 +22,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import useAuth from '../../hooks/useAuth'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const TABS = ['Grace Times', 'Validation', 'General', 'Allowed IPs', 'Batches', 'Employee Shifts', 'Track Settings']
 
@@ -52,6 +53,7 @@ export default function AttendanceSettingsPage() {
   const [editingBatch, setEditingBatch] = useState(null)
   const [shiftModalOpen, setShiftModalOpen] = useState(false)
   const [editingShift, setEditingShift] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const gtForm = useForm()
   const vcForm = useForm()
@@ -145,10 +147,8 @@ export default function AttendanceSettingsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteGt = async (id) => {
-    if (!window.confirm('Delete this grace time?')) return
-    try { await dispatch(deleteGraceTime(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteGt = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteGraceTime' })
   }
 
   const onSubmitVc = async (data) => {
@@ -187,10 +187,8 @@ export default function AttendanceSettingsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteIp = async (id) => {
-    if (!window.confirm('Remove this IP?')) return
-    try { await dispatch(deleteAllowedIP(id)).unwrap(); toast.success('Removed') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteIp = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteIp' })
   }
 
   const openCreateBatch = () => { setEditingBatch(null); batchForm.reset({}); setBatchModalOpen(true) }
@@ -209,10 +207,8 @@ export default function AttendanceSettingsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteBatch = async (id) => {
-    if (!window.confirm('Delete this batch?')) return
-    try { await dispatch(deleteBatch(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteBatch = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteBatch' })
   }
 
   const gtColumns = [
@@ -266,10 +262,19 @@ export default function AttendanceSettingsPage() {
       setShiftModalOpen(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeleteShift = async (id) => {
-    if (!window.confirm('Delete this shift?')) return
-    try { await dispatch(deleteEmployeeShift(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteShift = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteShift' })
+  }
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'deleteGraceTime') await dispatch(deleteGraceTime(id)).unwrap()
+      else if (action === 'deleteIp') await dispatch(deleteAllowedIP(id)).unwrap()
+      else if (action === 'deleteBatch') await dispatch(deleteBatch(id)).unwrap()
+      else if (action === 'deleteShift') await dispatch(deleteEmployeeShift(id)).unwrap()
+      toast.success('Deleted')
+      setConfirmModal({ open: false, id: null, action: null })
+    } catch (e) { toast.error(e || 'Failed') }
   }
 
   const onSubmitTrack = async (data) => {
@@ -440,6 +445,25 @@ export default function AttendanceSettingsPage() {
           </form>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={
+          confirmModal.action === 'deleteGraceTime' ? 'Delete Grace Time' :
+          confirmModal.action === 'deleteIp' ? 'Remove Allowed IP' :
+          confirmModal.action === 'deleteBatch' ? 'Delete Batch Group' :
+          'Delete Shift'
+        }
+        message={
+          confirmModal.action === 'deleteIp'
+            ? 'Are you sure you want to remove this IP from the whitelist? This action cannot be undone.'
+            : 'Are you sure you want to delete this item? This action cannot be undone.'
+        }
+        confirmLabel="Delete"
+        loading={loading}
+      />
 
       {/* Grace Time Modal */}
       <Modal open={gtModalOpen} onClose={() => setGtModalOpen(false)} title={editingGt ? 'Edit Grace Time' : 'Add Grace Time'}

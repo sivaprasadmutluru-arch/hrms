@@ -293,19 +293,57 @@ export default function PayslipsPage() {
         {detail && (() => {
           let payHead = null
           try { payHead = detail.payHeadData ? JSON.parse(detail.payHeadData) : null } catch { /* ignore */ }
-          const unpaidLeaveDeduction = payHead?.loss_of_pay ?? 0
-          const allowanceLines = payHead?.allowances ?? []
-          const deductionLines = [
-            ...(payHead?.pretax_deductions ?? []),
-            ...(payHead?.tax_deductions ?? []),
-            ...(payHead?.post_tax_deductions ?? []),
-            ...(payHead?.net_deductions ?? []),
-          ]
           const wageType = payHead?.wage_type ?? 'MONTHLY'
           const workedUnits = payHead?.worked_units ?? 0
+          const allowanceLines = payHead?.allowances ?? []
+          const housingAllowance = payHead?.housing_allowance ?? 0
+          const transportAllowance = payHead?.transport_allowance ?? 0
+          const otherAllowance = payHead?.other_allowance ?? 0
+          const basicPayDeductions = payHead?.basic_pay_deductions ?? []
+          const grossPayDeductions = payHead?.gross_pay_deductions ?? []
+          const pretaxDeductions = payHead?.pretax_deductions ?? []
+          const taxDeductions = payHead?.tax_deductions ?? []
+          const postTaxDeductions = payHead?.post_tax_deductions ?? []
+          const netDeductions = payHead?.net_deductions ?? []
+          const federalTax = payHead?.federal_tax ?? 0
+          const taxableGrossPay = payHead?.taxable_gross_pay ?? 0
+          const lossOfPay = payHead?.loss_of_pay ?? 0
+          const loanRecovery = payHead?.loan_recovery ?? 0
+          const salaryAdvanceDeduction = payHead?.salary_advance_deduction ?? 0
+          const otherDeduction = payHead?.other_deduction ?? 0
+          const overtime = payHead?.overtime_pay ?? payHead?.overtime ?? 0
+          const salaryAdvance = payHead?.salary_advance ?? 0
+          const bonus = payHead?.bonus ?? 0
+          const totalAdditions = Number(overtime) + Number(salaryAdvance) + Number(bonus)
+          const paidDays = payHead?.paid_days ?? 0
+          const unpaidDays = payHead?.unpaid_days ?? 0
+          const hasAnyDeductions = pretaxDeductions.length > 0 || taxDeductions.length > 0 ||
+            postTaxDeductions.length > 0 || netDeductions.length > 0 || federalTax > 0
           const name = detail.employee
             ? `${detail.employee.firstName || ''} ${detail.employee.lastName || ''}`.trim()
             : '—'
+
+          const DeductionGroup = ({ label, items, labelColor = 'text-gray-500' }) =>
+            items.length > 0 ? (
+              <div className="my-1">
+                <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${labelColor}`}>{label}</p>
+                {items.map((d, i) => (
+                  <div key={i} className="py-0.5">
+                    <div className="flex justify-between text-sm text-red-500">
+                      <span className="text-gray-700">{d.title}</span>
+                      <span>-{formatCurrency(d.amount)}</span>
+                    </div>
+                    {d.employer_contribution_amount > 0 && (
+                      <div className="flex justify-between text-xs text-blue-500 pl-2">
+                        <span className="text-gray-400">Employer contribution</span>
+                        <span>+{formatCurrency(d.employer_contribution_amount)}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null
+
           return (
             <div className="space-y-1">
               {/* Employee header */}
@@ -324,33 +362,26 @@ export default function PayslipsPage() {
                 </div>
               </div>
 
-              {/* Info rows */}
               {detail.groupName && (
                 <div className="flex justify-between text-sm py-1">
                   <span className="text-gray-500">Group</span>
                   <span className="font-medium text-gray-800">{detail.groupName}</span>
                 </div>
               )}
-              {detail.reference && (
-                <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-500">Reference</span>
-                  <span className="font-medium text-gray-800">{detail.reference}</span>
-                </div>
-              )}
 
               <div className="my-3 border-t border-gray-100" />
 
-              {/* Earnings */}
+              {/* ── Earnings ── */}
               {wageType === 'HOURLY' && (
                 <div className="flex justify-between text-sm py-1">
                   <span className="text-gray-500">Hours Worked</span>
-                  <span className="font-medium text-gray-800">{workedUnits.toFixed(2)} hrs</span>
+                  <span className="font-medium text-gray-800">{Number(workedUnits).toFixed(2)} hrs</span>
                 </div>
               )}
               {wageType === 'DAILY' && (
                 <div className="flex justify-between text-sm py-1">
                   <span className="text-gray-500">Days Worked</span>
-                  <span className="font-medium text-gray-800">{workedUnits.toFixed(2)} days</span>
+                  <span className="font-medium text-gray-800">{Number(workedUnits).toFixed(2)} days</span>
                 </div>
               )}
               <div className="flex justify-between text-sm py-1">
@@ -359,48 +390,166 @@ export default function PayslipsPage() {
                 </span>
                 <span className="font-medium text-gray-800">{formatCurrency(detail.basicPay)}</span>
               </div>
-              
+
+              {/* Basic pay deductions (reduce basic pay directly) */}
+              {basicPayDeductions.length > 0 && (
+                <div className="pl-2 border-l-2 border-red-200">
+                  {basicPayDeductions.map((d, i) => (
+                    <div key={i} className="flex justify-between text-sm py-0.5 text-red-500">
+                      <span className="text-gray-600">{d.title}</span>
+                      <span>-{formatCurrency(d.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Allowances */}
-              {allowanceLines.length > 0 && (
+              {(allowanceLines.length > 0 || housingAllowance > 0 || transportAllowance > 0 || otherAllowance > 0) && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 my-2">
-                  <p className="text-xs font-semibold text-emerald-800 mb-2">Allowances</p>
+                  <p className="text-xs font-semibold text-emerald-800 mb-2 uppercase tracking-wide">Allowances</p>
+                  {housingAllowance > 0 && (
+                    <div className="flex justify-between text-sm py-0.5 text-emerald-700">
+                      <span>Housing Allowance</span>
+                      <span>+{formatCurrency(housingAllowance)}</span>
+                    </div>
+                  )}
+                  {transportAllowance > 0 && (
+                    <div className="flex justify-between text-sm py-0.5 text-emerald-700">
+                      <span>Transport Allowance</span>
+                      <span>+{formatCurrency(transportAllowance)}</span>
+                    </div>
+                  )}
+                  {otherAllowance > 0 && (
+                    <div className="flex justify-between text-sm py-0.5 text-emerald-700">
+                      <span>Other Allowance</span>
+                      <span>+{formatCurrency(otherAllowance)}</span>
+                    </div>
+                  )}
                   {allowanceLines.map((a, i) => (
-                    <div key={i} className="flex justify-between text-sm py-1 text-emerald-700">
-                      <span className="font-medium">{a.title}</span>
+                    <div key={i} className="flex justify-between text-sm py-0.5 text-emerald-700">
+                      <span>{a.title}{!a.is_taxable && <span className="ml-1 text-xs text-emerald-500">(non-taxable)</span>}</span>
                       <span>+{formatCurrency(a.amount)}</span>
                     </div>
                   ))}
                 </div>
               )}
-              
-              {Number(unpaidLeaveDeduction) > 0 && (
+
+              {Number(lossOfPay) > 0 && (
                 <div className="flex justify-between text-sm py-1 text-red-500">
-                  <span>Unpaid Leave Deduction</span>
-                  <span>-{formatCurrency(unpaidLeaveDeduction)}</span>
+                  <span>Loss of Pay (unpaid leave)</span>
+                  <span>-{formatCurrency(lossOfPay)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm py-1">
-                <span className="text-gray-500">Gross Pay</span>
-                <span className="font-medium text-gray-800">{formatCurrency(detail.grossPay)}</span>
+              {Number(loanRecovery) > 0 && (
+                <div className="flex justify-between text-sm py-1 text-red-500">
+                  <span>Loan Recovery</span>
+                  <span>-{formatCurrency(loanRecovery)}</span>
+                </div>
+              )}
+              {Number(salaryAdvanceDeduction) > 0 && (
+                <div className="flex justify-between text-sm py-1 text-red-500">
+                  <span>Salary Advance Recovery</span>
+                  <span>-{formatCurrency(salaryAdvanceDeduction)}</span>
+                </div>
+              )}
+              {Number(otherDeduction) > 0 && (
+                <div className="flex justify-between text-sm py-1 text-red-500">
+                  <span>Other Deduction</span>
+                  <span>-{formatCurrency(otherDeduction)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm py-1 font-medium">
+                <span className="text-gray-700">Gross Pay</span>
+                <span className="text-gray-900">{formatCurrency(detail.grossPay)}</span>
               </div>
 
-              {/* Deductions */}
-              {deductionLines.map((d, i) => (
-                <div key={i} className="flex justify-between text-sm py-1 text-red-500">
-                  <span>{d.title}</span>
-                  <span>-{formatCurrency(d.amount)}</span>
+              {/* Gross pay deductions */}
+              {grossPayDeductions.length > 0 && (
+                <div className="pl-2 border-l-2 border-red-200">
+                  {grossPayDeductions.map((d, i) => (
+                    <div key={i} className="flex justify-between text-sm py-0.5 text-red-500">
+                      <span className="text-gray-600">{d.title}</span>
+                      <span>-{formatCurrency(d.amount)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {deductionLines.length === 0 && Number(detail.deduction) > 0 && (
+              )}
+
+              {/* Taxable gross pay (shown when different from gross) */}
+              {taxableGrossPay > 0 && taxableGrossPay !== Number(detail.grossPay) && (
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-gray-400">Taxable Gross Pay</span>
+                  <span className="text-gray-500">{formatCurrency(taxableGrossPay)}</span>
+                </div>
+              )}
+
+              {/* ── Deductions ── */}
+              {hasAnyDeductions && (
+                <>
+                  <div className="my-3 border-t border-gray-100" />
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Deductions</p>
+                  <DeductionGroup label="Pre-tax" items={pretaxDeductions} />
+                  {federalTax > 0 && (
+                    <div className="flex justify-between text-sm py-0.5 text-red-500">
+                      <span className="text-gray-700">Federal Income Tax</span>
+                      <span>-{formatCurrency(federalTax)}</span>
+                    </div>
+                  )}
+                  <DeductionGroup label="Tax" items={taxDeductions} />
+                  <DeductionGroup label="Post-tax" items={postTaxDeductions} />
+                  <DeductionGroup label="Net Pay" items={netDeductions} />
+                </>
+              )}
+
+              {!hasAnyDeductions && Number(detail.deduction) > 0 && (
                 <div className="flex justify-between text-sm py-1 text-red-500">
-                  <span>Deductions</span>
+                  <span>Total Deductions</span>
                   <span>-{formatCurrency(detail.deduction)}</span>
                 </div>
               )}
 
+              {/* ── Additions ── */}
+              {totalAdditions > 0 && (
+                <>
+                  <div className="my-3 border-t border-gray-100" />
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 my-2">
+                    <p className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">Additions</p>
+                    {Number(overtime) > 0 && (
+                      <div className="flex justify-between text-sm py-0.5 text-blue-700">
+                        <span>Overtime</span>
+                        <span>+{formatCurrency(overtime)}</span>
+                      </div>
+                    )}
+                    {Number(salaryAdvance) > 0 && (
+                      <div className="flex justify-between text-sm py-0.5 text-blue-700">
+                        <span>Salary Advance</span>
+                        <span>+{formatCurrency(salaryAdvance)}</span>
+                      </div>
+                    )}
+                    {Number(bonus) > 0 && (
+                      <div className="flex justify-between text-sm py-0.5 text-blue-700">
+                        <span>Bonus</span>
+                        <span>+{formatCurrency(bonus)}</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* ── Summary ── */}
               <div className="my-3 border-t border-gray-100" />
 
-              {/* Net Pay */}
+              {payHead && (
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-gray-400">
+                    Paid Days: <span className="text-gray-700 font-medium">{Number(paidDays).toFixed(1)}</span>
+                    {unpaidDays > 0 && <span className="ml-3 text-red-400">Unpaid: <span className="font-medium">{Number(unpaidDays).toFixed(1)}</span></span>}
+                  </span>
+                  <span className="text-gray-400 text-xs">Total Deductions: <span className="text-red-500 font-medium">{formatCurrency(detail.deduction)}</span></span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center py-1">
                 <span className="font-semibold text-gray-900">Net Pay</span>
                 <span className="text-lg font-bold text-emerald-700">{formatCurrency(detail.netPay)}</span>

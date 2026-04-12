@@ -5,6 +5,7 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import LoginPage from './features/auth/LoginPage'
 import ForgotPasswordPage from './features/auth/ForgotPasswordPage'
 import ForbiddenPage from './features/auth/ForbiddenPage'
+import SuspendedPage from './features/auth/SuspendedPage'
 import AccountSettingsPage from './features/auth/AccountSettingsPage'
 import GeneralSettingsPage from './features/settings/GeneralSettingsPage'
 import UserGroupsPage from './features/roles/UserGroupsPage'
@@ -125,6 +126,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/suspended" element={<SuspendedPage />} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />

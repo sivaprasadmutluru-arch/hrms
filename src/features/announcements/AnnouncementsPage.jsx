@@ -12,6 +12,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function AnnouncementsPage() {
@@ -21,6 +22,7 @@ export default function AnnouncementsPage() {
   const loading = useSelector(selectAnnouncementsLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAnnouncements()) }, [dispatch])
@@ -38,10 +40,11 @@ export default function AnnouncementsPage() {
     catch { /* silent */ }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this announcement?')) return
-    try { await dispatch(deleteAnnouncement(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteAnnouncement(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -78,6 +81,15 @@ export default function AnnouncementsPage() {
       <PageHeader title="Announcements" subtitle="Company announcements and updates"
         actions={<Button onClick={openCreate}>+ New Announcement</Button>} />
       <DataTable columns={columns} data={announcements} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Announcement"
+        message="Are you sure you want to delete this announcement? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Announcement' : 'New Announcement'}
         footer={
           <div className="flex justify-end gap-2">

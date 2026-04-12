@@ -8,6 +8,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function AssetCategoriesPage() {
@@ -17,6 +18,7 @@ export default function AssetCategoriesPage() {
   const categories = useSelector(s => s.assets.categories)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -40,10 +42,12 @@ export default function AssetCategoriesPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this category?')) return
-    try { await dispatch(deleteCategory(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteCategory(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const handleDuplicate = async (id) => {
@@ -80,6 +84,14 @@ export default function AssetCategoriesPage() {
           </div>
         </form>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Category"
+        message="Are you sure you want to delete this category? This cannot be undone."
+        confirmLabel="Delete"
+      />
     </div>
   )
 }

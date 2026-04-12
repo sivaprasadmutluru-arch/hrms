@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchAll, markRead, markAllRead, deleteNotification, deleteAllNotifications, selectAll, selectLoading } from './notificationsSlice'
 import PageHeader from '../../components/common/PageHeader'
@@ -9,11 +9,13 @@ import EmptyState from '../../components/common/EmptyState'
 import { formatDateTime } from '../../utils/formatters'
 import { BellIcon, CheckIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function NotificationsPage() {
   const dispatch = useDispatch()
   const notifications = useSelector(selectAll)
   const loading = useSelector(selectLoading)
+  const [confirmModal, setConfirmModal] = useState({ open: false })
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 50 })) }, [dispatch])
 
@@ -27,9 +29,10 @@ export default function NotificationsPage() {
     // Optimistic: slice already removes it
     dispatch(deleteNotification(id))
   }
-  const handleDeleteAll = async () => {
-    if (!window.confirm('Delete all notifications?')) return
+  const handleDeleteAll = () => setConfirmModal({ open: true })
+  const onConfirmDeleteAll = async () => {
     try { await dispatch(deleteAllNotifications()).unwrap(); toast.success('All notifications cleared') } catch { toast.error('Failed') }
+    finally { setConfirmModal({ open: false }) }
   }
 
   if (loading) return <Spinner className="py-16" />
@@ -79,6 +82,15 @@ export default function NotificationsPage() {
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false })}
+        onConfirm={onConfirmDeleteAll}
+        title="Clear All Notifications"
+        message="Are you sure you want to delete all notifications? This action cannot be undone."
+        confirmLabel="Clear All"
+        loading={loading}
+      />
     </div>
   )
 }

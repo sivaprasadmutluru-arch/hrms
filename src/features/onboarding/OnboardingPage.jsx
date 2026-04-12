@@ -17,6 +17,7 @@ import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 
 const TABS = ['Portals', 'Stages', 'Candidates', 'Tasks']
@@ -33,6 +34,7 @@ export default function OnboardingPage() {
   const [activeTab, setActiveTab] = useState('Portals')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [modalType, setModalType] = useState('')
 
   // filters for child entities
@@ -67,11 +69,7 @@ export default function OnboardingPage() {
   const openPortalCreate = () => { setModalType('portal'); setEditing(null); reset({}); setModalOpen(true) }
   const openPortalEdit = (row) => { setModalType('portal'); setEditing(row); reset({ title: row.title, isActive: row.isActive, expiresAt: row.expiresAt?.split('T')[0] }); setModalOpen(true) }
 
-  const handlePortalDelete = async (id) => {
-    if (!window.confirm('Delete this portal?')) return
-    try { await dispatch(deletePortal(id)).unwrap(); toast.success('Portal deleted') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
+  const handlePortalDelete = (id) => setConfirmModal({ open: true, id, action: 'portal' })
 
   // ── Stage helpers ─────────────────────────────────────────────────────────
 
@@ -81,10 +79,14 @@ export default function OnboardingPage() {
   }
   const openStageEdit = (row) => { setModalType('stage'); setEditing(row); reset({ title: row.title, sequence: row.sequence }); setModalOpen(true) }
 
-  const handleStageDelete = async (id) => {
-    if (!window.confirm('Delete this stage?')) return
-    try { await dispatch(deleteStage(id)).unwrap(); toast.success('Stage deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleStageDelete = (id) => setConfirmModal({ open: true, id, action: 'stage' })
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'portal') { await dispatch(deletePortal(id)).unwrap(); toast.success('Portal deleted') }
+      else if (action === 'stage') { await dispatch(deleteStage(id)).unwrap(); toast.success('Stage deleted') }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   // ── Candidate helpers ─────────────────────────────────────────────────────
@@ -336,6 +338,15 @@ export default function OnboardingPage() {
         </div>
       )}
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'portal' ? 'Delete Portal' : 'Delete Stage'}
+        message={confirmModal.action === 'portal' ? 'Are you sure you want to delete this onboarding portal?' : 'Are you sure you want to delete this stage?'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       {/* Candidate detail modal (stages + tasks) */}
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)}
         title={`Candidate: ${detailCandidate?.candidate?.firstName || ''} ${detailCandidate?.candidate?.lastName || ''}`}

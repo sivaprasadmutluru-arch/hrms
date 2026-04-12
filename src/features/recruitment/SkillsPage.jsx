@@ -8,6 +8,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function SkillsPage() {
@@ -16,6 +17,7 @@ export default function SkillsPage() {
   const skills = useSelector(selectSkills)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchSkills(user?.companyId)) }, [dispatch, user?.companyId])
@@ -29,10 +31,11 @@ export default function SkillsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this skill?')) return
-    try { await dispatch(deleteSkill(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteSkill(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Error') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -47,6 +50,15 @@ export default function SkillsPage() {
       <PageHeader title="Skills" subtitle="Skills library for recruitment"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Add Skill</Button>} />
       <DataTable columns={columns} data={skills} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Skill"
+        message="Are you sure you want to delete this skill? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Skill"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Create</Button></div>}>
         <Input label="Skill Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />

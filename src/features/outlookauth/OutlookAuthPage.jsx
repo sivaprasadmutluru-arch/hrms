@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function OutlookAuthPage() {
@@ -20,6 +21,7 @@ export default function OutlookAuthPage() {
   const loading = useSelector(selectOutlookAuthLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchOutlookAuthList()) }, [dispatch])
@@ -43,10 +45,11 @@ export default function OutlookAuthPage() {
     setModalOpen(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this Outlook integration?')) return
-    try { await dispatch(deleteOutlookAuth(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteOutlookAuth(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -81,7 +84,15 @@ export default function OutlookAuthPage() {
       <PageHeader title="Outlook / Azure Integration" subtitle="Configure Microsoft Outlook OAuth for email"
         actions={<Button onClick={openCreate}>+ Add Integration</Button>} />
       <DataTable columns={columns} data={list} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Outlook Integration"
+        message="Are you sure you want to delete this Outlook integration? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Outlook Integration' : 'Add Outlook Integration'}
         footer={
           <div className="flex justify-end gap-2">

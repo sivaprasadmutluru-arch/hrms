@@ -9,6 +9,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 // Inline minimal slice for rotating schedules (not added to store — standalone page state)
@@ -59,6 +60,7 @@ export default function RotatingSchedulesPage() {
   const { rotatingShifts, rotatingWorkTypes, loading, load, createShift, deleteShift, createWorkType, deleteWorkType } = useRotatingSchedules()
   const [tab, setTab] = useState('Shifts')
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset } = useForm()
 
   useEffect(() => { load() }, [])
@@ -77,12 +79,13 @@ export default function RotatingSchedulesPage() {
     } catch (e) { toast.error('Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete?')) return
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
     try {
-      if (tab === 'Shifts') { await deleteShift(id) } else { await deleteWorkType(id) }
+      if (tab === 'Shifts') { await deleteShift(confirmModal.id) } else { await deleteWorkType(confirmModal.id) }
       toast.success('Deleted')
     } catch (e) { toast.error('Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const shiftColumns = [
@@ -117,6 +120,14 @@ export default function RotatingSchedulesPage() {
       </div>
       {tab === 'Shifts' && <DataTable columns={shiftColumns} data={rotatingShifts} loading={loading} />}
       {tab === 'Work Types' && <DataTable columns={wtColumns} data={rotatingWorkTypes} loading={loading} />}
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title={`Delete ${tab === 'Shifts' ? 'Rotating Shift' : 'Rotating Work Type'}`}
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        confirmLabel="Delete"
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`Add Rotating ${tab === 'Shifts' ? 'Shift' : 'Work Type'}`}
         footer={
           <div className="flex justify-end gap-2">

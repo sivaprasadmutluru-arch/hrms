@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const MACHINE_TYPES = ['ZK', 'ANVIZ', 'COSEC', 'DAHUA', 'ETIMEOFFICE']
@@ -23,6 +24,7 @@ export default function BiometricDevicesPage() {
   const loading = useSelector(selectBiometricLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchDevices()) }, [dispatch])
@@ -52,10 +54,11 @@ export default function BiometricDevicesPage() {
     setModalOpen(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this device?')) return
-    try { await dispatch(deleteDevice(id)).unwrap(); toast.success('Device deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteDevice(confirmModal.id)).unwrap(); toast.success('Device deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -101,7 +104,15 @@ export default function BiometricDevicesPage() {
       <PageHeader title="Biometric Devices" subtitle="Manage biometric attendance devices"
         actions={<Button onClick={openCreate}>+ Add Device</Button>} />
       <DataTable columns={columns} data={devices} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Device"
+        message="Are you sure you want to delete this biometric device? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Device' : 'Add Device'}
         footer={
           <div className="flex justify-end gap-2">

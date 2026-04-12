@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function AccessibilityPage() {
   const dispatch = useDispatch()
@@ -18,6 +19,7 @@ export default function AccessibilityPage() {
   const loading = useSelector(selectAccessibilityLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAccessibilities()) }, [dispatch])
@@ -34,10 +36,11 @@ export default function AccessibilityPage() {
     setModalOpen(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this accessibility setting?')) return
-    try { await dispatch(deleteAccessibility(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteAccessibility(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -83,7 +86,15 @@ export default function AccessibilityPage() {
       <PageHeader title="Default Accessibility" subtitle="Configure feature access and visibility rules"
         actions={<Button onClick={openCreate}>+ Add Rule</Button>} />
       <DataTable columns={columns} data={items} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Accessibility Rule"
+        message="Are you sure you want to delete this accessibility rule? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Accessibility Rule' : 'New Accessibility Rule'}
         footer={
           <div className="flex justify-end gap-2">

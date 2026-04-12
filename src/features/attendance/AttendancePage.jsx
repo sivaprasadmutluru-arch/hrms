@@ -19,6 +19,7 @@ import Pagination from '../../components/common/Pagination'
 import SearchInput from '../../components/common/SearchInput'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const TABS = ['Attendance', 'Late / Early Out', 'Overtime']
 
@@ -35,6 +36,7 @@ export default function AttendancePage() {
   const [tab, setTab] = useState('Attendance')
   const [modalOpen, setModalOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -63,10 +65,16 @@ export default function AttendancePage() {
     } catch { toast.error('Failed') }
   }
 
-  const handleDeleteLate = async (id) => {
-    if (!window.confirm('Delete this record?')) return
-    try { await dispatch(deleteLateComeEarlyOut(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteLate = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteLate' })
+  }
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'deleteLate') await dispatch(deleteLateComeEarlyOut(id)).unwrap()
+      toast.success('Deleted')
+      setConfirmModal({ open: false, id: null, action: null })
+    } catch (e) { toast.error(e || 'Failed') }
   }
 
   const handleApproveOvertime = async (id) => {
@@ -171,6 +179,16 @@ export default function AttendancePage() {
       {tab === 'Overtime' && (
         <DataTable columns={overtimeColumns} data={overtimeRecords} loading={loading} />
       )}
+
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Late / Early Out Record"
+        message="Are you sure you want to delete this record? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Attendance"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Save</Button></div>}>

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const TEMPLATE_TYPES = ['LEAVE_APPROVAL', 'LEAVE_REJECTION', 'ATTENDANCE_REMINDER', 'PAYSLIP', 'ONBOARDING', 'OFFBOARDING', 'GENERAL']
@@ -22,6 +23,7 @@ export default function EmailTemplatesPage() {
   const loading = useSelector(selectBaseExtrasLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchMailTemplates()) }, [dispatch])
@@ -46,10 +48,11 @@ export default function EmailTemplatesPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this template?')) return
-    try { await dispatch(deleteMailTemplate(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteMailTemplate(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Error') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -69,6 +72,15 @@ export default function EmailTemplatesPage() {
       <PageHeader title="Email Templates" subtitle="Manage notification email templates"
         actions={<Button onClick={openCreate}>+ New Template</Button>} />
       <DataTable columns={columns} data={templates} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Email Template"
+        message="Are you sure you want to delete this email template? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Template' : 'New Template'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">

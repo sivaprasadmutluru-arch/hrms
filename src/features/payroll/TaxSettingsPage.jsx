@@ -13,6 +13,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const BASED_ON_OPTIONS = [
   { value: 'BASIC_PAY', label: 'Basic Pay' },
@@ -31,6 +32,7 @@ export default function TaxSettingsPage() {
   const [selectedFs, setSelectedFs] = useState(null)
   const [bracketModalOpen, setBracketModalOpen] = useState(false)
   const [editingBracket, setEditingBracket] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const fsForm = useForm()
   const bracketForm = useForm()
@@ -69,10 +71,15 @@ export default function TaxSettingsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteFs = async (id) => {
-    if (!window.confirm('Delete this filing status?')) return
-    try { await dispatch(deleteFilingStatus(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteFs = (id) => setConfirmModal({ open: true, id, action: 'fs' })
+
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'fs') { await dispatch(deleteFilingStatus(id)).unwrap(); toast.success('Deleted') }
+      else if (action === 'bracket') { await dispatch(deleteTaxBracket(id)).unwrap(); toast.success('Deleted'); dispatch(fetchTaxBrackets(selectedFs.id)) }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const openCreateBracket = () => { setEditingBracket(null); bracketForm.reset({}); setBracketModalOpen(true) }
@@ -97,14 +104,7 @@ export default function TaxSettingsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteBracket = async (id) => {
-    if (!window.confirm('Delete this tax bracket?')) return
-    try {
-      await dispatch(deleteTaxBracket(id)).unwrap()
-      toast.success('Deleted')
-      dispatch(fetchTaxBrackets(selectedFs.id))
-    } catch (e) { toast.error(e || 'Failed') }
-  }
+  const handleDeleteBracket = (id) => setConfirmModal({ open: true, id, action: 'bracket' })
 
   const fsColumns = [
     { accessorKey: 'filingStatus', header: 'Name' },
@@ -203,6 +203,15 @@ export default function TaxSettingsPage() {
             {...bracketForm.register('taxRate', { required: 'Required' })} />
         </div>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'fs' ? 'Delete Filing Status' : 'Delete Tax Bracket'}
+        message={confirmModal.action === 'fs' ? 'Are you sure you want to delete this filing status? This cannot be undone.' : 'Are you sure you want to delete this tax bracket? This cannot be undone.'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
     </div>
   )
 }

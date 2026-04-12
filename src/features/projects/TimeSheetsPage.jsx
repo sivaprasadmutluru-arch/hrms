@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function TimeSheetsPage() {
@@ -19,14 +20,16 @@ export default function TimeSheetsPage() {
   const timesheets = useSelector(selectTimesheets)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchTimesheets()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this timesheet entry?')) return
-    try { await dispatch(deleteTimesheet(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteTimesheet(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -65,6 +68,15 @@ export default function TimeSheetsPage() {
       <PageHeader title="Timesheets" subtitle="Employee time log per task"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Log Time</Button>} />
       <DataTable columns={columns} data={timesheets} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Timesheet Entry"
+        message="Are you sure you want to delete this timesheet entry? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log Time"
         footer={
           <div className="flex justify-end gap-2">

@@ -13,6 +13,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 
 export default function EmployeeNotesPage() {
@@ -24,6 +25,7 @@ export default function EmployeeNotesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState('')
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -59,10 +61,17 @@ export default function EmployeeNotesPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this note?')) return
-    try { await dispatch(deleteEmployeeNote(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
+  const handleDelete = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteNote' })
+  }
+
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'deleteNote') await dispatch(deleteEmployeeNote(id)).unwrap()
+      toast.success('Deleted')
+      setConfirmModal({ open: false, id: null, action: null })
+    } catch (e) { toast.error(e || 'Error') }
   }
 
   const employeeOptions = employees.map(e => ({

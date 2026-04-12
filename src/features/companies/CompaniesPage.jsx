@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, fetchMyCompany, create, update, uploadLogo,
+  fetchAll, fetchMyCompany, create, update, remove, uploadLogo,
   fetchBranches, selectAll, selectLoading, selectBranches,
 } from './companiesSlice'
 import { fetchWithoutHeadOffice, selectAvailable as selectOrganizations } from '../organizations/organizationsSlice'
@@ -13,6 +13,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Spinner from '../../components/common/Spinner'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { API_BASE_URL } from '../../config/constants'
 import {
   BuildingOffice2Icon,
@@ -24,6 +25,7 @@ import {
   PencilSquareIcon,
   BuildingStorefrontIcon,
   CameraIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import useAuth from '../../hooks/useAuth'
 
@@ -68,7 +70,7 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
 }
 
 // ─── Branch card ─────────────────────────────────────────────────────────────
-function BranchCard({ branch, headOfficeId, canEdit, onEdit, onLogoUpload }) {
+function BranchCard({ branch, headOfficeId, canEdit, onEdit, onDelete, onLogoUpload }) {
   return (
     <div className="aspect-square flex flex-col rounded-2xl border border-gray-100 overflow-hidden hover:border-violet-200 hover:shadow-md transition-all group">
       <div className="flex-1 flex flex-col items-center justify-center p-4 bg-gradient-to-br from-violet-50 to-purple-50 group-hover:from-violet-100 group-hover:to-purple-100 transition-colors">
@@ -97,13 +99,22 @@ function BranchCard({ branch, headOfficeId, canEdit, onEdit, onLogoUpload }) {
           </p>
         )}
         {canEdit && (
-          <button
-            onClick={() => onEdit(branch, headOfficeId)}
-            className="mt-1 w-full flex items-center justify-center gap-1 py-1 text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-          >
-            <PencilSquareIcon className="h-3 w-3" />
-            Edit
-          </button>
+          <div className="mt-1 flex gap-1">
+            <button
+              onClick={() => onEdit(branch, headOfficeId)}
+              className="flex-1 flex items-center justify-center gap-1 py-1 text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+            >
+              <PencilSquareIcon className="h-3 w-3" />
+              Edit
+            </button>
+            <button
+              onClick={() => onDelete(branch)}
+              className="flex-1 flex items-center justify-center gap-1 py-1 text-xs text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+            >
+              <TrashIcon className="h-3 w-3" />
+              Delete
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -111,7 +122,7 @@ function BranchCard({ branch, headOfficeId, canEdit, onEdit, onLogoUpload }) {
 }
 
 // ─── Enterprise Admin View ───────────────────────────────────────────────────
-function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEditBranch, onLogoUpload }) {
+function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEditBranch, onDeleteBranch, onLogoUpload }) {
   const branchList = branches[headOffice?.id] || []
   const atLimit = branchList.length >= 5
 
@@ -305,13 +316,20 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                     </div>
                   </div>
                   {canAddBranch && (
-                    <div className="border-t border-gray-50 px-4 py-2.5 flex justify-end">
+                    <div className="border-t border-gray-50 px-4 py-2.5 flex justify-end gap-3">
                       <button
                         onClick={() => onEditBranch(branch, headOffice.id)}
                         className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-indigo-600 transition-colors"
                       >
                         <PencilSquareIcon className="h-3.5 w-3.5" />
                         Edit
+                      </button>
+                      <button
+                        onClick={() => onDeleteBranch(branch)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-red-600 transition-colors"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                        Delete
                       </button>
                     </div>
                   )}
@@ -326,7 +344,7 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
 }
 
 // ─── Branches Modal (Super Admin) ─────────────────────────────────────────────
-function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBranch, onEditBranch, onLogoUpload }) {
+function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBranch, onEditBranch, onDeleteBranch, onLogoUpload }) {
   const branchList = branches[company?.id] || []
 
   return (
@@ -384,6 +402,7 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
               headOfficeId={company?.id}
               canEdit={canAddBranch}
               onEdit={(b, hid) => { onClose(); onEditBranch(b, hid) }}
+              onDelete={(b) => onDeleteBranch(b)}
               onLogoUpload={onLogoUpload}
             />
           ))}
@@ -394,7 +413,7 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
 }
 
 // ─── Super Admin View ──────────────────────────────────────────────────────────
-function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onCreateHeadOffice, onLogoUpload }) {
+function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onEditHeadOffice, onDeleteHeadOffice, onDeleteBranch, onCreateHeadOffice, onLogoUpload }) {
   const [selected, setSelected] = useState(null)
   const [branchModalOpen, setBranchModalOpen] = useState(false)
   const dispatch = useDispatch()
@@ -477,9 +496,21 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${atLimit ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
                       {branchCount}/5 branches
                     </span>
-                    <span className="text-xs text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                      View →
-                    </span>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditHeadOffice(company) }}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                      >
+                        <PencilSquareIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDeleteHeadOffice(company) }}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="text-xs text-indigo-400 font-medium">View →</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -512,6 +543,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
           canAddBranch={canAddBranch}
           onAddBranch={onAddBranch}
           onEditBranch={onEditBranch}
+          onDeleteBranch={onDeleteBranch}
           onLogoUpload={onLogoUpload}
         />
       )}
@@ -535,6 +567,7 @@ export default function CompaniesPage() {
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, company: null, action: null })
   const logoInputRef = useRef(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -551,11 +584,32 @@ export default function CompaniesPage() {
   }, [dispatch])
 
   useEffect(() => {
+    if (isPlatformAdmin() && companies.length > 0) {
+      const headOfficeList = companies.filter(c => (c.companyType || c.type) === 'HEAD_OFFICE')
+      headOfficeList.forEach(ho => {
+        if (!branches[ho.id]) dispatch(fetchBranches(ho.id))
+      })
+    }
     if (isEnterpriseAdmin() && companies.length > 0) {
       const headOffice = companies.find(c => (c.companyType || c.type) === 'HEAD_OFFICE')
       if (headOffice) dispatch(fetchBranches(headOffice.id))
     }
   }, [companies])
+
+  const handleDeleteHeadOffice = (company) => setConfirmModal({ open: true, company, action: 'headoffice' })
+  const handleDeleteBranch = (branch) => setConfirmModal({ open: true, company: branch, action: 'branch' })
+
+  const onConfirmDelete = async () => {
+    const { company, action } = confirmModal
+    try {
+      await dispatch(remove(company.id)).unwrap()
+      toast.success(action === 'headoffice' ? 'Head office deleted' : 'Branch deleted')
+    } catch (e) {
+      toast.error(e || 'Delete failed')
+    } finally {
+      setConfirmModal({ open: false, company: null, action: null })
+    }
+  }
 
   const handleLogoUpload = async (companyId, file) => {
     try {
@@ -603,6 +657,26 @@ export default function CompaniesPage() {
     setLogoFile(null)
     setLogoPreview(null)
     reset({})
+    setModalOpen(true)
+  }
+
+  const openEditHeadOffice = (company) => {
+    setModalType('headoffice')
+    setParentId(null)
+    setEditTarget(company)
+    setLogoFile(null)
+    setLogoPreview(getLogoUrl(company.logoPath))
+    reset({
+      name: company.name,
+      email: company.email,
+      phone: company.phone,
+      address: company.address,
+      city: company.city,
+      state: company.state,
+      country: company.country,
+      zip: company.zip,
+      website: company.website,
+    })
     setModalOpen(true)
   }
 
@@ -680,6 +754,9 @@ export default function CompaniesPage() {
           canAddBranch={canAddBranch}
           onAddBranch={openBranch}
           onEditBranch={openEditBranch}
+          onEditHeadOffice={openEditHeadOffice}
+          onDeleteHeadOffice={handleDeleteHeadOffice}
+          onDeleteBranch={handleDeleteBranch}
           onCreateHeadOffice={openHeadOffice}
           onLogoUpload={handleLogoUpload}
         />
@@ -692,6 +769,7 @@ export default function CompaniesPage() {
           canAddBranch={canAddBranch}
           onAddBranch={openBranch}
           onEditBranch={openEditBranch}
+          onDeleteBranch={handleDeleteBranch}
           onLogoUpload={handleLogoUpload}
         />
       )}
@@ -784,6 +862,15 @@ export default function CompaniesPage() {
           )}
         </div>
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, company: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'headoffice' ? 'Delete Head Office' : 'Delete Branch'}
+        message={`Delete "${confirmModal.company?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={loading}
+      />
     </div>
   )
 }

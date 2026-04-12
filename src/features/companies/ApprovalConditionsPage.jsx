@@ -12,6 +12,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Select from '../../components/common/Select'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const FIELD_OPTIONS = [{ value: 'REQUESTED_DAYS', label: 'Requested Days' }]
@@ -31,6 +32,7 @@ export default function ApprovalConditionsPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
   const operator = watch('conditionOperator')
 
@@ -49,10 +51,11 @@ export default function ApprovalConditionsPage() {
     setModalOpen(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this condition?')) return
-    try { await dispatch(deleteApprovalCondition(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteApprovalCondition(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -90,6 +93,15 @@ export default function ApprovalConditionsPage() {
       <PageHeader title="Approval Conditions" subtitle="Multi-level approval condition rules"
         actions={<Button onClick={openCreate}>+ Add Condition</Button>} />
       <DataTable columns={columns} data={conditions} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Condition"
+        message="Are you sure you want to delete this approval condition? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Condition' : 'Add Condition'}
         footer={
           <div className="flex justify-end gap-2">

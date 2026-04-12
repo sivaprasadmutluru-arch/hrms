@@ -12,6 +12,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function FaceDetectionPage() {
@@ -21,6 +22,7 @@ export default function FaceDetectionPage() {
   const employees = useSelector(selectFaceDetectionEmployees)
   const loading = useSelector(selectFaceDetectionLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset } = useForm()
 
   useEffect(() => {
@@ -38,10 +40,11 @@ export default function FaceDetectionPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Remove this employee from face detection?')) return
-    try { await dispatch(deleteFaceDetectionEmployee(id)).unwrap(); toast.success('Removed') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteFaceDetectionEmployee(confirmModal.id)).unwrap(); toast.success('Removed') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -93,7 +96,15 @@ export default function FaceDetectionPage() {
         <Button onClick={() => { reset({}); setModalOpen(true) }}>+ Register Employee</Button>
       </div>
       <DataTable columns={columns} data={employees} loading={loading} />
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Remove Employee"
+        message="Are you sure you want to remove this employee from face detection?"
+        confirmLabel="Remove"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Register Employee for Face Detection"
         footer={
           <div className="flex justify-end gap-2">

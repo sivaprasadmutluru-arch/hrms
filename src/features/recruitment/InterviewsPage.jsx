@@ -12,6 +12,7 @@ import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
 
@@ -21,6 +22,7 @@ export default function InterviewsPage() {
   const interviews = useSelector(selectInterviews)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchInterviews()) }, [dispatch])
@@ -30,10 +32,11 @@ export default function InterviewsPage() {
     catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this interview?')) return
-    try { await dispatch(deleteInterview(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteInterview(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -75,6 +78,15 @@ export default function InterviewsPage() {
       <PageHeader title="Interviews" subtitle="Schedule and manage candidate interviews"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Schedule Interview</Button>} />
       <DataTable columns={columns} data={interviews} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Interview"
+        message="Are you sure you want to delete this interview? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Schedule Interview"
         footer={
           <div className="flex justify-end gap-2">

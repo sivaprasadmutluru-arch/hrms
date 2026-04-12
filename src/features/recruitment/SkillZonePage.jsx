@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function SkillZonePage() {
@@ -19,14 +20,16 @@ export default function SkillZonePage() {
   const skillZones = useSelector(selectSkillZones)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchSkillZones()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this skill zone?')) return
-    try { await dispatch(deleteSkillZone(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteSkillZone(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -51,6 +54,15 @@ export default function SkillZonePage() {
       <PageHeader title="Skill Zones" subtitle="Categorize candidates by skills"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Skill Zone</Button>} />
       <DataTable columns={columns} data={skillZones} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Skill Zone"
+        message="Are you sure you want to delete this skill zone? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Skill Zone"
         footer={
           <div className="flex justify-end gap-2">

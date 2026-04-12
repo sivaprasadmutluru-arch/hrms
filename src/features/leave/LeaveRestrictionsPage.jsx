@@ -12,6 +12,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
 
@@ -27,6 +28,7 @@ export default function LeaveRestrictionsPage() {
   const [tab, setTab] = useState('Date Restrictions')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -54,12 +56,11 @@ export default function LeaveRestrictionsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this restriction?')) return
-    try {
-      await dispatch(deleteLeaveRestriction(id)).unwrap()
-      toast.success('Restriction deleted')
-    } catch (e) { toast.error(e || 'Failed') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteLeaveRestriction(confirmModal.id)).unwrap(); toast.success('Restriction deleted') }
+    catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const handleTogglePastRestrict = async (enabled) => {
@@ -121,6 +122,15 @@ export default function LeaveRestrictionsPage() {
         </div>
       )}
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Restriction"
+        message="Are you sure you want to delete this leave restriction? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Restriction' : 'Add Restriction'}
         footer={
           <div className="flex justify-end gap-2">

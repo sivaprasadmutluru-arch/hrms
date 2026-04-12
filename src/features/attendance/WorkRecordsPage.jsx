@@ -14,6 +14,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
 
@@ -39,6 +40,7 @@ export default function WorkRecordsPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -75,10 +77,11 @@ export default function WorkRecordsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this work record?')) return
-    try { await dispatch(deleteWorkRecord(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteWorkRecord(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -118,6 +121,15 @@ export default function WorkRecordsPage() {
         onPageChange={p => dispatch(fetchWorkRecords({ page: p, size: 20 }))}
       />
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Work Record"
+        message="Are you sure you want to delete this work record? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={editing ? 'Edit Work Record' : 'New Work Record'}
         size="lg"

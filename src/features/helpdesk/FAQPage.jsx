@@ -12,6 +12,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function FAQPage() {
@@ -23,6 +24,7 @@ export default function FAQPage() {
   const [tab, setTab] = useState('FAQs')
   const [faqModalOpen, setFaqModalOpen] = useState(false)
   const [catModalOpen, setCatModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const faqForm = useForm()
   const catForm = useForm()
 
@@ -53,10 +55,11 @@ export default function FAQPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteFaq = async (id) => {
-    if (!window.confirm('Delete this FAQ?')) return
-    try { await dispatch(deleteFAQ(id)).unwrap(); toast.success('Deleted') }
+  const handleDeleteFaq = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteFAQ(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const faqColumns = [
@@ -92,7 +95,15 @@ export default function FAQPage() {
       </div>
       {tab === 'FAQs' && <DataTable columns={faqColumns} data={faqs} loading={loading} />}
       {tab === 'Categories' && <DataTable columns={catColumns} data={faqCategories} loading={loading} />}
-
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete FAQ"
+        message="Are you sure you want to delete this FAQ? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={faqModalOpen} onClose={() => setFaqModalOpen(false)} title="Add FAQ"
         footer={
           <div className="flex justify-end gap-2">

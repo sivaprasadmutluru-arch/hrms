@@ -12,6 +12,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const FORMAT_OPTIONS = [
@@ -29,14 +30,16 @@ export default function DocumentRequestsPage() {
   const requests = useSelector(selectDocumentRequests)
   const loading = useSelector(selectDocumentsLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchDocumentRequests()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this document request?')) return
-    try { await dispatch(deleteDocumentRequest(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteDocumentRequest(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -65,6 +68,15 @@ export default function DocumentRequestsPage() {
       <PageHeader title="Document Requests" subtitle="Manage employee document requests"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>} />
       <DataTable columns={columns} data={requests} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Document Request"
+        message="Are you sure you want to delete this document request? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Document Request"
         footer={
           <div className="flex justify-end gap-2">

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function ExitReasonsPage() {
@@ -19,14 +20,16 @@ export default function ExitReasonsPage() {
   const exitReasons = useSelector(selectExitReasons)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchExitReasons()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this exit reason?')) return
-    try { await dispatch(deleteExitReason(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteExitReason(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (data) => {
@@ -53,6 +56,15 @@ export default function ExitReasonsPage() {
       <PageHeader title="Exit Reasons" subtitle="Reasons for employee exits"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Add Reason</Button>} />
       <DataTable columns={columns} data={exitReasons} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Exit Reason"
+        message="Are you sure you want to delete this exit reason? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Exit Reason"
         footer={
           <div className="flex justify-end gap-2">

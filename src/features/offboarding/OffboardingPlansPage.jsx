@@ -13,6 +13,7 @@ import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function OffboardingPlansPage() {
   const dispatch = useDispatch()
@@ -22,6 +23,7 @@ export default function OffboardingPlansPage() {
 
   const [activeTab, setActiveTab] = useState('plans')
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [modalType, setModalType] = useState('')
   const [editing, setEditing] = useState(null)
   const [selectedPlanId, setSelectedPlanId] = useState('')
@@ -37,11 +39,7 @@ export default function OffboardingPlansPage() {
   const openPlanCreate = () => { setModalType('plan'); setEditing(null); reset({}); setModalOpen(true) }
   const openPlanEdit = (row) => { setModalType('plan'); setEditing(row); reset({ title: row.title, description: row.description, isActive: row.isActive }); setModalOpen(true) }
 
-  const handlePlanDelete = async (id) => {
-    if (!window.confirm('Delete this plan?')) return
-    try { await dispatch(deletePlan(id)).unwrap(); toast.success('Plan deleted') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
+  const handlePlanDelete = (id) => setConfirmModal({ open: true, id, action: 'plan' })
 
   const openStageCreate = () => {
     if (!selectedPlanId) { toast.error('Select a plan first'); return }
@@ -49,10 +47,14 @@ export default function OffboardingPlansPage() {
   }
   const openStageEdit = (row) => { setModalType('stage'); setEditing(row); reset({ title: row.title, sequence: row.sequence }); setModalOpen(true) }
 
-  const handleStageDelete = async (id) => {
-    if (!window.confirm('Delete this stage?')) return
-    try { await dispatch(deleteOffboardingStage(id)).unwrap(); toast.success('Stage deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleStageDelete = (id) => setConfirmModal({ open: true, id, action: 'stage' })
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'plan') { await dispatch(deletePlan(id)).unwrap(); toast.success('Plan deleted') }
+      else if (action === 'stage') { await dispatch(deleteOffboardingStage(id)).unwrap(); toast.success('Stage deleted') }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -148,6 +150,15 @@ export default function OffboardingPlansPage() {
         </div>
       )}
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'plan' ? 'Delete Plan' : 'Delete Stage'}
+        message={confirmModal.action === 'plan' ? 'Are you sure you want to delete this offboarding plan?' : 'Are you sure you want to delete this stage?'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={modalTitle}
         footer={
           <div className="flex justify-end gap-2">

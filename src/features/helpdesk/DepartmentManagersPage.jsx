@@ -11,20 +11,23 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function DepartmentManagersPage() {
   const dispatch = useDispatch()
   const loading = useSelector(selectLoading)
   const managers = useSelector(selectDepartmentManagers)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchDepartmentManagers()) }, [dispatch])
 
-  const handleRemove = async (id) => {
-    if (!window.confirm('Remove this manager assignment?')) return
-    try { await dispatch(removeDepartmentManager(id)).unwrap(); toast.success('Removed') }
+  const handleRemove = (id) => setConfirmModal({ open: true, id })
+  const onConfirmRemove = async () => {
+    try { await dispatch(removeDepartmentManager(confirmModal.id)).unwrap(); toast.success('Removed') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -52,6 +55,15 @@ export default function DepartmentManagersPage() {
       <PageHeader title="Helpdesk Department Managers" subtitle="Assign managers to handle department tickets"
         actions={<Button onClick={() => { reset({}); setModalOpen(true) }}>+ Assign Manager</Button>} />
       <DataTable columns={columns} data={managers} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmRemove}
+        title="Remove Manager Assignment"
+        message="Are you sure you want to remove this manager assignment?"
+        confirmLabel="Remove"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Assign Department Manager"
         footer={
           <div className="flex justify-end gap-2">

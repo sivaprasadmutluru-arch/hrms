@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function RejectReasonsPage() {
@@ -20,6 +21,7 @@ export default function RejectReasonsPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchRejectReasons()) }, [dispatch])
@@ -44,10 +46,11 @@ export default function RejectReasonsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this reject reason?')) return
-    try { await dispatch(deleteRejectReason(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteRejectReason(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const columns = [
@@ -66,6 +69,15 @@ export default function RejectReasonsPage() {
       <PageHeader title="Reject Reasons" subtitle="Standard rejection reasons for candidates"
         actions={<Button onClick={openCreate}>+ Add Reason</Button>} />
       <DataTable columns={columns} data={rejectReasons} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Reject Reason"
+        message="Are you sure you want to delete this reject reason? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Reject Reason' : 'Add Reject Reason'}
         footer={
           <div className="flex justify-end gap-2">

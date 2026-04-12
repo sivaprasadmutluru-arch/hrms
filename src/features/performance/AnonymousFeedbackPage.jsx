@@ -13,6 +13,7 @@ import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
 
@@ -29,14 +30,16 @@ export default function AnonymousFeedbackPage() {
   const feedbacks = useSelector(selectAnonymousFeedback)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAnonymousFeedback()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this feedback?')) return
-    try { await dispatch(deleteAnonymousFeedback(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteAnonymousFeedback(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -66,6 +69,15 @@ export default function AnonymousFeedbackPage() {
       <PageHeader title="Anonymous Feedback" subtitle="Submit and view anonymous feedback"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Submit Feedback</Button>} />
       <DataTable columns={columns} data={feedbacks} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Feedback"
+        message="Are you sure you want to delete this feedback? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Submit Anonymous Feedback"
         footer={
           <div className="flex justify-end gap-2">

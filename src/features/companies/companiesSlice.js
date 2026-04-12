@@ -174,6 +174,10 @@ const companiesSlice = createSlice({
       .addCase(remove.fulfilled, (state, action) => {
         state.loading = false
         state.data = state.data.filter((item) => item.id !== action.payload)
+        // Also remove from branches cache (for branch deletions)
+        for (const hoId of Object.keys(state.branches)) {
+          state.branches[hoId] = state.branches[hoId].filter(b => b.id !== action.payload)
+        }
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 

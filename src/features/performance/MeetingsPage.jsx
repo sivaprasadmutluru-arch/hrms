@@ -11,6 +11,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 export default function MeetingsPage() {
@@ -19,14 +20,16 @@ export default function MeetingsPage() {
   const meetings = useSelector(selectMeetings)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchMeetings()) }, [dispatch])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this meeting?')) return
-    try { await dispatch(deleteMeeting(id)).unwrap(); toast.success('Deleted') }
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteMeeting(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const onSubmit = async (formData) => {
@@ -63,6 +66,15 @@ export default function MeetingsPage() {
       <PageHeader title="Meetings" subtitle="Schedule and track team meetings"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Meeting</Button>} />
       <DataTable columns={columns} data={meetings} loading={loading} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Meeting"
+        message="Are you sure you want to delete this meeting? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Meeting"
         footer={
           <div className="flex justify-end gap-2">

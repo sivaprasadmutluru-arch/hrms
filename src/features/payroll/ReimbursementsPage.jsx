@@ -15,6 +15,7 @@ import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
@@ -38,6 +39,7 @@ export default function ReimbursementsPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [selected, setSelected] = useState(null)
   const [commentText, setCommentText] = useState('')
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
   const { register: regAttach, handleSubmit: handleAttach, reset: resetAttach } = useForm()
@@ -84,10 +86,12 @@ export default function ReimbursementsPage() {
     } catch { toast.error('Failed') }
   }
 
-  const handleDeleteAttachment = async (id) => {
-    if (!window.confirm('Delete this attachment?')) return
-    try { await dispatch(deleteReimbursementAttachment(id)).unwrap() }
+  const handleDeleteAttachment = (id) => setConfirmModal({ open: true, id })
+
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteReimbursementAttachment(confirmModal.id)).unwrap() }
     catch { toast.error('Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const handleAddComment = async () => {
@@ -240,6 +244,15 @@ export default function ReimbursementsPage() {
           </div>
         )}
       </Modal>
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Attachment"
+        message="Are you sure you want to delete this attachment? This cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
     </div>
   )
 }

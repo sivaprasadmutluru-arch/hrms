@@ -13,6 +13,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Badge from '../../components/common/Badge'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const QUESTION_TYPES = ['TEXT', 'MULTIPLE_CHOICE', 'RATING', 'YES_NO']
 
@@ -24,6 +25,7 @@ export default function QuestionTemplatesPage() {
 
   const [activeTab, setActiveTab] = useState('templates')
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [modalType, setModalType] = useState('')
   const [editing, setEditing] = useState(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -39,21 +41,20 @@ export default function QuestionTemplatesPage() {
   const openTemplateCreate = () => { setModalType('template'); setEditing(null); reset({}); setModalOpen(true) }
   const openTemplateEdit = (row) => { setModalType('template'); setEditing(row); reset({ title: row.title, description: row.description }); setModalOpen(true) }
 
-  const handleTemplateDelete = async (id) => {
-    if (!window.confirm('Delete this template?')) return
-    try { await dispatch(deleteQuestionTemplate(id)).unwrap(); toast.success('Template deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleTemplateDelete = (id) => setConfirmModal({ open: true, id, action: 'template' })
+  const handleQuestionDelete = (id) => setConfirmModal({ open: true, id, action: 'question' })
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'template') { await dispatch(deleteQuestionTemplate(id)).unwrap(); toast.success('Template deleted') }
+      else if (action === 'question') { await dispatch(deleteQuestion(id)).unwrap(); toast.success('Question deleted') }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const openQuestionAdd = () => {
     if (!selectedTemplateId) { toast.error('Select a template first'); return }
     setModalType('question'); setEditing(null); reset({}); setModalOpen(true)
-  }
-
-  const handleQuestionDelete = async (id) => {
-    if (!window.confirm('Delete this question?')) return
-    try { await dispatch(deleteQuestion(id)).unwrap(); toast.success('Question deleted') }
-    catch (e) { toast.error(e || 'Failed') }
   }
 
   const onSubmit = async (formData) => {
@@ -139,6 +140,15 @@ export default function QuestionTemplatesPage() {
         </div>
       )}
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'template' ? 'Delete Template' : 'Delete Question'}
+        message={confirmModal.action === 'template' ? 'Are you sure you want to delete this template? This action cannot be undone.' : 'Are you sure you want to delete this question?'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={modalType === 'template' ? (editing ? 'Edit Template' : 'New Question Template') : 'Add Question'}
         footer={

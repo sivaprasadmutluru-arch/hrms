@@ -59,6 +59,7 @@ export default function JobPositionsPage() {
         toast.success('Job position created')
       }
       setModalOpen(false)
+      dispatch(fetchJobPositions())
     } catch (e) { toast.error(e || 'Error') }
   }
 

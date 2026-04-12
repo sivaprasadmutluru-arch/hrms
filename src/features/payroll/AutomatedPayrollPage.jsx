@@ -14,6 +14,7 @@ import Button from '../../components/common/Button'
 import Badge from '../../components/common/Badge'
 import Input from '../../components/common/Input'
 import PdfPreviewModal from '../../components/common/PdfPreviewModal'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatCurrency } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
 
@@ -46,6 +47,7 @@ export default function AutomatedPayrollPage() {
   const [triggering, setTriggering] = useState(false)
   const [activeTab, setActiveTab] = useState('payrolls')
   const [pdfPreviewId, setPdfPreviewId] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null, group: null })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -126,24 +128,16 @@ export default function AutomatedPayrollPage() {
     })
   }
 
-  const handleDeletePayslip = async (id) => {
-    if (!window.confirm('Delete this payslip?')) return
-    try {
-      await dispatch(deletePayslip(id)).unwrap()
-      toast.success('Payslip deleted')
-    } catch (e) {
-      toast.error(e || 'Failed to delete payslip')
-    }
-  }
+  const handleDeletePayslip = (id) => setConfirmModal({ open: true, id, action: 'payslip', group: null })
+  const handleDeleteGroup = (group) => setConfirmModal({ open: true, id: null, action: 'group', group })
 
-  const handleDeleteGroup = async (group) => {
-    if (!window.confirm(`Delete all ${group.payslips.length} payslip(s) in this group?`)) return
+  const onConfirmDelete = async () => {
+    const { id, action, group } = confirmModal
     try {
-      await dispatch(deletePayslipGroup(group.payslips.map(p => p.id))).unwrap()
-      toast.success('Payroll group deleted')
-    } catch (e) {
-      toast.error(e || 'Failed to delete group')
-    }
+      if (action === 'payslip') { await dispatch(deletePayslip(id)).unwrap(); toast.success('Payslip deleted') }
+      else if (action === 'group') { await dispatch(deletePayslipGroup(group.payslips.map(p => p.id))).unwrap(); toast.success('Payroll group deleted') }
+    } catch (e) { toast.error(e || 'Failed to delete') }
+    finally { setConfirmModal({ open: false, id: null, action: null, group: null }) }
   }
 
   const handleDownloadPdf = (id) => setPdfPreviewId(id)
@@ -249,8 +243,8 @@ export default function AutomatedPayrollPage() {
                     </button>
 
                     {isOpen && (
-                      <div className="border-t border-gray-100">
-                        <table className="w-full text-sm">
+                      <div className="border-t border-gray-100 overflow-x-auto">
+                        <table className="min-w-full text-sm">
                           <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                             <tr>
                               <th className="px-5 py-2 text-left font-medium">Employee</th>
@@ -400,6 +394,17 @@ export default function AutomatedPayrollPage() {
         open={!!pdfPreviewId}
         onClose={() => setPdfPreviewId(null)}
         payslipId={pdfPreviewId}
+      />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null, group: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'group' ? 'Delete Payroll Group' : 'Delete Payslip'}
+        message={confirmModal.action === 'group'
+          ? `Delete all ${confirmModal.group?.payslips?.length || 0} payslip(s) in this group? This cannot be undone.`
+          : 'Are you sure you want to delete this payslip? This cannot be undone.'}
+        confirmLabel="Delete"
+        loading={loading}
       />
     </div>
   )

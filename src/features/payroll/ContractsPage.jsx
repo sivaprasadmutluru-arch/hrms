@@ -19,6 +19,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate, formatCurrency } from '../../utils/formatters'
 
 const TABS = ['Contracts', 'Pay Conditions']
@@ -91,6 +92,7 @@ export default function ContractsPage() {
   const [editing, setEditing] = useState(null)
   const [editingCond, setEditingCond] = useState(null)
   const [viewContract, setViewContract] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
 
   const filingStatuses = useSelector(selectFilingStatuses)
 
@@ -179,10 +181,12 @@ export default function ContractsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const handleDeleteCond = async (id) => {
-    if (!window.confirm('Delete this condition?')) return
-    try { await dispatch(deleteCondition(id)).unwrap(); toast.success('Deleted') }
+  const handleDeleteCond = (id) => setConfirmModal({ open: true, id })
+
+  const onConfirmDelete = async () => {
+    try { await dispatch(deleteCondition(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch { toast.error('Failed') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const getStatusVariant = (status) => {
@@ -390,6 +394,16 @@ export default function ContractsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Condition"
+        message="Are you sure you want to delete this pay condition? This cannot be undone."
+        confirmLabel="Delete"
+        loading={loading}
+      />
 
       {/* Condition Modal */}
       <Modal open={condModalOpen} onClose={() => setCondModalOpen(false)} title={editingCond ? 'Edit Condition' : 'New Pay Condition'}

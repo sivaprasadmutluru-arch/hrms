@@ -12,6 +12,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 const FIELD_TYPES = [
   { value: 1, label: 'Char (Text Input)' },
@@ -29,6 +30,7 @@ export default function DynamicFieldsPage() {
   const [fieldModalOpen, setFieldModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [choiceTitle, setChoiceTitle] = useState('')
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -51,11 +53,7 @@ export default function DynamicFieldsPage() {
     setFieldModalOpen(true)
   }
 
-  const handleDeleteField = async (id) => {
-    if (!window.confirm('Delete this field?')) return
-    try { await dispatch(deleteDynamicField(id)).unwrap(); toast.success('Field deleted') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
+  const handleDeleteField = (id) => setConfirmModal({ open: true, id, action: 'field' })
 
   const onSubmitField = async (data) => {
     const payload = {
@@ -86,10 +84,14 @@ export default function DynamicFieldsPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
-  const handleDeleteChoice = async (id) => {
-    if (!window.confirm('Delete this choice?')) return
-    try { await dispatch(deleteChoice(id)).unwrap(); toast.success('Choice deleted') }
-    catch (e) { toast.error(e || 'Failed') }
+  const handleDeleteChoice = (id) => setConfirmModal({ open: true, id, action: 'choice' })
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'field') { await dispatch(deleteDynamicField(id)).unwrap(); toast.success('Field deleted') }
+      else if (action === 'choice') { await dispatch(deleteChoice(id)).unwrap(); toast.success('Choice deleted') }
+    } catch (e) { toast.error(e || 'Failed') }
+    finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
   const fieldColumns = [
@@ -145,6 +147,15 @@ export default function DynamicFieldsPage() {
         </div>
       </div>
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={confirmModal.action === 'field' ? 'Delete Field' : 'Delete Choice'}
+        message={confirmModal.action === 'field' ? 'Are you sure you want to delete this dynamic field?' : 'Are you sure you want to delete this choice?'}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       {/* Field Modal */}
       <Modal open={fieldModalOpen} onClose={() => setFieldModalOpen(false)} title={editing ? 'Edit Dynamic Field' : 'Add Dynamic Field'}
         footer={

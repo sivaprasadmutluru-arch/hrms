@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { fetchAll, create, update, uploadLogo, selectAll, selectLoading, selectPagination } from './organizationsSlice'
+import { fetchAll, create, update, uploadLogo, remove, selectAll, selectLoading, selectPagination } from './organizationsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -12,6 +12,7 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { STATUS_COLORS, API_BASE_URL } from '../../config/constants'
 import { BuildingOffice2Icon, CameraIcon } from '@heroicons/react/24/outline'
 import api from '../../services/api'
@@ -31,6 +32,7 @@ export default function OrganizationsPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, org: null })
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -100,6 +102,15 @@ export default function OrganizationsPage() {
     } catch { toast.error('Action failed') }
   }
 
+  const deleteOrg = (org) => setConfirmModal({ open: true, org })
+  const onConfirmDelete = async () => {
+    try {
+      await dispatch(remove(confirmModal.org.id)).unwrap()
+      toast.success('Organization deleted')
+    } catch (e) { toast.error(e || 'Delete failed') }
+    finally { setConfirmModal({ open: false, org: null }) }
+  }
+
   const columns = [
     {
       id: 'logo',
@@ -133,6 +144,7 @@ export default function OrganizationsPage() {
           <Button size="sm" variant={row.original.status === 'ACTIVE' ? 'danger' : 'success'} onClick={() => toggleStatus(row.original)}>
             {row.original.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
           </Button>
+          <Button size="sm" variant="danger" onClick={() => deleteOrg(row.original)}>Delete</Button>
         </div>
       ),
     },
@@ -152,6 +164,15 @@ export default function OrganizationsPage() {
         onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))}
       />
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, org: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Organization"
+        message={`Delete "${confirmModal.org?.name}"? This will permanently delete all companies, employees, and associated data under this organization. This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

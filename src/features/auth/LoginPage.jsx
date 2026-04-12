@@ -19,6 +19,8 @@ export default function LoginPage() {
     if (login.fulfilled.match(result)) {
       toast.success('Welcome back!')
       navigate('/dashboard')
+    } else if (result.payload === 'ORGANIZATION_SUSPENDED') {
+      navigate('/suspended', { replace: true })
     } else {
       toast.error(result.payload || 'Login failed')
     }

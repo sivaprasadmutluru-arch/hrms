@@ -18,6 +18,7 @@ import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const TABS = ['General', 'Employee Types', 'Tags', 'Action Types', 'Profile Features']
@@ -42,6 +43,7 @@ export default function EmployeeSettingsPage() {
   const [editingTag, setEditingTag] = useState(null)
   const [actionModal, setActionModal] = useState(false)
   const [editingAction, setEditingAction] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
 
   const { register: regSettings, handleSubmit: handleSettings, reset: resetSettings } = useForm()
   const { register: regType, handleSubmit: handleType, reset: resetType, formState: { errors: errType } } = useForm()
@@ -86,10 +88,8 @@ export default function EmployeeSettingsPage() {
       setTypeModal(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeleteType = async (id) => {
-    if (!window.confirm('Delete employee type?')) return
-    try { await dispatch(deleteEmployeeType(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
+  const handleDeleteType = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteType' })
   }
 
   const openCreateTag = () => { setEditingTag(null); resetTag({}); setTagModal(true) }
@@ -106,10 +106,8 @@ export default function EmployeeSettingsPage() {
       setTagModal(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeleteTag = async (id) => {
-    if (!window.confirm('Delete tag?')) return
-    try { await dispatch(deleteEmployeeTag(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
+  const handleDeleteTag = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteTag' })
   }
 
   const openCreateAction = () => { setEditingAction(null); resetAction({}); setActionModal(true) }
@@ -126,10 +124,19 @@ export default function EmployeeSettingsPage() {
       setActionModal(false)
     } catch (e) { toast.error(e || 'Error') }
   }
-  const handleDeleteAction = async (id) => {
-    if (!window.confirm('Delete action type?')) return
-    try { await dispatch(deleteActionType(id)).unwrap(); toast.success('Deleted') }
-    catch (e) { toast.error(e || 'Error') }
+  const handleDeleteAction = (id) => {
+    setConfirmModal({ open: true, id, action: 'deleteAction' })
+  }
+
+  const onConfirmDelete = async () => {
+    const { id, action } = confirmModal
+    try {
+      if (action === 'deleteType') await dispatch(deleteEmployeeType(id)).unwrap()
+      else if (action === 'deleteTag') await dispatch(deleteEmployeeTag(id)).unwrap()
+      else if (action === 'deleteAction') await dispatch(deleteActionType(id)).unwrap()
+      toast.success('Deleted')
+      setConfirmModal({ open: false, id: null, action: null })
+    } catch (e) { toast.error(e || 'Error') }
   }
 
   const handleToggleFeature = async (featureName, current) => {
@@ -257,6 +264,26 @@ export default function EmployeeSettingsPage() {
           </Modal>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null, action: null })}
+        onConfirm={onConfirmDelete}
+        title={
+          confirmModal.action === 'deleteType' ? 'Delete Employee Type' :
+          confirmModal.action === 'deleteTag' ? 'Delete Tag' :
+          'Delete Action Type'
+        }
+        message={
+          confirmModal.action === 'deleteType'
+            ? 'Are you sure you want to delete this employee type? This action cannot be undone.'
+            : confirmModal.action === 'deleteTag'
+            ? 'Are you sure you want to delete this tag? This action cannot be undone.'
+            : 'Are you sure you want to delete this action type? This action cannot be undone.'
+        }
+        confirmLabel="Delete"
+        loading={loading}
+      />
 
       {tab === 'Profile Features' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg">
