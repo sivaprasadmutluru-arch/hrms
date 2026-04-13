@@ -1,6 +1,9 @@
 package com.example.demo.employee.controller;
 
 import com.example.demo.base.entity.Department;
+import com.example.demo.base.entity.JobPosition;
+import com.example.demo.base.entity.ShiftSchedule;
+import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.DepartmentRepository;
 import com.example.demo.base.repository.JobPositionRepository;
@@ -28,6 +31,7 @@ import com.example.demo.payroll.entity.Contract;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -300,6 +304,21 @@ public class EmployeeController {
         return ResponseEntity.ok(result);
     }
 
+    private void addNamedRange(XSSFWorkbook wb, String name, String formula) {
+        Name namedRange = wb.createName();
+        namedRange.setNameName(name);
+        namedRange.setRefersToFormula(formula);
+    }
+
+    private void addDropdown(XSSFSheet sheet, DataValidationHelper dvHelper,
+                              String namedRange, int col, int firstRow, int lastRow) {
+        DataValidationConstraint constraint = dvHelper.createFormulaListConstraint(namedRange);
+        CellRangeAddressList addressList = new CellRangeAddressList(firstRow, lastRow, col, col);
+        DataValidation dv = dvHelper.createValidation(constraint, addressList);
+        dv.setShowErrorBox(true);
+        sheet.addValidationData(dv);
+    }
+
     private void setBorders(XSSFCellStyle style, XSSFColor color) {
         style.setBorderTop(BorderStyle.THIN);
         style.setBorderBottom(BorderStyle.THIN);
@@ -346,9 +365,37 @@ public class EmployeeController {
     @GetMapping("/import/template")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Download the Excel template for bulk employee import")
-    public void downloadImportTemplate(jakarta.servlet.http.HttpServletResponse response) throws IOException {
+    public void downloadImportTemplate(@RequestParam(required = false) Long companyId,
+                                       HttpServletResponse response) throws IOException {
         response.setContentType("application/octet-stream");
         response.setHeader("Content-Disposition", "attachment; filename=employee_import_template.xlsx");
+
+        // Fetch dropdown options using ScopeFilter (same as list endpoints) so enterprise
+        // admins get data from all their accessible companies (HEAD_OFFICE + branches).
+        // Falls back to companyId param for platform admins without X-Company-Id context.
+        var deptSpec  = ScopeFilter.<Department>byCompany();
+        var posSpec   = ScopeFilter.<JobPosition>byCompany();
+        var shiftSpec = ScopeFilter.<ShiftSchedule>byCompany();
+
+        List<String> deptNames = (deptSpec != null
+                ? departmentRepository.findAll(deptSpec)
+                : companyId != null ? departmentRepository.findByCompanyId(companyId) : departmentRepository.findAll()
+        ).stream().map(Department::getName).toList();
+
+        List<String> posNames = (posSpec != null
+                ? jobPositionRepository.findAll(posSpec)
+                : companyId != null ? jobPositionRepository.findByCompanyId(companyId) : jobPositionRepository.findAll()
+        ).stream().map(JobPosition::getName).toList();
+
+        List<String> shiftNames = (shiftSpec != null
+                ? shiftScheduleRepository.findAll(shiftSpec)
+                : companyId != null ? shiftScheduleRepository.findByCompanyId(companyId) : shiftScheduleRepository.findAll()
+        ).stream().map(ShiftSchedule::getName).toList();
+
+        // Derive option lists from enums (no hardcoded values)
+        List<String> empTypeOptions  = Arrays.stream(Employee.EmployeeType.values()).map(Enum::name).toList();
+        List<String> genderOptions   = Arrays.stream(Employee.Gender.values()).map(Enum::name).toList();
+        List<String> wageTypeOptions = Arrays.stream(Contract.WageType.values()).map(Enum::name).toList();
 
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             XSSFSheet sheet = wb.createSheet("Employees");
@@ -411,25 +458,25 @@ public class EmployeeController {
             // ── Column definitions ─────────────────────────────────────
             // {header, hint, sample value, isNumeric, width (chars*256)}
             Object[][] cols = {
-                {"First Name*",                    "Text",                                   "John",              false, 5500},
-                {"Last Name",                      "Text",                                   "Doe",               false, 5000},
-                {"Email*",                         "Valid email address",                    "john.doe@acme.com", false, 7500},
-                {"Phone*",                         "Digits only",                            "9876543210",        false, 5500},
-                {"Gender",                         "MALE / FEMALE / OTHER",                  "MALE",              false, 5500},
-                {"Department",                     "Must match existing department name",    "Engineering",       false, 7000},
-                {"Job Position",                   "Must match existing job position name",  "Software Engineer", false, 7500},
-                {"Shift",                          "Must match existing shift name",         "Morning Shift",     false, 6500},
-                {"Wage Type",                      "MONTHLY / HOURLY / DAILY",               "MONTHLY",           false, 5500},
-                {"Employee Type",                  "FULL_TIME / PART_TIME / CONTRACT / INTERN","FULL_TIME",       false, 6500},
-                {"Location",                       "City / Office location",                 "Dubai",             false, 5500},
-                {"Date of Joining",                "yyyy-MM-dd",                             "2024-01-15",        false, 6500},
-                {"Basic Salary",                   "Number",                                 5000.00,             true,  5500},
-                {"Housing Allowance",              "Number",                                 1000.00,             true,  6500},
-                {"Transport Allowance",            "Number",                                 500.00,              true,  6500},
-                {"Other Allowance",                "Number",                                 200.00,              true,  5500},
-                {"Total Salary",                   "Number (sum of all components)",         6700.00,             true,  5500},
-                {"Salary Per Hour",                "Number",                                 25.00,               true,  6500},
-                {"Contract End Date",              "yyyy-MM-dd  (leave blank if permanent)", "2025-01-14",        false, 7000},
+                {"First Name*",       "Text",                           "John",              false, 5500},
+                {"Last Name",         "Text",                           "Doe",               false, 5000},
+                {"Email*",            "Valid email address",            "john.doe@acme.com", false, 7500},
+                {"Phone*",            "Digits only",                    "9876543210",        false, 5500},
+                {"Gender",            "Select from dropdown",           "MALE",              false, 5500},
+                {"Department",        "Select from dropdown",           "Engineering",       false, 7000},
+                {"Job Position",      "Select from dropdown",           "Software Engineer", false, 7500},
+                {"Shift",             "Select from dropdown",           "Morning Shift",     false, 6500},
+                {"Wage Type",         "Select from dropdown",           "MONTHLY",           false, 5500},
+                {"Employee Type",     "Select from dropdown",           "FULL_TIME",         false, 6500},
+                {"Location",          "City / Office location",         "Dubai",             false, 5500},
+                {"Date of Joining",   "yyyy-MM-dd",                     "2024-01-15",        false, 6500},
+                {"Basic Salary",      "Number",                         5000.00,             true,  5500},
+                {"Housing Allowance", "Number",                         1000.00,             true,  6500},
+                {"Transport Allowance","Number",                        500.00,              true,  6500},
+                {"Other Allowance",   "Number",                         200.00,              true,  5500},
+                {"Total Salary",      "Number (sum of all components)", 6700.00,             true,  5500},
+                {"Salary Per Hour",   "Number",                         25.00,               true,  6500},
+                {"Contract End Date", "yyyy-MM-dd  (leave blank if permanent)", "2025-01-14", false, 7000},
             };
 
             // ── Row 0: Headers ─────────────────────────────────────────
@@ -453,6 +500,50 @@ public class EmployeeController {
 
             // Freeze header + hint rows
             sheet.createFreezePane(0, 2);
+
+            // ── _Options sheet (hidden) — holds dropdown source data ───
+            // Col A(0)=Dept  B(1)=Position  C(2)=Shift
+            // D(3)=EmpType   E(4)=Gender    F(5)=WageType
+            XSSFSheet optSheet = wb.createSheet("_Options");
+            List<List<String>> optCols = List.of(
+                    deptNames, posNames, shiftNames, empTypeOptions, genderOptions, wageTypeOptions
+            );
+            int maxOptRows = optCols.stream().mapToInt(List::size).max().orElse(0);
+            for (int r = 0; r < maxOptRows; r++) {
+                XSSFRow optRow = optSheet.createRow(r);
+                for (int c = 0; c < optCols.size(); c++) {
+                    List<String> opts = optCols.get(c);
+                    if (r < opts.size()) {
+                        optRow.createCell(c).setCellValue(opts.get(r));
+                    }
+                }
+            }
+
+            // Named ranges pointing to _Options columns
+            if (!deptNames.isEmpty())
+                addNamedRange(wb, "DeptList",     "_Options!$A$1:$A$" + deptNames.size());
+            if (!posNames.isEmpty())
+                addNamedRange(wb, "PositionList", "_Options!$B$1:$B$" + posNames.size());
+            if (!shiftNames.isEmpty())
+                addNamedRange(wb, "ShiftList",    "_Options!$C$1:$C$" + shiftNames.size());
+            addNamedRange(wb, "EmpTypeList",  "_Options!$D$1:$D$" + empTypeOptions.size());
+            addNamedRange(wb, "GenderList",   "_Options!$E$1:$E$" + genderOptions.size());
+            addNamedRange(wb, "WageTypeList", "_Options!$F$1:$F$" + wageTypeOptions.size());
+
+            // Data validations on data rows (row index 2–1000)
+            DataValidationHelper dvh = sheet.getDataValidationHelper();
+            addDropdown(sheet, dvh, "GenderList",   4, 2, 1000);
+            if (!deptNames.isEmpty())
+                addDropdown(sheet, dvh, "DeptList",     5, 2, 1000);
+            if (!posNames.isEmpty())
+                addDropdown(sheet, dvh, "PositionList", 6, 2, 1000);
+            if (!shiftNames.isEmpty())
+                addDropdown(sheet, dvh, "ShiftList",    7, 2, 1000);
+            addDropdown(sheet, dvh, "WageTypeList", 8, 2, 1000);
+            addDropdown(sheet, dvh, "EmpTypeList",  9, 2, 1000);
+
+            // Hide the options sheet
+            wb.setSheetHidden(wb.getSheetIndex("_Options"), true);
 
             wb.write(response.getOutputStream());
         }
