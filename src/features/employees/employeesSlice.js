@@ -104,9 +104,9 @@ export const importWorkInfo = createAsyncThunk('employees/importWorkInfo', async
   }
 })
 
-export const downloadImportTemplate = createAsyncThunk('employees/downloadImportTemplate', async (_, { rejectWithValue }) => {
+export const downloadImportTemplate = createAsyncThunk('employees/downloadImportTemplate', async (companyId, { rejectWithValue }) => {
   try {
-    const res = await api.get('/employees/import/template', { responseType: 'blob' })
+    const res = await api.get('/employees/import/template', { responseType: 'blob', params: { companyId } })
     const url = URL.createObjectURL(new Blob([res.data]))
     const link = document.createElement('a')
     link.href = url

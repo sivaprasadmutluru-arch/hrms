@@ -456,7 +456,7 @@ export default function EmployeesPage() {
                 Bulk Update ({selectedRows.length})
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={() => dispatch(downloadImportTemplate())}>Download Template</Button>
+            <Button variant="secondary" size="sm" onClick={() => dispatch(downloadImportTemplate(selectedCompanyId || user?.companyId))}>Download Template</Button>
             <Button variant="secondary" size="sm" onClick={() => importEmployeesRef.current?.click()}>Import Employees</Button>
             <input
               ref={importEmployeesRef}
