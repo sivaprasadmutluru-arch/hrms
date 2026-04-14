@@ -6,6 +6,7 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.base.entity.Department;
 import com.example.demo.base.repository.DepartmentRepository;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.leave.dto.*;
 import com.example.demo.leave.entity.*;
@@ -695,8 +696,26 @@ public class LeaveController {
         int created = 0;
         int skipped = 0;
 
+        boolean allEmployees = Boolean.TRUE.equals(body.get("allEmployees"));
         Object deptIdRaw = body.get("departmentId");
         Object empIdsRaw = body.get("employeeIds");
+
+        if (allEmployees) {
+            List<Employee> employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+            for (Employee emp : employees) {
+                if (!holidayAllocationRepository.existsByHolidayIdAndEmployeeId(holidayId, emp.getId())) {
+                    HolidayAllocation ha = new HolidayAllocation();
+                    ha.setHoliday(holiday);
+                    ha.setEmployee(emp);
+                    ha.setCompany(companyRepository.getReferenceById(companyId));
+                    holidayAllocationRepository.save(ha);
+                    created++;
+                } else {
+                    skipped++;
+                }
+            }
+            return ResponseEntity.ok(Map.of("created", created, "skipped", skipped));
+        }
 
         if (deptIdRaw != null) {
             Long deptId = Long.valueOf(deptIdRaw.toString());
