@@ -37,6 +37,7 @@ public class LeaveService {
     private final LeaveAllocationRepository leaveAllocationRepository;
     private final AvailableLeaveRepository availableLeaveRepository;
     private final HolidayRepository holidayRepository;
+    private final HolidayAllocationRepository holidayAllocationRepository;
     private final CompanyLeaveRepository companyLeaveRepository;
     private final EmployeeRepository employeeRepository;
     private final CompanyRepository companyRepository;
@@ -411,19 +412,43 @@ public class LeaveService {
 
     /**
      * Calculates the number of working days between start and end (inclusive),
-     * excluding weekends, company-defined holidays, and company leaves based on LeaveType config.
+     * excluding weekends, company-defined holidays, allocated holidays, and company leaves.
      */
     public double calculateWorkingDays(LocalDate start, LocalDate end, Long companyId, LeaveType leaveType) {
+        return calculateWorkingDays(start, end, companyId, leaveType, null);
+    }
+
+    public double calculateWorkingDays(LocalDate start, LocalDate end, Long companyId, LeaveType leaveType, Long employeeId) {
         // Build exclusion set
         Set<LocalDate> excludedDates = new HashSet<>();
 
         if (Boolean.TRUE.equals(leaveType.getExcludeHoliday()) && companyId != null) {
+            // Company-wide holidays
             List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(companyId, start, end);
             for (Holiday h : holidays) {
                 LocalDate d = h.getStartDate();
                 while (!d.isAfter(h.getEndDate())) {
                     excludedDates.add(d);
                     d = d.plusDays(1);
+                }
+            }
+            // Employee/department-specific allocated holidays
+            if (employeeId != null) {
+                Employee emp = employeeRepository.findById(employeeId).orElse(null);
+                Long deptId = (emp != null && emp.getDepartment() != null) ? emp.getDepartment().getId() : null;
+                List<HolidayAllocation> allocated = (deptId != null)
+                        ? holidayAllocationRepository.findApplicableForEmployee(companyId, employeeId, deptId)
+                        : holidayAllocationRepository.findByEmployeeId(employeeId);
+                for (HolidayAllocation ha : allocated) {
+                    Holiday h = ha.getHoliday();
+                    if (h.getStartDate() != null && h.getEndDate() != null) {
+                        LocalDate d = h.getStartDate().isBefore(start) ? start : h.getStartDate();
+                        LocalDate hEnd = h.getEndDate().isAfter(end) ? end : h.getEndDate();
+                        while (!d.isAfter(hEnd)) {
+                            excludedDates.add(d);
+                            d = d.plusDays(1);
+                        }
+                    }
                 }
             }
         }

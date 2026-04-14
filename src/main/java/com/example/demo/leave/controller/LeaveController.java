@@ -4,6 +4,8 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.base.entity.Department;
+import com.example.demo.base.repository.DepartmentRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.leave.dto.*;
 import com.example.demo.leave.entity.*;
@@ -69,6 +71,8 @@ public class LeaveController {
     private final CompensatoryLeaveRequestRepository compensatoryLeaveRequestRepository;
     private final CompensatoryLeaveRequestCommentRepository compensatoryLeaveRequestCommentRepository;
     private final HolidayRepository holidayRepository;
+    private final HolidayAllocationRepository holidayAllocationRepository;
+    private final DepartmentRepository departmentRepository;
     private final CompanyLeaveRepository companyLeaveRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final LeaveAllocationRepository leaveAllocationRepository;
@@ -646,6 +650,95 @@ public class LeaveController {
     public ResponseEntity<Map<String, String>> deleteHoliday(@PathVariable Long id) {
         holidayRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Holiday deleted"));
+    }
+
+    // ─── Holiday Allocations ──────────────────────────────────────────────────
+
+    @GetMapping("/holiday-allocations")
+    @PreAuthorize("hasAuthority('leave:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List holiday allocations for a company")
+    public ResponseEntity<List<Map<String, Object>>> listHolidayAllocations(@RequestParam Long companyId) {
+        List<HolidayAllocation> allocations = holidayAllocationRepository.findByCompanyId(companyId);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (HolidayAllocation ha : allocations) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", ha.getId());
+            m.put("holidayId", ha.getHoliday().getId());
+            m.put("holidayName", ha.getHoliday().getName());
+            m.put("startDate", ha.getHoliday().getStartDate());
+            m.put("endDate", ha.getHoliday().getEndDate());
+            if (ha.getEmployee() != null) {
+                m.put("type", "employee");
+                m.put("targetId", ha.getEmployee().getId());
+                m.put("targetName", ha.getEmployee().getFirstName() + " " + (ha.getEmployee().getLastName() != null ? ha.getEmployee().getLastName() : ""));
+            } else if (ha.getDepartment() != null) {
+                m.put("type", "department");
+                m.put("targetId", ha.getDepartment().getId());
+                m.put("targetName", ha.getDepartment().getName());
+            }
+            result.add(m);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/holiday-allocations")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Allocate a holiday to employees or a department")
+    public ResponseEntity<Map<String, Object>> createHolidayAllocation(@RequestBody Map<String, Object> body,
+                                                                        @RequestParam Long companyId) {
+        Long holidayId = Long.valueOf(body.get("holidayId").toString());
+        Holiday holiday = holidayRepository.findById(holidayId)
+                .orElseThrow(() -> new ResourceNotFoundException("Holiday", holidayId));
+
+        int created = 0;
+        int skipped = 0;
+
+        Object deptIdRaw = body.get("departmentId");
+        Object empIdsRaw = body.get("employeeIds");
+
+        if (deptIdRaw != null) {
+            Long deptId = Long.valueOf(deptIdRaw.toString());
+            Department dept = departmentRepository.findById(deptId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Department", deptId));
+            if (!holidayAllocationRepository.existsByHolidayIdAndDepartmentId(holidayId, deptId)) {
+                HolidayAllocation ha = new HolidayAllocation();
+                ha.setHoliday(holiday);
+                ha.setDepartment(dept);
+                ha.setCompany(companyRepository.getReferenceById(companyId));
+                holidayAllocationRepository.save(ha);
+                created++;
+            } else {
+                skipped++;
+            }
+        }
+
+        if (empIdsRaw instanceof List<?> empIdList) {
+            for (Object idObj : empIdList) {
+                Long empId = Long.valueOf(idObj.toString());
+                if (!holidayAllocationRepository.existsByHolidayIdAndEmployeeId(holidayId, empId)) {
+                    HolidayAllocation ha = new HolidayAllocation();
+                    ha.setHoliday(holiday);
+                    ha.setEmployee(employeeRepository.getReferenceById(empId));
+                    ha.setCompany(companyRepository.getReferenceById(companyId));
+                    holidayAllocationRepository.save(ha);
+                    created++;
+                } else {
+                    skipped++;
+                }
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("created", created, "skipped", skipped));
+    }
+
+    @DeleteMapping("/holiday-allocations/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Remove a holiday allocation")
+    public ResponseEntity<Map<String, String>> deleteHolidayAllocation(@PathVariable Long id) {
+        holidayAllocationRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Allocation removed"));
     }
 
     // ─── Company Leaves ───────────────────────────────────────────────────────
