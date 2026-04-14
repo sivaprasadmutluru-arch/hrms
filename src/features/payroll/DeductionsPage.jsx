@@ -7,6 +7,7 @@ import {
   selectDeductions, selectLoading,
 } from './payrollSlice'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -55,6 +56,7 @@ const CONDITION_OPTIONS = [
 export default function DeductionsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const { format } = useCurrency()
   const deductions = useSelector(selectDeductions)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -101,7 +103,7 @@ export default function DeductionsPage() {
       <Badge label={getValue() ? 'Fixed' : 'Variable'} variant={getValue() ? 'primary' : 'default'} />
     )},
     { accessorKey: 'amount', header: 'Amount', cell: ({ getValue, row }) => {
-      if (row.original.isFixed) return getValue() != null ? `$${getValue()}` : '—'
+      if (row.original.isFixed) return getValue() != null ? format(getValue()) : '—'
       return row.original.rate != null ? `${row.original.rate}% of ${row.original.basedOn || '—'}` : '—'
     }},
     { accessorKey: 'employerRate', header: 'Employer Rate', cell: ({ getValue }) => getValue() ? `${getValue()}%` : '0%' },

@@ -8,6 +8,7 @@ import {
   fetchPenaltyAccounts, createPenaltyAccount, updatePenaltyAccount, deletePenaltyAccount,
   selectEmailConfig, selectTags, selectPenaltyAccounts, selectBaseExtrasLoading,
 } from '../base/baseExtrasSlice'
+import { fetchById, updateCurrency } from './companiesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -15,13 +16,56 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 
-const TABS = ['Email Config', 'Tags', 'Penalty Accounts']
+const TABS = ['Email Config', 'Tags', 'Penalty Accounts', 'Currency']
 const DEDUCT_FROM = ['SALARY', 'LEAVE', 'BONUS']
+
+const COMMON_CURRENCIES = [
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'INR', name: 'Indian Rupee' },
+  { code: 'AED', name: 'UAE Dirham' },
+  { code: 'SAR', name: 'Saudi Riyal' },
+  { code: 'QAR', name: 'Qatari Riyal' },
+  { code: 'KWD', name: 'Kuwaiti Dinar' },
+  { code: 'BHD', name: 'Bahraini Dinar' },
+  { code: 'OMR', name: 'Omani Rial' },
+  { code: 'SGD', name: 'Singapore Dollar' },
+  { code: 'MYR', name: 'Malaysian Ringgit' },
+  { code: 'JPY', name: 'Japanese Yen' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'CHF', name: 'Swiss Franc' },
+  { code: 'CNY', name: 'Chinese Yuan' },
+  { code: 'PKR', name: 'Pakistani Rupee' },
+  { code: 'BDT', name: 'Bangladeshi Taka' },
+  { code: 'LKR', name: 'Sri Lankan Rupee' },
+  { code: 'NGN', name: 'Nigerian Naira' },
+  { code: 'KES', name: 'Kenyan Shilling' },
+  { code: 'ZAR', name: 'South African Rand' },
+  { code: 'BRL', name: 'Brazilian Real' },
+  { code: 'MXN', name: 'Mexican Peso' },
+  { code: 'IDR', name: 'Indonesian Rupiah' },
+  { code: 'PHP', name: 'Philippine Peso' },
+  { code: 'THB', name: 'Thai Baht' },
+  { code: 'VND', name: 'Vietnamese Dong' },
+  { code: 'EGP', name: 'Egyptian Pound' },
+]
+
+function currencyPreview(code) {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(1234.56)
+  } catch {
+    return `${code} 1,234.56`
+  }
+}
 
 export default function CompanySettingsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const { currency: activeCurrency } = useCurrency()
   const companyId = user?.companyId
   const loading = useSelector(selectBaseExtrasLoading)
   const emailConfig = useSelector(selectEmailConfig)
@@ -34,6 +78,10 @@ export default function CompanySettingsPage() {
   const [penaltyModal, setPenaltyModal] = useState(false)
   const [editingPenalty, setEditingPenalty] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
+
+  // Currency tab state
+  const [currencyInput, setCurrencyInput] = useState(activeCurrency)
+  const [currencySaving, setCurrencySaving] = useState(false)
 
   const emailForm = useForm()
   const { register: regTag, handleSubmit: handleTagSubmit, reset: resetTag, formState: { errors: errTag } } = useForm()
@@ -61,6 +109,11 @@ export default function CompanySettingsPage() {
     }
   }, [emailConfig])
 
+  // Sync currency input when active company changes
+  useEffect(() => {
+    setCurrencyInput(activeCurrency)
+  }, [activeCurrency])
+
   const onSaveEmailConfig = async (data) => {
     try {
       await dispatch(saveEmailConfig({
@@ -69,6 +122,22 @@ export default function CompanySettingsPage() {
       })).unwrap()
       toast.success('Email config saved')
     } catch (e) { toast.error(e || 'Error') }
+  }
+
+  const onSaveCurrency = async () => {
+    const code = currencyInput.trim().toUpperCase()
+    if (!code) return toast.error('Enter a currency code')
+    try {
+      setCurrencySaving(true)
+      await dispatch(updateCurrency({ id: companyId, currency: code })).unwrap()
+      // Refresh company list so useCurrency hook picks up the new value
+      dispatch(fetchById(companyId))
+      toast.success(`Currency updated to ${code}`)
+    } catch (e) {
+      toast.error(e || 'Failed to save currency')
+    } finally {
+      setCurrencySaving(false)
+    }
   }
 
   const openCreateTag = () => { setEditingTag(null); resetTag({}); setTagModal(true) }
@@ -111,6 +180,8 @@ export default function CompanySettingsPage() {
     finally { setConfirmModal({ open: false, id: null, action: null }) }
   }
 
+  const { format } = useCurrency()
+
   const tagColumns = [
     { accessorKey: 'name', header: 'Name' },
     { accessorKey: 'color', header: 'Color', cell: ({ getValue }) => getValue()
@@ -127,7 +198,7 @@ export default function CompanySettingsPage() {
   const penaltyColumns = [
     { accessorKey: 'title', header: 'Title' },
     { accessorKey: 'deductFrom', header: 'Deduct From' },
-    { accessorKey: 'deductionAmount', header: 'Amount', cell: ({ getValue }) => getValue() ? `$${getValue()}` : '—' },
+    { accessorKey: 'deductionAmount', header: 'Amount', cell: ({ getValue }) => getValue() ? format(getValue()) : '—' },
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openEditPenalty(row.original)}>Edit</Button>
@@ -214,6 +285,49 @@ export default function CompanySettingsPage() {
           </Modal>
         </div>
       )}
+
+      {tab === 'Currency' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-6">
+          <div>
+            <h3 className="text-base font-semibold text-gray-800 mb-1">Branch Currency</h3>
+            <p className="text-sm text-gray-500">
+              Set the currency for this branch. Select from the list or type any valid ISO 4217 currency code (e.g. <span className="font-mono">OMR</span>, <span className="font-mono">XOF</span>).
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Currency Code</label>
+            <input
+              list="currency-list"
+              value={currencyInput}
+              onChange={e => setCurrencyInput(e.target.value.toUpperCase())}
+              placeholder="e.g. USD, INR, EUR"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono uppercase"
+            />
+            <datalist id="currency-list">
+              {COMMON_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+              ))}
+            </datalist>
+            <p className="text-xs text-gray-400">Start typing to filter, or enter any ISO 4217 code directly.</p>
+          </div>
+
+          {currencyInput && (
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4">
+              <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-1">Preview</p>
+              <p className="text-2xl font-bold text-indigo-800">{currencyPreview(currencyInput.trim())}</p>
+              <p className="text-xs text-indigo-400 mt-1">How amounts will appear across payroll</p>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={onSaveCurrency} disabled={currencySaving}>
+              {currencySaving ? 'Saving...' : 'Save Currency'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null, action: null })}

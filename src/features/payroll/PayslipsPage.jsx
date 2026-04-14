@@ -11,7 +11,7 @@ import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import PdfPreviewModal from '../../components/common/PdfPreviewModal'
-import { formatCurrency } from '../../utils/formatters'
+import useCurrency from '../../hooks/useCurrency'
 import {
   DocumentTextIcon,
   ArrowDownTrayIcon,
@@ -33,6 +33,7 @@ export default function PayslipsPage() {
   const navigate = useNavigate()
   const { user, isEmployee } = useAuth()
   const isEmp = isEmployee()
+  const formatCurrency = useCurrency().format
   const payslips = useSelector(s => s.payroll.payslips)
   const loading = useSelector(selectLoading)
   const [detail, setDetail] = useState(null)

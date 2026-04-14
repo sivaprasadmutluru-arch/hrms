@@ -14,7 +14,8 @@ import Modal from '../../components/common/Modal'
 import PdfPreviewModal from '../../components/common/PdfPreviewModal'
 import Select from '../../components/common/Select'
 import Input from '../../components/common/Input'
-import { formatDate, formatCurrency } from '../../utils/formatters'
+import { formatDate } from '../../utils/formatters'
+import useCurrency from '../../hooks/useCurrency'
 
 const TABS = ['Profile', 'My Leave', 'My Attendance', 'My Payslips']
 
@@ -243,6 +244,7 @@ function PayslipsTab({ payslips }) {
 
 export default function ESSPage() {
   const dispatch = useDispatch()
+  const formatCurrency = useCurrency().format
   const [activeTab, setActiveTab] = useState('Profile')
   const profile = useSelector(selectEssProfile)
   const leaveRequests = useSelector(selectEssLeaveRequests)

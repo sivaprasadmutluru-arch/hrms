@@ -19,6 +19,7 @@ import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 
 const TYPE_OPTIONS = [
   { value: 'REIMBURSEMENT', label: 'Reimbursement' },
@@ -29,6 +30,7 @@ const TYPE_OPTIONS = [
 export default function ReimbursementsPage() {
   const dispatch = useDispatch()
   const { user, isEmployee } = useAuth()
+  const { format } = useCurrency()
   const isEmp = isEmployee()
   const reimbursements = useSelector(selectReimbursements)
   const loading = useSelector(selectLoading)
@@ -115,7 +117,7 @@ export default function ReimbursementsPage() {
       const emp = row.original.employee
       return emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.employeeCode || '—' : '—'
     }},
-    { accessorKey: 'amount', header: 'Amount', cell: ({ getValue }) => getValue() ? `$${getValue()}` : '—' },
+    { accessorKey: 'amount', header: 'Amount', cell: ({ getValue }) => getValue() ? format(getValue()) : '—' },
     { accessorKey: 'allowanceOn', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'description', header: 'Description', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue()} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
@@ -189,7 +191,7 @@ export default function ReimbursementsPage() {
             <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
               <div><span className="font-medium text-gray-600">Title:</span> {selected.title}</div>
               <div><span className="font-medium text-gray-600">Type:</span> {selected.reimbursementType}</div>
-              <div><span className="font-medium text-gray-600">Amount:</span> {selected.amount ? `$${selected.amount}` : '—'}</div>
+              <div><span className="font-medium text-gray-600">Amount:</span> {selected.amount ? format(selected.amount) : '—'}</div>
               <div><span className="font-medium text-gray-600">Status:</span> <Badge label={selected.status} variant={STATUS_COLORS[selected.status?.toLowerCase()] || 'default'} /></div>
             </div>
 

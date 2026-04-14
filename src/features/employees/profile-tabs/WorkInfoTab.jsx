@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../../services/api'
 import Spinner from '../../../components/common/Spinner'
-import { formatDate, formatCurrency } from '../../../utils/formatters'
+import { formatDate } from '../../../utils/formatters'
+import useCurrency from '../../../hooks/useCurrency'
 import useAuth from '../../../hooks/useAuth'
 
 const Section = ({ title, children }) => (
@@ -20,6 +21,7 @@ const Field = ({ label, value }) => (
 )
 
 export default function WorkInfoTab({ employeeId, companyId }) {
+  const formatCurrency = useCurrency().format
   const [info, setInfo]       = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()

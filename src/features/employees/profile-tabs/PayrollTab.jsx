@@ -3,7 +3,8 @@ import api from '../../../services/api'
 import Spinner from '../../../components/common/Spinner'
 import Badge from '../../../components/common/Badge'
 import PdfPreviewModal from '../../../components/common/PdfPreviewModal'
-import { formatDate, formatCurrency } from '../../../utils/formatters'
+import { formatDate } from '../../../utils/formatters'
+import useCurrency from '../../../hooks/useCurrency'
 
 const STATUS_VARIANT = {
   DRAFT:          'secondary',
@@ -13,6 +14,7 @@ const STATUS_VARIANT = {
 }
 
 export default function PayrollTab({ employeeId, companyId }) {
+  const formatCurrency = useCurrency().format
   const [payslips, setPayslips] = useState([])
   const [loading, setLoading]   = useState(true)
   const [pdfPreviewId, setPdfPreviewId] = useState(null)

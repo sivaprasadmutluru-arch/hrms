@@ -20,7 +20,8 @@ import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
-import { formatDate, formatCurrency } from '../../utils/formatters'
+import { formatDate } from '../../utils/formatters'
+import useCurrency from '../../hooks/useCurrency'
 
 const TABS = ['Contracts', 'Pay Conditions']
 
@@ -77,6 +78,7 @@ function DetailRow({ label, value }) {
 export default function ContractsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const formatCurrency = useCurrency().format
   const contracts = useSelector(s => s.payroll.contracts)
   const conditions = useSelector(selectConditions)
   const allowances = useSelector(selectAllowances)

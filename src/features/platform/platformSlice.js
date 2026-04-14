@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../services/api'
+import { updateCurrency } from '../companies/companiesSlice'
 
 export const fetchAllCompaniesForScope = createAsyncThunk('platform/fetchCompanies', async (_, { rejectWithValue }) => {
   try {
@@ -35,6 +36,10 @@ const platformSlice = createSlice({
         state.companies = action.payload.content || action.payload
       })
       .addCase(fetchAllCompaniesForScope.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(updateCurrency.fulfilled, (state, action) => {
+        const idx = state.companies.findIndex(c => c.id === action.payload.id)
+        if (idx !== -1) state.companies[idx] = { ...state.companies[idx], currency: action.payload.currency }
+      })
   },
 })
 

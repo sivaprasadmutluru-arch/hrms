@@ -15,8 +15,8 @@ import Badge from '../../components/common/Badge'
 import Input from '../../components/common/Input'
 import PdfPreviewModal from '../../components/common/PdfPreviewModal'
 import ConfirmModal from '../../components/common/ConfirmModal'
-import { formatCurrency } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 
 const GENERATE_DAY_OPTIONS = [
   { value: 'last day', label: 'Last Day of Month' },
@@ -39,6 +39,7 @@ function groupStatus(payslips) {
 export default function AutomatedPayrollPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const formatCurrency = useCurrency().format
   const companyId = user?.companyId
   const loading = useSelector(selectLoading)
   const autoGenerate = useSelector(selectPayslipAutoGenerate)

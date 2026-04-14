@@ -11,12 +11,21 @@ api.interceptors.request.use((config) => {
     if (selectedCompanyId) {
       config.headers['X-Company-Id'] = selectedCompanyId
     } else {
-      const stored = localStorage.getItem('user')
-      if (stored) {
-        try {
-          const user = JSON.parse(stored)
-          if (user?.companyId) config.headers['X-Company-Id'] = user.companyId
-        } catch (_) {}
+      // Platform admins with no selectedCompanyId are in "All Companies" mode —
+      // don't send a company header so the backend skips tenant scoping.
+      // Regular users always need a company context, so fall back to user.companyId.
+      const storedRoles = localStorage.getItem('roles')
+      const isPlatformAdmin = storedRoles
+        ? (() => { try { return JSON.parse(storedRoles).includes('PLATFORM_SUPER_ADMIN') } catch (_) { return false } })()
+        : false
+      if (!isPlatformAdmin) {
+        const stored = localStorage.getItem('user')
+        if (stored) {
+          try {
+            const user = JSON.parse(stored)
+            if (user?.companyId) config.headers['X-Company-Id'] = user.companyId
+          } catch (_) {}
+        }
       }
     }
   }

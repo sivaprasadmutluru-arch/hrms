@@ -16,8 +16,8 @@ import Button from '../../components/common/Button'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
-import { formatCurrency } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 
 const STATUS_VARIANT = {
   PAID: 'success',
@@ -37,6 +37,7 @@ function groupStatus(payslips) {
 export default function PayrollPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const formatCurrency = useCurrency().format
   const companyId = user?.companyId
   const payslips = useSelector(s => s.payroll.payslips)
   const employees = useSelector(selectEmployees)

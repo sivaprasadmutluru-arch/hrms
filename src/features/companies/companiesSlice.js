@@ -10,6 +10,15 @@ export const fetchAll = createAsyncThunk('companies/fetchAll', async (params, { 
   }
 })
 
+export const updateCurrency = createAsyncThunk('companies/updateCurrency', async ({ id, currency }, { rejectWithValue }) => {
+  try {
+    const res = await api.patch(`/companies/${id}/currency`, { currency })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update currency')
+  }
+})
+
 export const fetchById = createAsyncThunk('companies/fetchById', async (id, { rejectWithValue }) => {
   try {
     const res = await api.get(`/companies/${id}`)
@@ -181,12 +190,10 @@ const companiesSlice = createSlice({
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
-      .addCase(fetchBranches.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchBranches.fulfilled, (state, action) => {
-        state.loading = false
         state.branches[action.meta.arg] = action.payload
       })
-      .addCase(fetchBranches.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(fetchBranches.rejected, (state, action) => { state.error = action.payload })
 
       .addCase(fetchBranchesSummary.fulfilled, (state, action) => {
         state.branchesSummary[action.payload.headOfficeId] = action.payload.data
@@ -211,6 +218,11 @@ const companiesSlice = createSlice({
         state.approvalConditions = state.approvalConditions.filter(c => c.id !== action.payload)
       })
 
+      .addCase(updateCurrency.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], currency: action.payload.currency }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, currency: action.payload.currency }
+      })
       .addCase(uploadLogo.fulfilled, (state, action) => {
         const idx = state.data.findIndex(item => item.id === action.payload.id)
         if (idx !== -1) state.data[idx] = { ...state.data[idx], logoPath: action.payload.logoPath }

@@ -7,6 +7,7 @@ import {
   selectAllowances, selectLoading,
 } from './payrollSlice'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -50,6 +51,7 @@ const CONDITION_OPTIONS = [
 export default function AllowancesPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
+  const { format } = useCurrency()
   const allowances = useSelector(selectAllowances)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
@@ -97,7 +99,7 @@ export default function AllowancesPage() {
       <Badge label={getValue() ? 'Fixed' : 'Variable'} variant={getValue() ? 'primary' : 'default'} />
     )},
     { accessorKey: 'amount', header: 'Amount', cell: ({ getValue, row }) => {
-      if (row.original.isFixed) return getValue() != null ? `$${getValue()}` : '—'
+      if (row.original.isFixed) return getValue() != null ? format(getValue()) : '—'
       return row.original.rate != null ? `${row.original.rate}% of ${row.original.basedOn || '—'}` : '—'
     }},
     { accessorKey: 'isTaxable', header: 'Taxable', cell: ({ getValue }) => (
