@@ -84,7 +84,7 @@ const LEAVE_GROUP = {
     { label: 'Allocations',     to: '/leave/allocations' },
     { label: 'Restrictions',    to: '/leave/restrictions' },
     { label: 'Holidays',        to: '/leave/holidays' },
-    { label: 'Company Leaves',  to: '/leave/company-leaves' },
+    { label: 'Company Leaves', to: '/leave/company-leaves' },
   ],
 }
 

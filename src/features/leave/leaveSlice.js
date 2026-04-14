@@ -418,6 +418,19 @@ export const exportHolidays = createAsyncThunk('leave/exportHolidays', async (co
   }
 })
 
+export const fetchHolidayAllocations = createAsyncThunk('leave/fetchHolidayAllocations', async (params, { rejectWithValue }) => {
+  try { const res = await api.get('/leave/holiday-allocations', { params }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const createHolidayAllocation = createAsyncThunk('leave/createHolidayAllocation', async ({ data, companyId }, { rejectWithValue }) => {
+  try { const res = await api.post('/leave/holiday-allocations', data, { params: { companyId } }); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+export const deleteHolidayAllocation = createAsyncThunk('leave/deleteHolidayAllocation', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/leave/holiday-allocations/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 export const importHolidays = createAsyncThunk('leave/importHolidays', async ({ companyId, file }, { rejectWithValue }) => {
   try {
     const formData = new FormData()
@@ -501,6 +514,7 @@ const leaveSlice = createSlice({
     loading: false,
     error: null,
     holidays: [],
+    holidayAllocations: [],
     companyLeaves: [],
     leaveDashboard: null,
     clashResult: null,
@@ -705,6 +719,12 @@ const leaveSlice = createSlice({
       })
       .addCase(deleteHoliday.fulfilled, (state, action) => {
         state.holidays = state.holidays.filter(h => h.id !== action.payload)
+      })
+
+      // Holiday Allocations
+      .addCase(fetchHolidayAllocations.fulfilled, (state, action) => { state.holidayAllocations = action.payload })
+      .addCase(deleteHolidayAllocation.fulfilled, (state, action) => {
+        state.holidayAllocations = state.holidayAllocations.filter(a => a.id !== action.payload)
       })
 
       // Company Leaves
