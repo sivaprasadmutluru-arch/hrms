@@ -5,6 +5,9 @@ import com.example.demo.auth.dto.RegisterRequest;
 import com.example.demo.auth.entity.Role;
 import com.example.demo.auth.entity.User;
 import com.example.demo.auth.entity.UserRole;
+import com.example.demo.auth.repository.CrossBranchAccessGrantRepository;
+import com.example.demo.auth.repository.UserGroupRepository;
+import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.service.AuthService;
 import com.example.demo.auth.service.UserRoleService;
 import com.example.demo.base.dto.CompanyRequest;
@@ -19,13 +22,17 @@ import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.tenant.SchemaProvisioningService;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Handles all company creation and management with business rule enforcement.
@@ -47,6 +54,12 @@ public class CompanyService {
     private final UserRoleService userRoleService;
     private final EmployeeRepository employeeRepository;
     private final FileUploadService fileUploadService;
+    private final UserRoleRepository userRoleRepository;
+    private final UserGroupRepository userGroupRepository;
+    private final CrossBranchAccessGrantRepository crossBranchAccessGrantRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /**
      * Creates a new Head Office company for an organization.
@@ -205,16 +218,55 @@ public class CompanyService {
     }
 
     /**
-     * Soft-deactivates a company.
-     * Note: deactivating a Head Office will make all its branches inaccessible.
+     * Updates only the currency for a company/branch.
      */
     @Transactional
-    public void deactivate(Long id) {
+    public Company updateCurrency(Long id, String currency) {
+        if (currency == null || currency.isBlank()) {
+            throw new BadRequestException("Currency code is required");
+        }
         Company company = companyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", id));
-        company.setStatus(Company.CompanyStatus.INACTIVE);
-        company.setActive(false);
-        companyRepository.save(company);
+        company.setCurrency(currency.toUpperCase().trim());
+        return companyRepository.save(company);
+    }
+
+    /**
+     * Hard-deletes a company and all dependent records.
+     * If the target is a Head Office, all its branches are deleted first (FK order).
+     */
+    @Transactional
+    public void delete(Long id) {
+        Company company = companyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+
+        List<Company> toDelete = new ArrayList<>();
+        if (company.isHeadOffice()) {
+            toDelete.addAll(companyRepository.findByParentCompanyId(id)); // branches first
+        }
+        toDelete.add(company);
+
+        List<Long> companyIds = toDelete.stream().map(Company::getId).collect(Collectors.toList());
+
+        crossBranchAccessGrantRepository.deleteAllInBatch(
+                crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
+
+        var groups = userGroupRepository.findByCompanyIdIn(companyIds);
+        groups.forEach(g -> g.setCompany(null));
+        userGroupRepository.saveAll(groups);
+
+        userRoleRepository.deleteAllInBatch(
+                userRoleRepository.findByCompanyIdIn(companyIds));
+
+        toDelete.forEach(c -> employeeRepository.deleteAllInBatch(
+                employeeRepository.findByCompanyId(c.getId())));
+
+        // Delete branches before head office to satisfy FK constraints
+        List<Company> branches = toDelete.stream().filter(Company::isBranch).collect(Collectors.toList());
+        companyRepository.deleteAllInBatch(branches);
+        companyRepository.deleteById(id);
+
+        entityManager.clear();
     }
 
     /**
@@ -231,9 +283,10 @@ public class CompanyService {
 
     /**
      * Gets all Head Offices (one per organization).
+     * Uses a native query with explicit public. schema to bypass tenant search_path.
      */
     public List<Company> getAllHeadOffices() {
-        return companyRepository.findByCompanyTypeAndIsActiveTrue(Company.CompanyType.HEAD_OFFICE);
+        return companyRepository.findAllHeadOfficesActivePublic();
     }
 
     /**

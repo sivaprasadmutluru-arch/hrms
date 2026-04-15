@@ -7,7 +7,9 @@ import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.*;
 import com.example.demo.employee.repository.*;
+import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.entity.EncashmentCondition;
+import com.example.demo.payroll.repository.ContractRepository;
 import com.example.demo.payroll.repository.EncashmentConditionRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +42,7 @@ public class EmployeeExtrasController {
     private final ProfileEditFeatureRepository profileEditFeatureRepository;
     private final PolicyRepository policyRepository;
     private final EncashmentConditionRepository encashmentConditionRepository;
+    private final ContractRepository contractRepository;
 
     // ─── Work Information ────────────────────────────────────────────────────
 
@@ -49,7 +52,22 @@ public class EmployeeExtrasController {
     @Operation(summary = "Get work information for an employee")
     public ResponseEntity<WorkInfoResponse> getWorkInfo(@PathVariable Long id) {
         return workInfoRepository.findByEmployeeId(id)
-                .map(WorkInfoResponse::from)
+                .map(wi -> {
+                    WorkInfoResponse r = WorkInfoResponse.from(wi);
+                    // If work-info has no salary data, fall back to the active contract
+                    if (r.getBasicSalary() == null && r.getHousingAllowance() == null
+                            && r.getTransportAllowance() == null && r.getOtherAllowance() == null) {
+                        contractRepository
+                                .findByEmployeeIdAndContractStatus(id, Contract.ContractStatus.ACTIVE)
+                                .ifPresent(c -> {
+                                    r.setBasicSalary(c.getWage());
+                                    r.setHousingAllowance(c.getHousingAllowance());
+                                    r.setTransportAllowance(c.getTransportAllowance());
+                                    r.setOtherAllowance(c.getOtherAllowance());
+                                });
+                    }
+                    return r;
+                })
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

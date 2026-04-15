@@ -90,6 +90,9 @@ public class Company extends BaseEntity {
     @Column(name = "registration_number")
     private String registrationNumber;
 
+    @Column(name = "currency", length = 10)
+    private String currency = "USD";
+
     // Helper: is this the Head Office?
     public boolean isHeadOffice() {
         return CompanyType.HEAD_OFFICE.equals(this.companyType);

@@ -472,7 +472,7 @@ public class PayrollService {
         long periodDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
         int   monthDays = YearMonth.of(startDate.getYear(), startDate.getMonth()).lengthOfMonth();
 
-        if (contract != null && Boolean.TRUE.equals(contract.getDeductLeaveFromBasicPay())) {
+        if (contract != null && !Boolean.FALSE.equals(contract.getDeductLeaveFromBasicPay())) {
             List<LeaveRequest> approvedLeaves = leaveRequestRepository
                     .findApprovedOverlapping(employeeId, startDate, endDate);
             unpaidDays = approvedLeaves.stream()
@@ -483,7 +483,7 @@ public class PayrollService {
                     .sum();
             if (unpaidDays > 0) {
                 double dailyRate;
-                if (Boolean.TRUE.equals(contract.getCalculateDailyLeaveAmount())) {
+                if (!Boolean.FALSE.equals(contract.getCalculateDailyLeaveAmount())) {
                     // GCP: daily rate = wage / working_days_in_month (not calendar days)
                     dailyRate = workingDaysInMonth > 0 ? contractWage / workingDaysInMonth : 0.0;
                 } else if (contract.getDeductionForOneLeaveAmount() != null
@@ -493,7 +493,6 @@ public class PayrollService {
                     dailyRate = 0.0;
                 }
                 lossOfPay = round2(dailyRate * unpaidDays);
-                basicPay  = Math.max(0.0, basicPay - lossOfPay);
             }
         }
         // GCP monthly_computation: paid_days = working_days_on_period - unpaid_leaves (not calendar days)
@@ -665,8 +664,7 @@ public class PayrollService {
         }
 
         // ── 10. Preliminary net pay (before net_pay deductions) ───────────────
-        // LOP is already baked into basicPay (subtracted above) — do not double-count it here
-        double totalDeductionsBeforeNet = totalPretax + totalTax + federalTax + totalPostTax + totalLoanDeduction;
+        double totalDeductionsBeforeNet = lossOfPay + totalPretax + totalTax + federalTax + totalPostTax + totalLoanDeduction;
         double prelimNetPay = round2(grossPay - totalDeductionsBeforeNet + totalReimbursement);
 
         // ── 11. Net-pay deductions (based_on="net_pay") ───────────────────────
@@ -691,8 +689,7 @@ public class PayrollService {
         }
 
         // ── 12. Final Net Pay ─────────────────────────────────────────────────
-        // LOP is embedded in basicPay (not a separate deduction line), matching GCP behaviour
-        double totalDeductions = round2(totalPretax + totalTax + federalTax
+        double totalDeductions = round2(lossOfPay + totalPretax + totalTax + federalTax
                 + totalPostTax + totalNetDeductions + totalLoanDeduction);
         double netPay = round2(grossPay - totalDeductions + totalReimbursement);
 
@@ -719,6 +716,7 @@ public class PayrollService {
         payHeadData.put("tax_deductions",          taxDeductionLines);
         payHeadData.put("post_tax_deductions",     postTaxDeductionLines);
         payHeadData.put("net_deductions",          finalNetDeductionLines);
+        payHeadData.put("loan_deductions",         loanLines);
         payHeadData.put("total_deductions",        round2(totalDeductions));
         payHeadData.put("federal_tax",             round2(federalTax));
         payHeadData.put("start_date",              startDate.toString());

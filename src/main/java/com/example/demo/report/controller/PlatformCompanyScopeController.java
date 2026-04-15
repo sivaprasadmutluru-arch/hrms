@@ -35,7 +35,7 @@ public class PlatformCompanyScopeController {
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "List all companies available for scope selection (flat list with type)")
     public ResponseEntity<List<Map<String, Object>>> listSelectableCompanies() {
-        List<Company> all = companyRepository.findAll();
+        List<Company> all = companyRepository.findAllPublic();
         List<Map<String, Object>> result = all.stream().map(c -> {
             Map<String, Object> entry = new java.util.HashMap<>();
             entry.put("id", c.getId());
@@ -43,6 +43,7 @@ public class PlatformCompanyScopeController {
             entry.put("type", c.getCompanyType() != null ? c.getCompanyType().name() : "UNKNOWN");
             entry.put("status", c.getStatus() != null ? c.getStatus().name() : "UNKNOWN");
             entry.put("parentCompanyId", c.getParentCompany() != null ? c.getParentCompany().getId() : null);
+            entry.put("currency", c.getCurrency() != null ? c.getCurrency() : "USD");
             return entry;
         }).toList();
         return ResponseEntity.ok(result);

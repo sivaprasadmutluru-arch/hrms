@@ -34,15 +34,23 @@ public class CompanyController {
     @GetMapping
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "List all companies across all organizations (Prabha Tech only)")
-    public ResponseEntity<List<Company>> listAll() {
-        return ResponseEntity.ok(companyRepository.findByIsActiveTrue());
+    public ResponseEntity<List<Company>> listAll(
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId) {
+        if (companyId != null) {
+            return companyRepository.findById(companyId)
+                    .filter(c -> c.getOrganization() != null)
+                    .map(c -> ResponseEntity.ok(
+                            companyRepository.findAllActiveByOrganizationIdPublic(c.getOrganization().getId())))
+                    .orElseGet(() -> ResponseEntity.ok(companyRepository.findAllActivePublic()));
+        }
+        return ResponseEntity.ok(companyRepository.findAllActivePublic());
     }
 
     @GetMapping("/head-offices")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "List all Head Offices (Prabha Tech only)")
     public ResponseEntity<List<Company>> listHeadOffices() {
-        return ResponseEntity.ok(companyService.getAllHeadOffices());
+        return ResponseEntity.ok(companyRepository.findAllHeadOfficesActivePublic());
     }
 
     @PostMapping("/head-office")
@@ -110,12 +118,20 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.update(id, request));
     }
 
+    @PatchMapping("/{id}/currency")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Update the currency for a company/branch")
+    public ResponseEntity<Company> updateCurrency(@PathVariable Long id,
+                                                   @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(companyService.updateCurrency(id, body.get("currency")));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Deactivate a company (Prabha Tech only)")
-    public ResponseEntity<Map<String, String>> deactivate(@PathVariable Long id) {
-        companyService.deactivate(id);
-        return ResponseEntity.ok(Map.of("message", "Company deactivated"));
+    @Operation(summary = "Delete a company and all its data (Prabha Tech only)")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable Long id) {
+        companyService.delete(id);
+        return ResponseEntity.ok(Map.of("message", "Company deleted"));
     }
 
     @PostMapping("/{id}/logo")

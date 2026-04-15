@@ -43,6 +43,23 @@ public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpec
     // Get the Head Office of an organization (there should be only one)
     Optional<Company> findByOrganizationIdAndCompanyType(Long organizationId, Company.CompanyType type);
 
+    // ── Native queries that bypass tenant search_path ────────────────────────
+    // These use an explicit public. schema prefix so they always query the public
+    // schema regardless of the current TenantContext (important for platform-admin
+    // endpoints that must see ALL companies, not just one tenant's view).
+
+    @Query(value = "SELECT * FROM public.companies WHERE is_active = true", nativeQuery = true)
+    List<Company> findAllActivePublic();
+
+    @Query(value = "SELECT * FROM public.companies WHERE is_active = true AND company_type = 'HEAD_OFFICE'", nativeQuery = true)
+    List<Company> findAllHeadOfficesActivePublic();
+
+    @Query(value = "SELECT * FROM public.companies WHERE is_active = true AND organization_id = :orgId", nativeQuery = true)
+    List<Company> findAllActiveByOrganizationIdPublic(@Param("orgId") Long orgId);
+
+    @Query(value = "SELECT * FROM public.companies", nativeQuery = true)
+    List<Company> findAllPublic();
+
     // Get all branch IDs under a Head Office — used to build accessible company list for HO users
     @Query("SELECT c.id FROM Company c WHERE c.parentCompany.id = :headOfficeId AND c.isActive = true")
     List<Long> findBranchIdsByHeadOfficeId(Long headOfficeId);

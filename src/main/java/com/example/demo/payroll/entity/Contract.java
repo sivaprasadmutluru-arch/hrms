@@ -99,10 +99,10 @@ public class Contract extends BaseEntity {
     @Column(name = "contract_document")
     private String contractDocument;
 
-    @Column(name = "deduct_leave_from_basic_pay")
+    @Column(name = "deduct_leave_from_basic_pay", columnDefinition = "boolean default true")
     private Boolean deductLeaveFromBasicPay = true;
 
-    @Column(name = "calculate_daily_leave_amount")
+    @Column(name = "calculate_daily_leave_amount", columnDefinition = "boolean default true")
     private Boolean calculateDailyLeaveAmount = true;
 
     @Column(name = "deduction_for_one_leave_amount", precision = 12, scale = 2)

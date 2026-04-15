@@ -23,7 +23,9 @@ import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.leave.entity.Holiday;
+import com.example.demo.leave.entity.HolidayAllocation;
 import com.example.demo.leave.entity.LeaveRequest;
+import com.example.demo.leave.repository.HolidayAllocationRepository;
 import com.example.demo.leave.repository.HolidayRepository;
 import com.example.demo.leave.repository.LeaveRequestRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -63,6 +65,7 @@ public class AttendanceService {
     private final WorkRecordRepository workRecordRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final HolidayRepository holidayRepository;
+    private final HolidayAllocationRepository holidayAllocationRepository;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -429,11 +432,27 @@ public class AttendanceService {
             }
         }
 
-        // Holidays for the company this month
+        // Holidays for the company this month (company-wide + allocated)
         Map<LocalDate, String> holidayMap = new HashMap<>();
         if (resolvedCompanyId != null) {
             List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(resolvedCompanyId, first, last);
             for (Holiday h : holidays) {
+                if (h.getStartDate() == null) continue;
+                LocalDate hEnd = h.getEndDate() != null ? h.getEndDate() : h.getStartDate();
+                LocalDate hStart = h.getStartDate().isBefore(first) ? first : h.getStartDate();
+                hEnd = hEnd.isAfter(last) ? last : hEnd;
+                for (LocalDate d = hStart; !d.isAfter(hEnd); d = d.plusDays(1)) {
+                    holidayMap.put(d, h.getName() != null ? h.getName() : "Holiday");
+                }
+            }
+            // Merge allocated holidays (employee-specific or department-specific)
+            Employee calEmp = employeeRepository.findById(resolvedEmployeeId).orElse(null);
+            Long deptId = (calEmp != null && calEmp.getDepartment() != null) ? calEmp.getDepartment().getId() : null;
+            List<HolidayAllocation> allocations = deptId != null
+                    ? holidayAllocationRepository.findApplicableForEmployee(resolvedCompanyId, resolvedEmployeeId, deptId)
+                    : holidayAllocationRepository.findByEmployeeId(resolvedEmployeeId);
+            for (HolidayAllocation ha : allocations) {
+                Holiday h = ha.getHoliday();
                 if (h.getStartDate() == null) continue;
                 LocalDate hEnd = h.getEndDate() != null ? h.getEndDate() : h.getStartDate();
                 LocalDate hStart = h.getStartDate().isBefore(first) ? first : h.getStartDate();

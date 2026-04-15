@@ -62,6 +62,9 @@ public class EmployeeResponse {
     private Long reportingManagerId;
     private String reportingManagerName;
 
+    private String currencySymbol = "$";
+    private String currencyPosition = "PREFIX";
+
     public static EmployeeResponse from(Employee e) {
         EmployeeResponse r = new EmployeeResponse();
         r.setId(e.getId());
@@ -100,6 +103,7 @@ public class EmployeeResponse {
         if (e.getCompany() != null) {
             r.setCompanyId(e.getCompany().getId());
             r.setCompanyName(e.getCompany().getName());
+            if (e.getCompany().getCurrency() != null) r.setCurrencySymbol(e.getCompany().getCurrency());
             if (e.getCompany().getOrganization() != null) {
                 r.setOrganizationName(e.getCompany().getOrganization().getName());
             }

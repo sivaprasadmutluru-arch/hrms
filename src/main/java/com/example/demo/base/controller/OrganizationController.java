@@ -1,5 +1,6 @@
 package com.example.demo.base.controller;
 
+import com.example.demo.base.dto.CreateOrganizationRequest;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.enums.SubscriptionPlan;
 import com.example.demo.base.service.OrganizationService;
@@ -53,9 +54,9 @@ public class OrganizationController {
 
     @PostMapping
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Create a new client organization")
-    public ResponseEntity<Organization> create(@Valid @RequestBody Organization organization) {
-        return ResponseEntity.ok(organizationService.createOrganization(organization));
+    @Operation(summary = "Create a new client organization with its Head Office")
+    public ResponseEntity<Organization> create(@Valid @RequestBody CreateOrganizationRequest request) {
+        return ResponseEntity.ok(organizationService.createOrganization(request));
     }
 
     @PutMapping("/{id}")

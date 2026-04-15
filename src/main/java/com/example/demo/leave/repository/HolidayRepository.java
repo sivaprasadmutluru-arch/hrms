@@ -8,10 +8,13 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface HolidayRepository extends JpaRepository<Holiday, Long>, JpaSpecificationExecutor<Holiday> {
     List<Holiday> findByCompanyId(Long companyId);
+
+    Optional<Holiday> findByIdAndCompanyIdIn(Long id, List<Long> companyIds);
 
     @Query("SELECT h FROM Holiday h WHERE h.company.id = :companyId " +
            "AND ((h.startDate <= :endDate AND h.endDate >= :startDate))")

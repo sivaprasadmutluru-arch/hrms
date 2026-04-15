@@ -2,7 +2,9 @@ package com.example.demo.leave.controller;
 
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.base.entity.Department;
 import com.example.demo.base.repository.DepartmentRepository;
@@ -627,6 +629,9 @@ public class LeaveController {
     @Transactional
     @Operation(summary = "Create a holiday")
     public ResponseEntity<Holiday> createHoliday(@RequestBody Holiday body, @RequestParam Long companyId) {
+        if (TenantContext.DEFAULT_TENANT.equals(TenantContext.getTenant())) {
+            throw new BadRequestException("X-Company-Id header is required to create a holiday");
+        }
         body.setCompany(companyRepository.getReferenceById(companyId));
         return ResponseEntity.ok(holidayRepository.save(body));
     }
@@ -690,7 +695,11 @@ public class LeaveController {
     public ResponseEntity<Map<String, Object>> createHolidayAllocation(@RequestBody Map<String, Object> body,
                                                                         @RequestParam Long companyId) {
         Long holidayId = Long.valueOf(body.get("holidayId").toString());
-        Holiday holiday = holidayRepository.findById(holidayId)
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        List<Long> accessibleCompanyIds = (scope != null && !scope.hasUnrestrictedAccess())
+                ? scope.getAccessibleCompanyIds()
+                : List.of(companyId);
+        Holiday holiday = holidayRepository.findByIdAndCompanyIdIn(holidayId, accessibleCompanyIds)
                 .orElseThrow(() -> new ResourceNotFoundException("Holiday", holidayId));
 
         int created = 0;
@@ -920,6 +929,9 @@ public class LeaveController {
     public ResponseEntity<Map<String, Object>> importHolidays(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long companyId) throws IOException {
+        if (TenantContext.DEFAULT_TENANT.equals(TenantContext.getTenant())) {
+            throw new BadRequestException("X-Company-Id header is required to import holidays");
+        }
         int imported = 0;
         List<String> errors = new ArrayList<>();
         try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {

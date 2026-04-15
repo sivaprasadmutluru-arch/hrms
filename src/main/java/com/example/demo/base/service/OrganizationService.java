@@ -4,6 +4,8 @@ import com.example.demo.auth.entity.UserGroup;
 import com.example.demo.auth.repository.CrossBranchAccessGrantRepository;
 import com.example.demo.auth.repository.UserGroupRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
+import com.example.demo.base.dto.CompanyRequest;
+import com.example.demo.base.dto.CreateOrganizationRequest;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.enums.SubscriptionPlan;
@@ -16,6 +18,7 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,7 +34,6 @@ import java.util.stream.Collectors;
  * Follows the same pattern as CompanyService — controller delegates here.
  */
 @Service
-@RequiredArgsConstructor
 public class OrganizationService {
 
     private final OrganizationRepository organizationRepository;
@@ -41,6 +43,25 @@ public class OrganizationService {
     private final UserRoleRepository userRoleRepository;
     private final UserGroupRepository userGroupRepository;
     private final CrossBranchAccessGrantRepository crossBranchAccessGrantRepository;
+    private final CompanyService companyService;
+
+    public OrganizationService(OrganizationRepository organizationRepository,
+                                CompanyRepository companyRepository,
+                                EmployeeRepository employeeRepository,
+                                FileUploadService fileUploadService,
+                                UserRoleRepository userRoleRepository,
+                                UserGroupRepository userGroupRepository,
+                                CrossBranchAccessGrantRepository crossBranchAccessGrantRepository,
+                                @Lazy CompanyService companyService) {
+        this.organizationRepository = organizationRepository;
+        this.companyRepository = companyRepository;
+        this.employeeRepository = employeeRepository;
+        this.fileUploadService = fileUploadService;
+        this.userRoleRepository = userRoleRepository;
+        this.userGroupRepository = userGroupRepository;
+        this.crossBranchAccessGrantRepository = crossBranchAccessGrantRepository;
+        this.companyService = companyService;
+    }
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -68,28 +89,56 @@ public class OrganizationService {
     }
 
     @Transactional
-    public Organization createOrganization(Organization organization) {
-        // Auto-generate slug from name if not provided
-        if (organization.getSlug() == null || organization.getSlug().isBlank()) {
-            organization.setSlug(organization.getName().toLowerCase()
-                    .replaceAll("[^a-z0-9]+", "-")
-                    .replaceAll("^-|-$", ""));
+    public Organization createOrganization(CreateOrganizationRequest request) {
+        Organization organization = new Organization();
+        organization.setName(request.getName());
+        organization.setContactEmail(request.getContactEmail());
+        organization.setContactPhone(request.getContactPhone());
+        organization.setSubscriptionPlan(
+                request.getSubscriptionPlan() != null ? request.getSubscriptionPlan() : SubscriptionPlan.STANDARD);
+        organization.setStatus(Organization.OrgStatus.ACTIVE);
+        if (request.getMaxBranches() != null) {
+            organization.setMaxBranches(request.getMaxBranches());
         }
-        // Ensure slug uniqueness
-        String baseSlug = organization.getSlug();
+
+        // Auto-generate slug from name if not provided
+        String baseSlug = (request.getSlug() != null && !request.getSlug().isBlank())
+                ? request.getSlug()
+                : request.getName().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
         String slug = baseSlug;
         int i = 1;
         while (organizationRepository.findBySlug(slug).isPresent()) {
             slug = baseSlug + "-" + i++;
         }
         organization.setSlug(slug);
-        if (organization.getStatus() == null) {
-            organization.setStatus(Organization.OrgStatus.ACTIVE);
-        }
-        if (organization.getSubscriptionPlan() == null) {
-            organization.setSubscriptionPlan(SubscriptionPlan.STANDARD);
-        }
-        return organizationRepository.save(organization);
+
+        Organization savedOrg = organizationRepository.save(organization);
+
+        // Auto-create the Head Office for this organization
+        CompanyRequest hoRequest = new CompanyRequest();
+        hoRequest.setName(request.getHeadOfficeName() != null && !request.getHeadOfficeName().isBlank()
+                ? request.getHeadOfficeName() : request.getName());
+        hoRequest.setOrganizationId(savedOrg.getId());
+        hoRequest.setAddress(request.getAddress());
+        hoRequest.setCity(request.getCity());
+        hoRequest.setState(request.getState());
+        hoRequest.setCountry(request.getCountry());
+        hoRequest.setZip(request.getZip());
+        hoRequest.setPhone(request.getPhone());
+        hoRequest.setEmail(request.getEmail());
+        hoRequest.setWebsite(request.getWebsite());
+        hoRequest.setTaxId(request.getTaxId());
+        hoRequest.setRegistrationNumber(request.getRegistrationNumber());
+        hoRequest.setBranchLimit(request.getBranchLimit());
+        hoRequest.setAdminUsername(request.getAdminUsername());
+        hoRequest.setAdminEmail(request.getAdminEmail());
+        hoRequest.setAdminPassword(request.getAdminPassword());
+        hoRequest.setAdminFirstName(request.getAdminFirstName());
+        hoRequest.setAdminLastName(request.getAdminLastName());
+
+        companyService.createHeadOffice(hoRequest);
+
+        return savedOrg;
     }
 
     @Transactional

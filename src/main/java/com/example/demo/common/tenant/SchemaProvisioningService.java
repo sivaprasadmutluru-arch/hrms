@@ -51,6 +51,14 @@ public class SchemaProvisioningService {
                 log.info("[Tenant] Created schema: {}", schemaName);
             }
 
+            // Step 1b: Drop FK constraints in this tenant schema that wrongly reference
+            // public-schema tables when those tables also exist in the tenant schema.
+            // This happens when a tenant table was provisioned before its referenced
+            // table existed in the tenant schema (causing PostgreSQL to resolve the FK
+            // against public instead). ddl-auto=update never fixes existing FKs, so we
+            // must drop them here so Hibernate recreates them pointing to the right schema.
+            dropMisroutedForeignKeys(schemaName);
+
             // Step 2: Build a DataSource that routes every connection to the new schema
             DataSource schemaDs = new SearchPathDataSource(dataSource, schemaName);
 
@@ -105,6 +113,61 @@ public class SchemaProvisioningService {
         return name.toLowerCase()
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_+|_+$", "");
+    }
+
+    /**
+     * Drops FK constraints in the tenant schema that incorrectly reference the public schema
+     * for tables that also exist (or will be created) in the tenant schema.
+     *
+     * Root cause: when Hibernate first creates a tenant table with a FK like
+     * "REFERENCES holidays(id)", PostgreSQL resolves the target via the current search_path.
+     * If the tenant-schema copy of "holidays" did not yet exist at that moment, PostgreSQL
+     * falls back to public.holidays. ddl-auto=update never drops/recreates existing
+     * constraints, so the wrong FK persists across restarts.
+     *
+     * Fix: drop the offending FKs before the Hibernate DDL update runs; Hibernate will
+     * recreate them with search_path set to "{tenant}, public", at which point
+     * the tenant-schema table takes precedence and the FK is created correctly.
+     */
+    private void dropMisroutedForeignKeys(String schemaName) {
+        // Find FK constraints in this tenant schema whose referenced table lives in
+        // public AND also exists in the tenant schema (those are the wrong ones).
+        String findSql = """
+                SELECT c.conname  AS constraint_name,
+                       src.relname AS table_name
+                FROM   pg_constraint c
+                JOIN   pg_class src  ON src.oid = c.conrelid
+                JOIN   pg_namespace src_ns ON src_ns.oid = src.relnamespace
+                JOIN   pg_class ref  ON ref.oid = c.confrelid
+                JOIN   pg_namespace ref_ns ON ref_ns.oid = ref.relnamespace
+                WHERE  c.contype = 'f'
+                  AND  src_ns.nspname = ?
+                  AND  ref_ns.nspname = 'public'
+                  AND  EXISTS (
+                           SELECT 1 FROM information_schema.tables t
+                           WHERE  t.table_schema = ? AND t.table_name = ref.relname
+                       )
+                """;
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(true);
+            try (var ps = conn.prepareStatement(findSql)) {
+                ps.setString(1, schemaName);
+                ps.setString(2, schemaName);
+                try (var rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String constraintName = rs.getString("constraint_name");
+                        String tableName = rs.getString("table_name");
+                        String dropSql = "ALTER TABLE " + schemaName + "." + tableName
+                                + " DROP CONSTRAINT IF EXISTS " + constraintName;
+                        conn.createStatement().execute(dropSql);
+                        log.info("[Tenant] Dropped misrouted FK '{}' on {}.{} (was pointing to public schema)",
+                                constraintName, schemaName, tableName);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.warn("[Tenant] Could not clean up misrouted FKs for schema '{}': {}", schemaName, e.getMessage());
+        }
     }
 
     private void validateSchemaName(String schemaName) {
