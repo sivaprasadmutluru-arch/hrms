@@ -6,12 +6,10 @@ import {
   fetchAll, fetchMyCompany, create, update, remove, uploadLogo,
   fetchBranches, selectAll, selectLoading, selectBranches,
 } from './companiesSlice'
-import { fetchWithoutHeadOffice, selectAvailable as selectOrganizations } from '../organizations/organizationsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
-import Select from '../../components/common/Select'
 import Spinner from '../../components/common/Spinner'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import { API_BASE_URL } from '../../config/constants'
@@ -50,7 +48,7 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
 
   return (
     <div
-      className={`${sizeMap[size]} rounded-2xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative ${canUpload ? 'cursor-pointer group' : ''} ${className}`}
+      className={`${sizeMap[size]} rounded-xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative ${canUpload ? 'cursor-pointer group' : ''} ${className}`}
       onClick={() => canUpload && inputRef.current?.click()}
     >
       {url
@@ -143,7 +141,7 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
               <LogoAvatar
                 logoPath={headOffice.logoPath}
                 icon={BuildingOffice2Icon}
-                size="lg"
+                size="md"
                 canUpload={canAddBranch}
                 onUpload={(file) => onLogoUpload(headOffice.id, file)}
                 className="border-2 border-white shadow-md"
@@ -413,7 +411,7 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
 }
 
 // ─── Super Admin View ──────────────────────────────────────────────────────────
-function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onEditHeadOffice, onDeleteHeadOffice, onDeleteBranch, onCreateHeadOffice, onLogoUpload }) {
+function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEditBranch, onEditHeadOffice, onDeleteHeadOffice, onDeleteBranch, onLogoUpload }) {
   const [selected, setSelected] = useState(null)
   const [branchModalOpen, setBranchModalOpen] = useState(false)
   const dispatch = useDispatch()
@@ -469,7 +467,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                     <LogoAvatar
                       logoPath={company.logoPath}
                       icon={BuildingOffice2Icon}
-                      size="lg"
+                      size="sm"
                       canUpload={canAddBranch}
                       onUpload={(file) => onLogoUpload(company.id, file)}
                     />
@@ -523,14 +521,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
             <BuildingOffice2Icon className="h-8 w-8 text-indigo-400" />
           </div>
           <p className="text-gray-700 font-semibold text-base mb-1">No companies yet</p>
-          <p className="text-sm text-gray-400 mb-5 max-w-xs">Get started by creating your first head office.</p>
-          <button
-            onClick={onCreateHeadOffice}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
-          >
-            <PlusIcon className="h-4 w-4" />
-            New Head Office
-          </button>
+          <p className="text-sm text-gray-400 max-w-xs">Head offices are created automatically when you add a new organization.</p>
         </div>
       )}
 
@@ -558,7 +549,6 @@ export default function CompaniesPage() {
   const companies = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const branches = useSelector(selectBranches)
-  const organizations = useSelector(selectOrganizations)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('headoffice')
@@ -576,7 +566,6 @@ export default function CompaniesPage() {
   useEffect(() => {
     if (isPlatformAdmin()) {
       dispatch(fetchAll({ page: 0, size: 50 }))
-      dispatch(fetchWithoutHeadOffice())
     } else if (isEnterpriseAdmin()) {
       const companyId = user?.companyId || user?.company?.id
       if (companyId) dispatch(fetchMyCompany(companyId))
@@ -650,16 +639,6 @@ export default function CompaniesPage() {
     setModalOpen(true)
   }
 
-  const openHeadOffice = () => {
-    setModalType('headoffice')
-    setParentId(null)
-    setEditTarget(null)
-    setLogoFile(null)
-    setLogoPreview(null)
-    reset({})
-    setModalOpen(true)
-  }
-
   const openEditHeadOffice = (company) => {
     setModalType('headoffice')
     setParentId(null)
@@ -697,13 +676,9 @@ export default function CompaniesPage() {
         toast.success('Updated')
         if (parentId) dispatch(fetchBranches(parentId))
       } else {
-        const payload = modalType === 'branch'
-          ? { ...data, parentId, type: 'BRANCH' }
-          : { ...data, type: 'HEAD_OFFICE', organizationId: Number(data.organizationId) }
-        savedCompany = await dispatch(create(payload)).unwrap()
-        toast.success(`${modalType === 'branch' ? 'Branch' : 'Head office'} created`)
+        savedCompany = await dispatch(create({ ...data, parentId, type: 'BRANCH' })).unwrap()
+        toast.success('Branch created')
         if (parentId) dispatch(fetchBranches(parentId))
-        else if (isPlatformAdmin()) dispatch(fetchAll({ page: 0, size: 50 }))
       }
       if (logoFile && savedCompany?.id) {
         try {
@@ -732,17 +707,6 @@ export default function CompaniesPage() {
             ? 'Your company and branch offices'
             : 'Manage all head offices and their branches'
         }
-        actions={
-          isPlatformAdmin() ? (
-            <button
-              onClick={openHeadOffice}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
-            >
-              <PlusIcon className="h-4 w-4" />
-              New Head Office
-            </button>
-          ) : null
-        }
       />
 
       {loading && <Spinner className="py-12" />}
@@ -757,7 +721,6 @@ export default function CompaniesPage() {
           onEditHeadOffice={openEditHeadOffice}
           onDeleteHeadOffice={handleDeleteHeadOffice}
           onDeleteBranch={handleDeleteBranch}
-          onCreateHeadOffice={openHeadOffice}
           onLogoUpload={handleLogoUpload}
         />
       )}
@@ -778,7 +741,7 @@ export default function CompaniesPage() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editTarget ? `Edit — ${editTarget.name}` : modalType === 'branch' ? 'New Branch' : 'New Head Office'}
+        title={editTarget ? `Edit — ${editTarget.name}` : 'New Branch'}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -825,41 +788,6 @@ export default function CompaniesPage() {
           </div>
           <Input label="Website" {...register('website')} />
 
-          {modalType === 'headoffice' && !editTarget && (
-            <Select
-              label="Organization"
-              placeholder="Select organization"
-              options={organizations.map(org => ({ value: org.id, label: org.name }))}
-              error={errors.organizationId?.message}
-              {...register('organizationId', { required: 'Organization is required' })}
-            />
-          )}
-          {modalType === 'headoffice' && !editTarget && (
-            <>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-1">Enterprise Admin Credentials</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="First Name" {...register('adminFirstName', { required: 'Required' })} error={errors.adminFirstName?.message} />
-                <Input label="Last Name" {...register('adminLastName')} />
-              </div>
-              <Input
-                label="Username"
-                {...register('adminUsername', { required: 'Admin username is required' })}
-                error={errors.adminUsername?.message}
-              />
-              <Input
-                label="Email"
-                type="email"
-                {...register('adminEmail', { required: 'Admin email is required' })}
-                error={errors.adminEmail?.message}
-              />
-              <Input
-                label="Password"
-                type="password"
-                {...register('adminPassword', { required: 'Admin password is required', minLength: { value: 6, message: 'Min 6 characters' } })}
-                error={errors.adminPassword?.message}
-              />
-            </>
-          )}
         </div>
       </Modal>
       <ConfirmModal

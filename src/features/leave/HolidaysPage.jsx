@@ -95,11 +95,15 @@ export default function HolidaysPage() {
 
   // ─── Allocations tab ───────────────────────────────────────────────────────
 
-  const openAllocModal = () => { resetAlloc({}); setAllocType('employee'); setAllocModal(true) }
+  const [selectAll, setSelectAll] = useState(false)
+
+  const openAllocModal = () => { resetAlloc({}); setAllocType('employee'); setSelectAll(false); setAllocModal(true) }
 
   const onAllocSubmit = async (data) => {
     const payload = { holidayId: data.holidayId }
-    if (allocType === 'department') {
+    if (allocType === 'all') {
+      payload.allEmployees = true
+    } else if (allocType === 'department') {
       payload.departmentId = data.departmentId
     } else {
       const ids = Array.isArray(data.employeeIds) ? data.employeeIds : [data.employeeIds]
@@ -225,23 +229,48 @@ export default function HolidaysPage() {
             {allocErrors.holidayId && <p className="text-red-500 text-xs mt-1">{allocErrors.holidayId.message}</p>}
           </div>
 
-          <div className="flex gap-3">
-            {['employee', 'department'].map(t => (
-              <button key={t} type="button" onClick={() => setAllocType(t)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${allocType === t ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                By {t.charAt(0).toUpperCase() + t.slice(1)}
+          <div className="flex gap-2">
+            {[
+              { key: 'employee',   label: 'By Employee' },
+              { key: 'department', label: 'By Department' },
+              { key: 'all',        label: 'All Employees' },
+            ].map(({ key, label }) => (
+              <button key={key} type="button" onClick={() => { setAllocType(key); setSelectAll(false) }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${allocType === key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                {label}
               </button>
             ))}
           </div>
 
+          {allocType === 'all' && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              This will allocate the selected holiday to <strong>all {employees.length} active employees</strong> in the company.
+            </div>
+          )}
+
           {allocType === 'employee' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Employees <span className="text-gray-400 font-normal">(hold Ctrl/Cmd for multiple)</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">
+                  Employees <span className="text-gray-400 font-normal">(hold Ctrl/Cmd for multiple)</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-indigo-600 cursor-pointer select-none">
+                  <input type="checkbox" checked={selectAll} onChange={e => {
+                    setSelectAll(e.target.checked)
+                    // programmatically select all options via the hidden select ref
+                  }} />
+                  Select All
+                </label>
+              </div>
               <select multiple size={6}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                {...regAlloc('employeeIds')}>
+                {...regAlloc('employeeIds')}
+                ref={el => {
+                  regAlloc('employeeIds').ref(el)
+                  if (el) {
+                    for (const opt of el.options) opt.selected = selectAll
+                  }
+                }}>
                 {employees.map(e => (
                   <option key={e.id} value={e.id}>{e.firstName} {e.lastName || ''}{e.badgeId ? ` (${e.badgeId})` : ''}</option>
                 ))}

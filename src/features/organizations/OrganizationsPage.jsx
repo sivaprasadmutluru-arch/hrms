@@ -205,10 +205,49 @@ export default function OrganizationsPage() {
             <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={onLogoFileChange} />
           </div>
 
-          <Input label="Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
+          {/* Organization Details */}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Organization Details</p>
+          <Input label="Organization Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
           <Input label="Contact Email" type="email" {...register('contactEmail')} />
           <Input label="Contact Phone" {...register('contactPhone')} />
           <Select label="Subscription Plan" options={['BASIC', 'STANDARD', 'ENTERPRISE']} {...register('subscriptionPlan')} />
+
+          {/* Head Office Details — only for creation */}
+          {!editing && (
+            <>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Head Office Details</p>
+              <Input label="Head Office Name" placeholder="Defaults to organization name if blank" {...register('headOfficeName')} />
+              <Input label="Address" {...register('address')} />
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="City" {...register('city')} />
+                <Input label="State" {...register('state')} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Country" {...register('country')} />
+                <Input label="ZIP" {...register('zip')} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Phone" {...register('phone')} />
+                <Input label="Email" type="email" {...register('email')} />
+              </div>
+              <Input label="Website" {...register('website')} />
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Tax ID" {...register('taxId')} />
+                <Input label="Registration Number" {...register('registrationNumber')} />
+              </div>
+
+              {/* Enterprise Admin Credentials */}
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Enterprise Admin Credentials</p>
+              <p className="text-xs text-gray-400 -mt-2">Leave blank to set up the admin later.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="First Name" {...register('adminFirstName')} />
+                <Input label="Last Name" {...register('adminLastName')} />
+              </div>
+              <Input label="Username / Login Email" {...register('adminUsername')} />
+              <Input label="Admin Email" type="email" {...register('adminEmail')} />
+              <Input label="Password" type="password" {...register('adminPassword')} />
+            </>
+          )}
         </div>
       </Modal>
     </div>

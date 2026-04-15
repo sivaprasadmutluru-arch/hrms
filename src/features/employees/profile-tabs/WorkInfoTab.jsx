@@ -24,20 +24,28 @@ export default function WorkInfoTab({ employeeId, companyId }) {
   const formatCurrency = useCurrency().format
   const [info, setInfo]       = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
   const navigate = useNavigate()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager } = useAuth()
   const canEdit = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
     if (!employeeId) return
+    setError(null)
     const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
     api.get(`/employees/${employeeId}/work-info`, cfg)
       .then(res => setInfo(res.data))
-      .catch(() => {})
+      .catch(err => {
+        if (err.response?.status !== 404) {
+          setError('Failed to load work information.')
+        }
+      })
       .finally(() => setLoading(false))
   }, [employeeId, companyId])
 
   if (loading) return <div className="flex justify-center py-10"><Spinner /></div>
+
+  if (error) return <p className="text-sm text-red-500 py-6">{error}</p>
 
   if (!info) return (
     <div className="py-6 flex flex-col items-start gap-3">
