@@ -6,12 +6,14 @@ import com.example.demo.employee.entity.Employee;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
 @Table(name = "assets")
+@SQLRestriction("is_active = true")
 @Getter
 @Setter
 public class Asset extends BaseEntity {
@@ -54,6 +56,15 @@ public class Asset extends BaseEntity {
     private Company company;
 
     public enum AssetStatus {
-        AVAILABLE, IN_USE, DAMAGED, RETIRED
+        AVAILABLE("Available"),
+        IN_USE("In Use"),
+        DAMAGED("Damaged"),
+        RETIRED("Retired");
+
+        public final String label;
+
+        AssetStatus(String label) {
+            this.label = label;
+        }
     }
 }

@@ -10,7 +10,10 @@ import org.springframework.stereotype.Service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -74,6 +77,35 @@ public class GlobalEmployeeService {
         );
 
         return new PageImpl<>(rows, pageable, total != null ? total : 0L);
+    }
+
+    /**
+     * Returns employee IDs that are currently clocked in (check_in NOT NULL, check_out NULL today)
+     * across ALL organization schemas. Only callable by PLATFORM_SUPER_ADMIN.
+     */
+    public Set<Long> getOnlineEmployeeIdsAcrossOrgs() {
+        List<String> schemas = jdbcTemplate.queryForList(SCHEMA_QUERY, String.class)
+                .stream()
+                .filter(s -> SAFE_SCHEMA.matcher(s).matches())
+                .collect(Collectors.toList());
+
+        if (schemas.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<Long> onlineIds = new HashSet<>();
+        LocalDate today = LocalDate.now();
+        for (String schema : schemas) {
+            Integer tableCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = 'attendance'",
+                    Integer.class, schema);
+            if (tableCount == null || tableCount == 0) continue;
+            String sql = "SELECT employee_id FROM " + schema + ".attendance " +
+                         "WHERE attendance_date = ? AND check_in IS NOT NULL AND check_out IS NULL";
+            List<Long> ids = jdbcTemplate.queryForList(sql, Long.class, today);
+            onlineIds.addAll(ids);
+        }
+        return onlineIds;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

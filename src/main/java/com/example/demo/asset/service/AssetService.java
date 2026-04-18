@@ -63,6 +63,9 @@ public class AssetService {
         if (asset.getCategory() != null && asset.getCategory().getId() != null) {
             asset.setCategory(assetCategoryRepository.getReferenceById(asset.getCategory().getId()));
         }
+        if (asset.getAssignedTo() != null && asset.getAssignedTo().getId() != null) {
+            asset.setAssignedTo(employeeRepository.getReferenceById(asset.getAssignedTo().getId()));
+        }
         if (asset.getStatus() == null) {
             asset.setStatus(Asset.AssetStatus.AVAILABLE);
         }
@@ -81,6 +84,11 @@ public class AssetService {
         asset.setWarrantyExpiry(updated.getWarrantyExpiry());
         if (updated.getCategory() != null && updated.getCategory().getId() != null) {
             asset.setCategory(assetCategoryRepository.getReferenceById(updated.getCategory().getId()));
+        }
+        if (updated.getAssignedTo() != null && updated.getAssignedTo().getId() != null) {
+            asset.setAssignedTo(employeeRepository.getReferenceById(updated.getAssignedTo().getId()));
+        } else if (updated.getAssignedTo() == null) {
+            asset.setAssignedTo(null);
         }
         log.info("Updated asset id={}", id);
         return assetRepository.save(asset);
@@ -265,6 +273,13 @@ public class AssetService {
                 .orElseThrow(() -> new ResourceNotFoundException("AssetAssignment", assignmentId));
         assignment.setIsReturned(true);
         assignment.setReturnedDate(LocalDate.now());
+
+        Asset asset = assignment.getAsset();
+        asset.setAssignedTo(null);
+        asset.setAssignedDate(null);
+        asset.setStatus(Asset.AssetStatus.AVAILABLE);
+        assetRepository.save(asset);
+
         return assetAssignmentRepository.save(assignment);
     }
 
@@ -492,13 +507,30 @@ public class AssetService {
         asset.setAssignedTo(employee);
         asset.setAssignedDate(LocalDate.now());
         asset.setStatus(Asset.AssetStatus.IN_USE);
-        return assetRepository.save(asset);
+        assetRepository.save(asset);
+
+        AssetAssignment assignment = new AssetAssignment();
+        assignment.setAsset(asset);
+        assignment.setEmployee(employee);
+        assignment.setAssignedDate(LocalDate.now());
+        assignment.setIsReturned(false);
+        assetAssignmentRepository.save(assignment);
+
+        return asset;
     }
 
     @Transactional
     public Asset returnAssetById(Long assetId) {
         Asset asset = assetRepository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Asset", assetId));
+
+        assetAssignmentRepository.findByAssetIdAndIsReturnedFalse(assetId)
+                .forEach(a -> {
+                    a.setIsReturned(true);
+                    a.setReturnedDate(LocalDate.now());
+                    assetAssignmentRepository.save(a);
+                });
+
         asset.setAssignedTo(null);
         asset.setAssignedDate(null);
         asset.setStatus(Asset.AssetStatus.AVAILABLE);

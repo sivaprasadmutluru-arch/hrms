@@ -1,13 +1,18 @@
 package com.example.demo.documents.controller;
 
+import com.example.demo.auth.security.UserPrincipal;
+import com.example.demo.documents.dto.SubmissionStatusDTO;
 import com.example.demo.documents.entity.DocumentRequest;
 import com.example.demo.documents.entity.EmployeeDocument;
 import com.example.demo.documents.service.DocumentService;
+import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,8 +25,18 @@ import java.util.Map;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final EmployeeRepository employeeRepository;
 
     // ─── Document Requests ────────────────────────────────────────────────────
+
+    @GetMapping("/requests/my")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get document requests tagged to the current employee")
+    public ResponseEntity<List<DocumentRequest>> getMyRequests(@AuthenticationPrincipal UserPrincipal user) {
+        return employeeRepository.findByUserId(user.getId())
+                .map(emp -> ResponseEntity.ok(documentService.getRequestsForEmployee(emp.getId())))
+                .orElse(ResponseEntity.ok(List.of()));
+    }
 
     @GetMapping("/requests")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
@@ -42,6 +57,13 @@ public class DocumentController {
     @Operation(summary = "Update a document request")
     public ResponseEntity<DocumentRequest> updateRequest(@PathVariable Long id, @RequestBody DocumentRequest updated) {
         return ResponseEntity.ok(documentService.updateRequest(id, updated));
+    }
+
+    @GetMapping("/requests/{id}/submissions")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Get submission status for every employee tagged in a document request")
+    public ResponseEntity<List<SubmissionStatusDTO>> getSubmissionStatus(@PathVariable Long id) {
+        return ResponseEntity.ok(documentService.getSubmissionStatus(id));
     }
 
     @DeleteMapping("/requests/{id}")

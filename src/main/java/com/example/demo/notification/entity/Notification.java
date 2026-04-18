@@ -45,6 +45,7 @@ public class Notification extends BaseEntity {
         ATTENDANCE_REQUEST, ATTENDANCE_APPROVED,
         PAYSLIP_GENERATED, ASSET_ASSIGNED,
         TICKET_ASSIGNED, TICKET_RESOLVED,
+        POLICY_PUBLISHED,
         GENERAL
     }
 }

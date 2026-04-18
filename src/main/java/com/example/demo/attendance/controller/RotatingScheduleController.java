@@ -1,10 +1,12 @@
 package com.example.demo.attendance.controller;
 
+import com.example.demo.base.entity.EmployeeShift;
 import com.example.demo.base.entity.RotatingShift;
 import com.example.demo.base.entity.RotatingShiftAssign;
 import com.example.demo.base.entity.RotatingWorkType;
 import com.example.demo.base.entity.RotatingWorkTypeAssign;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.repository.EmployeeShiftRepository;
 import com.example.demo.base.repository.RotatingShiftAssignRepository;
 import com.example.demo.base.repository.RotatingShiftRepository;
 import com.example.demo.base.repository.RotatingWorkTypeAssignRepository;
@@ -22,7 +24,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,7 @@ public class RotatingScheduleController {
     private final RotatingWorkTypeAssignRepository rotatingWorkTypeAssignRepository;
     private final EmployeeRepository employeeRepository;
     private final ShiftScheduleRepository shiftScheduleRepository;
+    private final EmployeeShiftRepository employeeShiftRepository;
 
     // ─── Rotating Shifts ──────────────────────────────────────────────────────
 
@@ -61,6 +66,12 @@ public class RotatingScheduleController {
         if (rs.getCompany() != null && rs.getCompany().getId() != null) {
             rs.setCompany(companyRepository.getReferenceById(rs.getCompany().getId()));
         }
+        if (rs.getShift1() != null && rs.getShift1().getId() != null) {
+            rs.setShift1(employeeShiftRepository.getReferenceById(rs.getShift1().getId()));
+        }
+        if (rs.getShift2() != null && rs.getShift2().getId() != null) {
+            rs.setShift2(employeeShiftRepository.getReferenceById(rs.getShift2().getId()));
+        }
         return ResponseEntity.ok(rotatingShiftRepository.save(rs));
     }
 
@@ -72,6 +83,12 @@ public class RotatingScheduleController {
         RotatingShift rs = rotatingShiftRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("RotatingShift", id));
         rs.setName(updated.getName());
+        if (updated.getShift1() != null && updated.getShift1().getId() != null) {
+            rs.setShift1(employeeShiftRepository.getReferenceById(updated.getShift1().getId()));
+        }
+        if (updated.getShift2() != null && updated.getShift2().getId() != null) {
+            rs.setShift2(employeeShiftRepository.getReferenceById(updated.getShift2().getId()));
+        }
         return ResponseEntity.ok(rotatingShiftRepository.save(rs));
     }
 
@@ -163,8 +180,28 @@ public class RotatingScheduleController {
             assign.setEmployee(employeeRepository.getReferenceById(assign.getEmployee().getId()));
         }
         if (assign.getRotatingShift() != null && assign.getRotatingShift().getId() != null) {
-            assign.setRotatingShift(rotatingShiftRepository.getReferenceById(assign.getRotatingShift().getId()));
+            RotatingShift rs = rotatingShiftRepository.findById(assign.getRotatingShift().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("RotatingShift", assign.getRotatingShift().getId()));
+            assign.setRotatingShift(rs);
+            // Initialize current/next shift from the rotating shift definition
+            if (assign.getCurrentShift() == null) assign.setCurrentShift(rs.getShift1());
+            if (assign.getNextShift() == null) assign.setNextShift(rs.getShift2());
         }
+        // Compute nextChangeDate from startDate + rotation interval
+        if (assign.getStartDate() != null && assign.getNextChangeDate() == null) {
+            assign.setNextChangeDate(computeNextChangeDate(assign.getStartDate(), assign));
+        }
+        return ResponseEntity.ok(rotatingShiftAssignRepository.save(assign));
+    }
+
+    @PostMapping("/rotating-shift-assigns/{id}/rotate")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Manually trigger shift rotation for an assignment")
+    public ResponseEntity<RotatingShiftAssign> rotateShiftAssign(@PathVariable Long id) {
+        RotatingShiftAssign assign = rotatingShiftAssignRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("RotatingShiftAssign", id));
+        applyRotation(assign);
         return ResponseEntity.ok(rotatingShiftAssignRepository.save(assign));
     }
 
@@ -341,6 +378,48 @@ public class RotatingScheduleController {
             assigns.add(assign);
         }
         return ResponseEntity.ok(rotatingWorkTypeAssignRepository.saveAll(assigns));
+    }
+
+    // ─── Rotation Helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Swap currentShift ↔ nextShift and advance nextChangeDate.
+     */
+    public static void applyRotation(RotatingShiftAssign assign) {
+        EmployeeShift temp = assign.getCurrentShift();
+        assign.setCurrentShift(assign.getNextShift());
+        assign.setNextShift(temp);
+        LocalDate base = assign.getNextChangeDate() != null ? assign.getNextChangeDate() : LocalDate.now();
+        assign.setNextChangeDate(computeNextChangeDate(base, assign));
+    }
+
+    /**
+     * Compute the next rotation date from a base date using the assignment's rotation settings.
+     * Supports DAYS, WEEKS (with optional rotateEveryWeekend day), and MONTHS rotation.
+     * Falls back to rotateAfterDay (default 7) days if rotateAfterEvery is null.
+     */
+    static LocalDate computeNextChangeDate(LocalDate base, RotatingShiftAssign assign) {
+        int count = assign.getRotateAfterEveryCount() != null ? assign.getRotateAfterEveryCount() : 1;
+        if (assign.getRotateAfterEvery() == null) {
+            int days = assign.getRotateAfterDay() != null ? assign.getRotateAfterDay() : 7;
+            return base.plusDays(days);
+        }
+        return switch (assign.getRotateAfterEvery()) {
+            case DAYS -> base.plusDays((long) count);
+            case WEEKS -> {
+                LocalDate next = base.plusWeeks(count);
+                // Snap to the specified weekday if rotateEveryWeekend is set
+                String weekday = assign.getRotateEveryWeekend();
+                if (weekday != null && !weekday.isBlank()) {
+                    try {
+                        DayOfWeek dow = DayOfWeek.valueOf(weekday.toUpperCase());
+                        yield next.with(TemporalAdjusters.nextOrSame(dow));
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                yield next;
+            }
+            case MONTHS -> base.plusMonths(count);
+        };
     }
 
     // ─── Request DTOs ─────────────────────────────────────────────────────────

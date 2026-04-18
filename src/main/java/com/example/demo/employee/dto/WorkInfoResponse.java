@@ -42,6 +42,7 @@ public class WorkInfoResponse {
     private BigDecimal housingAllowance;
     private BigDecimal transportAllowance;
     private BigDecimal otherAllowance;
+    private BigDecimal totalSalary;
 
     private Double experience;
     private String additionalInfo;

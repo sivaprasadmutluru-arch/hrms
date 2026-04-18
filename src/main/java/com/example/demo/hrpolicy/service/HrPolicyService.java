@@ -3,14 +3,17 @@ package com.example.demo.hrpolicy.service;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.event.PolicyPublishedEvent;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.hrpolicy.entity.HrPolicy;
 import com.example.demo.hrpolicy.repository.HrPolicyRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -20,6 +23,7 @@ public class HrPolicyService {
 
     private final HrPolicyRepository hrPolicyRepository;
     private final CompanyRepository companyRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Returns policies visible to the current user:
@@ -51,6 +55,7 @@ public class HrPolicyService {
         return hrPolicyRepository.save(policy);
     }
 
+    @Transactional
     public HrPolicy update(Long id, HrPolicy updated) {
         HrPolicy policy = hrPolicyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("HrPolicy", id));
@@ -75,7 +80,9 @@ public class HrPolicyService {
         HrPolicy policy = hrPolicyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("HrPolicy", id));
         policy.setIsPublished(true);
-        return hrPolicyRepository.save(policy);
+        HrPolicy saved = hrPolicyRepository.save(policy);
+        eventPublisher.publishEvent(new PolicyPublishedEvent(this, saved));
+        return saved;
     }
 
     public HrPolicy unpublish(Long id) {
@@ -88,6 +95,7 @@ public class HrPolicyService {
     /**
      * Makes a policy organization-wide. Only Head Office companies may do this.
      */
+    @Transactional
     public HrPolicy makeOrganizationWide(Long policyId, Long requestingCompanyId) {
         HrPolicy policy = hrPolicyRepository.findById(policyId)
                 .orElseThrow(() -> new ResourceNotFoundException("HrPolicy", policyId));
@@ -109,6 +117,7 @@ public class HrPolicyService {
     /**
      * Restricts a policy to the branch that owns it (removes org-wide flag).
      */
+    @Transactional
     public HrPolicy makeBranchOnly(Long policyId, Long requestingCompanyId) {
         HrPolicy policy = hrPolicyRepository.findById(policyId)
                 .orElseThrow(() -> new ResourceNotFoundException("HrPolicy", policyId));

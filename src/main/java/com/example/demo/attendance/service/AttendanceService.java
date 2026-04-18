@@ -31,9 +31,9 @@ import com.example.demo.leave.repository.LeaveRequestRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -47,6 +47,7 @@ import java.time.LocalTime;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -66,6 +67,7 @@ public class AttendanceService {
     private final LeaveRequestRepository leaveRequestRepository;
     private final HolidayRepository holidayRepository;
     private final HolidayAllocationRepository holidayAllocationRepository;
+    private final AttendanceValidationConditionRepository validationConditionRepository;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -74,8 +76,28 @@ public class AttendanceService {
      * EMPLOYEE (SELF scope) → sees only their own attendance records.
      */
     @Transactional(readOnly = true)
-    public Page<AttendanceResponse> getAll(Pageable pageable) {
+    public Page<AttendanceResponse> getAll(Pageable pageable, String status, LocalDate from, LocalDate to, Long departmentId) {
         Specification<Attendance> spec = ScopeFilter.byEmployeeDepartment();
+        if (status != null && !status.isBlank()) {
+            Specification<Attendance> statusSpec = (root, query, cb) ->
+                    cb.equal(cb.upper(root.get("attendanceValidated").as(String.class)), status.toUpperCase());
+            spec = spec != null ? spec.and(statusSpec) : statusSpec;
+        }
+        if (from != null) {
+            Specification<Attendance> fromSpec = (root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("attendanceDate"), from);
+            spec = spec != null ? spec.and(fromSpec) : fromSpec;
+        }
+        if (to != null) {
+            Specification<Attendance> toSpec = (root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("attendanceDate"), to);
+            spec = spec != null ? spec.and(toSpec) : toSpec;
+        }
+        if (departmentId != null) {
+            Specification<Attendance> deptSpec = (root, query, cb) ->
+                    cb.equal(root.get("employee").get("department").get("id"), departmentId);
+            spec = spec != null ? spec.and(deptSpec) : deptSpec;
+        }
         Page<Attendance> page = spec != null
                 ? attendanceRepository.findAll(spec, pageable)
                 : attendanceRepository.findAll(pageable);
@@ -111,6 +133,18 @@ public class AttendanceService {
         return AttendanceResponse.from(att);
     }
 
+    /** Parse HH:MM string to total minutes, returns null if blank/invalid. */
+    private Integer parseHhmm(String hhmm) {
+        if (hhmm == null || hhmm.isBlank()) return null;
+        String[] parts = hhmm.split(":");
+        if (parts.length < 2) return null;
+        try {
+            return Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private void autoComputeOnCheckout(Attendance att) {
         // Compute worked hours
         if (att.getCheckIn() != null) {
@@ -123,10 +157,38 @@ public class AttendanceService {
             } else {
                 minutes = ChronoUnit.MINUTES.between(in, out);
             }
-            double worked = minutes / 60.0;
+            double worked = Math.round((minutes / 60.0) * 100.0) / 100.0;
             att.setWorkedHour(worked);
+
             if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
-                att.setAttendanceOvertime(worked - att.getMinimumHour());
+                double rawOt = Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0;
+
+                // Resolve shift-level values, fall back to company-level ValidationCondition
+                ShiftSchedule shift = att.getShift();
+                String cutoffStr = shift != null ? shift.getOvertimeCutoff() : null;
+                String minOtStr  = shift != null ? shift.getMinimumOvertimeToApprove() : null;
+
+                if (att.getCompany() != null && ((cutoffStr == null || cutoffStr.isBlank()) || (minOtStr == null || minOtStr.isBlank()))) {
+                    var vc = validationConditionRepository.findByCompanyId(att.getCompany().getId()).orElse(null);
+                    if (vc != null) {
+                        if (cutoffStr == null || cutoffStr.isBlank()) cutoffStr = vc.getOvertimeCutoff();
+                        if (minOtStr  == null || minOtStr.isBlank())  minOtStr  = vc.getMinimumOvertimeToApprove();
+                    }
+                }
+
+                // Apply minimumOvertimeToApprove: discard OT below the threshold
+                Integer minOtMinutes = parseHhmm(minOtStr);
+                if (minOtMinutes != null && rawOt * 60 < minOtMinutes) {
+                    rawOt = 0.0;
+                }
+
+                // Apply overtimeCutoff: cap at maximum allowed
+                Integer cutoffMinutes = parseHhmm(cutoffStr);
+                if (cutoffMinutes != null) {
+                    rawOt = Math.min(rawOt, cutoffMinutes / 60.0);
+                }
+
+                att.setAttendanceOvertime(Math.round(rawOt * 100.0) / 100.0);
             }
             attendanceRepository.save(att);
 
@@ -229,6 +291,7 @@ public class AttendanceService {
     public AttendanceResponse reject(Long id) {
         Attendance att = find(id);
         att.setAttendanceValidated(Attendance.AttendanceStatus.REJECTED);
+        att.setIsValidateRequest(false);
         return AttendanceResponse.from(attendanceRepository.save(att));
     }
 
@@ -264,12 +327,12 @@ public class AttendanceService {
             } else {
                 minutes = ChronoUnit.MINUTES.between(in, out);
             }
-            double worked = minutes / 60.0;
+            double worked = Math.round((minutes / 60.0) * 100.0) / 100.0;
             att.setWorkedHour(worked);
 
             // Compute overtime vs minimum
             if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
-                att.setAttendanceOvertime(worked - att.getMinimumHour());
+                att.setAttendanceOvertime(Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0);
             }
         }
         return AttendanceResponse.from(attendanceRepository.save(att));
@@ -665,22 +728,57 @@ public class AttendanceService {
     // ─── Dashboard ────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public Map<String, Object> getDashboard(Long companyId, LocalDate date) {
+    public Map<String, Object> getDashboard(Long companyId, LocalDate date, Long departmentId) {
         LocalDate targetDate = date != null ? date : LocalDate.now();
-        long totalEmployees = employeeRepository.countByCompanyIdAndIsActiveTrue(companyId);
-        List<Attendance> presentRecords = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNull(companyId, targetDate);
+
+        List<Employee> allActive = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        if (departmentId != null) {
+            allActive = allActive.stream()
+                    .filter(e -> e.getDepartment() != null && departmentId.equals(e.getDepartment().getId()))
+                    .collect(Collectors.toList());
+        }
+        long totalEmployees = allActive.size();
+
+        Set<Long> activeEmpIds = allActive.stream().map(Employee::getId).collect(Collectors.toSet());
+
+        List<Attendance> presentRecords = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNull(companyId, targetDate)
+                .stream().filter(a -> a.getEmployee() != null && activeEmpIds.contains(a.getEmployee().getId()))
+                .collect(Collectors.toList());
         long presentToday = presentRecords.size();
         long absentToday = totalEmployees - presentToday;
-        long notOutYet = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(companyId, targetDate).size();
-        // Count late arrivals on that date
-        List<Attendance> dayAttendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, targetDate);
+        long notOutYet = presentRecords.stream().filter(a -> a.getCheckOut() == null).count();
+
+        List<Attendance> dayAttendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, targetDate)
+                .stream().filter(a -> a.getEmployee() != null && activeEmpIds.contains(a.getEmployee().getId()))
+                .collect(Collectors.toList());
         long lateCount = dayAttendances.stream()
                 .flatMap(a -> lateComeEarlyOutRepository.findByAttendanceId(a.getId()).stream())
                 .filter(le -> le.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME)
                 .count();
         long overtimePending = overtimeRepository.findByCompanyId(companyId).stream()
                 .filter(ot -> ot.getStatus() == AttendanceOverTime.OvertimeStatus.PENDING)
+                .filter(ot -> ot.getEmployee() != null && activeEmpIds.contains(ot.getEmployee().getId()))
                 .count();
+
+        // Hours by department breakdown — last 7 days ending at targetDate
+        LocalDate weekStart = targetDate.minusDays(6);
+        List<Attendance> weekAttendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, weekStart, targetDate)
+                .stream().filter(a -> a.getEmployee() != null && activeEmpIds.contains(a.getEmployee().getId()))
+                .collect(Collectors.toList());
+        Map<String, Double> hoursByDeptMap = new LinkedHashMap<>();
+        for (Attendance a : weekAttendances) {
+            if (a.getEmployee().getDepartment() != null && a.getWorkedHour() != null) {
+                String deptName = a.getEmployee().getDepartment().getName();
+                hoursByDeptMap.merge(deptName, a.getWorkedHour(), Double::sum);
+            }
+        }
+        List<Map<String, Object>> hoursByDepartment = hoursByDeptMap.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("department", e.getKey());
+                    m.put("totalHours", Math.round(e.getValue() * 10.0) / 10.0);
+                    return m;
+                }).collect(Collectors.toList());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("totalEmployees", totalEmployees);
@@ -689,6 +787,7 @@ public class AttendanceService {
         result.put("notOutYet", notOutYet);
         result.put("lateCount", lateCount);
         result.put("overtimePending", overtimePending);
+        result.put("hoursByDepartment", hoursByDepartment);
         return result;
     }
 
@@ -699,25 +798,75 @@ public class AttendanceService {
         List<Attendance> records = attendanceRepository.findByCompanyId(companyId);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=attendance.xlsx");
-        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet("Attendance");
-            Row header = sheet.createRow(0);
+
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Attendance");
+            sheet.setDefaultRowHeightInPoints(20);
+
+            // ── Styles ──────────────────────────────────────────────────
+            XSSFCellStyle titleStyle    = xlTitleStyle(wb, "1E1B4B");
+            XSSFCellStyle headerStyle   = xlHeaderStyle(wb, "6366F1");
+            XSSFCellStyle evenStyle     = xlBodyStyle(wb, "EEF2FF"); // light indigo tint
+            XSSFCellStyle oddStyle      = xlBodyStyle(wb, "FFFFFF");
+            XSSFCellStyle approvedStyle = xlBadgeStyle(wb, "10B981");
+            XSSFCellStyle pendingStyle  = xlBadgeStyle(wb, "F59E0B");
+            XSSFCellStyle rejectedStyle = xlBadgeStyle(wb, "EF4444");
+
             String[] columns = {"Employee Name", "Date", "Check-In", "Check-Out", "Worked Hours", "Status"};
+
+            // Title row
+            Row titleRow = sheet.createRow(0);
+            titleRow.setHeightInPoints(30);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("HRMS Pro  |  Attendance Export");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, columns.length - 1));
+            for (int i = 1; i < columns.length; i++) titleRow.createCell(i).setCellStyle(titleStyle);
+
+            // Header row
+            Row headerRow = sheet.createRow(1);
+            headerRow.setHeightInPoints(22);
             for (int i = 0; i < columns.length; i++) {
-                header.createCell(i).setCellValue(columns[i]);
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(columns[i]);
+                cell.setCellStyle(headerStyle);
             }
-            int rowNum = 1;
+
+            // Data rows
+            int rowNum = 2;
             for (Attendance a : records) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(a.getEmployee() != null
-                        ? a.getEmployee().getFirstName() + " " + (a.getEmployee().getLastName() != null ? a.getEmployee().getLastName() : "") : "");
-                row.createCell(1).setCellValue(a.getAttendanceDate() != null ? a.getAttendanceDate().toString() : "");
-                row.createCell(2).setCellValue(a.getCheckIn() != null ? a.getCheckIn().toString() : "");
-                row.createCell(3).setCellValue(a.getCheckOut() != null ? a.getCheckOut().toString() : "");
-                row.createCell(4).setCellValue(a.getWorkedHour() != null ? a.getWorkedHour() : 0.0);
-                row.createCell(5).setCellValue(a.getAttendanceValidated() != null ? a.getAttendanceValidated().name() : "");
+                Row row = sheet.createRow(rowNum);
+                row.setHeightInPoints(18);
+                XSSFCellStyle base = rowNum % 2 == 0 ? evenStyle : oddStyle;
+
+                xlCell(row, 0, a.getEmployee() != null
+                        ? a.getEmployee().getFirstName() + " " + (a.getEmployee().getLastName() != null ? a.getEmployee().getLastName() : "")
+                        : "", base);
+                xlCell(row, 1, a.getAttendanceDate() != null ? a.getAttendanceDate().toString() : "", base);
+                xlCell(row, 2, a.getCheckIn()  != null ? a.getCheckIn().toString()  : "", base);
+                xlCell(row, 3, a.getCheckOut() != null ? a.getCheckOut().toString() : "", base);
+
+                Cell hoursCell = row.createCell(4);
+                hoursCell.setCellValue(a.getWorkedHour() != null ? a.getWorkedHour() : 0.0);
+                hoursCell.setCellStyle(base);
+
+                String status = a.getAttendanceValidated() != null ? a.getAttendanceValidated().name() : "PENDING";
+                Cell statusCell = row.createCell(5);
+                statusCell.setCellValue(status);
+                statusCell.setCellStyle(switch (status) {
+                    case "APPROVED" -> approvedStyle;
+                    case "REJECTED" -> rejectedStyle;
+                    default         -> pendingStyle;
+                });
+                rowNum++;
             }
-            workbook.write(response.getOutputStream());
+
+            // Column widths (in 1/256 char units)
+            int[] widths = {6500, 3500, 3000, 3000, 3500, 3500};
+            for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i]);
+
+            sheet.createFreezePane(0, 2);
+            wb.write(response.getOutputStream());
         }
     }
 
@@ -1015,8 +1164,9 @@ public class AttendanceService {
     }
 
     /**
-     * Export the register matrix as an Excel file.
+     * Export the register matrix as a themed Excel file.
      * Each employee is a row; each date column contains P / A / L / WO / H / OL.
+     * Cells are color-coded to match the web UI theme.
      */
     @Transactional(readOnly = true)
     public void exportRegisterToExcel(Long companyId, Long departmentId, int year, int month,
@@ -1026,42 +1176,221 @@ public class AttendanceService {
         String filename = "attendance_register_" + register.getMonthLabel().replace(" ", "_") + ".xlsx";
         response.setHeader("Content-Disposition", "attachment; filename=" + filename);
 
-        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet(register.getMonthLabel());
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet(register.getMonthLabel());
+            sheet.setDefaultRowHeightInPoints(20);
 
-            // Header row: Employee | Dept | <dates...> | P | A | L | Leave
-            Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("Employee");
-            header.createCell(1).setCellValue("Department");
+            // ── Styles ──────────────────────────────────────────────────
+            XSSFCellStyle titleStyle     = xlTitleStyle(wb, "1E1B4B");
+            XSSFCellStyle headerStyle    = xlHeaderStyle(wb, "4F46E5");
+            XSSFCellStyle empStyle       = xlBodyStyle(wb, "EEF2FF");
+            XSSFCellStyle deptStyle      = xlBodyStyle(wb, "F5F3FF");
+            XSSFCellStyle evenStyle      = xlBodyStyle(wb, "FAFAFA");
+            XSSFCellStyle oddStyle       = xlBodyStyle(wb, "FFFFFF");
+            // Status cell styles — match the web UI
+            XSSFCellStyle presentStyle   = xlBadgeStyle(wb, "10B981"); // green  — P
+            XSSFCellStyle absentStyle    = xlBadgeStyle(wb, "EF4444"); // red    — A
+            XSSFCellStyle lateStyle      = xlBadgeStyle(wb, "F59E0B"); // amber  — L
+            XSSFCellStyle weeklyOffStyle = xlBadgeStyle(wb, "9CA3AF"); // gray   — WO
+            XSSFCellStyle holidayStyle   = xlBadgeStyle(wb, "64748B"); // slate  — H
+            XSSFCellStyle onLeaveStyle   = xlBadgeStyle(wb, "3B82F6"); // blue   — OL
+            XSSFCellStyle futureStyle    = xlBadgeStyle(wb, "E5E7EB"); // pale   — -
+            // Summary header badges (in header row)
+            XSSFCellStyle hdrPresent     = xlBadgeStyle(wb, "10B981");
+            XSSFCellStyle hdrAbsent      = xlBadgeStyle(wb, "EF4444");
+            XSSFCellStyle hdrLate        = xlBadgeStyle(wb, "F59E0B");
+            XSSFCellStyle hdrLeave       = xlBadgeStyle(wb, "3B82F6");
+            // Summary count cells
+            XSSFCellStyle sumPresent     = xlSummaryStyle(wb, "10B981");
+            XSSFCellStyle sumAbsent      = xlSummaryStyle(wb, "EF4444");
+            XSSFCellStyle sumLate        = xlSummaryStyle(wb, "F59E0B");
+            XSSFCellStyle sumLeave       = xlSummaryStyle(wb, "3B82F6");
+
             List<String> dates = register.getDates();
-            for (int i = 0; i < dates.size(); i++) {
-                // Show day number only (e.g. "1", "2") to keep columns narrow
-                String day = dates.get(i).substring(8); // last 2 chars = day
-                header.createCell(2 + i).setCellValue(day.startsWith("0") ? day.substring(1) : day);
+            int numDates = dates.size();
+            int summaryStart = 2 + numDates;
+
+            // Title row
+            Row titleRow = sheet.createRow(0);
+            titleRow.setHeightInPoints(30);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("HRMS Pro  |  Attendance Register  —  " + register.getMonthLabel());
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, summaryStart + 3));
+            for (int i = 1; i <= summaryStart + 3; i++) titleRow.createCell(i).setCellStyle(titleStyle);
+
+            // Header row
+            Row header = sheet.createRow(1);
+            header.setHeightInPoints(22);
+            xlCell(header, 0, "Employee",   headerStyle);
+            xlCell(header, 1, "Department", headerStyle);
+            for (int i = 0; i < numDates; i++) {
+                String day = dates.get(i).substring(8);
+                xlCell(header, 2 + i, day.startsWith("0") ? day.substring(1) : day, headerStyle);
             }
-            int summaryStart = 2 + dates.size();
-            header.createCell(summaryStart).setCellValue("Present");
-            header.createCell(summaryStart + 1).setCellValue("Absent");
-            header.createCell(summaryStart + 2).setCellValue("Late");
-            header.createCell(summaryStart + 3).setCellValue("Leave");
+            xlCell(header, summaryStart,     "P",  hdrPresent);
+            xlCell(header, summaryStart + 1, "A",  hdrAbsent);
+            xlCell(header, summaryStart + 2, "L",  hdrLate);
+            xlCell(header, summaryStart + 3, "OL", hdrLeave);
 
             // Data rows
-            int rowNum = 1;
+            int rowNum = 2;
             for (AttendanceRegisterRowDto emp : register.getEmployees()) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(emp.getName());
-                row.createCell(1).setCellValue(emp.getDepartment() != null ? emp.getDepartment() : "");
-                for (int i = 0; i < dates.size(); i++) {
+                Row row = sheet.createRow(rowNum);
+                row.setHeightInPoints(18);
+                XSSFCellStyle baseStyle = rowNum % 2 == 0 ? evenStyle : oddStyle;
+
+                xlCell(row, 0, emp.getName(), empStyle);
+                xlCell(row, 1, emp.getDepartment() != null ? emp.getDepartment() : "", deptStyle);
+
+                for (int i = 0; i < numDates; i++) {
                     AttendanceRegisterDayDto cell = emp.getDays().get(dates.get(i));
-                    row.createCell(2 + i).setCellValue(cell != null ? cell.getDisplayStatus() : "-");
+                    String ds = cell != null && cell.getDisplayStatus() != null ? cell.getDisplayStatus() : "-";
+                    XSSFCellStyle cellStyle = switch (ds) {
+                        case "P"  -> presentStyle;
+                        case "A"  -> absentStyle;
+                        case "L"  -> lateStyle;
+                        case "WO" -> weeklyOffStyle;
+                        case "H"  -> holidayStyle;
+                        case "OL" -> onLeaveStyle;
+                        default   -> futureStyle;
+                    };
+                    xlCell(row, 2 + i, ds, cellStyle);
                 }
-                row.createCell(summaryStart).setCellValue(emp.getPresentCount());
-                row.createCell(summaryStart + 1).setCellValue(emp.getAbsentCount());
-                row.createCell(summaryStart + 2).setCellValue(emp.getLateCount());
-                row.createCell(summaryStart + 3).setCellValue(emp.getLeaveCount());
+
+                xlNumCell(row, summaryStart,     emp.getPresentCount(), sumPresent);
+                xlNumCell(row, summaryStart + 1, emp.getAbsentCount(),  sumAbsent);
+                xlNumCell(row, summaryStart + 2, emp.getLateCount(),    sumLate);
+                xlNumCell(row, summaryStart + 3, emp.getLeaveCount(),   sumLeave);
+                rowNum++;
             }
-            workbook.write(response.getOutputStream());
+
+            // Column widths
+            sheet.setColumnWidth(0, 5500); // Employee
+            sheet.setColumnWidth(1, 3800); // Department
+            for (int i = 0; i < numDates; i++) sheet.setColumnWidth(2 + i, 1100);
+            for (int i = 0; i < 4; i++)    sheet.setColumnWidth(summaryStart + i, 1600);
+
+            sheet.createFreezePane(2, 2); // freeze employee/dept cols + title+header rows
+            wb.write(response.getOutputStream());
         }
+    }
+
+    // ── Excel Theming Helpers ─────────────────────────────────────────────────
+
+    private XSSFCellStyle xlTitleStyle(XSSFWorkbook wb, String bgHex) {
+        XSSFCellStyle s = wb.createCellStyle();
+        s.setFillForegroundColor(new XSSFColor(hexRgb(bgHex), null));
+        s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = wb.createFont();
+        f.setBold(true);
+        f.setColor(new XSSFColor(hexRgb("FFFFFF"), null));
+        f.setFontHeightInPoints((short) 13);
+        f.setFontName("Calibri");
+        s.setFont(f);
+        s.setAlignment(HorizontalAlignment.CENTER);
+        s.setVerticalAlignment(VerticalAlignment.CENTER);
+        return s;
+    }
+
+    private XSSFCellStyle xlHeaderStyle(XSSFWorkbook wb, String bgHex) {
+        XSSFCellStyle s = wb.createCellStyle();
+        s.setFillForegroundColor(new XSSFColor(hexRgb(bgHex), null));
+        s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = wb.createFont();
+        f.setBold(true);
+        f.setColor(new XSSFColor(hexRgb("FFFFFF"), null));
+        f.setFontHeightInPoints((short) 11);
+        f.setFontName("Calibri");
+        s.setFont(f);
+        s.setAlignment(HorizontalAlignment.CENTER);
+        s.setVerticalAlignment(VerticalAlignment.CENTER);
+        xlBorder(s, BorderStyle.THIN, "8B8BCC");
+        return s;
+    }
+
+    private XSSFCellStyle xlBodyStyle(XSSFWorkbook wb, String bgHex) {
+        XSSFCellStyle s = wb.createCellStyle();
+        s.setFillForegroundColor(new XSSFColor(hexRgb(bgHex), null));
+        s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = wb.createFont();
+        f.setColor(new XSSFColor(hexRgb("1F2937"), null));
+        f.setFontHeightInPoints((short) 10);
+        f.setFontName("Calibri");
+        s.setFont(f);
+        s.setVerticalAlignment(VerticalAlignment.CENTER);
+        xlBorder(s, BorderStyle.THIN, "E5E7EB");
+        return s;
+    }
+
+    /** Solid-color badge cell: white text on dark backgrounds, dark text on light ones. */
+    private XSSFCellStyle xlBadgeStyle(XSSFWorkbook wb, String bgHex) {
+        XSSFCellStyle s = wb.createCellStyle();
+        s.setFillForegroundColor(new XSSFColor(hexRgb(bgHex), null));
+        s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = wb.createFont();
+        f.setBold(true);
+        f.setColor(new XSSFColor(hexRgb(xlIsLight(bgHex) ? "374151" : "FFFFFF"), null));
+        f.setFontHeightInPoints((short) 10);
+        f.setFontName("Calibri");
+        s.setFont(f);
+        s.setAlignment(HorizontalAlignment.CENTER);
+        s.setVerticalAlignment(VerticalAlignment.CENTER);
+        xlBorder(s, BorderStyle.THIN, "D1D5DB");
+        return s;
+    }
+
+    /** Bold numeric summary cell (e.g. present/absent counts). */
+    private XSSFCellStyle xlSummaryStyle(XSSFWorkbook wb, String bgHex) {
+        XSSFCellStyle s = wb.createCellStyle();
+        s.setFillForegroundColor(new XSSFColor(hexRgb(bgHex), null));
+        s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = wb.createFont();
+        f.setBold(true);
+        f.setColor(new XSSFColor(hexRgb("FFFFFF"), null));
+        f.setFontHeightInPoints((short) 10);
+        f.setFontName("Calibri");
+        s.setFont(f);
+        s.setAlignment(HorizontalAlignment.CENTER);
+        s.setVerticalAlignment(VerticalAlignment.CENTER);
+        xlBorder(s, BorderStyle.THIN, "D1D5DB");
+        return s;
+    }
+
+    private void xlBorder(XSSFCellStyle s, BorderStyle bs, String hexColor) {
+        s.setBorderTop(bs); s.setBorderBottom(bs);
+        s.setBorderLeft(bs); s.setBorderRight(bs);
+        XSSFColor c = new XSSFColor(hexRgb(hexColor), null);
+        s.setTopBorderColor(c); s.setBottomBorderColor(c);
+        s.setLeftBorderColor(c); s.setRightBorderColor(c);
+    }
+
+    private void xlCell(Row row, int col, String value, XSSFCellStyle style) {
+        Cell cell = row.createCell(col);
+        cell.setCellValue(value);
+        cell.setCellStyle(style);
+    }
+
+    private void xlNumCell(Row row, int col, int value, XSSFCellStyle style) {
+        Cell cell = row.createCell(col);
+        cell.setCellValue(value);
+        cell.setCellStyle(style);
+    }
+
+    private byte[] hexRgb(String hex) {
+        return new byte[]{
+            (byte) Integer.parseInt(hex.substring(0, 2), 16),
+            (byte) Integer.parseInt(hex.substring(2, 4), 16),
+            (byte) Integer.parseInt(hex.substring(4, 6), 16)
+        };
+    }
+
+    /** Returns true if the color is light enough to warrant dark text. */
+    private boolean xlIsLight(String hex) {
+        double r = Integer.parseInt(hex.substring(0, 2), 16);
+        double g = Integer.parseInt(hex.substring(2, 4), 16);
+        double b = Integer.parseInt(hex.substring(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0 > 0.6;
     }
 
     private String getCellString(Row row, int col) {

@@ -85,6 +85,7 @@ public class DataSeeder implements CommandLineRunner {
         MODULE_PERMISSIONS.put("project",     new String[]{"view", "create", "edit", "delete"});
         MODULE_PERMISSIONS.put("company",     new String[]{"view", "create", "edit", "delete"});
         MODULE_PERMISSIONS.put("department",  new String[]{"view", "create", "edit", "delete"});
+        MODULE_PERMISSIONS.put("documents",   new String[]{"view", "create", "edit", "delete", "approve"});
         MODULE_PERMISSIONS.put("report",      new String[]{"view", "export"});
         MODULE_PERMISSIONS.put("organization",new String[]{"view", "create", "edit", "delete"});
     }
@@ -158,7 +159,8 @@ public class DataSeeder implements CommandLineRunner {
                         "recruitment:view", "recruitment:create", "recruitment:edit",
                         "onboarding:view", "onboarding:create", "onboarding:edit",
                         "offboarding:view", "offboarding:create", "offboarding:edit",
-                        "asset:view", "asset:create", "asset:edit",
+                        "asset:view", "asset:create", "asset:edit", "asset:delete",
+                        "documents:view", "documents:create", "documents:edit", "documents:delete", "documents:approve",
                         "helpdesk:view", "helpdesk:create", "helpdesk:edit", "helpdesk:delete", "helpdesk:approve",
                         "pms:view", "pms:create", "pms:edit",
                         "project:view", "project:create", "project:edit",
@@ -176,6 +178,7 @@ public class DataSeeder implements CommandLineRunner {
                         "employee:view", "employee:create", "employee:edit",
                         "attendance:view", "attendance:create", "attendance:edit", "attendance:approve",
                         "leave:view", "leave:create", "leave:edit", "leave:approve",
+                        "documents:view", "documents:create", "documents:edit", "documents:delete", "documents:approve",
                         "recruitment:view", "recruitment:create", "recruitment:edit",
                         "onboarding:view", "onboarding:create", "onboarding:edit",
                         "offboarding:view", "offboarding:create", "offboarding:edit",
@@ -236,6 +239,7 @@ public class DataSeeder implements CommandLineRunner {
                         "attendance:view", "attendance:create",
                         "leave:view", "leave:create",
                         "payroll:view",
+                        "documents:view", "documents:create",
                         "helpdesk:view", "helpdesk:create",
                         "pms:view"));
 
@@ -1013,16 +1017,16 @@ public class DataSeeder implements CommandLineRunner {
     // ---------- Helpers ----------
 
     private void createRole(Role.RoleName name, String displayName, String description, Permission[] permissions) {
-        if (roleRepository.findByName(name).isPresent()) {
-            return; // Already exists
-        }
-        Role role = new Role();
-        role.setName(name);
+        Role role = roleRepository.findByName(name).orElseGet(() -> {
+            Role r = new Role();
+            r.setName(name);
+            log.info("Created role: {} ({})", name, displayName);
+            return r;
+        });
         role.setDisplayName(displayName);
         role.setDescription(description);
         role.setPermissions(new HashSet<>(Arrays.asList(permissions)));
         roleRepository.save(role);
-        log.info("Created role: {} ({})", name, displayName);
     }
 
     /** Returns all permissions in the system */

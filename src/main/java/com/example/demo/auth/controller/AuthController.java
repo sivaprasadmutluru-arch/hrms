@@ -41,6 +41,9 @@ public class AuthController {
     @Transactional
     @Operation(summary = "Get current user info and roles")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal UserPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).build();
+        }
         List<String> roles = principal.getAuthorities().stream()
                 .map(a -> a.getAuthority())
                 .filter(a -> a.startsWith("ROLE_"))
@@ -79,6 +82,11 @@ public class AuthController {
                     }).orElse(null);
                 });
 
+        // Fetch employee's firstName for display
+        String firstName = employeeRepository.findByUserId(principal.getId())
+                .map(Employee::getFirstName)
+                .orElse(null);
+
         Map<String, Object> response = new HashMap<>();
         response.put("userId", principal.getId());
         response.put("username", principal.getUsername());
@@ -87,6 +95,7 @@ public class AuthController {
         response.put("companyId", companyId);
         response.put("organizationId", organizationId);
         response.put("employeeId", employeeId);
+        response.put("firstName", firstName);
         return ResponseEntity.ok(response);
     }
 

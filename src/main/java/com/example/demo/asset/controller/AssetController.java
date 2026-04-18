@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/assets")
@@ -26,6 +28,15 @@ import java.util.Map;
 public class AssetController {
 
     private final AssetService assetService;
+
+    @GetMapping("/statuses")
+    @Operation(summary = "List asset status options with display labels")
+    public ResponseEntity<List<Map<String, String>>> getStatuses() {
+        List<Map<String, String>> statuses = Arrays.stream(Asset.AssetStatus.values())
+                .map(s -> Map.of("value", s.name(), "label", s.label))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(statuses);
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('asset:view')")

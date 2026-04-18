@@ -4,16 +4,21 @@ import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
 import com.example.demo.attendance.repository.AttendanceRepository;
+import com.example.demo.attendance.service.AttendanceService;
 import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.dto.EmployeeResponse;
+import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
 import com.example.demo.leave.repository.LeaveRequestRepository;
 import com.example.demo.leave.service.LeaveService;
+import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.entity.Payslip;
+import com.example.demo.payroll.repository.ContractRepository;
 import com.example.demo.payroll.repository.PayslipRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,10 +50,13 @@ import java.util.List;
 public class ESSController {
 
     private final EmployeeRepository employeeRepository;
+    private final EmployeeWorkInformationRepository workInfoRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final AttendanceRepository attendanceRepository;
+    private final AttendanceService attendanceService;
     private final PayslipRepository payslipRepository;
     private final LeaveService leaveService;
+    private final ContractRepository contractRepository;
 
     // ── Profile ──────────────────────────────────────────────────────────────
 
@@ -57,7 +65,36 @@ public class ESSController {
     @Operation(summary = "Get own employee profile")
     public ResponseEntity<EmployeeResponse> me(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(EmployeeResponse.from(emp));
+        Contract contract = contractRepository.findByEmployeeId(emp.getId()).stream().findFirst().orElse(null);
+        return ResponseEntity.ok(EmployeeResponse.from(emp, contract));
+    }
+
+    // ── Work Info ─────────────────────────────────────────────────────────────
+
+    @GetMapping("/my-work-info")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get own work information")
+    public ResponseEntity<WorkInfoResponse> myWorkInfo(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return workInfoRepository.findByEmployeeId(emp.getId())
+                .map(wi -> {
+                    WorkInfoResponse res = WorkInfoResponse.from(wi);
+                    // Merge salary from active Contract if not set in WorkInformation
+                    if (res.getBasicSalary() == null && res.getHousingAllowance() == null) {
+                        contractRepository.findByEmployeeIdAndContractStatus(emp.getId(), com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE)
+                                .ifPresent(contract -> {
+                                    if (contract.getWage() != null) res.setBasicSalary(contract.getWage());
+                                    if (contract.getHousingAllowance() != null) res.setHousingAllowance(contract.getHousingAllowance());
+                                    if (contract.getTransportAllowance() != null) res.setTransportAllowance(contract.getTransportAllowance());
+                                    if (contract.getOtherAllowance() != null) res.setOtherAllowance(contract.getOtherAllowance());
+                                    if (contract.getTotalSalary() != null) res.setTotalSalary(contract.getTotalSalary());
+                                    if (contract.getEndDate() != null && res.getContractEndDate() == null) res.setContractEndDate(contract.getEndDate());
+                                });
+                    }
+                    return ResponseEntity.ok(res);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     // ── Leave ─────────────────────────────────────────────────────────────────
@@ -135,9 +172,63 @@ public class ESSController {
                     att.setAttendanceDate(req.getAttendanceDate() != null ? req.getAttendanceDate() : today);
                     att.setCheckIn(req.getCheckIn() != null ? req.getCheckIn() : java.time.LocalTime.now());
                     att.setCheckInDate(req.getCheckInDate() != null ? req.getCheckInDate() : today);
+                    // Populate shift and work type from employee's work information
+                    workInfoRepository.findByEmployeeId(emp.getId()).ifPresent(wi -> {
+                        if (wi.getShift() != null) att.setShift(wi.getShift());
+                        if (wi.getWorkType() != null) att.setWorkType(wi.getWorkType());
+                    });
                     return attendanceRepository.save(att);
                 });
         return ResponseEntity.ok(AttendanceResponse.from(saved));
+    }
+
+    @PostMapping("/check-out")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Self check-out for today")
+    public ResponseEntity<?> checkOut(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        LocalDate today = LocalDate.now();
+        return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today)
+                .map(att -> {
+                    if (att.getCheckIn() == null) {
+                        return ResponseEntity.badRequest().body("No check-in found for today.");
+                    }
+                    if (att.getCheckOut() != null) {
+                        return ResponseEntity.badRequest().body("Already checked out for today.");
+                    }
+                    return ResponseEntity.ok(attendanceService.clockOut(att.getId()));
+                })
+                .orElse(ResponseEntity.badRequest().body("No attendance record found for today."));
+    }
+
+    @GetMapping("/my-validation-requests")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get own attendance validation requests and their approval status")
+    public ResponseEntity<List<AttendanceResponse>> myValidationRequests(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        List<AttendanceResponse> records = attendanceRepository.findByEmployeeId(emp.getId()).stream()
+                .filter(a -> Boolean.TRUE.equals(a.getIsValidateRequest()))
+                .map(AttendanceResponse::from)
+                .toList();
+        return ResponseEntity.ok(records);
+    }
+
+    @PostMapping("/my-attendance/{id}/request-validation")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    @Operation(summary = "Request validation for own attendance record")
+    public ResponseEntity<AttendanceResponse> requestValidation(
+            @PathVariable Long id, Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        Attendance att = attendanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance", id));
+        if (!att.getEmployee().getId().equals(emp.getId())) {
+            return ResponseEntity.status(403).build();
+        }
+        att.setIsValidateRequest(true);
+        att.setIsValidateRequestApproved(false);
+        return ResponseEntity.ok(AttendanceResponse.from(attendanceRepository.save(att)));
     }
 
     // ── Payslips ──────────────────────────────────────────────────────────────

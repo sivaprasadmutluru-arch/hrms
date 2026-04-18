@@ -14,6 +14,10 @@ public final class LeaveMapper {
     }
 
     public static LeaveRequestDTO toDTO(LeaveRequest r) {
+        String deptName = (r.getEmployee() != null && r.getEmployee().getDepartment() != null)
+                ? r.getEmployee().getDepartment().getName() : null;
+        Long companyId = r.getCompany() != null ? r.getCompany().getId() : null;
+        String approvedByName = employeeName(r.getApprovedBy());
         return new LeaveRequestDTO(
                 r.getId(),
                 r.getEmployee() != null ? r.getEmployee().getId() : null,
@@ -25,7 +29,11 @@ public final class LeaveMapper {
                 r.getRequestedDays(),
                 r.getStatus(),
                 r.getDescription(),
-                r.getRejectReason()
+                r.getRejectReason(),
+                deptName,
+                companyId,
+                approvedByName,
+                r.getCreatedAt()
         );
     }
 

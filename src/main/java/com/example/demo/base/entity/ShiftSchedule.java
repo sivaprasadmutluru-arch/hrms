@@ -28,6 +28,14 @@ public class ShiftSchedule extends BaseEntity {
     @Column(name = "full_time")
     private Boolean fullTime = true;
 
+    /** Maximum overtime credited for this shift (HH:MM). Overrides company-level overtimeCutoff. */
+    @Column(name = "overtime_cutoff")
+    private String overtimeCutoff;
+
+    /** Minimum overtime before it is eligible for approval (HH:MM). Overrides company-level value. */
+    @Column(name = "minimum_overtime_to_approve")
+    private String minimumOvertimeToApprove;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;

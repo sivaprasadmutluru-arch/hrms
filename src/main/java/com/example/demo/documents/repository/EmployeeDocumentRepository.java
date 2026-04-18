@@ -5,7 +5,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface EmployeeDocumentRepository extends JpaRepository<EmployeeDocument, Long>, JpaSpecificationExecutor<EmployeeDocument> {
     List<EmployeeDocument> findByEmployeeId(Long employeeId);
+    List<EmployeeDocument> findByDocumentRequestId(Long documentRequestId);
+    Optional<EmployeeDocument> findByEmployeeIdAndDocumentRequestId(Long employeeId, Long documentRequestId);
 }

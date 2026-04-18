@@ -43,9 +43,11 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/leave")
@@ -1016,18 +1018,87 @@ public class LeaveController {
     @GetMapping("/dashboard")
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
-    @Operation(summary = "Get leave dashboard stats for a company")
-    public ResponseEntity<Map<String, Object>> getDashboard(@RequestParam Long companyId) {
+    @Operation(summary = "Get leave dashboard stats for a company, optionally filtered by month (yyyy-MM)")
+    public ResponseEntity<Map<String, Object>> getDashboard(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) String month) {
         List<LeaveRequest> all = leaveRequestRepository.findByCompanyId(companyId);
-        long total = all.size();
-        long pending = all.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REQUESTED).count();
-        long approved = all.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.APPROVED).count();
-        long rejected = all.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REJECTED).count();
+
+        // Filter by month if provided (format: yyyy-MM)
+        List<LeaveRequest> filtered = all;
+        if (month != null && !month.isBlank()) {
+            filtered = all.stream()
+                    .filter(r -> r.getStartDate() != null && r.getStartDate().toString().startsWith(month))
+                    .collect(java.util.stream.Collectors.toList());
+        }
+
+        long total = filtered.size();
+        long pending = filtered.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REQUESTED).count();
+        long approved = filtered.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.APPROVED).count();
+        long rejected = filtered.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REJECTED).count();
+
+        // Monthly trend — 6 months ending at the selected month (or current month)
+        LocalDate trendRef = (month != null && !month.isBlank())
+                ? LocalDate.parse(month + "-01")
+                : LocalDate.now();
+        List<Map<String, Object>> monthlyTrend = new ArrayList<>();
+        for (int i = 5; i >= 0; i--) {
+            LocalDate d = trendRef.minusMonths(i).withDayOfMonth(1);
+            String ym = d.toString().substring(0, 7);
+            String label = d.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH);
+            List<LeaveRequest> monthLeaves = all.stream()
+                    .filter(r -> r.getStartDate() != null && r.getStartDate().toString().startsWith(ym))
+                    .collect(java.util.stream.Collectors.toList());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("month", label);
+            m.put("approved", monthLeaves.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.APPROVED).count());
+            m.put("rejected", monthLeaves.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REJECTED).count());
+            m.put("pending", monthLeaves.stream().filter(r -> r.getStatus() == LeaveRequest.LeaveStatus.REQUESTED).count());
+            monthlyTrend.add(m);
+        }
+
+        // Department-wise breakdown (from filtered set)
+        Map<String, Long> deptMap = new LinkedHashMap<>();
+        for (LeaveRequest r : filtered) {
+            if (r.getEmployee() != null && r.getEmployee().getDepartment() != null) {
+                String deptName = r.getEmployee().getDepartment().getName();
+                deptMap.merge(deptName, 1L, Long::sum);
+            }
+        }
+        List<Map<String, Object>> departmentBreakdown = deptMap.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("department", e.getKey());
+                    m.put("count", e.getValue());
+                    return m;
+                }).collect(java.util.stream.Collectors.toList());
+
+        // Weekly breakdown — current week (Mon-Sun)
+        LocalDate today = LocalDate.now();
+        LocalDate weekStart = today.with(java.time.DayOfWeek.MONDAY);
+        List<Map<String, Object>> weeklyBreakdown = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            LocalDate day = weekStart.plusDays(i);
+            long count = all.stream()
+                    .filter(r -> r.getStartDate() != null && !r.getStartDate().isAfter(day)
+                            && r.getEndDate() != null && !r.getEndDate().isBefore(day)
+                            && r.getStatus() == LeaveRequest.LeaveStatus.APPROVED)
+                    .count();
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("day", day.getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH));
+            m.put("date", day.toString());
+            m.put("onLeave", count);
+            weeklyBreakdown.add(m);
+        }
+
         Map<String, Object> dashboard = new HashMap<>();
         dashboard.put("totalRequests", total);
         dashboard.put("pendingRequests", pending);
         dashboard.put("approvedRequests", approved);
         dashboard.put("rejectedRequests", rejected);
+        dashboard.put("monthlyTrend", monthlyTrend);
+        dashboard.put("departmentBreakdown", departmentBreakdown);
+        dashboard.put("weeklyBreakdown", weeklyBreakdown);
         return ResponseEntity.ok(dashboard);
     }
 }

@@ -1,12 +1,15 @@
 package com.example.demo.employee.controller;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.*;
 import com.example.demo.employee.repository.*;
+import com.example.demo.notification.entity.Notification;
+import com.example.demo.notification.service.NotificationService;
 import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.entity.EncashmentCondition;
 import com.example.demo.payroll.repository.ContractRepository;
@@ -14,6 +17,7 @@ import com.example.demo.payroll.repository.EncashmentConditionRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -43,6 +48,8 @@ public class EmployeeExtrasController {
     private final PolicyRepository policyRepository;
     private final EncashmentConditionRepository encashmentConditionRepository;
     private final ContractRepository contractRepository;
+    private final NotificationService notificationService;
+    private final EmailService emailService;
 
     // ─── Work Information ────────────────────────────────────────────────────
 
@@ -54,11 +61,16 @@ public class EmployeeExtrasController {
         return workInfoRepository.findByEmployeeId(id)
                 .map(wi -> {
                     WorkInfoResponse r = WorkInfoResponse.from(wi);
-                    // If work-info has no salary data, fall back to the active contract
+                    // If work-info has no salary data, fall back to the best available contract
+                    // Priority: ACTIVE > DRAFT > any other status
                     if (r.getBasicSalary() == null && r.getHousingAllowance() == null
                             && r.getTransportAllowance() == null && r.getOtherAllowance() == null) {
-                        contractRepository
-                                .findByEmployeeIdAndContractStatus(id, Contract.ContractStatus.ACTIVE)
+                        List<Contract> contracts = contractRepository
+                                .findByEmployeeIdAndContractStatusIn(id,
+                                        List.of(Contract.ContractStatus.ACTIVE, Contract.ContractStatus.DRAFT));
+                        contracts.stream()
+                                .min(java.util.Comparator.comparingInt(c ->
+                                        c.getContractStatus() == Contract.ContractStatus.ACTIVE ? 0 : 1))
                                 .ifPresent(c -> {
                                     r.setBasicSalary(c.getWage());
                                     r.setHousingAllowance(c.getHousingAllowance());
@@ -175,7 +187,10 @@ public class EmployeeExtrasController {
         if (action.getCompany() != null && action.getCompany().getId() != null) {
             action.setCompany(companyRepository.getReferenceById(action.getCompany().getId()));
         }
-        return ResponseEntity.ok(disciplinaryRepository.save(action));
+        DisciplinaryAction saved = disciplinaryRepository.save(action);
+
+        notifyDisciplinaryAction(saved, false);
+        return ResponseEntity.ok(saved);
     }
 
     @PutMapping("/disciplinary-actions/{id}")
@@ -191,7 +206,9 @@ public class EmployeeExtrasController {
         action.setDays(updated.getDays());
         action.setDescription(updated.getDescription());
         action.setEmployees(updated.getEmployees());
-        return ResponseEntity.ok(disciplinaryRepository.save(action));
+        DisciplinaryAction saved = disciplinaryRepository.save(action);
+        notifyDisciplinaryAction(saved, true);
+        return ResponseEntity.ok(saved);
     }
 
     @DeleteMapping("/disciplinary-actions/{id}")
@@ -200,6 +217,53 @@ public class EmployeeExtrasController {
     public ResponseEntity<Map<String, String>> deleteDisciplinary(@PathVariable Long id) {
         disciplinaryRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Disciplinary action deleted"));
+    }
+
+    private void notifyDisciplinaryAction(DisciplinaryAction action, boolean isUpdate) {
+        if (action.getEmployees() == null) return;
+        String actionLabel = action.getActionType() != null
+                ? action.getActionType().name().replace("_", " ") : "Action";
+        String notifMsg = isUpdate
+                ? "A disciplinary action against you has been updated: " + actionLabel
+                : "A disciplinary action has been recorded against you: " + actionLabel;
+        String emailSubject = isUpdate ? "Disciplinary Action Updated" : "Disciplinary Action Recorded";
+        String emailBody = "<p>Dear Employee,</p>"
+                + "<p>" + notifMsg + ".</p>"
+                + (action.getDescription() != null
+                        ? "<p><strong>Details:</strong> " + action.getDescription() + "</p>" : "")
+                + (action.getStartDate() != null
+                        ? "<p><strong>Effective Date:</strong> " + action.getStartDate() + "</p>" : "")
+                + "<p>Please contact HR if you have any questions.</p>";
+        Long companyId = action.getCompany() != null ? action.getCompany().getId() : null;
+
+        for (Employee emp : action.getEmployees()) {
+            Employee fullEmp = employeeRepository.findById(emp.getId()).orElse(null);
+            if (fullEmp == null) continue;
+            if (fullEmp.getUser() != null) {
+                try {
+                    notificationService.send(
+                            fullEmp.getUser().getId(),
+                            emailSubject,
+                            notifMsg,
+                            Notification.NotificationType.GENERAL,
+                            "DisciplinaryAction",
+                            action.getId(),
+                            action.getCompany()
+                    );
+                } catch (Exception e) {
+                    log.warn("Failed to send notification for disciplinary action {} to user {}: {}",
+                            action.getId(), fullEmp.getUser().getId(), e.getMessage());
+                }
+            }
+            if (fullEmp.getEmail() != null) {
+                try {
+                    emailService.sendEmail(companyId, fullEmp.getEmail(), emailSubject, emailBody, fullEmp);
+                } catch (Exception e) {
+                    log.warn("Failed to send email for disciplinary action {} to {}: {}",
+                            action.getId(), fullEmp.getEmail(), e.getMessage());
+                }
+            }
+        }
     }
 
     // ─── Bonus Points ─────────────────────────────────────────────────────────

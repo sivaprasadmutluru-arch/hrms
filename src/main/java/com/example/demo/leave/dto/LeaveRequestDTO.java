@@ -3,6 +3,7 @@ package com.example.demo.leave.dto;
 import com.example.demo.leave.entity.LeaveRequest.LeaveStatus;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 public record LeaveRequestDTO(
         Long id,
@@ -15,5 +16,9 @@ public record LeaveRequestDTO(
         Double requestedDays,
         LeaveStatus status,
         String description,
-        String rejectReason
+        String rejectReason,
+        String departmentName,
+        Long companyId,
+        String approvedByName,
+        LocalDateTime createdAt
 ) {}

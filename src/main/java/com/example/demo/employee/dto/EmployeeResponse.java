@@ -1,10 +1,12 @@
 package com.example.demo.employee.dto;
 
 import com.example.demo.employee.entity.Employee;
+import com.example.demo.payroll.entity.Contract;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -65,7 +67,22 @@ public class EmployeeResponse {
     private String currencySymbol = "$";
     private String currencyPosition = "PREFIX";
 
+    // Payroll / Contract fields
+    private Long contractId;
+    private String contractStatus;
+    private BigDecimal basicPay;
+    private BigDecimal housingAllowance;
+    private BigDecimal transportAllowance;
+    private BigDecimal otherAllowance;
+    private BigDecimal totalSalary;
+    private BigDecimal salaryPerHour;
+    private String wageType;
+
     public static EmployeeResponse from(Employee e) {
+        return from(e, null);
+    }
+
+    public static EmployeeResponse from(Employee e, Contract contract) {
         EmployeeResponse r = new EmployeeResponse();
         r.setId(e.getId());
         r.setBadgeId(e.getBadgeId());
@@ -116,6 +133,17 @@ public class EmployeeResponse {
         if (e.getReportingManager() != null) {
             r.setReportingManagerId(e.getReportingManager().getId());
             r.setReportingManagerName(e.getReportingManager().getFirstName() + " " + e.getReportingManager().getLastName());
+        }
+        if (contract != null) {
+            r.setContractId(contract.getId());
+            r.setContractStatus(contract.getContractStatus() != null ? contract.getContractStatus().name() : null);
+            r.setBasicPay(contract.getWage());
+            r.setHousingAllowance(contract.getHousingAllowance());
+            r.setTransportAllowance(contract.getTransportAllowance());
+            r.setOtherAllowance(contract.getOtherAllowance());
+            r.setTotalSalary(contract.getTotalSalary());
+            r.setSalaryPerHour(contract.getSalaryPerHour());
+            r.setWageType(contract.getWageType() != null ? contract.getWageType().name() : null);
         }
         return r;
     }

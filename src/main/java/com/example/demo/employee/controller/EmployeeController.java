@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.example.demo.payroll.entity.Contract;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.xssf.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellRangeAddressList;
@@ -45,6 +46,7 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Set;
 
 @Slf4j
 @RestController
@@ -64,12 +66,31 @@ public class EmployeeController {
     private final ShiftScheduleRepository shiftScheduleRepository;
     private final WorkTypeRepository workTypeRepository;
     private final EmployeeWorkInformationRepository employeeWorkInformationRepository;
+    private final com.example.demo.attendance.repository.AttendanceRepository attendanceRepository;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
     @Operation(summary = "List all employees (company-scoped)")
     public ResponseEntity<Page<EmployeeResponse>> list(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(employeeService.getAll(pageable));
+    }
+
+    @GetMapping("/online-status")
+    @PreAuthorize("hasAuthority('employee:view')")
+    @Operation(summary = "Get online (currently clocked in) employee IDs. companyId optional — omit for global (super admin).")
+    public ResponseEntity<Map<String, Object>> getOnlineStatus(@RequestParam(required = false) Long companyId) {
+        Set<Long> onlineIds;
+        if (companyId != null) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            onlineIds = attendanceRepository
+                    .findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(companyId, today)
+                    .stream()
+                    .map(a -> a.getEmployee().getId())
+                    .collect(Collectors.toSet());
+        } else {
+            onlineIds = globalEmployeeService.getOnlineEmployeeIdsAcrossOrgs();
+        }
+        return ResponseEntity.ok(Map.of("onlineEmployeeIds", onlineIds, "count", onlineIds.size()));
     }
 
     @GetMapping("/global")
@@ -167,6 +188,7 @@ public class EmployeeController {
             node.put("position", e.getJobPosition() != null ? e.getJobPosition().getName() : null);
             node.put("department", e.getDepartment() != null ? e.getDepartment().getName() : null);
             node.put("managerId", e.getReportingManager() != null ? e.getReportingManager().getId() : null);
+            node.put("photoPath", e.getPhotoPath());
             node.put("children", new ArrayList<>());
             nodeMap.put(e.getId(), node);
         }
@@ -217,7 +239,7 @@ public class EmployeeController {
         try (Workbook wb = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = wb.getSheetAt(0);
             log.info("[importEmployees] sheet rows={}", sheet.getLastRowNum());
-            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+            for (int i = 2; i <= sheet.getLastRowNum(); i++) { // row 0=headers, row 1=hints, data starts at row 2
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
                 String firstName = getCellStr(row, 0);
@@ -336,6 +358,9 @@ public class EmployeeController {
         return switch (cell.getCellType()) {
             case STRING -> cell.getStringCellValue().trim();
             case NUMERIC -> {
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    yield cell.getLocalDateTimeCellValue().toLocalDate().toString();
+                }
                 double v = cell.getNumericCellValue();
                 yield (v == Math.floor(v)) ? String.valueOf((long) v) : String.valueOf(v);
             }
@@ -496,6 +521,22 @@ public class EmployeeController {
                 XSSFCell cell = hintRow.createCell(c);
                 cell.setCellValue((String) cols[c][1]);
                 cell.setCellStyle(hintStyle);
+            }
+
+            // ── Row 2: Sample data ─────────────────────────────────────
+            XSSFRow sampleRow = sheet.createRow(2);
+            sampleRow.setHeightInPoints(18);
+            for (int c = 0; c < cols.length; c++) {
+                XSSFCell cell = sampleRow.createCell(c);
+                Object sampleVal = cols[c][2];
+                boolean isNumeric = (boolean) cols[c][3];
+                if (isNumeric && sampleVal instanceof Number) {
+                    cell.setCellValue(((Number) sampleVal).doubleValue());
+                    cell.setCellStyle(numStyle);
+                } else {
+                    cell.setCellValue(sampleVal != null ? sampleVal.toString() : "");
+                    cell.setCellStyle(sampleStyle);
+                }
             }
 
             // Freeze header + hint rows
@@ -732,7 +773,7 @@ public class EmployeeController {
 
     // ─── Bulk Field Update ────────────────────────────────────────────────────
 
-    record BulkUpdateRequest(List<Long> employeeIds, String department, String shift, String workType, String jobPosition) {}
+    record BulkUpdateRequest(List<Long> employeeIds, Long departmentId, Long shiftId, Long workTypeId, Long jobPositionId) {}
 
     @PostMapping("/bulk-update")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
@@ -743,38 +784,17 @@ public class EmployeeController {
             return ResponseEntity.badRequest().body(Map.of("message", "employeeIds is required"));
         }
 
-        com.example.demo.base.entity.Department resolvedDept = null;
-        if (request.department() != null && !request.department().isBlank()) {
-            resolvedDept = departmentRepository.findAll().stream()
-                    .filter(d -> request.department().trim().equalsIgnoreCase(d.getName()))
-                    .findFirst().orElse(null);
-        }
+        final com.example.demo.base.entity.Department finalDept = request.departmentId() != null
+                ? departmentRepository.findById(request.departmentId()).orElse(null) : null;
 
-        com.example.demo.base.entity.ShiftSchedule resolvedShift = null;
-        if (request.shift() != null && !request.shift().isBlank()) {
-            resolvedShift = shiftScheduleRepository.findAll().stream()
-                    .filter(s -> request.shift().trim().equalsIgnoreCase(s.getName()))
-                    .findFirst().orElse(null);
-        }
+        final com.example.demo.base.entity.ShiftSchedule finalShift = request.shiftId() != null
+                ? shiftScheduleRepository.findById(request.shiftId()).orElse(null) : null;
 
-        com.example.demo.base.entity.WorkType resolvedWorkType = null;
-        if (request.workType() != null && !request.workType().isBlank()) {
-            resolvedWorkType = workTypeRepository.findAll().stream()
-                    .filter(wt -> request.workType().trim().equalsIgnoreCase(wt.getName()))
-                    .findFirst().orElse(null);
-        }
+        final com.example.demo.base.entity.WorkType finalWorkType = request.workTypeId() != null
+                ? workTypeRepository.findById(request.workTypeId()).orElse(null) : null;
 
-        com.example.demo.base.entity.JobPosition resolvedJobPosition = null;
-        if (request.jobPosition() != null && !request.jobPosition().isBlank()) {
-            resolvedJobPosition = jobPositionRepository.findAll().stream()
-                    .filter(jp -> request.jobPosition().trim().equalsIgnoreCase(jp.getName()))
-                    .findFirst().orElse(null);
-        }
-
-        final com.example.demo.base.entity.Department finalDept = resolvedDept;
-        final com.example.demo.base.entity.ShiftSchedule finalShift = resolvedShift;
-        final com.example.demo.base.entity.WorkType finalWorkType = resolvedWorkType;
-        final com.example.demo.base.entity.JobPosition finalJobPosition = resolvedJobPosition;
+        final com.example.demo.base.entity.JobPosition finalJobPosition = request.jobPositionId() != null
+                ? jobPositionRepository.findById(request.jobPositionId()).orElse(null) : null;
 
         int updatedCount = 0;
         for (Long empId : request.employeeIds()) {

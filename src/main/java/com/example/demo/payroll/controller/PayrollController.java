@@ -104,6 +104,17 @@ public class PayrollController {
                 .orElseThrow(() -> new ResourceNotFoundException("Contract", id)));
     }
 
+    @GetMapping("/contracts/employee/{employeeId}")
+    @PreAuthorize("hasAuthority('employee:view')")
+    @Transactional(readOnly = true)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get contract for a specific employee (requires employee:view only)")
+    public ResponseEntity<Contract> getContractByEmployee(@PathVariable Long employeeId) {
+        Contract contract = contractRepository.findByEmployeeId(employeeId)
+                .stream().findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Contract for employee", employeeId));
+        return ResponseEntity.ok(contractRepository.findByIdWithAssociations(contract.getId()).orElse(contract));
+    }
+
     @PostMapping("/contracts")
     @PreAuthorize("hasAuthority('payroll:create')")
     @Transactional

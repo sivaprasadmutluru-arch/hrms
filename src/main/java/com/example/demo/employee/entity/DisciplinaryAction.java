@@ -17,7 +17,7 @@ import java.util.List;
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class DisciplinaryAction extends BaseEntity {
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "disciplinary_action_employees",
         joinColumns = @JoinColumn(name = "disciplinary_action_id"),
@@ -50,11 +50,6 @@ public class DisciplinaryAction extends BaseEntity {
 
     @Column(name = "hours", length = 6)
     private String hours = "00:00";
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "action_id")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private com.example.demo.employee.entity.ActionType action;
 
     public enum ActionType {
         WARNING, SUSPENSION, DEMOTION, TERMINATION, WRITTEN_WARNING, VERBAL_WARNING

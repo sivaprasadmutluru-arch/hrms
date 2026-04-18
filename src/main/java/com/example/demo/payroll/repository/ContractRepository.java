@@ -14,7 +14,9 @@ import java.util.Optional;
 public interface ContractRepository extends JpaRepository<Contract, Long>, JpaSpecificationExecutor<Contract> {
 
     List<Contract> findByEmployeeId(Long employeeId);
+    List<Contract> findByEmployeeIdIn(List<Long> employeeIds);
     Optional<Contract> findByEmployeeIdAndContractStatus(Long employeeId, Contract.ContractStatus status);
+    List<Contract> findByEmployeeIdAndContractStatusIn(Long employeeId, List<Contract.ContractStatus> statuses);
     List<Contract> findByCompanyId(Long companyId);
 
     @Query("SELECT c FROM Contract c " +

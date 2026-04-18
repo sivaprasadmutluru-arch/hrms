@@ -1,5 +1,9 @@
 package com.example.demo.common.controller;
 
+import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Organization;
+import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.service.FileUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,6 +28,7 @@ import java.util.Map;
 public class FileUploadController {
 
     private final FileUploadService fileUploadService;
+    private final CompanyRepository companyRepository;
 
     /**
      * Generic file upload endpoint.
@@ -54,13 +59,26 @@ public class FileUploadController {
 
     /**
      * Upload a document (leave file, reimbursement attachment, etc.).
+     * Stored under {orgSlug}/documents/ to keep files org-scoped.
      */
     @PostMapping("/document")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Upload a document file")
     public ResponseEntity<Map<String, String>> uploadDocument(@RequestParam("file") MultipartFile file) {
-        String path = fileUploadService.store(file, "documents");
+        String orgSlug = resolveOrgSlug();
+        String path = fileUploadService.storeOrgScoped(file, orgSlug, "documents");
         return ResponseEntity.ok(Map.of("path", path, "url", "/api/files/" + path));
+    }
+
+    private String resolveOrgSlug() {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && scope.getCompanyId() != null) {
+            return companyRepository.findById(scope.getCompanyId())
+                    .map(Company::getOrganization)
+                    .map(Organization::getSlug)
+                    .orElse("default");
+        }
+        return "default";
     }
 
     /**

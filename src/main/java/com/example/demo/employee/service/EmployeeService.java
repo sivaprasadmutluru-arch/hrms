@@ -14,6 +14,7 @@ import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.service.FileUploadService;
+import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.dto.EmployeeRequest;
 import com.example.demo.employee.dto.EmployeeResponse;
@@ -83,8 +84,12 @@ public class EmployeeService {
         // SELF scope: return only the employee record linked to the current user
         if (scope != null && scope.isSelfScope()) {
             return employeeRepository.findByUserId(scope.getUserId())
-                    .map(e -> (Page<EmployeeResponse>) new PageImpl<>(
-                            Collections.singletonList(EmployeeResponse.from(e)), pageable, 1))
+                    .map(e -> {
+                        Contract contract = contractRepository.findByEmployeeId(e.getId())
+                                .stream().findFirst().orElse(null);
+                        return (Page<EmployeeResponse>) new PageImpl<>(
+                                Collections.singletonList(EmployeeResponse.from(e, contract)), pageable, 1);
+                    })
                     .orElse(Page.empty(pageable));
         }
 
@@ -94,16 +99,56 @@ public class EmployeeService {
         Page<Employee> page = spec != null
                 ? employeeRepository.findAll(spec, pageable)
                 : employeeRepository.findAll(pageable);
-        return page.map(EmployeeResponse::from);
+
+        // Fetch contracts for all employees in this page in one query to avoid N+1
+        List<Long> employeeIds = page.getContent().stream().map(Employee::getId).collect(Collectors.toList());
+        Map<Long, Contract> contractByEmployeeId = contractRepository.findByEmployeeIdIn(employeeIds)
+                .stream().collect(Collectors.toMap(c -> c.getEmployee().getId(), c -> c, (a, b) -> a));
+
+        return page.map(e -> EmployeeResponse.from(e, contractByEmployeeId.get(e.getId())));
     }
 
     @Transactional(readOnly = true)
     public EmployeeResponse getById(Long id) {
-        return EmployeeResponse.from(findEmployee(id));
+        Employee emp = findEmployee(id);
+        Contract contract = contractRepository.findByEmployeeId(id).stream().findFirst().orElse(null);
+        return EmployeeResponse.from(emp, contract);
+    }
+
+    /**
+     * Public entry point — intentionally NOT transactional.
+     *
+     * Problem: @Transactional(REQUIRES_NEW) acquires a DB connection (and runs
+     * SET search_path) the moment Spring's proxy intercepts the call — BEFORE the
+     * method body runs.  If TenantContext is still "public" at that instant (which
+     * happens when PLATFORM_SUPER_ADMIN requests omit the X-Company-Id header),
+     * the entire transaction runs against the public schema no matter what the
+     * method body does later to TenantContext.
+     *
+     * Fix: set TenantContext here (no transaction yet, so no connection acquired)
+     * and then call self.doCreate() through the proxy so REQUIRES_NEW starts with
+     * the correct search_path already in place.
+     */
+    public EmployeeResponse create(EmployeeRequest req) {
+        if (TenantContext.DEFAULT_TENANT.equals(TenantContext.getTenant())) {
+            Company company = companyRepository.findById(req.getCompanyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
+            String schema = company.isHeadOffice()
+                    ? company.getSchemaName()
+                    : (company.getParentCompanyId() != null
+                        ? companyRepository.findById(company.getParentCompanyId())
+                              .map(Company::getSchemaName).orElse(null)
+                        : null);
+            if (schema != null && !schema.isBlank()) {
+                log.info("[create] TenantContext was at default — setting schema='{}' from companyId={}", schema, req.getCompanyId());
+                TenantContext.setTenant(schema);
+            }
+        }
+        return self.doCreate(req);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public EmployeeResponse create(EmployeeRequest req) {
+    public EmployeeResponse doCreate(EmployeeRequest req) {
         log.info("[create] email={} companyId={}", req.getEmail(), req.getCompanyId());
         if (req.getEmail() != null && employeeRepository.findByEmail(req.getEmail()).isPresent()) {
             throw new BadRequestException("Employee with this email already exists");
@@ -112,6 +157,7 @@ public class EmployeeService {
         // Check subscription plan employee limit before creating
         Company company = companyRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
+
         Organization org = company.getOrganization();
         if (org != null && org.getSubscriptionPlan() != null) {
             int planMaxEmployees = org.getSubscriptionPlan().getMaxEmployees();
@@ -171,10 +217,10 @@ public class EmployeeService {
         log.info("[create] saving employee firstName={} companyId={}", emp.getFirstName(), req.getCompanyId());
         Employee saved = employeeRepository.save(emp);
         log.info("[create] saved employee id={}, creating contract & workInfo", saved.getId());
-        createDefaultContract(saved, req);
+        Contract contract = createDefaultContract(saved, req);
         createDefaultWorkInfo(saved);
         log.info("[create] done for employee id={}", saved.getId());
-        return EmployeeResponse.from(saved);
+        return EmployeeResponse.from(saved, contract);
     }
 
     public Map<String, Object> bulkImport(List<EmployeeRequest> requests) {
@@ -205,7 +251,7 @@ public class EmployeeService {
         return result;
     }
 
-    private void createDefaultContract(Employee emp, EmployeeRequest req) {
+    private Contract createDefaultContract(Employee emp, EmployeeRequest req) {
         Contract contract = new Contract();
         contract.setEmployee(emp);
         contract.setCompany(emp.getCompany());
@@ -226,7 +272,7 @@ public class EmployeeService {
         contract.setJobPosition(emp.getJobPosition());
         contract.setJobRole(emp.getJobRole());
         contract.setWorkType(emp.getWorkType());
-        contractRepository.save(contract);
+        return contractRepository.save(contract);
     }
 
     private void createDefaultWorkInfo(Employee emp) {
@@ -253,7 +299,24 @@ public class EmployeeService {
         if (emp.getUser() == null && req.getEmail() != null && !req.getEmail().isBlank()) {
             userRepository.findByEmail(req.getEmail()).ifPresent(emp::setUser);
         }
-        return EmployeeResponse.from(employeeRepository.save(emp));
+        Employee saved = employeeRepository.save(emp);
+
+        // Sync work information record so the work-info tab stays consistent
+        workInfoRepository.findByEmployeeId(id).ifPresent(wi -> {
+            wi.setDepartment(saved.getDepartment());
+            wi.setJobPosition(saved.getJobPosition());
+            wi.setJobRole(saved.getJobRole());
+            wi.setWorkType(saved.getWorkType());
+            wi.setShift(saved.getShift());
+            wi.setReportingManager(saved.getReportingManager());
+            wi.setDateJoining(saved.getDateJoining());
+            wi.setWorkEmail(saved.getWorkEmail());
+            wi.setWorkMobile(saved.getWorkPhone());
+            workInfoRepository.save(wi);
+        });
+
+        Contract contract = contractRepository.findByEmployeeId(saved.getId()).stream().findFirst().orElse(null);
+        return EmployeeResponse.from(saved, contract);
     }
 
     @Transactional

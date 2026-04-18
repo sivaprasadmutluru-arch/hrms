@@ -1,9 +1,12 @@
 package com.example.demo.common.scheduler;
 
+import com.example.demo.attendance.controller.RotatingScheduleController;
 import com.example.demo.attendance.repository.AttendanceRepository;
 import com.example.demo.attendance.service.AttendanceService;
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.RotatingShiftAssign;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.repository.RotatingShiftAssignRepository;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.payroll.entity.PayslipAutoGenerate;
@@ -32,6 +35,7 @@ public class HrmsScheduler {
     private final AttendanceService attendanceService;
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
+    private final RotatingShiftAssignRepository rotatingShiftAssignRepository;
 
     /**
      * Payslip auto-generation: runs daily at 01:00.
@@ -118,6 +122,31 @@ public class HrmsScheduler {
             }
         }
         log.info("Monthly overtime computed for {}/{}", month, year);
+    }
+
+    /**
+     * Rotating shift rotation: runs daily at 00:30.
+     * Finds all RotatingShiftAssign records whose nextChangeDate has arrived,
+     * swaps currentShift ↔ nextShift, and advances nextChangeDate.
+     */
+    @Scheduled(cron = "0 30 0 * * *")
+    public void rotateShifts() {
+        LocalDate today = LocalDate.now();
+        List<RotatingShiftAssign> due = rotatingShiftAssignRepository.findByNextChangeDateLessThanEqual(today);
+        for (RotatingShiftAssign assign : due) {
+            try {
+                RotatingScheduleController.applyRotation(assign);
+                rotatingShiftAssignRepository.save(assign);
+                log.info("Rotated shift for employee {} → currentShift={}",
+                        assign.getEmployee().getId(),
+                        assign.getCurrentShift() != null ? assign.getCurrentShift().getName() : "null");
+            } catch (Exception e) {
+                log.error("Failed to rotate shift for assign {}: {}", assign.getId(), e.getMessage());
+            }
+        }
+        if (!due.isEmpty()) {
+            log.info("Rotating shift job completed: {} assignments rotated", due.size());
+        }
     }
 
     /**

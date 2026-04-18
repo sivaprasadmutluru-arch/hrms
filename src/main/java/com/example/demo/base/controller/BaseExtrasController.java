@@ -410,6 +410,8 @@ public class BaseExtrasController {
         s.setEndTime(updated.getEndTime());
         s.setMinimumWorkingHour(updated.getMinimumWorkingHour());
         s.setFullTime(updated.getFullTime());
+        s.setOvertimeCutoff(updated.getOvertimeCutoff());
+        s.setMinimumOvertimeToApprove(updated.getMinimumOvertimeToApprove());
         return ResponseEntity.ok(shiftScheduleRepository.save(s));
     }
 

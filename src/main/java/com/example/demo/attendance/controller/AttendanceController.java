@@ -49,9 +49,14 @@ public class AttendanceController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('attendance:view')")
-    @Operation(summary = "List all attendance records (company-scoped)")
-    public ResponseEntity<Page<AttendanceResponse>> list(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(attendanceService.getAll(pageable));
+    @Operation(summary = "List all attendance records (company-scoped) with optional filters")
+    public ResponseEntity<Page<AttendanceResponse>> list(
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long departmentId) {
+        return ResponseEntity.ok(attendanceService.getAll(pageable, status, from, to, departmentId));
     }
 
     @GetMapping("/calendar")
@@ -86,6 +91,18 @@ public class AttendanceController {
     @PreAuthorize("hasAuthority('attendance:edit')")
     public ResponseEntity<AttendanceResponse> update(@PathVariable Long id, @Valid @RequestBody AttendanceRequest request) {
         return ResponseEntity.ok(attendanceService.update(id, request));
+    }
+
+    @PostMapping("/{id}/request-validation")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Employee requests validation/regularization of their attendance record")
+    @Transactional
+    public ResponseEntity<AttendanceResponse> requestValidation(@PathVariable Long id) {
+        Attendance att = attendanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance", id));
+        att.setIsValidateRequest(true);
+        att.setIsValidateRequestApproved(false);
+        return ResponseEntity.ok(AttendanceResponse.from(attendanceRepository.save(att)));
     }
 
     @PostMapping("/{id}/approve")
@@ -333,7 +350,23 @@ public class AttendanceController {
     @Operation(summary = "Get attendance dashboard stats for a company")
     public ResponseEntity<Map<String, Object>> getDashboard(
             @RequestParam Long companyId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(attendanceService.getDashboard(companyId, date));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) Long departmentId) {
+        return ResponseEntity.ok(attendanceService.getDashboard(companyId, date, departmentId));
+    }
+
+    // ─── Validation Pending ───────────────────────────────────────────────────
+
+    @GetMapping("/validation-pending")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "List attendance records where employee has requested validation (pending approval)")
+    public ResponseEntity<List<AttendanceResponse>> getValidationPending(@RequestParam Long companyId) {
+        List<AttendanceResponse> pending = attendanceRepository.findByCompanyId(companyId).stream()
+                .filter(a -> Boolean.TRUE.equals(a.getIsValidateRequest())
+                        && !Boolean.TRUE.equals(a.getIsValidateRequestApproved()))
+                .map(AttendanceResponse::from)
+                .collect(java.util.stream.Collectors.toList());
+        return ResponseEntity.ok(pending);
     }
 }
