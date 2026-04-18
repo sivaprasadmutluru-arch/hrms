@@ -25,8 +25,8 @@ import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
 
-const ALL_TABS = ['Requests', 'Types', 'Allocations']
-const EMPLOYEE_TABS = ['Requests']
+const ALL_TABS = ['Requests', 'Types', 'Allocations', 'Balance']
+const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 
 export default function LeavePage() {
   const dispatch = useDispatch()
@@ -257,9 +257,11 @@ export default function LeavePage() {
 
   const requestColumns = [
     { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
+    { id: 'department', header: 'Department', cell: ({ row }) => row.original.departmentName || '—' },
     { id: 'leaveType', header: 'Type', cell: ({ row }) => row.original.leaveTypeName || '—' },
     { accessorKey: 'startDate', header: 'Start', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'endDate', header: 'End', cell: ({ getValue }) => formatDate(getValue()) },
+    { accessorKey: 'requestedDays', header: 'Days', cell: ({ getValue }) => getValue() != null ? getValue() : '—' },
     { accessorKey: 'description', header: 'Reason', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue()} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
     { id: 'actions', header: '', cell: ({ row }) => (
@@ -332,6 +334,89 @@ export default function LeavePage() {
           <DataTable columns={allocationColumns} data={leaveAllocations} loading={loading} />
         </>
       )}
+      {tab === 'Assigned Leaves' && (() => {
+        const myAllocations = leaveAllocations.filter(a => a.employeeId === user?.employeeId || a.employeeName === user?.name || a.employeeName === user?.username)
+        return (
+          <div className="space-y-4">
+            {myAllocations.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">No leave allocations assigned to you</p>
+            )}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Leave Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Allocated Days</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Available Days</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Used Days</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Year</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {myAllocations.map((a, i) => {
+                    const used = (a.totalLeaveDays ?? 0) - (a.availableDays ?? 0)
+                    return (
+                      <tr key={a.id || i} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-900">{a.leaveTypeName || '—'}</td>
+                        <td className="py-3 px-4 text-gray-600">{a.totalLeaveDays ?? '—'}</td>
+                        <td className="py-3 px-4 text-green-600 font-semibold">{a.availableDays ?? '—'}</td>
+                        <td className="py-3 px-4 text-red-500">{used}</td>
+                        <td className="py-3 px-4 text-gray-500">{a.year || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  {myAllocations.length === 0 && (
+                    <tr><td colSpan={5} className="text-center py-8 text-gray-400">No assigned leaves found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
+      {tab === 'Balance' && (() => {
+        const myAllocations = isEmployee()
+          ? leaveAllocations.filter(a => a.employeeId === user?.employeeId || a.employeeName === user?.name)
+          : leaveAllocations
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {myAllocations.length === 0 && (
+              <p className="text-sm text-gray-400 col-span-full text-center py-8">No leave balance records found</p>
+            )}
+            {myAllocations.map((a, i) => {
+              const used = (a.totalLeaveDays ?? 0) - (a.availableDays ?? 0)
+              const pct = a.totalLeaveDays > 0 ? Math.round(((a.availableDays ?? 0) / a.totalLeaveDays) * 100) : 0
+              return (
+                <div key={a.id || i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">{a.leaveTypeName || '—'}</p>
+                      {!isEmployee() && <p className="text-xs text-gray-500">{a.employeeName || '—'}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400">{a.year || '—'}</span>
+                  </div>
+                  <div className="flex items-end justify-between mb-2">
+                    <div>
+                      <p className="text-2xl font-bold text-indigo-600">{a.availableDays ?? '—'}</p>
+                      <p className="text-xs text-gray-400">days available</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-600">{used} used</p>
+                      <p className="text-xs text-gray-400">of {a.totalLeaveDays ?? '—'} total</p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-indigo-500 h-1.5 rounded-full"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Apply Leave Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Apply for Leave"

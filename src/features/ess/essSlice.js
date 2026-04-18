@@ -55,12 +55,30 @@ export const checkIn = createAsyncThunk('ess/checkIn', async (data, { rejectWith
   }
 })
 
+export const checkOut = createAsyncThunk('ess/checkOut', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/ess/check-out')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Check-out failed')
+  }
+})
+
 export const fetchMyPayslips = createAsyncThunk('ess/fetchMyPayslips', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/ess/my-payslips')
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch payslips')
+  }
+})
+
+export const fetchMyWorkInfo = createAsyncThunk('ess/fetchMyWorkInfo', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/ess/my-work-info')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch work info')
   }
 })
 
@@ -72,6 +90,7 @@ const essSlice = createSlice({
     leaveTypes: [],
     attendance: [],
     payslips: [],
+    workInfo: null,
     loading: false,
     error: null,
   },
@@ -108,9 +127,19 @@ const essSlice = createSlice({
       })
       .addCase(checkIn.rejected, rejected)
 
+      .addCase(checkOut.pending, pending)
+      .addCase(checkOut.fulfilled, (state, action) => {
+        state.loading = false
+        const idx = state.attendance.findIndex(a => a.id === action.payload.id)
+        if (idx >= 0) state.attendance[idx] = action.payload
+      })
+      .addCase(checkOut.rejected, rejected)
+
       .addCase(fetchMyPayslips.pending, pending)
       .addCase(fetchMyPayslips.fulfilled, (state, action) => { state.loading = false; state.payslips = action.payload })
       .addCase(fetchMyPayslips.rejected, rejected)
+
+      .addCase(fetchMyWorkInfo.fulfilled, (state, action) => { state.workInfo = action.payload })
   },
 })
 
@@ -119,6 +148,7 @@ export const selectEssLeaveRequests = (state) => state.ess.leaveRequests
 export const selectEssLeaveTypes = (state) => state.ess.leaveTypes
 export const selectEssAttendance = (state) => state.ess.attendance
 export const selectEssPayslips = (state) => state.ess.payslips
+export const selectEssWorkInfo = (state) => state.ess.workInfo
 export const selectEssLoading = (state) => state.ess.loading
 
 export default essSlice.reducer

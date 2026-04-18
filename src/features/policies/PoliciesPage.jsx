@@ -16,7 +16,7 @@ import useAuth from '../../hooks/useAuth'
 
 export default function PoliciesPage() {
   const dispatch = useDispatch()
-  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin } = useAuth()
+  const { user, isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin } = useAuth()
   const data = useSelector(selectAll)
   const inherited = useSelector(selectInherited)
   const loading = useSelector(selectLoading)
@@ -40,7 +40,7 @@ export default function PoliciesPage() {
   const onSubmit = async (formData) => {
     try {
       if (editing) { await dispatch(update({ id: editing.id, data: formData })).unwrap(); toast.success('Policy updated') }
-      else { await dispatch(create(formData)).unwrap(); toast.success('Policy created') }
+      else { await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap(); toast.success('Policy created') }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 50 }))
     } catch (e) { toast.error(e || 'Error') }

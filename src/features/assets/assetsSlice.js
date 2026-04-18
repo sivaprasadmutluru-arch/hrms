@@ -46,23 +46,36 @@ export const remove = createAsyncThunk('assets/remove', async (id, { rejectWithV
   }
 })
 
-export const assign = createAsyncThunk('assets/assign', async ({ id, data }, { rejectWithValue }) => {
+// Backend: POST /assets/{id}/assign/{employeeId}
+export const assign = createAsyncThunk('assets/assign', async ({ id, employeeId }, { rejectWithValue }) => {
   try {
-    const res = await api.put(`/assets/${id}/assign`, data)
+    const res = await api.post(`/assets/${id}/assign/${employeeId}`)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to assign asset')
   }
 })
 
+// Backend: POST /assets/{id}/return
 export const returnAsset = createAsyncThunk('assets/return', async (id, { rejectWithValue }) => {
   try {
-    const res = await api.put(`/assets/${id}/return`)
+    const res = await api.post(`/assets/${id}/return`)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to return asset')
   }
 })
+
+export const duplicateAsset = createAsyncThunk('assets/duplicate', async ({ id, companyId }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/assets/${id}/duplicate`, null, { params: { companyId } })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to duplicate asset')
+  }
+})
+
+// ─── Asset Lots ────────────────────────────────────────────────────────────
 
 export const fetchAssetLots = createAsyncThunk('assets/fetchAssetLots', async (_, { rejectWithValue }) => {
   try {
@@ -82,6 +95,26 @@ export const createAssetLot = createAsyncThunk('assets/createAssetLot', async (d
   }
 })
 
+export const updateAssetLot = createAsyncThunk('assets/updateAssetLot', async ({ id, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/assets/lots/${id}`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update lot')
+  }
+})
+
+export const deleteAssetLot = createAsyncThunk('assets/deleteAssetLot', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/assets/lots/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete lot')
+  }
+})
+
+// ─── Asset Assignment History ──────────────────────────────────────────────
+
 export const fetchAssetAssignments = createAsyncThunk('assets/fetchAssetAssignments', async (assetId, { rejectWithValue }) => {
   try {
     const res = await api.get(`/assets/${assetId}/assignments`)
@@ -90,6 +123,27 @@ export const fetchAssetAssignments = createAsyncThunk('assets/fetchAssetAssignme
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch assignments')
   }
 })
+
+export const recordAssignment = createAsyncThunk('assets/recordAssignment', async ({ assetId, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/assets/${assetId}/assignments`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to record assignment')
+  }
+})
+
+// Backend: PUT /assets/assignments/{id}/return
+export const returnAssignment = createAsyncThunk('assets/returnAssignment', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/assets/assignments/${id}/return`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to return assignment')
+  }
+})
+
+// ─── Asset Reports ─────────────────────────────────────────────────────────
 
 export const fetchAssetReports = createAsyncThunk('assets/fetchAssetReports', async (assetId, { rejectWithValue }) => {
   try {
@@ -109,6 +163,8 @@ export const submitAssetReport = createAsyncThunk('assets/submitAssetReport', as
   }
 })
 
+// ─── Asset Documents ───────────────────────────────────────────────────────
+
 export const fetchAssetDocuments = createAsyncThunk('assets/fetchAssetDocuments', async (assetId, { rejectWithValue }) => {
   try {
     const res = await api.get(`/assets/${assetId}/documents`)
@@ -124,6 +180,44 @@ export const addAssetDocument = createAsyncThunk('assets/addAssetDocument', asyn
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to add document')
+  }
+})
+
+export const deleteAssetDocument = createAsyncThunk('assets/deleteAssetDocument', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/assets/documents/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete document')
+  }
+})
+
+// ─── Return Images ─────────────────────────────────────────────────────────
+
+export const fetchReturnImages = createAsyncThunk('assets/fetchReturnImages', async (assetId, { rejectWithValue }) => {
+  try {
+    const res = await api.get(`/assets/${assetId}/return-images`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch return images')
+  }
+})
+
+export const addReturnImage = createAsyncThunk('assets/addReturnImage', async ({ assetId, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/assets/${assetId}/return-images`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to add return image')
+  }
+})
+
+export const deleteReturnImage = createAsyncThunk('assets/deleteReturnImage', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/assets/return-images/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete return image')
   }
 })
 
@@ -160,6 +254,10 @@ export const createRequest = createAsyncThunk('assets/createRequest', async ({ d
   try { const res = await api.post('/assets/requests', data, { params: { companyId } }); return res.data }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
+export const updateRequest = createAsyncThunk('assets/updateRequest', async ({ id, data }, { rejectWithValue }) => {
+  try { const res = await api.put(`/assets/requests/${id}`, data); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
 export const approveRequest = createAsyncThunk('assets/approveRequest', async (id, { rejectWithValue }) => {
   try { const res = await api.post(`/assets/requests/${id}/approve`); return res.data }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
@@ -176,6 +274,33 @@ export const fetchAssetDashboard = createAsyncThunk('assets/fetchDashboard', asy
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+// ─── Export / Import ───────────────────────────────────────────────────────
+
+export const exportAssets = createAsyncThunk('assets/export', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/assets/export', { params: { companyId }, responseType: 'blob' })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export')
+  }
+})
+
+export const importAssets = createAsyncThunk('assets/import', async ({ file, companyId }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/assets/import', formData, {
+      params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to import')
+  }
+})
+
+// ─── Slice ─────────────────────────────────────────────────────────────────
+
 const assetsSlice = createSlice({
   name: 'assets',
   initialState: {
@@ -188,6 +313,7 @@ const assetsSlice = createSlice({
     assetAssignments: [],
     assetReports: [],
     assetDocuments: [],
+    returnImages: [],
     categories: [],
     requests: [],
     assetDashboard: null,
@@ -249,12 +375,26 @@ const assetsSlice = createSlice({
       })
       .addCase(returnAsset.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
+      .addCase(duplicateAsset.fulfilled, (state, action) => { state.data.push(action.payload) })
+
       // Asset Lots
       .addCase(fetchAssetLots.fulfilled, (state, action) => { state.assetLots = action.payload })
       .addCase(createAssetLot.fulfilled, (state, action) => { state.assetLots.push(action.payload) })
+      .addCase(updateAssetLot.fulfilled, (state, action) => {
+        const idx = state.assetLots.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.assetLots[idx] = action.payload
+      })
+      .addCase(deleteAssetLot.fulfilled, (state, action) => {
+        state.assetLots = state.assetLots.filter(l => l.id !== action.payload)
+      })
 
       // Assignments
       .addCase(fetchAssetAssignments.fulfilled, (state, action) => { state.assetAssignments = action.payload })
+      .addCase(recordAssignment.fulfilled, (state, action) => { state.assetAssignments.push(action.payload) })
+      .addCase(returnAssignment.fulfilled, (state, action) => {
+        const idx = state.assetAssignments.findIndex(a => a.id === action.payload.id)
+        if (idx !== -1) state.assetAssignments[idx] = action.payload
+      })
 
       // Reports
       .addCase(fetchAssetReports.fulfilled, (state, action) => { state.assetReports = action.payload })
@@ -263,6 +403,16 @@ const assetsSlice = createSlice({
       // Documents
       .addCase(fetchAssetDocuments.fulfilled, (state, action) => { state.assetDocuments = action.payload })
       .addCase(addAssetDocument.fulfilled, (state, action) => { state.assetDocuments.push(action.payload) })
+      .addCase(deleteAssetDocument.fulfilled, (state, action) => {
+        state.assetDocuments = state.assetDocuments.filter(d => d.id !== action.payload)
+      })
+
+      // Return Images
+      .addCase(fetchReturnImages.fulfilled, (state, action) => { state.returnImages = action.payload })
+      .addCase(addReturnImage.fulfilled, (state, action) => { state.returnImages.push(action.payload) })
+      .addCase(deleteReturnImage.fulfilled, (state, action) => {
+        state.returnImages = state.returnImages.filter(i => i.id !== action.payload)
+      })
 
       // Categories
       .addCase(fetchCategories.fulfilled, (state, action) => { state.categories = action.payload })
@@ -281,6 +431,10 @@ const assetsSlice = createSlice({
         state.requests = action.payload.content || action.payload
       })
       .addCase(createRequest.fulfilled, (state, action) => { state.requests.push(action.payload) })
+      .addCase(updateRequest.fulfilled, (state, action) => {
+        const idx = state.requests.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.requests[idx] = action.payload
+      })
       .addCase(approveRequest.fulfilled, (state, action) => {
         const idx = state.requests.findIndex(r => r.id === action.payload.id)
         if (idx !== -1) state.requests[idx] = action.payload
@@ -303,4 +457,8 @@ export const selectAssetLots = (state) => state.assets.assetLots
 export const selectAssetAssignments = (state) => state.assets.assetAssignments
 export const selectAssetReports = (state) => state.assets.assetReports
 export const selectAssetDocuments = (state) => state.assets.assetDocuments
+export const selectReturnImages = (state) => state.assets.returnImages
+export const selectCategories = (state) => state.assets.categories
+export const selectRequests = (state) => state.assets.requests
+export const selectAssetDashboard = (state) => state.assets.assetDashboard
 export default assetsSlice.reducer

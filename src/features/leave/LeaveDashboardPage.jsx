@@ -49,37 +49,30 @@ export default function LeaveDashboardPage() {
 
   useEffect(() => {
     if (companyId) {
-      dispatch(fetchLeaveDashboard({ companyId }))
+      dispatch(fetchLeaveDashboard({ companyId, month: selectedMonth }))
       dispatch(fetchLeave({ companyId, page: 0, size: 50 }))
       dispatch(fetchHolidays({ companyId }))
       dispatch(fetchCompanyLeaves({ companyId }))
     }
-  }, [dispatch, companyId])
+  }, [dispatch, companyId, selectedMonth])
 
   const total = dashboard?.totalRequests ?? 0
   const pending = dashboard?.pendingRequests ?? 0
   const approved = dashboard?.approvedRequests ?? 0
   const rejected = dashboard?.rejectedRequests ?? 0
 
+  // Monthly trend from dashboard API
+  const monthlyData = dashboard?.monthlyTrend || []
+
+  // Department breakdown from dashboard API
+  const departmentBreakdown = dashboard?.departmentBreakdown || []
+
+  // Weekly breakdown from dashboard API
+  const weeklyBreakdown = dashboard?.weeklyBreakdown || []
+
   // Employees currently on leave
   const today = new Date().toISOString().slice(0, 10)
   const onLeaveToday = allLeave.filter(l => l.status === 'APPROVED' && l.startDate <= today && l.endDate >= today)
-
-  // Build monthly chart (last 6 months)
-  const monthlyData = []
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date()
-    d.setMonth(d.getMonth() - i)
-    const ym = d.toISOString().slice(0, 7)
-    const label = d.toLocaleDateString('en', { month: 'short' })
-    const monthLeaves = allLeave.filter(l => l.startDate?.startsWith(ym))
-    monthlyData.push({
-      month: label,
-      approved: monthLeaves.filter(l => l.status === 'APPROVED').length,
-      rejected: monthLeaves.filter(l => l.status === 'REJECTED').length,
-      pending: monthLeaves.filter(l => l.status === 'PENDING').length,
-    })
-  }
 
   // Leave type breakdown (pie chart)
   const typeMap = {}
@@ -100,9 +93,28 @@ export default function LeaveDashboardPage() {
     ? Math.ceil((new Date(nextHoliday.date) - new Date()) / (1000 * 60 * 60 * 24))
     : null
 
+  const selectedMonthLabel = monthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth
+
   return (
     <div>
-      <PageHeader title="Leave Dashboard" subtitle="Leave requests, trends, and holiday calendar" />
+      <PageHeader
+        title="Leave Dashboard"
+        subtitle="Leave requests, trends, and holiday calendar"
+        actions={
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500 font-medium">Month:</label>
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            >
+              {monthOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        }
+      />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -120,7 +132,7 @@ export default function LeaveDashboardPage() {
         <div className="bg-green-50 border border-green-100 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-gray-500 font-medium mb-1">Approved This Month</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">Approved</p>
               <p className="text-2xl font-bold text-green-600">{loading ? '—' : approved}</p>
               <p className="text-xs text-gray-400 mt-1">Leaves granted</p>
             </div>
@@ -131,7 +143,7 @@ export default function LeaveDashboardPage() {
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-gray-500 font-medium mb-1">Rejected This Month</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">Rejected</p>
               <p className="text-2xl font-bold text-red-600">{loading ? '—' : rejected}</p>
               <p className="text-xs text-gray-400 mt-1">Leaves declined</p>
             </div>
@@ -151,10 +163,10 @@ export default function LeaveDashboardPage() {
         </div>
       </div>
 
-      {/* Charts row */}
+      {/* Monthly trend chart + next holiday */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <Card className="lg:col-span-2">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Leave Requests — Last 6 Months</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">6-Month Leave Trend ending {selectedMonthLabel}</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -205,7 +217,44 @@ export default function LeaveDashboardPage() {
         </Card>
       </div>
 
-      {/* On leave + pie chart */}
+      {/* Department-wise + weekly analytics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <Card>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Department-wise Leave Requests</h3>
+          {departmentBreakdown.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={departmentBreakdown} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#6366F1" radius={[0, 4, 4, 0]} name="Requests" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-gray-400 text-sm">No department data</div>
+          )}
+        </Card>
+
+        <Card>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Employees On Leave — This Week</h3>
+          {weeklyBreakdown.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={weeklyBreakdown}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.date || ''} />
+                <Bar dataKey="onLeave" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="On Leave" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-gray-400 text-sm">No weekly data</div>
+          )}
+        </Card>
+      </div>
+
+      {/* On leave today + pie chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card>
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Employees On Leave Today</h3>

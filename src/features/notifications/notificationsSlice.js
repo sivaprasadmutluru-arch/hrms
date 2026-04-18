@@ -44,6 +44,15 @@ export const deleteAllNotifications = createAsyncThunk('notifications/deleteAll'
   }
 })
 
+export const fetchUnreadCount = createAsyncThunk('notifications/fetchUnreadCount', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/notifications/unread-count')
+    return res.data.count
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch unread count')
+  }
+})
+
 const notificationsSlice = createSlice({
   name: 'notifications',
   initialState: {
@@ -94,6 +103,10 @@ const notificationsSlice = createSlice({
       .addCase(deleteAllNotifications.fulfilled, (state) => {
         state.data = []
         state.unreadCount = 0
+      })
+
+      .addCase(fetchUnreadCount.fulfilled, (state, action) => {
+        state.unreadCount = action.payload
       })
   },
 })

@@ -5,6 +5,7 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { selectIsAuthenticated, selectRoles, selectUser, fetchMe } from '../../features/auth/authSlice'
 import { fetchMyCompany } from '../../features/companies/companiesSlice'
+import { fetchUnreadCount } from '../../features/notifications/notificationsSlice'
 
 export default function AppLayout() {
   const dispatch = useDispatch()
@@ -16,6 +17,14 @@ export default function AppLayout() {
     if (isAuthenticated) {
       dispatch(fetchMe())
     }
+  }, [isAuthenticated])
+
+  // Poll unread notification count every 30 seconds so the bell badge stays current.
+  useEffect(() => {
+    if (!isAuthenticated) return
+    dispatch(fetchUnreadCount())
+    const interval = setInterval(() => dispatch(fetchUnreadCount()), 30000)
+    return () => clearInterval(interval)
   }, [isAuthenticated])
 
   // Bootstrap current user's company so useCurrency works on any page after refresh.

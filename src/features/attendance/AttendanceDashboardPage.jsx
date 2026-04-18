@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, LineChart, Line,
+  ResponsiveContainer, Legend,
 } from 'recharts'
 import {
   ClockIcon, CheckCircleIcon, ExclamationTriangleIcon,
@@ -12,6 +12,7 @@ import {
   fetchAttendanceDashboard, fetchNotIn, fetchOvertime,
   fetchAll as fetchAttendance,
 } from './attendanceSlice'
+import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Badge from '../../components/common/Badge'
@@ -24,21 +25,29 @@ export default function AttendanceDashboardPage() {
   const { user, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const companyId = user?.companyId
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [departmentId, setDepartmentId] = useState('')
 
   const dashboard = useSelector(s => s.attendance.dashboard)
   const notIn = useSelector(s => s.attendance.notIn || [])
   const overtime = useSelector(s => s.attendance.overtimeRecords || [])
   const allAttendance = useSelector(s => s.attendance.data || [])
   const loading = useSelector(s => s.attendance.loading)
+  const departments = useSelector(s => s.departments?.data || [])
 
   const isManager = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
+    if (companyId) dispatch(fetchDepartments({ companyId }))
+  }, [dispatch, companyId])
+
+  useEffect(() => {
     if (companyId) {
-      dispatch(fetchAttendanceDashboard({ companyId, date }))
+      const params = { companyId, date }
+      if (departmentId) params.departmentId = departmentId
+      dispatch(fetchAttendanceDashboard(params))
       dispatch(fetchNotIn({ companyId }))
     }
-  }, [dispatch, companyId, date])
+  }, [dispatch, companyId, date, departmentId])
 
   useEffect(() => {
     if (companyId && isManager) {
@@ -48,9 +57,9 @@ export default function AttendanceDashboardPage() {
   }, [dispatch, companyId, isManager])
 
   const total = dashboard?.totalAttendanceToday ?? dashboard?.totalEmployees ?? 0
-  const clockedIn = dashboard?.employeesClockedInToday ?? 0
+  const clockedIn = dashboard?.employeesClockedInToday ?? dashboard?.presentToday ?? 0
   const late = dashboard?.lateEmployees ?? dashboard?.lateCount ?? 0
-  const absent = total > 0 ? Math.max(0, total - clockedIn) : (dashboard?.absentCount ?? 0)
+  const absent = total > 0 ? Math.max(0, total - clockedIn) : (dashboard?.absentCount ?? dashboard?.absentToday ?? 0)
   const onTime = Math.max(0, clockedIn - late)
 
   const pctPresent = total > 0 ? Math.round((clockedIn / total) * 100) : 0
@@ -71,6 +80,7 @@ export default function AttendanceDashboardPage() {
     })
   }
 
+  const hoursByDepartment = dashboard?.hoursByDepartment || []
   const pendingOvertime = overtime.filter(o => o.status === 'PENDING' || !o.status)
 
   const statCards = [
@@ -111,14 +121,27 @@ export default function AttendanceDashboardPage() {
   return (
     <div>
       <PageHeader title="Attendance Dashboard" subtitle="Daily attendance analytics and team overview">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-500 font-medium">Date:</label>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500 font-medium">Date:</label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500 font-medium">Department:</label>
+            <select
+              value={departmentId}
+              onChange={e => setDepartmentId(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            >
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
         </div>
       </PageHeader>
 
@@ -157,7 +180,31 @@ export default function AttendanceDashboardPage() {
           </ResponsiveContainer>
         </Card>
 
-        {/* Not checked in */}
+        {/* Hours by department chart */}
+        <Card>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">
+            Hours Worked by Department — Last 7 Days
+          </h3>
+          {hoursByDepartment.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={hoursByDepartment} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} unit="h" />
+                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} />
+                <Tooltip formatter={v => [`${v}h`, 'Total Hours']} />
+                <Bar dataKey="totalHours" fill="#10B981" radius={[0, 4, 4, 0]} name="Hours" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-gray-400 text-sm">
+              No hours data for the last 7 days
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Not checked in + overtime approvals */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-700">Not Checked In</h3>
@@ -185,11 +232,9 @@ export default function AttendanceDashboardPage() {
             )}
           </div>
         </Card>
-      </div>
 
-      {/* Overtime approvals — managers only */}
-      {isManager && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Overtime approvals — managers only */}
+        {isManager && (
           <Card>
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
               Overtime to Approve
@@ -217,41 +262,44 @@ export default function AttendanceDashboardPage() {
               )}
             </div>
           </Card>
+        )}
+      </div>
 
-          <Card>
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Attendance Records</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-500 border-b">
-                    <th className="pb-2 text-left font-medium">Employee</th>
-                    <th className="pb-2 text-left font-medium">Date</th>
-                    <th className="pb-2 text-left font-medium">Check In</th>
-                    <th className="pb-2 text-left font-medium">Status</th>
+      {/* Recent attendance records — managers only */}
+      {isManager && (
+        <Card>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Attendance Records</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 border-b">
+                  <th className="pb-2 text-left font-medium">Employee</th>
+                  <th className="pb-2 text-left font-medium">Date</th>
+                  <th className="pb-2 text-left font-medium">Check In</th>
+                  <th className="pb-2 text-left font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {allAttendance.slice(0, 8).map(a => (
+                  <tr key={a.id} className="hover:bg-gray-50">
+                    <td className="py-2 font-medium text-gray-800 truncate max-w-[100px]">{a.employeeName || '—'}</td>
+                    <td className="py-2 text-gray-500">{a.attendanceDate || '—'}</td>
+                    <td className="py-2 text-gray-500">{a.checkIn || '—'}</td>
+                    <td className="py-2">
+                      <Badge
+                        label={a.attendanceValidated || 'PENDING'}
+                        variant={a.attendanceValidated === 'APPROVED' ? 'success' : a.attendanceValidated === 'REJECTED' ? 'danger' : 'warning'}
+                      />
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {allAttendance.slice(0, 8).map(a => (
-                    <tr key={a.id} className="hover:bg-gray-50">
-                      <td className="py-2 font-medium text-gray-800 truncate max-w-[100px]">{a.employeeName || '—'}</td>
-                      <td className="py-2 text-gray-500">{a.attendanceDate || '—'}</td>
-                      <td className="py-2 text-gray-500">{a.checkIn || '—'}</td>
-                      <td className="py-2">
-                        <Badge
-                          label={a.attendanceValidated || 'PENDING'}
-                          variant={a.attendanceValidated === 'APPROVED' ? 'success' : a.attendanceValidated === 'REJECTED' ? 'danger' : 'warning'}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                  {allAttendance.length === 0 && (
-                    <tr><td colSpan="4" className="py-6 text-center text-gray-400">No records</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
+                ))}
+                {allAttendance.length === 0 && (
+                  <tr><td colSpan="4" className="py-6 text-center text-gray-400">No records</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )

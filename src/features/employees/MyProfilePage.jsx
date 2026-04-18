@@ -262,7 +262,7 @@ export default function MyProfilePage() {
           {/* Tab content */}
           <div className="p-6">
             {activeTab === 'about'     && <AboutTab profile={profile} />}
-            {activeTab === 'work-info' && <WorkInfoTab employeeId={profile.id} />}
+            {activeTab === 'work-info' && <WorkInfoTab employeeId={profile.id} isSelf={true} />}
             {activeTab === 'payroll'   && <PayrollTab employeeId={profile.id} />}
             {activeTab === 'bank'      && <BankDetailsTab employeeId={profile.id} />}
             {activeTab === 'documents' && <DocumentsTab employeeId={profile.id} />}

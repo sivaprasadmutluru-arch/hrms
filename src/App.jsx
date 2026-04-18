@@ -201,7 +201,7 @@ export default function App() {
           <Route path="ess" element={<ESSPage />} />
 
           {/* Accessible to all authenticated users */}
-          <Route path="attendance/dashboard"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceDashboardPage />} />} />
+          <Route path="attendance/dashboard"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'EMPLOYEE']} element={<AttendanceDashboardPage />} />} />
           <Route path="attendance"                  element={<AttendancePage />} />
           <Route path="attendance/calendar"         element={<AttendanceCalendarPage />} />
           <Route path="attendance/register"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceRegisterPage />} />} />
@@ -216,7 +216,7 @@ export default function App() {
           <Route path="leave/restrictions"       element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<LeaveRestrictionsPage />} />} />
           <Route path="leave/holidays"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<HolidaysPage />} />} />
           <Route path="leave/company-leaves"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<CompanyLeavesPage />} />} />
-          <Route path="leave/dashboard"          element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<LeaveDashboardPage />} />} />
+          <Route path="leave/dashboard"          element={<LeaveDashboardPage />} />
           <Route path="payroll/payslips"         element={<PayslipsPage />} />
           <Route path="payroll/import"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<PayslipImportPage />} />} />
           <Route path="assets"                   element={<AssetsPage />} />

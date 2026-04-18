@@ -432,6 +432,24 @@ export const rejectOvertime = createAsyncThunk('attendance/rejectOvertime', asyn
   }
 })
 
+export const requestValidation = createAsyncThunk('attendance/requestValidation', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/attendance/${id}/request-validation`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to submit validation request')
+  }
+})
+
+export const fetchValidationPending = createAsyncThunk('attendance/fetchValidationPending', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/validation-pending', { params: { companyId } })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch validation pending records')
+  }
+})
+
 const attendanceSlice = createSlice({
   name: 'attendance',
   initialState: {
@@ -458,6 +476,7 @@ const attendanceSlice = createSlice({
     notOut: [],
     today: [],
     dashboard: null,
+    validationPending: [],
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -621,6 +640,11 @@ const attendanceSlice = createSlice({
       .addCase(fetchNotOut.fulfilled, (state, action) => { state.notOut = action.payload })
       .addCase(fetchToday.fulfilled, (state, action) => { state.today = action.payload })
       .addCase(fetchAttendanceDashboard.fulfilled, (state, action) => { state.dashboard = action.payload })
+      .addCase(fetchValidationPending.fulfilled, (state, action) => { state.validationPending = action.payload })
+      .addCase(requestValidation.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(r => r.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = action.payload
+      })
   },
 })
 
@@ -642,4 +666,5 @@ export const selectCalendarDays = (state) => state.attendance.calendarDays
 export const selectCalendarLoading = (state) => state.attendance.calendarLoading
 export const selectRegister = (state) => state.attendance.register
 export const selectRegisterLoading = (state) => state.attendance.registerLoading
+export const selectValidationPending = (state) => state.attendance.validationPending
 export default attendanceSlice.reducer

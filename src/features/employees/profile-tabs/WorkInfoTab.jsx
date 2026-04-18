@@ -20,7 +20,7 @@ const Field = ({ label, value }) => (
   </div>
 )
 
-export default function WorkInfoTab({ employeeId, companyId }) {
+export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
   const formatCurrency = useCurrency().format
   const [info, setInfo]       = useState(null)
   const [loading, setLoading] = useState(true)
@@ -30,10 +30,11 @@ export default function WorkInfoTab({ employeeId, companyId }) {
   const canEdit = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
-    if (!employeeId) return
+    if (!employeeId && !isSelf) return
     setError(null)
-    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
-    api.get(`/employees/${employeeId}/work-info`, cfg)
+    const url = isSelf ? '/ess/my-work-info' : `/employees/${employeeId}/work-info`
+    const cfg = (!isSelf && companyId) ? { headers: { 'X-Company-Id': companyId } } : {}
+    api.get(url, cfg)
       .then(res => setInfo(res.data))
       .catch(err => {
         if (err.response?.status !== 404) {

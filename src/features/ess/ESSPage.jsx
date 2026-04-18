@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchMyProfile, fetchMyLeave, fetchEssLeaveTypes, applyLeave,
-  fetchMyAttendance, checkIn, fetchMyPayslips,
+  fetchMyAttendance, checkIn, checkOut, fetchMyPayslips,
   selectEssProfile, selectEssLeaveRequests, selectEssLeaveTypes,
   selectEssAttendance, selectEssPayslips, selectEssLoading,
 } from './essSlice'
@@ -134,6 +134,11 @@ function AttendanceTab({ attendance, loading }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
+  const today = new Date().toISOString().slice(0, 10)
+  const todayRecord = attendance.find(a => a.attendanceDate === today)
+  const isClockedIn = todayRecord && todayRecord.checkIn && !todayRecord.checkOut
+  const isClockedOut = todayRecord && todayRecord.checkOut
+
   const handleFilter = () => {
     dispatch(fetchMyAttendance(from && to ? { from, to } : undefined))
   }
@@ -144,6 +149,14 @@ function AttendanceTab({ attendance, loading }) {
       toast.success('Checked in successfully')
       dispatch(fetchMyAttendance())
     } catch (e) { toast.error(e || 'Check-in failed') }
+  }
+
+  const handleCheckOut = async () => {
+    try {
+      await dispatch(checkOut()).unwrap()
+      toast.success('Checked out successfully')
+      dispatch(fetchMyAttendance())
+    } catch (e) { toast.error(e || 'Check-out failed') }
   }
 
   return (
@@ -160,8 +173,14 @@ function AttendanceTab({ attendance, loading }) {
             className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50" />
         </div>
         <Button variant="secondary" onClick={handleFilter}>Filter</Button>
-        <div className="ml-auto">
-          <Button onClick={handleCheckIn}>Check In / Out</Button>
+        <div className="ml-auto flex items-center gap-2">
+          {isClockedOut ? (
+            <span className="text-sm text-gray-400">Checked out for today</span>
+          ) : isClockedIn ? (
+            <Button onClick={handleCheckOut}>Check Out</Button>
+          ) : (
+            <Button onClick={handleCheckIn}>Check In</Button>
+          )}
         </div>
       </div>
 

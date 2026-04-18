@@ -38,6 +38,15 @@ export const deleteRotatingShiftAssign = createAsyncThunk('rotatingAssigns/delet
   }
 })
 
+export const rotateShiftAssign = createAsyncThunk('rotatingAssigns/rotateShift', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/rotating-shift-assigns/${id}/rotate`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to trigger rotation')
+  }
+})
+
 export const bulkAssignRotatingShifts = createAsyncThunk('rotatingAssigns/bulkShift', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/rotating-shift-assigns/bulk-assign', data)
@@ -117,6 +126,10 @@ const rotatingAssignsSlice = createSlice({
       })
       .addCase(deleteRotatingShiftAssign.fulfilled, (state, action) => {
         state.shiftAssigns = state.shiftAssigns.filter(s => s.id !== action.payload)
+      })
+      .addCase(rotateShiftAssign.fulfilled, (state, action) => {
+        const idx = state.shiftAssigns.findIndex(s => s.id === action.payload.id)
+        if (idx !== -1) state.shiftAssigns[idx] = action.payload
       })
       .addCase(fetchRotatingWorkTypeAssigns.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchRotatingWorkTypeAssigns.fulfilled, (state, action) => {

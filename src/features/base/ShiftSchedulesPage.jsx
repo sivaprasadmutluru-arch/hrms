@@ -32,6 +32,8 @@ export default function ShiftSchedulesPage() {
       startTime: editing.startTime,
       endTime: editing.endTime,
       minimumWorkingHour: editing.minimumWorkingHour,
+      overtimeCutoff: editing.overtimeCutoff || '',
+      minimumOvertimeToApprove: editing.minimumOvertimeToApprove || '',
     } : {})
   }, [modalOpen, editing])
 
@@ -41,6 +43,8 @@ export default function ShiftSchedulesPage() {
       startTime: data.startTime || null,
       endTime: data.endTime || null,
       minimumWorkingHour: data.minimumWorkingHour ? Number(data.minimumWorkingHour) : null,
+      overtimeCutoff: data.overtimeCutoff || null,
+      minimumOvertimeToApprove: data.minimumOvertimeToApprove || null,
       company: user?.companyId ? { id: user.companyId } : undefined,
     }
     try {
@@ -68,6 +72,8 @@ export default function ShiftSchedulesPage() {
     { accessorKey: 'startTime', header: 'Start Time', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'endTime', header: 'End Time', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'minimumWorkingHour', header: 'Min Hours', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
+    { accessorKey: 'minimumOvertimeToApprove', header: 'Min OT', cell: ({ getValue }) => getValue() || '—' },
+    { accessorKey: 'overtimeCutoff', header: 'OT Cutoff', cell: ({ getValue }) => getValue() || '—' },
     {
       id: 'actions', header: '', cell: ({ row }) => (
         <div className="flex gap-2">
@@ -92,6 +98,10 @@ export default function ShiftSchedulesPage() {
             <Input label="End Time" type="time" {...register('endTime')} />
           </div>
           <Input label="Minimum Working Hours" type="number" {...register('minimumWorkingHour')} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Min OT to Approve (HH:MM)" placeholder="00:30" {...register('minimumOvertimeToApprove')} />
+            <Input label="OT Cutoff (HH:MM)" placeholder="02:00" {...register('overtimeCutoff')} />
+          </div>
         </div>
       </Modal>
 

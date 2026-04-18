@@ -22,7 +22,8 @@ import { fetchAll as fetchOrganizations } from '../organizations/organizationsSl
 import { fetchBranchesSummary, selectBranchesSummary } from '../companies/companiesSlice'
 import { fetchHeadcount as fetchHeadcountReport, fetchAttendanceReport } from '../reports/reportsSlice'
 import { fetchEmployeeDashboard } from '../employees/employeesSlice'
-import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, clockIn, clockOut, selectCalendarDays, selectCalendarLoading } from '../attendance/attendanceSlice'
+import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, selectCalendarDays, selectCalendarLoading } from '../attendance/attendanceSlice'
+import { fetchMyAttendance, checkIn, checkOut, selectEssAttendance, fetchMyWorkInfo, selectEssWorkInfo } from '../ess/essSlice'
 import { fetchAll as fetchNotifications, markAllRead as markAllNotificationsRead, selectAll as selectNotifications } from '../notifications/notificationsSlice'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
@@ -62,7 +63,7 @@ const CHART_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0
 
 function CheckInOutWidget({ user }) {
   const dispatch = useDispatch()
-  const today = useSelector(s => s.attendance.today)
+  const myAttendance = useSelector(selectEssAttendance)
   const [actionLoading, setActionLoading] = useState(false)
   const [now, setNow] = useState(new Date())
 
@@ -72,14 +73,11 @@ function CheckInOutWidget({ user }) {
   }, [])
 
   useEffect(() => {
-    if (user?.companyId) {
-      dispatch(fetchToday({ companyId: user.companyId }))
-    }
-  }, [dispatch, user?.companyId])
+    dispatch(fetchMyAttendance())
+  }, [dispatch])
 
-  const myRecord = user?.employeeId
-    ? today.find(r => r.employeeId === user.employeeId)
-    : null
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
   const isClockedIn  = myRecord?.checkIn && !myRecord?.checkOut
   const isClockedOut = myRecord?.checkIn && myRecord?.checkOut
 
@@ -100,18 +98,16 @@ function CheckInOutWidget({ user }) {
   }
 
   const handleCheckIn = async () => {
-    if (!user?.employeeId || !user?.companyId) return
     setActionLoading(true)
-    await dispatch(clockIn({ employeeId: user.employeeId, companyId: user.companyId }))
-    dispatch(fetchToday({ companyId: user.companyId }))
+    await dispatch(checkIn({}))
+    dispatch(fetchMyAttendance())
     setActionLoading(false)
   }
 
   const handleCheckOut = async () => {
-    if (!myRecord?.id) return
     setActionLoading(true)
-    await dispatch(clockOut({ attendanceId: myRecord.id }))
-    dispatch(fetchToday({ companyId: user.companyId }))
+    await dispatch(checkOut())
+    dispatch(fetchMyAttendance())
     setActionLoading(false)
   }
 
@@ -613,15 +609,17 @@ function DeptManagerDashboard({ leave, headcount }) {
 }
 
 // ─── Welcome banner — employees only ─────────────────────────────────────────
-function WelcomeBanner({ user, attendanceDashboard }) {
+function WelcomeBanner({ user, today, workInfo }) {
   const now = new Date()
   const dayName = now.toLocaleDateString('en', { weekday: 'long' })
   const dateStr = `${String(now.getDate()).padStart(2, '0')} ${now.toLocaleDateString('en', { month: 'short' })} ${now.getFullYear()}`
-  const attendanceStatus = attendanceDashboard?.status || null
-  const checkIn = attendanceDashboard?.checkInTime || null
-  const shiftName = attendanceDashboard?.shiftName || null
-  const shiftStart = attendanceDashboard?.shiftStartTime || null
-  const shiftEnd = attendanceDashboard?.shiftEndTime || null
+  const myRecord = user?.employeeId ? (today || []).find(r => r.employeeId === user.employeeId) : null
+  const attendanceStatus = myRecord?.checkIn ? 'PRESENT' : null
+  const checkIn = myRecord?.checkIn || null
+  // Prefer shift from today's attendance record; fall back to employee's assigned shift from work info
+  const shiftName = myRecord?.shiftName || workInfo?.shiftName || null
+  const shiftStart = null
+  const shiftEnd = null
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 mb-6">
@@ -630,7 +628,7 @@ function WelcomeBanner({ user, attendanceDashboard }) {
           <UsersIcon className="w-8 h-8 text-gray-400" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-indigo-700">Welcome, {user?.name?.split(' ')[0] || 'there'}</h2>
+          <h2 className="text-2xl font-bold text-indigo-700">Welcome, {user?.firstName || user?.name?.split(' ')[0] || user?.username?.split('@')[0] || 'there'}</h2>
           <p className="text-sm text-gray-500 mt-0.5">{dayName} &bull; {dateStr}</p>
           <p className="text-sm text-gray-400 mt-0.5">Reporting Manager – {user?.reportingManager || 'None'}</p>
         </div>
@@ -844,6 +842,8 @@ export default function DashboardPage() {
   const branchesSummary = useSelector(selectBranchesSummary)
   const employeeDashboard = useSelector(s => s.employees.employeeDashboard)
   const attendanceDashboard = useSelector(s => s.attendance.dashboard)
+  const todayAttendance = useSelector(s => s.attendance.today)
+  const myWorkInfo = useSelector(selectEssWorkInfo)
 
   const isSuperAdmin = isPlatformAdmin()
   const isEntAdmin = isEnterpriseAdmin()
@@ -867,6 +867,8 @@ export default function DashboardPage() {
     if (companyId) {
       dispatch(fetchEmployeeDashboard({ companyId }))
       dispatch(fetchAttendanceDashboard({ companyId, date: today }))
+      dispatch(fetchToday({ companyId }))
+      if (user?.employeeId) dispatch(fetchMyWorkInfo())
     }
     if (isSuperAdmin) dispatch(fetchOrganizations({ page: 0, size: 100 }))
     if (isEntAdmin && companyId) dispatch(fetchBranchesSummary(companyId))
@@ -884,7 +886,7 @@ export default function DashboardPage() {
             ? 'Finance overview'
             : isDeptMgr
               ? 'Department overview'
-              : `Welcome back, ${user?.name?.split(' ')[0] || 'there'}`
+              : `Welcome back, ${user?.firstName || user?.name?.split(' ')[0] || user?.username?.split('@')[0] || 'there'}`
 
   return (
     <div>
@@ -894,7 +896,7 @@ export default function DashboardPage() {
       <CheckInOutWidget user={user} />
 
       {/* Employee-only: welcome banner + today's attendance status */}
-      {isEmployee && <WelcomeBanner user={user} attendanceDashboard={attendanceDashboard} />}
+      {isEmployee && <WelcomeBanner user={user} today={todayAttendance} workInfo={myWorkInfo} />}
 
       {/* Personal attendance calendar + quick actions + notifications — all roles */}
       <PersonalAttendanceSection attendanceDashboard={attendanceDashboard} />

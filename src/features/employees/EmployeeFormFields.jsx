@@ -127,18 +127,9 @@ export default function EmployeeFormFields({
           {...register('employeeType')} />
       </div>
 
-      {/* Create-only: password + role + basic pay */}
+      {/* Create-only: role, access scope, and full contract/salary fields */}
       {!isEdit && (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Password" type="password" error={errors.password?.message}
-              {...register('password', { required: 'Required' })} />
-            <Input label="Confirm Password" type="password" error={errors.confirmPassword?.message}
-              {...register('confirmPassword', {
-                required: 'Required',
-                validate: (val, formValues) => val === formValues.password || 'Passwords do not match',
-              })} />
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <Select label="Role"
               options={[{ value: '', label: 'None' }, ...assignableRoles]}
@@ -147,12 +138,35 @@ export default function EmployeeFormFields({
               options={[{ value: '', label: 'None' }, ...ACCESS_SCOPE_OPTIONS]}
               {...register('accessScope')} />
           </div>
-          <Input
-            label="Basic Pay (Monthly)"
-            type="number"
-            placeholder="e.g. 5000"
-            {...register('basicPay')}
-          />
+
+          {/* Salary / Contract */}
+          <div className="pt-1">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Salary &amp; Contract</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Select
+                label="Wage Type"
+                options={[
+                  { value: 'MONTHLY', label: 'Monthly' },
+                  { value: 'HOURLY',  label: 'Hourly' },
+                  { value: 'DAILY',   label: 'Daily' },
+                ]}
+                {...register('wageType')}
+              />
+              <Input label="Contract End Date" type="date" {...register('contractEndDate')} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="Basic Pay" type="number" placeholder="e.g. 5000" {...register('basicPay')} />
+              <Input label="Housing Allowance" type="number" placeholder="e.g. 1000" {...register('housingAllowance')} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="Transport Allowance" type="number" placeholder="e.g. 500" {...register('transportAllowance')} />
+              <Input label="Other Allowance" type="number" placeholder="e.g. 200" {...register('otherAllowance')} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="Total Salary" type="number" placeholder="Sum of all components" {...register('totalSalary')} />
+              <Input label="Salary Per Hour" type="number" placeholder="e.g. 25" {...register('salaryPerHour')} />
+            </div>
+          </div>
         </>
       )}
 

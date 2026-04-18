@@ -171,6 +171,14 @@ export const deleteEncashmentCondition = createAsyncThunk('employees/deleteEncas
   } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete encashment condition') }
 })
 
+export const fetchOnlineStatus = createAsyncThunk('employees/fetchOnlineStatus', async (companyId, { rejectWithValue }) => {
+  try {
+    const params = companyId != null ? { companyId } : {}
+    const res = await api.get('/employees/online-status', { params })
+    return res.data
+  } catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to fetch online status') }
+})
+
 const employeesSlice = createSlice({
   name: 'employees',
   initialState: {
@@ -181,6 +189,7 @@ const employeesSlice = createSlice({
     orgChart: [],
     employeeDashboard: null,
     encashmentCondition: null,
+    onlineEmployeeIds: [],
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -240,10 +249,14 @@ const employeesSlice = createSlice({
       .addCase(fetchEncashmentCondition.fulfilled, (state, action) => { state.encashmentCondition = action.payload })
       .addCase(upsertEncashmentCondition.fulfilled, (state, action) => { state.encashmentCondition = action.payload })
       .addCase(deleteEncashmentCondition.fulfilled, (state) => { state.encashmentCondition = null })
+      .addCase(fetchOnlineStatus.fulfilled, (state, action) => {
+        state.onlineEmployeeIds = action.payload.onlineEmployeeIds || []
+      })
   },
 })
 
 export const selectAll = (state) => state.employees.data
 export const selectLoading = (state) => state.employees.loading
 export const selectPagination = (state) => state.employees.pagination
+export const selectOnlineEmployeeIds = (state) => state.employees.onlineEmployeeIds
 export default employeesSlice.reducer

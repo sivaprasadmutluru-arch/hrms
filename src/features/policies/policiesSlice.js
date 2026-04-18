@@ -19,9 +19,9 @@ export const fetchById = createAsyncThunk('policies/fetchById', async (id, { rej
   }
 })
 
-export const create = createAsyncThunk('policies/create', async (data, { rejectWithValue }) => {
+export const create = createAsyncThunk('policies/create', async ({ companyId, ...data }, { rejectWithValue }) => {
   try {
-    const res = await api.post('/hr-policies', data)
+    const res = await api.post('/hr-policies', data, { params: { companyId } })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to create policy')

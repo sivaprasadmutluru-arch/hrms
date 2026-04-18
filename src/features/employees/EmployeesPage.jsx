@@ -3,10 +3,11 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, importEmployees, downloadImportTemplate, selectAll, selectLoading, selectPagination } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
+import { setSelectedCompany } from '../auth/authSlice'
 import { fetchAll as fetchDepartments, selectAll as selectDepartments } from '../departments/departmentsSlice'
 import { fetchJobPositions, selectJobPositions, fetchWorkTypes, selectWorkTypes, fetchShiftSchedules, selectShiftSchedules, fetchJobRoles, selectJobRoles } from '../base/baseExtrasSlice'
 import Button from '../../components/common/Button'
@@ -59,7 +60,7 @@ function StatCard({ label, value, icon, color }) {
   )
 }
 
-function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete }) {
+function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isOnline }) {
   return (
     <div
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
@@ -71,8 +72,9 @@ function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete }) {
         {/* Header row */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="shrink-0">
+            <div className="shrink-0 relative">
               <Avatar name={employee.fullName || employee.firstName} size="lg" />
+              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-gray-300'}`} title={isOnline ? 'Online' : 'Offline'} />
             </div>
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{employee.fullName || '—'}</p>
@@ -195,12 +197,19 @@ export default function EmployeesPage() {
     return map
   }, [userRoles])
 
+  // Initialise from the persisted header switcher selection so a page reload keeps the filter
+  const authSelectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const onlineEmployeeIds = useSelector(selectOnlineEmployeeIds)
+
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'online' | 'offline'
   const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
-  const [selectedCompanyId, setSelectedCompanyId] = useState(null)
+  const [selectedCompanyId, setSelectedCompanyId] = useState(
+    authSelectedCompanyId ? Number(authSelectedCompanyId) : null
+  )
   const [selectedRows, setSelectedRows] = useState([])
   const [showBulkUpdate, setShowBulkUpdate] = useState(false)
   const importEmployeesRef = useRef()
@@ -224,9 +233,15 @@ export default function EmployeesPage() {
   useEffect(() => {
     if (isPlatformAdmin()) {
       dispatch(fetchAll_companies({ page: 0, size: 100 }))
-      dispatch(fetchAllGlobal({ page: 0, size: 20 }))
+      // Use the persisted company filter (from the header switcher) if present
+      const initCompanyId = authSelectedCompanyId ? Number(authSelectedCompanyId) : null
+      if (initCompanyId) {
+        dispatch(fetchAll({ page: 0, size: 20, sort: 'id,desc', companyIdOverride: initCompanyId }))
+      } else {
+        dispatch(fetchAllGlobal({ page: 0, size: 20, sort: 'id,desc' }))
+      }
     } else {
-      dispatch(fetchAll({ page: 0, size: 20 }))
+      dispatch(fetchAll({ page: 0, size: 20, sort: 'id,desc' }))
     }
     dispatch(fetchUserRoles())
     dispatch(fetchDepartments({ page: 0, size: 100 }))
@@ -239,14 +254,20 @@ export default function EmployeesPage() {
         dispatch(fetchBranches(user.companyId))
       })
     }
+    if (isPlatformAdmin()) {
+      // Super admin: pass selected company if any, else fetch globally (no companyId)
+      dispatch(fetchOnlineStatus(authSelectedCompanyId ? Number(authSelectedCompanyId) : null))
+    } else if (user?.companyId) {
+      dispatch(fetchOnlineStatus(user.companyId))
+    }
   }, [dispatch])
 
   // Super Admin with no company filter → global; otherwise scoped
   const load = (page) => {
     if (isPlatformAdmin() && !selectedCompanyId) {
-      dispatch(fetchAllGlobal({ page, size: 20 }))
+      dispatch(fetchAllGlobal({ page, size: 20, sort: 'id,desc' }))
     } else {
-      dispatch(fetchAll({ page, size: 20, ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
+      dispatch(fetchAll({ page, size: 20, sort: 'id,desc', ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
     }
   }
 
@@ -299,7 +320,7 @@ export default function EmployeesPage() {
   }, [modalOpen, editing])
 
   const onSubmit = async (data) => {
-    const { confirmPassword, ...rest } = data
+    const { confirmPassword, password, ...rest } = data
     const payload = {
       ...rest,
       companyId: data.companyId ? Number(data.companyId) : (user?.companyId ? Number(user.companyId) : undefined),
@@ -320,6 +341,13 @@ export default function EmployeesPage() {
       experience: data.experience !== '' && data.experience != null ? Number(data.experience) : undefined,
       children: data.children !== '' && data.children != null ? Number(data.children) : undefined,
       basicPay: data.basicPay !== '' && data.basicPay != null ? Number(data.basicPay) : undefined,
+      housingAllowance: data.housingAllowance !== '' && data.housingAllowance != null ? Number(data.housingAllowance) : undefined,
+      transportAllowance: data.transportAllowance !== '' && data.transportAllowance != null ? Number(data.transportAllowance) : undefined,
+      otherAllowance: data.otherAllowance !== '' && data.otherAllowance != null ? Number(data.otherAllowance) : undefined,
+      totalSalary: data.totalSalary !== '' && data.totalSalary != null ? Number(data.totalSalary) : undefined,
+      salaryPerHour: data.salaryPerHour !== '' && data.salaryPerHour != null ? Number(data.salaryPerHour) : undefined,
+      wageType: data.wageType || undefined,
+      contractEndDate: data.contractEndDate || undefined,
     }
     try {
       if (editing) {
@@ -339,18 +367,26 @@ export default function EmployeesPage() {
       await dispatch(remove(deleteTarget.id)).unwrap()
       toast.success('Employee removed')
       setDeleteTarget(null)
+      load(0)
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const filtered = search
-    ? employees.filter(e =>
-        `${e.fullName} ${e.email} ${e.badgeId} ${e.companyName} ${e.departmentName} ${e.organizationName || ''}`
-          .toLowerCase().includes(search.toLowerCase())
-      )
-    : employees
+  const onlineSet = new Set(onlineEmployeeIds)
+
+  const filtered = employees.filter(e => {
+    const matchesSearch = !search ||
+      `${e.fullName} ${e.email} ${e.badgeId} ${e.companyName} ${e.departmentName} ${e.organizationName || ''}`
+        .toLowerCase().includes(search.toLowerCase())
+    const isOnline = onlineSet.has(e.id)
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'online' && isOnline) ||
+      (statusFilter === 'offline' && !isOnline)
+    return matchesSearch && matchesStatus
+  })
 
   const activeCount = employees.filter(e => e.isActive).length
   const inactiveCount = employees.filter(e => !e.isActive).length
+  const onlineCount = employees.filter(e => onlineSet.has(e.id)).length
 
   const columns = [
     {
@@ -405,6 +441,16 @@ export default function EmployeesPage() {
       id: 'status',
       header: 'Status',
       cell: ({ row }) => <Badge label={row.original.isActive ? 'Active' : 'Inactive'} variant={row.original.isActive ? 'success' : 'danger'} />,
+    },
+    {
+      id: 'online',
+      header: 'Online',
+      cell: ({ row }) => (
+        <span className="flex items-center gap-1.5 text-xs font-medium">
+          <span className={`w-2.5 h-2.5 rounded-full ${onlineSet.has(row.original.id) ? 'bg-green-400' : 'bg-gray-300'}`} />
+          {onlineSet.has(row.original.id) ? 'Online' : 'Offline'}
+        </span>
+      ),
     },
     {
       id: 'actions',
@@ -491,10 +537,11 @@ export default function EmployeesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <StatCard label="Total Employees" value={pagination.total || employees.length} icon="👥" color="bg-indigo-50 text-indigo-600" />
         <StatCard label="Active" value={activeCount} icon="✅" color="bg-emerald-50 text-emerald-600" />
         <StatCard label="Inactive" value={inactiveCount} icon="⏸️" color="bg-red-50 text-red-500" />
+        <StatCard label="Online Now" value={onlineCount} icon="🟢" color="bg-green-50 text-green-600" />
         <StatCard label="Departments" value={departments.length} icon="🏢" color="bg-violet-50 text-violet-600" />
       </div>
 
@@ -515,6 +562,17 @@ export default function EmployeesPage() {
             />
           </div>
 
+          {/* Online/Offline filter */}
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+          >
+            <option value="all">All Status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+          </select>
+
           {/* Platform admin: company picker — "All" uses global endpoint, specific company uses scoped */}
           {isPlatformAdmin() && companies.length > 0 && (
             <select
@@ -522,10 +580,13 @@ export default function EmployeesPage() {
               onChange={e => {
                 const id = e.target.value ? Number(e.target.value) : null
                 setSelectedCompanyId(id)
+                dispatch(setSelectedCompany(id)) // keep in sync with header switcher
                 if (id) {
                   dispatch(fetchAll({ page: 0, size: 20, companyIdOverride: id }))
+                  dispatch(fetchOnlineStatus(id))
                 } else {
                   dispatch(fetchAllGlobal({ page: 0, size: 20 }))
+                  dispatch(fetchOnlineStatus(null))
                 }
               }}
               className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
@@ -601,6 +662,7 @@ export default function EmployeesPage() {
               employee={emp}
               role={roleByEmail[emp.email]}
               canManage={canManage}
+              isOnline={onlineSet.has(emp.id)}
               onView={(e) => navigate(`/employees/${e.id}${e.companyId ? `?companyId=${e.companyId}` : ''}`)}
               onEdit={openEdit}
               onDelete={setDeleteTarget}

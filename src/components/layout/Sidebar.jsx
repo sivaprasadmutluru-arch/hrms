@@ -64,6 +64,7 @@ const ATTENDANCE_GROUP = {
     { label: 'Shift Allocations',  to: '/attendance/shift-allocations' },
     { label: 'Rotating Shifts',    to: '/attendance/rotating-shifts' },
     { label: 'Rotating Work Types',to: '/attendance/rotating-work-types' },
+    { label: 'Settings',           to: '/attendance/settings' },
   ],
 }
 
@@ -507,11 +508,16 @@ function getNavSections(auth) {
         { label: 'Payslips', to: '/payroll/payslips', icon: ReceiptPercentIcon },
         { label: 'Reimbursements', to: '/payroll/reimbursements', icon: ReceiptPercentIcon },
         { label: 'Loans', to: '/payroll/loans', icon: BanknotesIcon },
+        { label: 'My Documents', to: '/documents/my', icon: DocumentTextIcon },
       ],
     },
     {
       title: 'Support',
       items: [{ label: 'Helpdesk', to: '/helpdesk', icon: TicketIcon }],
+    },
+    {
+      title: 'Account',
+      items: [{ label: 'Notifications', to: '/notifications', icon: BellIcon }],
     },
   ]
 }

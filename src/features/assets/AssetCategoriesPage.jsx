@@ -71,9 +71,8 @@ export default function AssetCategoriesPage() {
 
   return (
     <div>
-      <PageHeader title="Asset Categories" subtitle="Manage asset categories">
-        <Button onClick={openCreate}>Add Category</Button>
-      </PageHeader>
+      <PageHeader title="Asset Categories" subtitle="Manage asset categories"
+        actions={<Button onClick={openCreate}>Add Category</Button>} />
       <DataTable columns={columns} data={categories} />
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Category' : 'New Category'}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -126,6 +126,7 @@ const authSlice = createSlice({
           if (action.payload.companyId !== undefined) updates.companyId = action.payload.companyId
           if (action.payload.organizationId !== undefined) updates.organizationId = action.payload.organizationId
           if (action.payload.employeeId !== undefined) updates.employeeId = action.payload.employeeId
+          if (action.payload.firstName !== undefined) updates.firstName = action.payload.firstName
           if (Object.keys(updates).length > 0) {
             state.user = { ...state.user, ...updates }
             localStorage.setItem('user', JSON.stringify(state.user))

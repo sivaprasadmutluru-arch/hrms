@@ -49,7 +49,15 @@ export default function DisciplinaryPage() {
   }, [dispatch])
 
   const openCreate = () => { setEditing(null); reset({ startDate: new Date().toISOString().slice(0, 10) }); setModalOpen(true) }
-  const openEdit = (row) => { setEditing(row); reset({ ...row, actionType: row.actionType }); setModalOpen(true) }
+  const openEdit = (row) => {
+    setEditing(row)
+    reset({
+      ...row,
+      actionType: row.actionType,
+      employeeIds: row.employees?.map(e => String(e.id)) ?? [],
+    })
+    setModalOpen(true)
+  }
 
   const onSubmit = async (data) => {
     const payload = {

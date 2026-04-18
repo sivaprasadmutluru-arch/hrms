@@ -4,25 +4,32 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { bulkUpdateEmployees } from './employeesSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
+import { fetchShiftSchedules, fetchWorkTypes, fetchJobPositions } from '../base/baseExtrasSlice'
 import Modal from '../../components/common/Modal'
 import Button from '../../components/common/Button'
 
 export default function BulkUpdateModal({ employeeIds, onClose, onSuccess }) {
   const dispatch = useDispatch()
   const departments = useSelector(s => s.departments?.data || [])
+  const shiftSchedules = useSelector(s => s.baseExtras?.shiftSchedules || [])
+  const workTypes = useSelector(s => s.baseExtras?.workTypes || [])
+  const jobPositions = useSelector(s => s.baseExtras?.jobPositions || [])
   const { register, handleSubmit } = useForm()
 
   useEffect(() => {
     dispatch(fetchDepartments())
+    dispatch(fetchShiftSchedules())
+    dispatch(fetchWorkTypes())
+    dispatch(fetchJobPositions())
   }, [dispatch])
 
   const onSubmit = async (data) => {
-    // Only include fields that are filled
+    // Only include fields that are filled; send IDs to backend
     const payload = { employeeIds }
-    if (data.department) payload.department = data.department
-    if (data.shift) payload.shift = data.shift
-    if (data.workType) payload.workType = data.workType
-    if (data.jobPosition) payload.jobPosition = data.jobPosition
+    if (data.departmentId) payload.departmentId = Number(data.departmentId)
+    if (data.shiftId) payload.shiftId = Number(data.shiftId)
+    if (data.workTypeId) payload.workTypeId = Number(data.workTypeId)
+    if (data.jobPositionId) payload.jobPositionId = Number(data.jobPositionId)
 
     const res = await dispatch(bulkUpdateEmployees(payload))
     if (res.error) { toast.error(res.payload); return }
@@ -39,7 +46,7 @@ export default function BulkUpdateModal({ employeeIds, onClose, onSuccess }) {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
           <select
-            {...register('department')}
+            {...register('departmentId')}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <option value="">— No change —</option>
@@ -49,29 +56,35 @@ export default function BulkUpdateModal({ employeeIds, onClose, onSuccess }) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Shift</label>
-          <input
-            {...register('shift')}
+          <select
+            {...register('shiftId')}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Shift ID (leave blank for no change)"
-          />
+          >
+            <option value="">— No change —</option>
+            {shiftSchedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Work Type</label>
-          <input
-            {...register('workType')}
+          <select
+            {...register('workTypeId')}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Work Type ID (leave blank for no change)"
-          />
+          >
+            <option value="">— No change —</option>
+            {workTypes.map(wt => <option key={wt.id} value={wt.id}>{wt.name}</option>)}
+          </select>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Job Position</label>
-          <input
-            {...register('jobPosition')}
+          <select
+            {...register('jobPositionId')}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Job Position ID (leave blank for no change)"
-          />
+          >
+            <option value="">— No change —</option>
+            {jobPositions.map(jp => <option key={jp.id} value={jp.id}>{jp.name}</option>)}
+          </select>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

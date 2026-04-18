@@ -10,11 +10,8 @@ export default function DocumentsTab({ employeeId, companyId }) {
 
   useEffect(() => {
     if (!employeeId) return
-    const cfg = {
-      params: { employeeId },
-      ...(companyId ? { headers: { 'X-Company-Id': companyId } } : {}),
-    }
-    api.get('/documents', cfg)
+    const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
+    api.get(`/documents/employee/${employeeId}`, cfg)
       .then(res => setDocs(Array.isArray(res.data) ? res.data : res.data?.content ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -35,7 +32,7 @@ export default function DocumentsTab({ employeeId, companyId }) {
           </div>
           {doc.filePath && (
             <a
-              href={`${API_BASE_URL}${doc.filePath}`}
+              href={`${API_BASE_URL}/files/${doc.filePath}`}
               target="_blank"
               rel="noreferrer"
               className="text-xs text-indigo-600 hover:underline"
