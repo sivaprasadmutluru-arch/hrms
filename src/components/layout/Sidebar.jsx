@@ -6,7 +6,7 @@ import {
   FolderIcon, UserPlusIcon, ChartBarIcon, ArrowRightStartOnRectangleIcon,
   ArrowLeftStartOnRectangleIcon, TicketIcon, DocumentTextIcon,
   ShieldCheckIcon, ChartPieIcon, BellIcon, ChevronLeftIcon, ChevronRightIcon,
-  Cog6ToothIcon, ReceiptPercentIcon, ChevronDownIcon,
+  Cog6ToothIcon, ReceiptPercentIcon, ChevronDownIcon, MegaphoneIcon,
 } from '@heroicons/react/24/outline'
 import { useSelector } from 'react-redux'
 import useAuth from '../../hooks/useAuth'
@@ -24,6 +24,7 @@ const EMPLOYEE_GROUP = {
     { label: 'Employees',            to: '/employees' },
     { label: 'Document Requests',    to: '/documents/requests' },
     { label: 'Disciplinary Actions', to: '/disciplinary-actions' },
+    { label: 'Bonus Points',         to: '/bonus-points' },
     { label: 'Employee Notes',       to: '/employee-notes' },
     { label: 'Employee Settings',    to: '/employee-settings' },
     { label: 'Policies',             to: '/policies' },
@@ -111,6 +112,7 @@ const PAYROLL_GROUP = {
     { label: 'Tax Settings',       to: '/payroll/tax-settings' },
     { label: 'Reimbursements',     to: '/payroll/reimbursements' },
     { label: 'Batch Groups',       to: '/payroll/batch-groups' },
+    { label: 'Import',             to: '/payroll/import' },
     { label: 'Settings',           to: '/payroll/settings' },
   ],
 }
@@ -123,7 +125,11 @@ const RECRUITMENT_GROUP = {
     { label: 'Dashboard',      to: '/recruitment/dashboard' },
     { label: 'Job Posts',      to: '/recruitment/posts' },
     { label: 'Pipeline',       to: '/recruitment/pipeline' },
+    { label: 'Applicants',     to: '/recruitment/applicants' },
+    { label: 'Interviews',     to: '/recruitment/interviews' },
+    { label: 'Skill Zones',    to: '/recruitment/skill-zones' },
     { label: 'Skills',         to: '/recruitment/skills' },
+    { label: 'Reject Reasons', to: '/recruitment/reject-reasons' },
     { label: 'Surveys',        to: '/recruitment/surveys' },
     { label: 'Candidate Docs', to: '/recruitment/candidate-docs' },
   ],
@@ -134,9 +140,11 @@ const OFFBOARDING_GROUP = {
   icon: ArrowLeftStartOnRectangleIcon,
   group: 'offboarding',
   children: [
-    { label: 'Offboarding', to: '/offboarding' },
-    { label: 'Plans',       to: '/offboarding/plans' },
-    { label: 'Settings',    to: '/offboarding/settings' },
+    { label: 'Offboarding',  to: '/offboarding' },
+    { label: 'Plans',        to: '/offboarding/plans' },
+    { label: 'Exit Reasons', to: '/offboarding/exit-reasons' },
+    { label: 'Resignations', to: '/offboarding/resignations' },
+    { label: 'Settings',     to: '/offboarding/settings' },
   ],
 }
 
@@ -146,6 +154,10 @@ const PERFORMANCE_GROUP = {
   group: 'performance',
   children: [
     { label: 'Review Cycles',        to: '/performance/cycles' },
+    { label: 'Objectives',           to: '/performance/objectives' },
+    { label: 'Feedback',             to: '/performance/feedback' },
+    { label: 'Anonymous Feedback',   to: '/performance/anonymous-feedback' },
+    { label: 'Meetings',             to: '/performance/meetings' },
     { label: 'Question Templates',   to: '/performance/question-templates' },
     { label: 'Bonus Settings',       to: '/performance/bonus-settings' },
   ],
@@ -192,14 +204,15 @@ const SETTINGS_GROUP = {
   icon: Cog6ToothIcon,
   group: 'settings',
   children: [
-    { label: 'General',        to: '/settings/general' },
-    { label: 'Account',        to: '/settings/account' },
-    { label: 'LDAP / AD',      to: '/settings/ldap' },
-    { label: 'Backup',         to: '/settings/backup' },
-    { label: 'Outlook Auth',   to: '/settings/outlook-auth' },
-    { label: 'Accessibility',  to: '/settings/accessibility' },
-    { label: 'Dynamic Fields', to: '/settings/dynamic-fields' },
-    { label: 'LinkedIn',       to: '/settings/linkedin' },
+    { label: 'General',              to: '/settings/general' },
+    { label: 'Account',              to: '/settings/account' },
+    { label: 'Approval Conditions',  to: '/settings/approval-conditions' },
+    { label: 'LDAP / AD',            to: '/settings/ldap' },
+    { label: 'Backup',               to: '/settings/backup' },
+    { label: 'Outlook Auth',         to: '/settings/outlook-auth' },
+    { label: 'Accessibility',        to: '/settings/accessibility' },
+    { label: 'Dynamic Fields',       to: '/settings/dynamic-fields' },
+    { label: 'LinkedIn',             to: '/settings/linkedin' },
   ],
 }
 
@@ -257,13 +270,15 @@ function getNavSections(auth) {
         items: [
           { label: 'Helpdesk',      to: '/helpdesk',                        icon: TicketIcon },
           { label: 'Dept Managers', to: '/helpdesk/department-managers',    icon: UserPlusIcon },
+          { label: 'Announcements', to: '/announcements',                   icon: MegaphoneIcon },
         ],
       },
       {
         title: 'Admin',
         items: [
-          { label: 'Roles & Access', to: '/roles', icon: Cog6ToothIcon },
+          { label: 'Roles & Access', to: '/roles',        icon: Cog6ToothIcon },
           { label: 'User Groups',    to: '/roles/user-groups', icon: UsersIcon },
+          { label: 'Audit Logs',     to: '/audit/logs',   icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
           SETTINGS_GROUP,
         ],
@@ -316,13 +331,15 @@ function getNavSections(auth) {
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk', to: '/helpdesk', icon: TicketIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',       icon: TicketIcon },
+          { label: 'Announcements', to: '/announcements',  icon: MegaphoneIcon },
         ],
       },
       {
         title: 'Management',
         items: [
-          { label: 'Roles & Access', to: '/roles', icon: Cog6ToothIcon },
+          { label: 'Roles & Access', to: '/roles',        icon: Cog6ToothIcon },
+          { label: 'Audit Logs',     to: '/audit/logs',   icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
           SETTINGS_GROUP,
         ],
@@ -376,11 +393,13 @@ function getNavSections(auth) {
         items: [
           { label: 'Helpdesk',      to: '/helpdesk',                     icon: TicketIcon },
           { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlusIcon },
+          { label: 'Announcements', to: '/announcements',                icon: MegaphoneIcon },
         ],
       },
       {
         title: 'Admin',
         items: [
+          { label: 'Audit Logs', to: '/audit/logs', icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
           SETTINGS_GROUP,
         ],
@@ -429,13 +448,15 @@ function getNavSections(auth) {
         items: [
           { label: 'Helpdesk',      to: '/helpdesk',                     icon: TicketIcon },
           { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlusIcon },
+          { label: 'Announcements', to: '/announcements',                icon: MegaphoneIcon },
         ],
       },
       {
         title: 'Admin',
         items: [
           BIOMETRIC_GROUP,
-          { label: 'Dynamic Fields', to: '/settings/dynamic-fields', icon: DocumentTextIcon },
+          { label: 'Approval Conditions', to: '/settings/approval-conditions', icon: Cog6ToothIcon },
+          { label: 'Dynamic Fields',      to: '/settings/dynamic-fields',      icon: DocumentTextIcon },
         ],
       },
       {
