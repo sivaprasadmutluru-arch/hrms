@@ -881,17 +881,145 @@ public class LeaveController {
     public ResponseEntity<Map<String, Object>> importAllocations(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long companyId) throws IOException {
-        int count = 0;
+        com.example.demo.base.entity.Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("Company", companyId));
+
+        int imported = 0;
+        int failed = 0;
+        List<String> errors = new ArrayList<>();
+
         try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
+            // Resolve header columns from row 0
+            Row headerRow = sheet.getRow(0);
+            if (headerRow == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Empty file", "imported", 0, "failed", 0));
+            }
+            Map<String, Integer> colIndex = new HashMap<>();
+            for (int c = 0; c <= headerRow.getLastCellNum(); c++) {
+                Cell hCell = headerRow.getCell(c);
+                if (hCell != null) {
+                    colIndex.put(getCellStringValue(hCell).trim().toLowerCase(), c);
+                }
+            }
+
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                // Minimal stub: count rows processed; real implementation would map cells to entities
-                count++;
+
+                try {
+                    // Employee — matched by "employee id", "badge id", or "employee"
+                    String empRaw = getColValue(row, colIndex, "employee id", "badge id", "employee");
+                    if (empRaw == null || empRaw.isBlank()) { failed++; errors.add("Row " + (i+1) + ": missing employee"); continue; }
+                    Employee employee = null;
+                    try {
+                        long empId = Long.parseLong(empRaw.trim());
+                        employee = employeeRepository.findById(empId).orElse(null);
+                    } catch (NumberFormatException ignored) {}
+                    if (employee == null) {
+                        // Try badge_id lookup
+                        List<Employee> byBadge = employeeRepository.findAll().stream()
+                                .filter(e -> empRaw.trim().equalsIgnoreCase(e.getBadgeId()))
+                                .toList();
+                        if (!byBadge.isEmpty()) employee = byBadge.get(0);
+                    }
+                    if (employee == null) { failed++; errors.add("Row " + (i+1) + ": employee not found: " + empRaw); continue; }
+
+                    // Leave type — by "leave type" column
+                    String ltRaw = getColValue(row, colIndex, "leave type");
+                    if (ltRaw == null || ltRaw.isBlank()) { failed++; errors.add("Row " + (i+1) + ": missing leave type"); continue; }
+                    LeaveType leaveType = null;
+                    try {
+                        long ltId = Long.parseLong(ltRaw.trim());
+                        leaveType = leaveTypeRepository.findById(ltId).orElse(null);
+                    } catch (NumberFormatException ignored) {}
+                    if (leaveType == null) {
+                        String ltName = ltRaw.trim();
+                        leaveType = leaveTypeRepository.findByCompanyId(companyId).stream()
+                                .filter(lt -> lt.getName() != null && lt.getName().equalsIgnoreCase(ltName))
+                                .findFirst().orElse(null);
+                    }
+                    if (leaveType == null) { failed++; errors.add("Row " + (i+1) + ": leave type not found: " + ltRaw); continue; }
+
+                    // Year
+                    String yearRaw = getColValue(row, colIndex, "year");
+                    int year = (yearRaw != null && !yearRaw.isBlank())
+                            ? (int) Double.parseDouble(yearRaw.trim())
+                            : LocalDate.now().getYear();
+
+                    // Total days
+                    String totalRaw = getColValue(row, colIndex, "total days", "total_leave_days", "days");
+                    double totalDays = (totalRaw != null && !totalRaw.isBlank()) ? Double.parseDouble(totalRaw.trim()) : 0.0;
+
+                    // Optional fields
+                    String availRaw = getColValue(row, colIndex, "available days", "available_days");
+                    Double availDays = (availRaw != null && !availRaw.isBlank()) ? Double.parseDouble(availRaw.trim()) : totalDays;
+
+                    String cfRaw = getColValue(row, colIndex, "carryforward days", "carryforward_days");
+                    Double cfDays = (cfRaw != null && !cfRaw.isBlank()) ? Double.parseDouble(cfRaw.trim()) : 0.0;
+
+                    String statusRaw = getColValue(row, colIndex, "status");
+                    LeaveAllocation.AllocationStatus status = LeaveAllocation.AllocationStatus.ACTIVE;
+                    if (statusRaw != null && statusRaw.trim().equalsIgnoreCase("EXPIRED")) {
+                        status = LeaveAllocation.AllocationStatus.EXPIRED;
+                    }
+
+                    // Upsert: reuse existing record for same employee/leaveType/year
+                    LeaveAllocation allocation = leaveAllocationRepository
+                            .findByEmployeeIdAndLeaveTypeIdAndYear(employee.getId(), leaveType.getId(), year)
+                            .orElseGet(LeaveAllocation::new);
+                    allocation.setEmployee(employee);
+                    allocation.setLeaveType(leaveType);
+                    allocation.setYear(year);
+                    allocation.setTotalLeaveDays(totalDays);
+                    allocation.setAvailableDays(availDays);
+                    allocation.setCarryforwardDays(cfDays);
+                    allocation.setStatus(status);
+                    allocation.setCompany(company);
+                    leaveAllocationRepository.save(allocation);
+                    imported++;
+
+                } catch (Exception ex) {
+                    failed++;
+                    errors.add("Row " + (i+1) + ": " + ex.getMessage());
+                }
             }
         }
-        return ResponseEntity.ok(Map.of("message", "Import completed", "count", count));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Import completed");
+        result.put("imported", imported);
+        result.put("failed", failed);
+        result.put("errors", errors);
+        return ResponseEntity.ok(result);
+    }
+
+    private String getColValue(Row row, Map<String, Integer> colIndex, String... candidates) {
+        for (String key : candidates) {
+            Integer idx = colIndex.get(key.toLowerCase());
+            if (idx != null) {
+                Cell cell = row.getCell(idx);
+                if (cell != null) return getCellStringValue(cell);
+            }
+        }
+        return null;
+    }
+
+    private String getCellStringValue(Cell cell) {
+        if (cell == null) return null;
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue();
+            case NUMERIC -> {
+                double d = cell.getNumericCellValue();
+                yield (d == Math.floor(d)) ? String.valueOf((long) d) : String.valueOf(d);
+            }
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> {
+                try { yield String.valueOf(cell.getNumericCellValue()); }
+                catch (Exception e) { yield cell.getStringCellValue(); }
+            }
+            default -> "";
+        };
     }
 
     // ─── Export Holidays ──────────────────────────────────────────────────────

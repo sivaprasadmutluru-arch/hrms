@@ -19,6 +19,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.expression.Expression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -790,6 +793,37 @@ public class PayrollService {
             if (filingStatuses.isEmpty()) return 0.0;
             filingStatusId = filingStatuses.get(0).getId();
         }
+
+        // SpEL-based custom tax expression (when usePy=true and pythonCode is set)
+        FilingStatus filingStatus = filingStatusRepository.findById(filingStatusId).orElse(null);
+        if (filingStatus != null && Boolean.TRUE.equals(filingStatus.getUsePy())
+                && filingStatus.getPythonCode() != null && !filingStatus.getPythonCode().isBlank()) {
+            try {
+                SpelExpressionParser parser = new SpelExpressionParser();
+                Expression expr = parser.parseExpression(filingStatus.getPythonCode());
+                StandardEvaluationContext ctx = new StandardEvaluationContext();
+                ctx.setVariable("grossIncome", taxableIncome);
+                // Annualize for the expression so authors can write yearly-income-based logic
+                long numDaysSpel = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+                int daysInYearSpel = Year.isLeap(startDate.getYear()) ? 366 : 365;
+                ctx.setVariable("yearlyIncome", round2(taxableIncome / numDaysSpel * daysInYearSpel));
+                ctx.setVariable("numDays", (double) numDaysSpel);
+                ctx.setVariable("daysInYear", (double) daysInYearSpel);
+                Object result = expr.getValue(ctx);
+                if (result instanceof Number num) {
+                    double exprValue = num.doubleValue();
+                    // If value is between 0 and 1 treat as rate, otherwise treat as period tax amount
+                    if (exprValue >= 0 && exprValue <= 1) {
+                        return round2(taxableIncome * exprValue);
+                    }
+                    return round2(exprValue);
+                }
+            } catch (Exception ex) {
+                log.warn("FilingStatus SpEL expression evaluation failed for id={}, falling back to brackets: {}",
+                        filingStatusId, ex.getMessage());
+            }
+        }
+
         List<TaxBracket> brackets = taxBracketRepository.findByFilingStatusId(filingStatusId);
         if (brackets.isEmpty()) return 0.0;
         brackets.sort(Comparator.comparingDouble(TaxBracket::getMinIncome));
