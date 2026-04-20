@@ -333,6 +333,8 @@ const recruitmentSlice = createSlice({
   name: 'recruitment',
   initialState: {
     posts: [],
+    pipeline: [],
+    selected: {},
     applicants: [],
     interviews: [],
     skillZones: [],
@@ -342,9 +344,9 @@ const recruitmentSlice = createSlice({
     rejectedCandidates: [],
     candidateDocumentRequests: [],
     recruitmentSettings: null,
-    selected: {},
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
+    pipelineLoading: false,
     error: null,
   },
   reducers: {},
@@ -402,6 +404,10 @@ const recruitmentSlice = createSlice({
         state.loading = false
         const idx = state.applicants.findIndex((item) => item.id === action.payload.id)
         if (idx !== -1) state.applicants[idx] = action.payload
+        state.pipeline = state.pipeline.map(stage => ({
+          ...stage,
+          applicants: (stage.applicants || []).map(a => a.id === action.payload.id ? action.payload : a),
+        }))
       })
       .addCase(updateApplicantStage.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
@@ -417,6 +423,10 @@ const recruitmentSlice = createSlice({
         state.loading = false
         const idx = state.applicants.findIndex((item) => item.id === action.payload.id)
         if (idx !== -1) state.applicants[idx] = action.payload
+        state.pipeline = state.pipeline.map(stage => ({
+          ...stage,
+          applicants: (stage.applicants || []).map(a => a.id === action.payload.id ? action.payload : a),
+        }))
       })
       .addCase(hireApplicant.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
@@ -425,6 +435,10 @@ const recruitmentSlice = createSlice({
         state.loading = false
         const idx = state.applicants.findIndex((item) => item.id === action.payload.id)
         if (idx !== -1) state.applicants[idx] = action.payload
+        state.pipeline = state.pipeline.map(stage => ({
+          ...stage,
+          applicants: (stage.applicants || []).map(a => a.id === action.payload.id ? action.payload : a),
+        }))
       })
       .addCase(rejectApplicant.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
@@ -485,12 +499,17 @@ const recruitmentSlice = createSlice({
 
       .addCase(fetchRecruitmentSettings.fulfilled, (state, action) => { state.recruitmentSettings = action.payload })
       .addCase(upsertRecruitmentSettings.fulfilled, (state, action) => { state.recruitmentSettings = action.payload })
+
+      .addCase(fetchPipeline.pending, (state) => { state.pipelineLoading = true })
+      .addCase(fetchPipeline.fulfilled, (state, action) => { state.pipelineLoading = false; state.pipeline = action.payload })
+      .addCase(fetchPipeline.rejected, (state) => { state.pipelineLoading = false })
   },
 })
 
 export const selectAll = (state) => state.recruitment.posts
 export const selectSelected = (state) => state.recruitment.selected
 export const selectLoading = (state) => state.recruitment.loading
+export const selectPipelineLoading = (state) => state.recruitment.pipelineLoading
 export const selectPagination = (state) => state.recruitment.pagination
 export const selectApplicants = (state) => state.recruitment.applicants
 export const selectInterviews = (state) => state.recruitment.interviews
@@ -501,4 +520,5 @@ export const selectSurveyTemplates = (state) => state.recruitment.surveyTemplate
 export const selectRejectedCandidates = (state) => state.recruitment.rejectedCandidates
 export const selectCandidateDocumentRequests = (state) => state.recruitment.candidateDocumentRequests
 export const selectRecruitmentSettings = (state) => state.recruitment.recruitmentSettings
+export const selectPipeline = (state) => state.recruitment.pipeline
 export default recruitmentSlice.reducer

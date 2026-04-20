@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import { PageSkeleton } from '../common/Skeleton'
 import { selectIsAuthenticated, selectRoles, selectUser, fetchMe } from '../../features/auth/authSlice'
 import { fetchMyCompany } from '../../features/companies/companiesSlice'
 import { fetchUnreadCount } from '../../features/notifications/notificationsSlice'
@@ -44,7 +45,9 @@ export default function AppLayout() {
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
         <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

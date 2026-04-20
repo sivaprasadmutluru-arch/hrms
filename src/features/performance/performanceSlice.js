@@ -279,6 +279,11 @@ export const bulkCreateFeedback = createAsyncThunk('performance/bulkCreateFeedba
   try { const res = await api.post('/pms/feedback/bulk-create', feedbackList); return res.data }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
+export const deleteObjective = createAsyncThunk('performance/deleteObjective', async (id, { rejectWithValue }) => {
+  try { await api.delete(`/pms/objectives/${id}`); return id }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete objective') }
+})
+
 export const archiveObjective = createAsyncThunk('performance/archiveObjective', async (id, { rejectWithValue }) => {
   try { const res = await api.post(`/pms/objectives/${id}/archive`); return res.data }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
@@ -358,6 +363,11 @@ const performanceSlice = createSlice({
         if (idx !== -1) state.objectives[idx] = action.payload
       })
       .addCase(updateObjective.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(deleteObjective.fulfilled, (state, action) => {
+        state.loading = false
+        state.objectives = state.objectives.filter(o => o.id !== action.payload)
+      })
 
       .addCase(fetchFeedback.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchFeedback.fulfilled, (state, action) => {

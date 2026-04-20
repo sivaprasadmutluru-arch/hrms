@@ -42,6 +42,7 @@ import accessibilityReducer from '../features/accessibility/accessibilitySlice'
 import viewsReducer from '../features/views/viewsSlice'
 import dynamicFieldsReducer from '../features/dynamicfields/dynamicFieldsSlice'
 import essReducer from '../features/ess/essSlice'
+import mailAutomationReducer from '../features/mail-automation/mailAutomationSlice'
 
 export const store = configureStore({
   reducer: {
@@ -88,6 +89,7 @@ export const store = configureStore({
     views: viewsReducer,
     dynamicFields: dynamicFieldsReducer,
     ess: essReducer,
+    mailAutomation: mailAutomationReducer,
   },
-  devTools: true
+  devTools: import.meta.env.DEV
 })

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import { fetchCalendar, selectCalendarDays, selectCalendarLoading } from './attendanceSlice'
+import { fetchAll } from '../employees/employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Spinner from '../../components/common/Spinner'
 import useAuth from '../../hooks/useAuth'
@@ -20,29 +21,23 @@ const DAY_TYPE = {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function buildCalendarGrid(year, month, days) {
-  // days is array from backend — index by date string
   const dayMap = {}
   days.forEach(d => { dayMap[String(d.date)] = d })
 
   const firstDay = new Date(year, month - 1, 1)
   const daysInMonth = new Date(year, month, 0).getDate()
-  const startWeekday = firstDay.getDay() // 0=Sun
+  const startWeekday = firstDay.getDay()
 
   const cells = []
-  // Leading empty cells
   for (let i = 0; i < startWeekday; i++) cells.push(null)
-  // Day cells
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
     cells.push({ day: d, dateStr, data: dayMap[dateStr] || null })
   }
-  // Trailing empty cells to fill last row
   while (cells.length % 7 !== 0) cells.push(null)
-
   return cells
 }
 
-// ─── Detail row ───────────────────────────────────────────────────────────────
 function formatHour(val) {
   if (val == null) return '—'
   const h = Math.floor(val)
@@ -55,25 +50,101 @@ function formatTime(t) {
   return String(t).substring(0, 5)
 }
 
+// ─── Employee picker (for admin users with no employee record) ────────────────
+function EmployeePicker({ employees, onSelect }) {
+  const [search, setSearch] = useState('')
+
+  const filtered = employees.filter(emp => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (
+      emp.firstName?.toLowerCase().includes(q) ||
+      emp.lastName?.toLowerCase().includes(q) ||
+      emp.badgeId?.toLowerCase().includes(q)
+    )
+  })
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 max-w-lg mx-auto">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center">
+          <UserCircleIcon className="h-5 w-5 text-indigo-500" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800">Select an Employee</h2>
+          <p className="text-xs text-gray-400">Choose an employee to view their attendance calendar</p>
+        </div>
+      </div>
+      <input
+        type="text"
+        placeholder="Search by name or badge ID…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
+        autoFocus
+      />
+      <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 rounded-lg border border-gray-100">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">No employees found</p>
+        ) : (
+          filtered.map(emp => (
+            <button
+              key={emp.id}
+              onClick={() => onSelect(emp)}
+              className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors"
+            >
+              <span className="text-sm font-medium text-gray-800">
+                {emp.firstName} {emp.lastName}
+              </span>
+              <span className="ml-2 text-xs text-gray-400">{emp.badgeId}</span>
+              {emp.department?.name && (
+                <span className="ml-2 text-xs text-indigo-400">{emp.department.name}</span>
+              )}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function AttendanceCalendarPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isEmployee } = useAuth()
   const days = useSelector(selectCalendarDays)
   const loading = useSelector(selectCalendarLoading)
+  const allEmployees = useSelector(state => state.employees.data?.content || [])
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [selectedDate, setSelectedDate] = useState(null)
+  const [selectedEmployee, setSelectedEmployee] = useState(null)
 
-  // employeeId from query param (for admin viewing another employee) or null (own calendar)
+  // URL param takes priority (e.g. linked from employee detail page)
   const searchParams = new URLSearchParams(window.location.search)
-  const employeeId = searchParams.get('employeeId') || undefined
+  const urlEmployeeId = searchParams.get('employeeId')
 
+  // Admin users who have no employee record need to pick one explicitly.
+  // Employees and admin users with their own employee record can view their own calendar.
+  const isAdminWithoutRecord = !isEmployee() && !user?.employeeId && !urlEmployeeId
+
+  const resolvedEmployeeId = urlEmployeeId
+    || (selectedEmployee ? String(selectedEmployee.id) : undefined)
+
+  // Fetch employees list so admin can pick
   useEffect(() => {
-    dispatch(fetchCalendar({ year, month, employeeId }))
+    if (!isEmployee()) {
+      dispatch(fetchAll({ size: 500, active: true }))
+    }
+  }, [dispatch])
+
+  // Fetch calendar when we have enough context
+  useEffect(() => {
+    if (isAdminWithoutRecord && !selectedEmployee) return
+    dispatch(fetchCalendar({ year, month, employeeId: resolvedEmployeeId }))
     setSelectedDate(null)
-  }, [dispatch, year, month, employeeId])
+  }, [dispatch, year, month, resolvedEmployeeId, isAdminWithoutRecord, selectedEmployee])
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
@@ -87,10 +158,23 @@ export default function AttendanceCalendarPage() {
   const monthLabel = new Date(year, month - 1).toLocaleDateString('en', { month: 'long', year: 'numeric' })
   const cells = buildCalendarGrid(year, month, days)
   const today = new Date().toISOString().slice(0, 10)
+  const selectedData = selectedDate ? days.find(d => String(d.date) === selectedDate) : null
 
-  const selectedData = selectedDate
-    ? days.find(d => String(d.date) === selectedDate)
-    : null
+  // Admin with no employee record and no selection → show picker
+  if (isAdminWithoutRecord) {
+    return (
+      <div>
+        <PageHeader
+          title="Attendance Calendar"
+          subtitle="Monthly view of attendance records"
+        />
+        <EmployeePicker
+          employees={allEmployees}
+          onSelect={emp => setSelectedEmployee(emp)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -98,6 +182,43 @@ export default function AttendanceCalendarPage() {
         title="Attendance Calendar"
         subtitle="Monthly view of attendance records"
       />
+
+      {/* Admin: employee switcher strip */}
+      {!isEmployee() && (
+        <div className="mb-4 flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-2.5">
+          <UserCircleIcon className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+          <span className="text-sm text-gray-600">
+            Viewing: <span className="font-semibold text-gray-800">
+              {selectedEmployee
+                ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}`
+                : urlEmployeeId
+                  ? `Employee #${urlEmployeeId}`
+                  : 'My Calendar'}
+            </span>
+          </span>
+          {allEmployees.length > 0 && (
+            <div className="ml-auto flex items-center gap-2">
+              <select
+                value={selectedEmployee?.id || ''}
+                onChange={e => {
+                  if (!e.target.value) { setSelectedEmployee(null); return }
+                  const emp = allEmployees.find(em => String(em.id) === e.target.value)
+                  if (emp) setSelectedEmployee(emp)
+                }}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                {!user?.employeeId && <option value="">Select employee…</option>}
+                {user?.employeeId && <option value="">My Calendar</option>}
+                {allEmployees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.firstName} {emp.lastName} ({emp.badgeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* ── Calendar card ── */}
@@ -148,7 +269,6 @@ export default function AttendanceCalendarPage() {
                   const dayType = data?.dayType || (isFuture ? 'future' : 'absent')
                   const typeMeta = DAY_TYPE[dayType] || DAY_TYPE.future
                   const isSelected = selectedDate === dateStr
-
                   const isLate = !isFuture && data?.types?.includes('LATE_COME')
 
                   return (

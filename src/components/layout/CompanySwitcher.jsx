@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { BuildingOffice2Icon, ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
-import { fetchAllCompaniesForScope, selectPlatformCompanies } from '../../features/platform/platformSlice'
+import toast from 'react-hot-toast'
+import { fetchAllCompaniesForScope, validateCompanyScope, selectPlatformCompanies, selectScopeValidating } from '../../features/platform/platformSlice'
 import { setSelectedCompany } from '../../features/auth/authSlice'
 
 export default function CompanySwitcher() {
@@ -22,24 +23,42 @@ export default function CompanySwitcher() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const scopeValidating = useSelector(selectScopeValidating)
   const selectedCompany = companies.find(c => String(c.id) === String(selectedCompanyId))
   const filtered = companies.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()))
 
-  const handleSelect = (companyId) => {
+  const handleSelect = async (companyId) => {
+    if (companyId) {
+      try {
+        const result = await dispatch(validateCompanyScope(companyId)).unwrap()
+        if (!result.valid) {
+          toast.error(`Access denied for ${result.companyName || 'this company'}`)
+          setOpen(false)
+          return
+        }
+      } catch {
+        toast.error('Could not validate company access. Try again.')
+        setOpen(false)
+        return
+      }
+    }
     dispatch(setSelectedCompany(companyId))
     setOpen(false)
     setSearch('')
-    // Reload to refresh data with new company context
     window.location.reload()
   }
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+        onClick={() => !scopeValidating && setOpen(o => !o)}
+        disabled={scopeValidating}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        <BuildingOffice2Icon className="h-4 w-4 text-gray-500" />
+        {scopeValidating
+          ? <svg className="h-4 w-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          : <BuildingOffice2Icon className="h-4 w-4 text-gray-500" />
+        }
         <span className="max-w-32 truncate">{selectedCompany?.name || 'All Companies'}</span>
         <ChevronDownIcon className={`h-3.5 w-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

@@ -1,13 +1,13 @@
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table'
 import { useState } from 'react'
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
-import Spinner from './Spinner'
 import EmptyState from './EmptyState'
+import { TableSkeleton } from './Skeleton'
 
 export default function DataTable({ columns, data = [], loading = false, onRowClick }) {
   const [sorting, setSorting] = useState([])
   const table = useReactTable({ data, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() })
-  if (loading) return <Spinner className="py-16" />
+  if (loading) return <TableSkeleton rows={6} cols={columns.length || 5} />
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
       <table className="min-w-full divide-y divide-gray-100">

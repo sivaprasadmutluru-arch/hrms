@@ -18,6 +18,7 @@ import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import Avatar from '../../components/common/Avatar'
 import useAuth from '../../hooks/useAuth'
+import { useActiveView } from '../../hooks/useViewPreferences'
 import { formatDate } from '../../utils/formatters'
 import EmployeeFormFields from './EmployeeFormFields'
 
@@ -206,7 +207,7 @@ export default function EmployeesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'online' | 'offline'
-  const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
+  const [viewMode, setViewMode] = useActiveView('grid') // persisted grid | list preference
   const [selectedCompanyId, setSelectedCompanyId] = useState(
     authSelectedCompanyId ? Number(authSelectedCompanyId) : null
   )

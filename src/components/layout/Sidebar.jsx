@@ -85,8 +85,9 @@ const LEAVE_GROUP = {
     { label: 'Leave Balance',   to: '/leave/balance' },
     { label: 'Allocations',     to: '/leave/allocations' },
     { label: 'Restrictions',    to: '/leave/restrictions' },
-    { label: 'Holidays',        to: '/leave/holidays' },
-    { label: 'Company Leaves', to: '/leave/company-leaves' },
+    { label: 'Holidays',             to: '/leave/holidays' },
+    { label: 'Holiday Allocations',  to: '/leave/holiday-allocations' },
+    { label: 'Company Leaves',       to: '/leave/company-leaves' },
   ],
 }
 
@@ -114,6 +115,22 @@ const PAYROLL_GROUP = {
     { label: 'Batch Groups',       to: '/payroll/batch-groups' },
     { label: 'Import',             to: '/payroll/import' },
     { label: 'Settings',           to: '/payroll/settings' },
+  ],
+}
+
+// HR Manager payroll: no manual/batch processing, only settings & configuration
+const PAYROLL_GROUP_HR = {
+  label: 'Payroll',
+  icon: BanknotesIcon,
+  group: 'payroll',
+  children: [
+    { label: 'Automated Payroll', to: '/payroll/automated' },
+    { label: 'Allowances',        to: '/payroll/allowances' },
+    { label: 'Deductions',        to: '/payroll/deductions' },
+    { label: 'Tax Settings',      to: '/payroll/tax-settings' },
+    { label: 'Reimbursements',    to: '/payroll/reimbursements' },
+    { label: 'Loans',             to: '/payroll/loans' },
+    { label: 'Settings',          to: '/payroll/settings' },
   ],
 }
 
@@ -207,6 +224,7 @@ const SETTINGS_GROUP = {
     { label: 'General',              to: '/settings/general' },
     { label: 'Account',              to: '/settings/account' },
     { label: 'Approval Conditions',  to: '/settings/approval-conditions' },
+    { label: 'Mail Automation',      to: '/settings/mail-automation' },
     { label: 'LDAP / AD',            to: '/settings/ldap' },
     { label: 'Backup',               to: '/settings/backup' },
     { label: 'Outlook Auth',         to: '/settings/outlook-auth' },
@@ -219,7 +237,7 @@ const SETTINGS_GROUP = {
 // ─── Navigation definitions per role ─────────────────────────────────────────
 
 function getNavSections(auth) {
-  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager } = auth
+  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager, isTeamLead } = auth
 
   // Platform Super Admin — full access to everything
   if (isPlatformAdmin()) {
@@ -231,7 +249,8 @@ function getNavSections(auth) {
       {
         title: 'Platform',
         items: [
-          { label: 'Organizations', to: '/organizations', icon: ShieldCheckIcon },
+          { label: 'Organizations',    to: '/organizations',    icon: ShieldCheckIcon },
+          { label: 'Platform Monitor', to: '/platform/monitor', icon: ChartPieIcon },
         ],
       },
       {
@@ -431,6 +450,7 @@ function getNavSections(auth) {
         items: [
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
+          PAYROLL_GROUP_HR,
           { label: 'Assets',  to: '/assets', icon: ArchiveBoxIcon },
         ],
       },
@@ -503,13 +523,51 @@ function getNavSections(auth) {
       },
       {
         title: 'Talent',
+        items: [PERFORMANCE_GROUP],
+      },
+      {
+        title: 'Projects',
+        items: [{ label: 'Projects', to: '/projects', icon: FolderIcon }],
+      },
+      {
+        title: 'Support',
+        items: [
+          { label: 'Helpdesk',      to: '/helpdesk',      icon: TicketIcon },
+          { label: 'Announcements', to: '/announcements', icon: MegaphoneIcon },
+        ],
+      },
+    ]
+  }
+
+  // Team Lead — limited team visibility and approvals
+  if (isTeamLead()) {
+    return [
+      {
+        title: 'Overview',
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+      },
+      {
+        title: 'My Work',
+        items: [
+          { label: 'My Profile',     to: '/employees/me',        icon: UsersIcon },
+          ATTENDANCE_GROUP_BASIC,
+          LEAVE_GROUP_BASIC,
+          { label: 'My Documents',   to: '/documents/my',        icon: DocumentTextIcon },
+        ],
+      },
+      {
+        title: 'Talent',
         items: [
           { label: 'Performance', to: '/performance/cycles', icon: ChartBarIcon },
+          { label: 'Projects',    to: '/projects',           icon: FolderIcon },
         ],
       },
       {
         title: 'Support',
-        items: [{ label: 'Helpdesk', to: '/helpdesk', icon: TicketIcon }],
+        items: [
+          { label: 'Helpdesk',      to: '/helpdesk',      icon: TicketIcon },
+          { label: 'Announcements', to: '/announcements', icon: MegaphoneIcon },
+        ],
       },
     ]
   }
