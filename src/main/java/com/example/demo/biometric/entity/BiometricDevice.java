@@ -2,6 +2,7 @@ package com.example.demo.biometric.entity;
 
 import com.example.demo.base.entity.Company;
 import com.example.demo.common.entity.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -30,12 +31,15 @@ public class BiometricDevice extends BaseEntity {
     @Column(name = "port")
     private Integer port;
 
+    @JsonIgnore
     @Column(name = "zk_password")
     private String zkPassword;
 
+    @JsonIgnore
     @Column(name = "bio_username")
     private String bioUsername;
 
+    @JsonIgnore
     @Column(name = "bio_password")
     private String bioPassword;
 
@@ -45,12 +49,15 @@ public class BiometricDevice extends BaseEntity {
     @Column(name = "api_url")
     private String apiUrl;
 
+    @JsonIgnore
     @Column(name = "api_key")
     private String apiKey;
 
+    @JsonIgnore
     @Column(name = "api_secret")
     private String apiSecret;
 
+    @JsonIgnore
     @Column(name = "api_token", length = 500)
     private String apiToken;
 

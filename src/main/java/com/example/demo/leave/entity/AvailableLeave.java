@@ -67,7 +67,9 @@ public class AvailableLeave extends BaseEntity {
         if (!"NO_CARRYFORWARD".equals(cfType)) {
             double max = leaveType.getCarryforwardMax() != null
                     ? leaveType.getCarryforwardMax() : Double.MAX_VALUE;
-            this.carryforwardDays = Math.min(totalLeaveDays != null ? totalLeaveDays : 0.0, max);
+            // FIX #6: carry forward only the remaining available days, NOT totalLeaveDays
+            // (totalLeaveDays = availableDays + carryforwardDays, which would double-count)
+            this.carryforwardDays = Math.min(availableDays != null ? availableDays : 0.0, max);
         } else {
             this.carryforwardDays = 0.0;
         }

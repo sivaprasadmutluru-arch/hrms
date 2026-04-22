@@ -1,6 +1,7 @@
 package com.example.demo.pms.service;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -87,7 +88,8 @@ public class PmsService {
         if (employeeId != null) {
             return objectiveRepository.findByEmployeeId(employeeId);
         }
-        return objectiveRepository.findAll();
+        Specification<Objective> spec = byEmployeeCompany();
+        return spec != null ? objectiveRepository.findAll(spec) : objectiveRepository.findAll();
     }
 
     @Transactional
@@ -128,7 +130,7 @@ public class PmsService {
     public Objective archiveObjective(Long id) {
         Objective obj = objectiveRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Objective", id));
-        obj.setStatus(Objective.ObjectiveStatus.AT_RISK);
+        obj.setStatus(Objective.ObjectiveStatus.ARCHIVED);
         log.info("Archiving objective id={}", id);
         return objectiveRepository.save(obj);
     }
@@ -202,7 +204,8 @@ public class PmsService {
         if (employeeId != null) {
             return feedbackRepository.findByEmployeeId(employeeId);
         }
-        return feedbackRepository.findAll();
+        Specification<EmployeeFeedback> spec = byEmployeeCompany();
+        return spec != null ? feedbackRepository.findAll(spec) : feedbackRepository.findAll();
     }
 
     @Transactional
@@ -700,7 +703,8 @@ public class PmsService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getDashboard() {
-        List<Objective> objectives = objectiveRepository.findAll();
+        Specification<Objective> objSpec = byEmployeeCompany();
+        List<Objective> objectives = objSpec != null ? objectiveRepository.findAll(objSpec) : objectiveRepository.findAll();
         long totalObjectives = objectives.size();
         long completedObjectives = objectives.stream()
                 .filter(o -> Objective.ObjectiveStatus.COMPLETED.equals(o.getStatus()))
@@ -708,12 +712,14 @@ public class PmsService {
         long pendingObjectives = objectives.stream()
                 .filter(o -> !Objective.ObjectiveStatus.COMPLETED.equals(o.getStatus()))
                 .count();
-        long totalFeedback = feedbackRepository.count();
-        long completedFeedback = feedbackRepository.findAll().stream()
+        Specification<EmployeeFeedback> fbSpec = byEmployeeCompany();
+        List<EmployeeFeedback> allFeedback = fbSpec != null ? feedbackRepository.findAll(fbSpec) : feedbackRepository.findAll();
+        long totalFeedback = allFeedback.size();
+        long completedFeedback = allFeedback.stream()
                 .filter(f -> EmployeeFeedback.FeedbackStatus.COMPLETED.equals(f.getStatus()))
                 .count();
         long pendingFeedback = totalFeedback - completedFeedback;
-        double averageRating = feedbackRepository.findAll().stream()
+        double averageRating = allFeedback.stream()
                 .filter(f -> f.getRating() != null)
                 .mapToDouble(EmployeeFeedback::getRating)
                 .average()
@@ -798,5 +804,30 @@ public class PmsService {
         summary.put("averageKeyResultProgress", avgKeyResultProgress);
         summary.put("totalBonusPoints", totalBonusPoints);
         return summary;
+    }
+
+    /**
+     * Builds a Specification filtering by employee.company.id for entities that
+     * are linked to company through an employee association (Objective, EmployeeFeedback, etc.).
+     */
+    private <T> Specification<T> byEmployeeCompany() {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null) return null;
+        if (scope.hasUnrestrictedAccess()) {
+            if (scope.getCompanyId() != null) {
+                Long cId = scope.getCompanyId();
+                return (root, q, cb) -> cb.equal(root.get("employee").get("company").get("id"), cId);
+            }
+            return null;
+        }
+        java.util.List<Long> ids = scope.getAccessibleCompanyIds();
+        if (ids.isEmpty()) {
+            return (root, q, cb) -> cb.disjunction();
+        }
+        if (ids.size() == 1) {
+            Long cId = ids.get(0);
+            return (root, q, cb) -> cb.equal(root.get("employee").get("company").get("id"), cId);
+        }
+        return (root, q, cb) -> root.get("employee").get("company").get("id").in(ids);
     }
 }

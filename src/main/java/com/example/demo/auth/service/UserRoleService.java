@@ -65,7 +65,7 @@ public class UserRoleService {
         List<UserRole> existing = userRoleRepository.findByUserIdAndCompanyId(
                 request.getUserId(), request.getCompanyId());
         boolean alreadyAssigned = existing.stream()
-                .anyMatch(ur -> ur.getRole().getName() == request.getRoleName());
+                .anyMatch(ur -> ur.getRole().getName().equals(request.getRoleName()));
         if (alreadyAssigned) {
             throw new BadRequestException("User already has the " + request.getRoleName() +
                     " role in this company");
@@ -86,7 +86,7 @@ public class UserRoleService {
 
     public boolean hasRole(Long userId, Long companyId, Role.RoleName roleName) {
         return userRoleRepository.findByUserIdAndCompanyId(userId, companyId).stream()
-                .anyMatch(ur -> ur.getRole().getName() == roleName);
+                .anyMatch(ur -> ur.getRole().getName().equals(roleName));
     }
 
     @Transactional

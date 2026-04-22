@@ -105,9 +105,9 @@ public class PayrollController {
     }
 
     @GetMapping("/contracts/employee/{employeeId}")
-    @PreAuthorize("hasAuthority('employee:view')")
+    @PreAuthorize("hasAuthority('payroll:view') or hasAuthority('employee:view')")
     @Transactional(readOnly = true)
-    @io.swagger.v3.oas.annotations.Operation(summary = "Get contract for a specific employee (requires employee:view only)")
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get contract for a specific employee (requires payroll:view or employee:view)")
     public ResponseEntity<Contract> getContractByEmployee(@PathVariable Long employeeId) {
         Contract contract = contractRepository.findByEmployeeId(employeeId)
                 .stream().findFirst()
@@ -170,7 +170,6 @@ public class PayrollController {
         c.setHousingAllowance(updated.getHousingAllowance());
         c.setTransportAllowance(updated.getTransportAllowance());
         c.setOtherAllowance(updated.getOtherAllowance());
-        c.setTotalSalary(updated.getTotalSalary());
         c.setContractStatus(updated.getContractStatus() != null
                 ? updated.getContractStatus()
                 : resolveContractStatus(updated.getStartDate(), updated.getEndDate()));
@@ -410,8 +409,11 @@ public class PayrollController {
     @PostMapping("/payslips/{id}/confirm")
     @PreAuthorize("hasAuthority('payroll:approve')")
     @Transactional
-    public ResponseEntity<Payslip> confirmPayslip(@PathVariable Long id) {
+    public ResponseEntity<?> confirmPayslip(@PathVariable Long id) {
         Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+        if (p.getStatus() != Payslip.PayslipStatus.DRAFT) {
+            return ResponseEntity.badRequest().body("Payslip must be in DRAFT status to confirm");
+        }
         p.setStatus(Payslip.PayslipStatus.CONFIRMED);
         payslipRepository.save(p);
         return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
@@ -420,8 +422,11 @@ public class PayrollController {
     @PostMapping("/payslips/{id}/mark-paid")
     @PreAuthorize("hasAuthority('payroll:approve')")
     @Transactional
-    public ResponseEntity<Payslip> markPaid(@PathVariable Long id) {
+    public ResponseEntity<?> markPaid(@PathVariable Long id) {
         Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+        if (p.getStatus() != Payslip.PayslipStatus.CONFIRMED) {
+            return ResponseEntity.badRequest().body("Payslip must be in CONFIRMED status to mark as paid");
+        }
         p.setStatus(Payslip.PayslipStatus.PAID);
         payslipRepository.save(p);
         return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
@@ -436,7 +441,7 @@ public class PayrollController {
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/payslips/bulk")
+    @PostMapping("/payslips/bulk-delete")
     @PreAuthorize("hasAuthority('payroll:edit')")
     @Transactional
     public ResponseEntity<Void> deletePayslipsBulk(@RequestBody List<Long> ids) {
@@ -595,6 +600,15 @@ public class PayrollController {
     public ResponseEntity<List<Reimbursement>> listReimbursements() {
         var spec = ScopeFilter.<Reimbursement>byEmployee();
         return ResponseEntity.ok(spec != null ? reimbursementRepository.findAll(spec) : reimbursementRepository.findAll());
+    }
+
+    @GetMapping("/reimbursements/{id}")
+    @PreAuthorize("hasAuthority('payroll:view') or hasRole('EMPLOYEE')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get a single reimbursement request by ID")
+    public ResponseEntity<Reimbursement> getReimbursement(@PathVariable Long id) {
+        return ResponseEntity.ok(reimbursementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reimbursement", id)));
     }
 
     @PostMapping("/reimbursements")

@@ -14,6 +14,7 @@ import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -166,5 +167,27 @@ public class AuthService {
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+    }
+
+    @Transactional
+    public void adminResetPassword(Long targetUserId, String newPassword) {
+        User target = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", targetUserId));
+
+        // Non-platform-super-admin must only reset users within their accessible companies
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && !scope.hasUnrestrictedAccess()) {
+            List<Long> targetCompanyIds = userRoleRepository.findByUserId(targetUserId).stream()
+                    .map(ur -> ur.getCompany().getId())
+                    .collect(java.util.stream.Collectors.toList());
+            boolean hasAccess = targetCompanyIds.stream()
+                    .anyMatch(cid -> scope.getAccessibleCompanyIds().contains(cid));
+            if (!hasAccess) {
+                throw new BadRequestException("You do not have permission to reset this user's password");
+            }
+        }
+
+        target.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(target);
     }
 }

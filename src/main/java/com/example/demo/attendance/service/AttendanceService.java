@@ -159,6 +159,8 @@ public class AttendanceService {
             }
             double worked = Math.round((minutes / 60.0) * 100.0) / 100.0;
             att.setWorkedHour(worked);
+            // FIX #1: persist raw worked seconds so hourly-pay queries work correctly
+            att.setAtWorkSecond((int)(minutes * 60L));
 
             if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
                 double rawOt = Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0;
@@ -189,6 +191,10 @@ public class AttendanceService {
                 }
 
                 att.setAttendanceOvertime(Math.round(rawOt * 100.0) / 100.0);
+                // FIX #1: persist overtime seconds so overtime-pay queries and approval flow work
+                att.setOvertimeSecond((int)(rawOt * 3600));
+            } else {
+                att.setOvertimeSecond(0);
             }
             attendanceRepository.save(att);
 
@@ -200,15 +206,16 @@ public class AttendanceService {
         int graceMinutes = 0;
         if (att.getCompany() != null) {
             Long companyId = att.getCompany().getId();
+            // FIX #10: use Math.round instead of integer division to preserve sub-minute precision
             graceMinutes = graceTimeRepository
                     .findFirstByCompanyIdAndIsDefaultTrue(companyId)
-                    .map(g -> g.getAllowedTimeInSeconds() != null ? g.getAllowedTimeInSeconds() / 60 : 0)
+                    .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : 0)
                     .orElseGet(() -> {
                         Organization org = att.getCompany().getOrganization();
                         if (org == null) return 0;
                         return graceTimeRepository
                                 .findFirstByOrganizationIdAndIsDefaultTrue(org.getId())
-                                .map(g -> g.getAllowedTimeInSeconds() != null ? g.getAllowedTimeInSeconds() / 60 : 0)
+                                .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : 0)
                                 .orElse(0);
                     });
         }
@@ -247,8 +254,9 @@ public class AttendanceService {
                 type = WorkRecord.WorkRecordType.HDP;
                 dayPercentage = 0.5;
             } else {
-                type = WorkRecord.WorkRecordType.HDP;
-                dayPercentage = minHours > 0 ? workedHours / minHours : 0.0;
+                // FIX #9: less than half minimum hours = Absent, not Half Day
+                type = WorkRecord.WorkRecordType.ABS;
+                dayPercentage = 0.0;
             }
         } else {
             // No shift assigned — treat any time worked as a full day
@@ -329,10 +337,38 @@ public class AttendanceService {
             }
             double worked = Math.round((minutes / 60.0) * 100.0) / 100.0;
             att.setWorkedHour(worked);
+            att.setAtWorkSecond((int)(minutes * 60L));
 
-            // Compute overtime vs minimum
+            // FIX #13: apply same cutoff/minimum OT rules as autoComputeOnCheckout
             if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
-                att.setAttendanceOvertime(Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0);
+                double rawOt = Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0;
+
+                ShiftSchedule shift = att.getShift();
+                String cutoffStr = shift != null ? shift.getOvertimeCutoff() : null;
+                String minOtStr  = shift != null ? shift.getMinimumOvertimeToApprove() : null;
+
+                if (att.getCompany() != null && ((cutoffStr == null || cutoffStr.isBlank()) || (minOtStr == null || minOtStr.isBlank()))) {
+                    var vc = validationConditionRepository.findByCompanyId(att.getCompany().getId()).orElse(null);
+                    if (vc != null) {
+                        if (cutoffStr == null || cutoffStr.isBlank()) cutoffStr = vc.getOvertimeCutoff();
+                        if (minOtStr  == null || minOtStr.isBlank())  minOtStr  = vc.getMinimumOvertimeToApprove();
+                    }
+                }
+
+                Integer minOtMinutes = parseHhmm(minOtStr);
+                if (minOtMinutes != null && rawOt * 60 < minOtMinutes) {
+                    rawOt = 0.0;
+                }
+
+                Integer cutoffMinutes = parseHhmm(cutoffStr);
+                if (cutoffMinutes != null) {
+                    rawOt = Math.min(rawOt, cutoffMinutes / 60.0);
+                }
+
+                att.setAttendanceOvertime(Math.round(rawOt * 100.0) / 100.0);
+                att.setOvertimeSecond((int)(rawOt * 3600));
+            } else {
+                att.setOvertimeSecond(0);
             }
         }
         return AttendanceResponse.from(attendanceRepository.save(att));
@@ -353,15 +389,22 @@ public class AttendanceService {
         if (shift.getStartTime() != null) {
             long lateMinutes = ChronoUnit.MINUTES.between(shift.getStartTime(), att.getCheckIn());
             if (lateMinutes > graceMinutes) {
-                boolean exists = lateComeEarlyOutRepository.findByAttendanceId(attendanceId).stream()
-                        .anyMatch(e -> e.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME);
-                if (!exists) {
-                    AttendanceLateComeEarlyOut late = new AttendanceLateComeEarlyOut();
-                    late.setAttendance(att);
-                    late.setEmployee(att.getEmployee());
-                    late.setType(AttendanceLateComeEarlyOut.EntryType.LATE_COME);
-                    lateComeEarlyOutRepository.save(late);
-                }
+                // FIX #2: compute net late seconds (after grace) and store on the entity
+                int netLateSeconds = (int)((lateMinutes - graceMinutes) * 60L);
+                int lh = netLateSeconds / 3600;
+                int lm = (netLateSeconds % 3600) / 60;
+
+                List<AttendanceLateComeEarlyOut> existing = lateComeEarlyOutRepository.findByAttendanceId(attendanceId);
+                AttendanceLateComeEarlyOut late = existing.stream()
+                        .filter(e -> e.getType() == AttendanceLateComeEarlyOut.EntryType.LATE_COME)
+                        .findFirst()
+                        .orElseGet(AttendanceLateComeEarlyOut::new);
+                late.setAttendance(att);
+                late.setEmployee(att.getEmployee());
+                late.setType(AttendanceLateComeEarlyOut.EntryType.LATE_COME);
+                late.setLateComeSecond(netLateSeconds);
+                late.setLateCome(String.format("%02d:%02d", lh, lm));
+                lateComeEarlyOutRepository.save(late);
             }
         }
 
@@ -369,15 +412,22 @@ public class AttendanceService {
         if (shift.getEndTime() != null && att.getCheckOut() != null) {
             long earlyMinutes = ChronoUnit.MINUTES.between(att.getCheckOut(), shift.getEndTime());
             if (earlyMinutes > graceMinutes) {
-                boolean exists = lateComeEarlyOutRepository.findByAttendanceId(attendanceId).stream()
-                        .anyMatch(e -> e.getType() == AttendanceLateComeEarlyOut.EntryType.EARLY_OUT);
-                if (!exists) {
-                    AttendanceLateComeEarlyOut early = new AttendanceLateComeEarlyOut();
-                    early.setAttendance(att);
-                    early.setEmployee(att.getEmployee());
-                    early.setType(AttendanceLateComeEarlyOut.EntryType.EARLY_OUT);
-                    lateComeEarlyOutRepository.save(early);
-                }
+                // FIX #2: compute net early seconds (after grace) and store on the entity
+                int netEarlySeconds = (int)((earlyMinutes - graceMinutes) * 60L);
+                int eh = netEarlySeconds / 3600;
+                int em = (netEarlySeconds % 3600) / 60;
+
+                List<AttendanceLateComeEarlyOut> existing = lateComeEarlyOutRepository.findByAttendanceId(attendanceId);
+                AttendanceLateComeEarlyOut early = existing.stream()
+                        .filter(e -> e.getType() == AttendanceLateComeEarlyOut.EntryType.EARLY_OUT)
+                        .findFirst()
+                        .orElseGet(AttendanceLateComeEarlyOut::new);
+                early.setAttendance(att);
+                early.setEmployee(att.getEmployee());
+                early.setType(AttendanceLateComeEarlyOut.EntryType.EARLY_OUT);
+                early.setEarlyOutSecond(netEarlySeconds);
+                early.setEarlyOut(String.format("%02d:%02d", eh, em));
+                lateComeEarlyOutRepository.save(early);
             }
         }
     }
@@ -414,25 +464,62 @@ public class AttendanceService {
     }
 
     /**
-     * Approve an overtime record.
+     * Approve an overtime record and propagate the approval flag to each individual
+     * Attendance record in that employee's month so payroll queries pick it up correctly.
      */
     @Transactional
     public AttendanceOverTime approveOvertime(Long overtimeId) {
         AttendanceOverTime ot = overtimeRepository.findById(overtimeId)
                 .orElseThrow(() -> new ResourceNotFoundException("AttendanceOverTime", overtimeId));
         ot.setStatus(AttendanceOverTime.OvertimeStatus.APPROVED);
-        return overtimeRepository.save(ot);
+        AttendanceOverTime saved = overtimeRepository.save(ot);
+
+        // FIX #1: propagate approval to individual attendance records
+        if (ot.getEmployee() != null && ot.getMonth() != null && ot.getYear() != null) {
+            try {
+                int monthNum = java.time.Month.valueOf(ot.getMonth().toUpperCase()).getValue();
+                List<Attendance> monthAttendances = attendanceRepository
+                        .findByEmployeeIdAndYearAndMonth(ot.getEmployee().getId(), ot.getYear(), monthNum);
+                for (Attendance a : monthAttendances) {
+                    if (a.getOvertimeSecond() != null && a.getOvertimeSecond() > 0) {
+                        a.setAttendanceOvertimeApprove(true);
+                        a.setApprovedOvertimeSecond(a.getOvertimeSecond());
+                        attendanceRepository.save(a);
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                log.warn("Invalid month name '{}' on AttendanceOverTime id={}", ot.getMonth(), overtimeId);
+            }
+        }
+        return saved;
     }
 
     /**
-     * Reject an overtime record.
+     * Reject an overtime record and clear the approval flag from individual Attendance records.
      */
     @Transactional
     public AttendanceOverTime rejectOvertime(Long overtimeId) {
         AttendanceOverTime ot = overtimeRepository.findById(overtimeId)
                 .orElseThrow(() -> new ResourceNotFoundException("AttendanceOverTime", overtimeId));
         ot.setStatus(AttendanceOverTime.OvertimeStatus.REJECTED);
-        return overtimeRepository.save(ot);
+        AttendanceOverTime saved = overtimeRepository.save(ot);
+
+        // FIX #1: clear approval from individual attendance records
+        if (ot.getEmployee() != null && ot.getMonth() != null && ot.getYear() != null) {
+            try {
+                int monthNum = java.time.Month.valueOf(ot.getMonth().toUpperCase()).getValue();
+                List<Attendance> monthAttendances = attendanceRepository
+                        .findByEmployeeIdAndYearAndMonth(ot.getEmployee().getId(), ot.getYear(), monthNum);
+                for (Attendance a : monthAttendances) {
+                    a.setAttendanceOvertimeApprove(false);
+                    a.setApprovedOvertimeSecond(0);
+                    attendanceRepository.save(a);
+                }
+            } catch (IllegalArgumentException ignored) {
+                log.warn("Invalid month name '{}' on AttendanceOverTime id={}", ot.getMonth(), overtimeId);
+            }
+        }
+        return saved;
     }
 
     /**
@@ -900,7 +987,11 @@ public class AttendanceService {
                 try { if (checkInStr != null && !checkInStr.isBlank()) att.setCheckIn(LocalTime.parse(checkInStr)); } catch (Exception ignored) {}
                 try { if (checkOutStr != null && !checkOutStr.isBlank()) att.setCheckOut(LocalTime.parse(checkOutStr)); } catch (Exception ignored) {}
                 att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
-                attendanceRepository.save(att);
+                Attendance saved = attendanceRepository.save(att);
+                // FIX #5: compute worked hours, overtime, WorkRecord and late detection for imports
+                if (saved.getCheckOut() != null) {
+                    autoComputeOnCheckout(saved);
+                }
                 count++;
             }
         }

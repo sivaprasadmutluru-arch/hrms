@@ -30,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.example.demo.auth.security.UserPrincipal;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
@@ -100,6 +105,18 @@ public class AttendanceController {
     public ResponseEntity<AttendanceResponse> requestValidation(@PathVariable Long id) {
         Attendance att = attendanceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Attendance", id));
+        // Ownership check: employee can only request validation for their own record
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean hasApproveAuthority = auth.getAuthorities().stream()
+                .anyMatch(a -> "attendance:approve".equals(a.getAuthority()));
+        if (!hasApproveAuthority && auth.getPrincipal() instanceof UserPrincipal principal) {
+            boolean isOwner = employeeRepository.findByUserId(principal.getId())
+                    .map(emp -> emp.getId().equals(att.getEmployee() != null ? att.getEmployee().getId() : null))
+                    .orElse(false);
+            if (!isOwner) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        }
         att.setIsValidateRequest(true);
         att.setIsValidateRequestApproved(false);
         return ResponseEntity.ok(AttendanceResponse.from(attendanceRepository.save(att)));

@@ -41,4 +41,8 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
     /** Sum (atWorkSecond - overtimeSecond) for validated attendances — used for hourly basic pay (mirrors GCP hourly_computation) */
     @Query("SELECT COALESCE(SUM(a.atWorkSecond - COALESCE(a.overtimeSecond, 0)), 0) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED'")
     Long sumNetWorkedSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    /** Find all attendance records for an employee in a given calendar month/year — used for overtime approval propagation */
+    @Query("SELECT a FROM Attendance a WHERE a.employee.id = :employeeId AND FUNCTION('YEAR', a.attendanceDate) = :year AND FUNCTION('MONTH', a.attendanceDate) = :month")
+    List<Attendance> findByEmployeeIdAndYearAndMonth(@Param("employeeId") Long employeeId, @Param("year") int year, @Param("month") int month);
 }

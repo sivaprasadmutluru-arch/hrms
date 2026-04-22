@@ -160,9 +160,13 @@ public class LeaveService {
 
         double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
         double cfDays = resolveCarryforwardDays(balance);
-        if (request.getRequestedDays() > availDays + cfDays) {
+        // FIX #4: include forecasted balance so leaves approved based on an upcoming reset
+        // are not rejected at the approval step (mirrors applyLeave logic)
+        double forecasted = balance.forcastedLeaves(request.getStartDate());
+        double totalBalance = availDays + cfDays + forecasted;
+        if (request.getRequestedDays() > totalBalance) {
             throw new BadRequestException(
-                    "Insufficient leave balance. Available: " + (availDays + cfDays)
+                    "Insufficient leave balance. Available: " + totalBalance
                             + ", Requested: " + request.getRequestedDays());
         }
 
@@ -426,8 +430,10 @@ public class LeaveService {
             // Company-wide holidays
             List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(companyId, start, end);
             for (Holiday h : holidays) {
+                // FIX #3: guard against null endDate (single-day holidays created without one)
+                LocalDate hEnd = h.getEndDate() != null ? h.getEndDate() : h.getStartDate();
                 LocalDate d = h.getStartDate();
-                while (!d.isAfter(h.getEndDate())) {
+                while (!d.isAfter(hEnd)) {
                     excludedDates.add(d);
                     d = d.plusDays(1);
                 }

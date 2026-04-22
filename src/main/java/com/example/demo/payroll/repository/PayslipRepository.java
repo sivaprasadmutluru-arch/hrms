@@ -28,6 +28,8 @@ public interface PayslipRepository extends JpaRepository<Payslip, Long>, JpaSpec
     @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company WHERE p.id = :id")
     Optional<Payslip> findByIdWithAssociations(@Param("id") Long id);
 
+    boolean existsByEmployeeIdAndStartDateAndEndDate(Long employeeId, LocalDate startDate, LocalDate endDate);
+
     List<Payslip> findByCompanyId(Long companyId);
     List<Payslip> findByCompanyIdAndStatus(Long companyId, Payslip.PayslipStatus status);
     List<Payslip> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);

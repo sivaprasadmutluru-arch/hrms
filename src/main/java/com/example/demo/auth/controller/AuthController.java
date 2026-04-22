@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -135,5 +136,15 @@ public class AuthController {
                                                               @RequestBody Map<String, String> body) {
         authService.changePassword(user.getId(), body.get("currentPassword"), body.get("newPassword"));
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+    }
+
+    @PostMapping("/admin/reset-password/{userId}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Admin reset a user's password")
+    public ResponseEntity<Map<String, String>> adminResetPassword(
+            @PathVariable Long userId,
+            @RequestBody Map<String, String> body) {
+        authService.adminResetPassword(userId, body.get("newPassword"));
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 }

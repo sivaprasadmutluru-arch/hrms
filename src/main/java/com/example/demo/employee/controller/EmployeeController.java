@@ -164,7 +164,12 @@ public class EmployeeController {
             return ResponseEntity.badRequest().body(Map.of("message", "ids and active fields are required"));
         }
         List<Long> longIds = ids.stream().map(Integer::longValue).collect(Collectors.toList());
-        List<Employee> employees = employeeRepository.findAllById(longIds);
+        var spec = ScopeFilter.<Employee>byCompany();
+        List<Long> accessibleIds = spec != null
+                ? employeeRepository.findAll(spec).stream().map(Employee::getId).collect(Collectors.toList())
+                : longIds;
+        List<Long> filteredIds = longIds.stream().filter(accessibleIds::contains).collect(Collectors.toList());
+        List<Employee> employees = employeeRepository.findAllById(filteredIds);
         employees.forEach(e -> e.setActive(active));
         employeeRepository.saveAll(employees);
         return ResponseEntity.ok(Map.of("message", "Updated " + employees.size() + " employees"));
@@ -214,7 +219,12 @@ public class EmployeeController {
     @Transactional
     @Operation(summary = "Bulk archive (deactivate) employees by ID list")
     public ResponseEntity<Map<String, Object>> bulkArchive(@RequestBody List<Long> ids) {
-        List<Employee> employees = employeeRepository.findAllById(ids);
+        var spec = ScopeFilter.<Employee>byCompany();
+        List<Long> accessibleIds = spec != null
+                ? employeeRepository.findAll(spec).stream().map(Employee::getId).collect(Collectors.toList())
+                : ids;
+        List<Long> filteredIds = ids.stream().filter(accessibleIds::contains).collect(Collectors.toList());
+        List<Employee> employees = employeeRepository.findAllById(filteredIds);
         employees.forEach(e -> e.setActive(false));
         employeeRepository.saveAll(employees);
         return ResponseEntity.ok(Map.of("count", employees.size()));

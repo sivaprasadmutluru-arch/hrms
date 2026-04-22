@@ -144,7 +144,8 @@ public class ConsolidatedReportController {
     @Operation(summary = "Attendance dashboard KPIs for today")
     public ResponseEntity<Map<String, Object>> attendanceDashboard(@RequestParam(required = false) Long companyId) {
         LocalDate today = LocalDate.now();
-        List<Attendance> all = attendanceRepository.findAll();
+        var attSpec = ScopeFilter.<Attendance>byCompany();
+        List<Attendance> all = attSpec != null ? attendanceRepository.findAll(attSpec) : attendanceRepository.findAll();
         List<Attendance> todayRecords = all.stream()
                 .filter(a -> today.equals(a.getAttendanceDate()))
                 .toList();
@@ -174,7 +175,8 @@ public class ConsolidatedReportController {
     public ResponseEntity<Map<String, Object>> leaveDashboard(@RequestParam(required = false) Long companyId) {
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
         LocalDate endOfMonth = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth());
-        List<LeaveRequest> all = leaveRequestRepository.findAll();
+        var leaveSpec = ScopeFilter.<LeaveRequest>byCompany();
+        List<LeaveRequest> all = leaveSpec != null ? leaveRequestRepository.findAll(leaveSpec) : leaveRequestRepository.findAll();
         List<LeaveRequest> monthRequests = all.stream()
                 .filter(r -> r.getStartDate() != null
                         && !r.getStartDate().isBefore(startOfMonth)
@@ -201,7 +203,8 @@ public class ConsolidatedReportController {
     public ResponseEntity<Map<String, Object>> payrollDashboard(@RequestParam(required = false) Long companyId) {
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
         LocalDate endOfMonth = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth());
-        List<Payslip> all = payslipRepository.findAll();
+        var paySpec = ScopeFilter.<Payslip>byCompany();
+        List<Payslip> all = paySpec != null ? payslipRepository.findAll(paySpec) : payslipRepository.findAll();
         List<Payslip> monthPayslips = all.stream()
                 .filter(p -> p.getStartDate() != null
                         && !p.getStartDate().isBefore(startOfMonth)
@@ -231,11 +234,13 @@ public class ConsolidatedReportController {
     @Transactional(readOnly = true)
     @Operation(summary = "Recruitment dashboard KPIs")
     public ResponseEntity<Map<String, Object>> recruitmentDashboard(@RequestParam(required = false) Long companyId) {
-        List<RecruitmentPost> posts = recruitmentPostRepository.findAll();
+        var postSpec = ScopeFilter.<RecruitmentPost>byCompany();
+        List<RecruitmentPost> posts = postSpec != null ? recruitmentPostRepository.findAll(postSpec) : recruitmentPostRepository.findAll();
         long activePosts = posts.stream()
                 .filter(p -> RecruitmentPost.RecruitmentStatus.OPEN.equals(p.getStatus()))
                 .count();
-        long totalApplicants = applicantRepository.count();
+        var applicantSpec = ScopeFilter.<com.example.demo.recruitment.entity.Applicant>byCompany();
+        long totalApplicants = applicantSpec != null ? applicantRepository.findAll(applicantSpec).size() : applicantRepository.count();
         Map<String, Object> result = new HashMap<>();
         result.put("totalPosts", posts.size());
         result.put("activePosts", activePosts);
@@ -248,7 +253,8 @@ public class ConsolidatedReportController {
     @Transactional(readOnly = true)
     @Operation(summary = "Asset dashboard KPIs")
     public ResponseEntity<Map<String, Object>> assetDashboard(@RequestParam(required = false) Long companyId) {
-        List<Asset> all = assetRepository.findAll();
+        var assetSpec = ScopeFilter.<Asset>byCompany();
+        List<Asset> all = assetSpec != null ? assetRepository.findAll(assetSpec) : assetRepository.findAll();
         long assignedAssets = all.stream()
                 .filter(a -> Asset.AssetStatus.IN_USE.equals(a.getStatus()))
                 .count();

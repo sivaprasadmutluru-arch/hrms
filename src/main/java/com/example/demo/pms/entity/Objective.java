@@ -39,6 +39,6 @@ public class Objective extends BaseEntity {
     private PerformanceCycle cycle;
 
     public enum ObjectiveStatus {
-        NOT_STARTED, IN_PROGRESS, AT_RISK, COMPLETED
+        NOT_STARTED, IN_PROGRESS, AT_RISK, COMPLETED, ARCHIVED
     }
 }
