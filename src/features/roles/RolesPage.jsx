@@ -6,6 +6,7 @@ import {
   fetchUserRoles, fetchUsers, registerUser, assignRole, revokeRole,
   fetchCrossAccess, grantAccess, revokeAccess, selectUsers, selectUserRoles
 } from './rolesSlice'
+import { adminResetPassword } from '../auth/authSlice'
 import { fetchAll as fetchCompanies, fetchMyCompany, fetchBranches, selectAll as selectAllCompanies, selectBranches } from '../companies/companiesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -26,7 +27,6 @@ const ACCESS_SCOPES = [
   { value: 'ENTERPRISE', label: 'Enterprise' },
 ]
 
-// Roles that can be assigned at each level
 const ASSIGNABLE_ROLES = {
   PLATFORM_SUPER_ADMIN: Object.values(ROLES),
   ENTERPRISE_ADMIN: [ROLES.BRANCH_ADMIN, ROLES.HR_MANAGER, ROLES.ACCOUNTANT, ROLES.DEPARTMENT_MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE],
@@ -45,11 +45,18 @@ export default function RolesPage() {
   const [tab, setTab] = useState('User Roles')
   const [assignModal, setAssignModal] = useState(false)
   const [accessModal, setAccessModal] = useState(false)
+  const [resetModal, setResetModal] = useState(false)
+  const [resetTarget, setResetTarget] = useState(null)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
 
   const canManageCrossAccess = isPlatformAdmin() || isEnterpriseAdmin()
-  const TABS = canManageCrossAccess
-    ? ['User Roles', 'Create User', 'Cross-Branch Access']
-    : ['User Roles', 'Create User']
+  const TABS = [
+    'User Roles',
+    'Create User',
+    'Reset Password',
+    ...(canManageCrossAccess ? ['Cross-Branch Access'] : []),
+  ]
 
   const assignableRoles = isPlatformAdmin()
     ? ASSIGNABLE_ROLES.PLATFORM_SUPER_ADMIN
@@ -57,9 +64,10 @@ export default function RolesPage() {
       ? ASSIGNABLE_ROLES.ENTERPRISE_ADMIN
       : ASSIGNABLE_ROLES.BRANCH_ADMIN
 
-  const { register: regAssign, handleSubmit: handleAssignSubmit, reset: resetAssign, watch: watchAssign } = useForm()
+  const { register: regAssign, handleSubmit: handleAssignSubmit, reset: resetAssign } = useForm()
   const { register: regAccess, handleSubmit: handleAccessSubmit, reset: resetAccess } = useForm()
   const { register: regUser, handleSubmit: handleUserSubmit, reset: resetUser, formState: { errors: userErrors } } = useForm()
+  const { register: regReset, handleSubmit: handleResetSubmit, reset: resetResetForm, formState: { errors: resetErrors } } = useForm()
 
   const userId = user?.userId || user?.id
   const userCompanyId = user?.companyId
@@ -125,6 +133,36 @@ export default function RolesPage() {
     } catch (e) { toast.error(e || 'Failed to create user') }
   }
 
+  const openResetModal = (u) => {
+    setResetTarget(u)
+    resetResetForm()
+    setResetModal(true)
+  }
+
+  const closeResetModal = () => {
+    setResetModal(false)
+    setResetTarget(null)
+    resetResetForm()
+  }
+
+  const onAdminResetPassword = async (formData) => {
+    setResetLoading(true)
+    try {
+      await dispatch(adminResetPassword({ userId: resetTarget.id, newPassword: formData.newPassword })).unwrap()
+      toast.success(`Password reset for "${resetTarget.username}"`)
+      closeResetModal()
+    } catch (e) {
+      toast.error(e || 'Failed to reset password')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  const filteredUsers = users.filter(u => {
+    const q = userSearch.toLowerCase()
+    return !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  })
+
   const roleColumns = [
     { accessorKey: 'username', header: 'Username' },
     { accessorKey: 'email', header: 'Email' },
@@ -148,10 +186,7 @@ export default function RolesPage() {
     { id: 'actions', header: '', cell: ({ row }) => <Button size="sm" variant="danger" onClick={() => onRevokeAccess(row.original)}>Revoke</Button> },
   ]
 
-  const userOptions = users.map(u => ({
-    value: u.id,
-    label: `${u.username} (${u.email})`
-  }))
+  const userOptions = users.map(u => ({ value: u.id, label: `${u.username} (${u.email})` }))
 
   const branchesForEntAdmin = isEnterpriseAdmin() && user?.companyId
     ? (allBranches[user.companyId] || [])
@@ -185,6 +220,7 @@ export default function RolesPage() {
         ))}
       </div>
 
+      {/* User Roles Tab */}
       {tab === 'User Roles' && (
         <>
           <div className="flex justify-end mb-4">
@@ -194,6 +230,7 @@ export default function RolesPage() {
         </>
       )}
 
+      {/* Create User Tab */}
       {tab === 'Create User' && (
         <div className="max-w-md bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Create New User</h2>
@@ -217,26 +254,67 @@ export default function RolesPage() {
               <Button type="submit" loading={loading}>Create User</Button>
             </div>
           </form>
-
-          {users.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Existing Users</h3>
-              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
-                {users.map(u => (
-                  <div key={u.id} className="flex items-center justify-between px-3 py-2 text-sm bg-white">
-                    <div>
-                      <span className="font-medium text-gray-900">{u.username}</span>
-                      <span className="text-gray-500 ml-2">{u.email}</span>
-                    </div>
-                    <span className="text-xs text-gray-400">ID: {u.id}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
+      {/* Reset Password Tab */}
+      {tab === 'Reset Password' && (
+        <div className="max-w-2xl">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 text-sm text-amber-800">
+            You are setting a new password directly on behalf of the user. Make sure to inform them of the change.
+          </div>
+
+          {/* Search */}
+          <div className="relative mb-3">
+            <input
+              type="text"
+              placeholder="Search by username or email..."
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+            />
+            <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            {userSearch && (
+              <button onClick={() => setUserSearch('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Count */}
+          <p className="text-xs text-gray-400 mb-2">
+            {filteredUsers.length} of {users.length} users
+          </p>
+
+          {/* User list */}
+          <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden bg-white">
+            {filteredUsers.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-center text-gray-400">No users match your search.</div>
+            ) : (
+              filteredUsers.map(u => (
+                <div key={u.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm hover:bg-gray-50">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium text-gray-900">{u.username}</span>
+                    <span className="text-gray-400 ml-2 text-xs">{u.email}</span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span className="text-xs text-gray-300">ID: {u.id}</span>
+                    <Button size="sm" variant="secondary" onClick={() => openResetModal(u)}>
+                      Reset Password
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cross-Branch Access Tab */}
       {tab === 'Cross-Branch Access' && (
         <>
           <div className="flex justify-end mb-4">
@@ -255,25 +333,39 @@ export default function RolesPage() {
           </div>
         }>
         <div className="space-y-4">
-          <Select
-            label="User"
-            options={userOptions}
-            {...regAssign('userId', { required: true })}
-          />
-          <Select
-            label="Role"
-            options={roleOptions}
-            {...regAssign('roleName', { required: true })}
-          />
-          <Select
-            label="Company"
-            options={companyOptions}
-            {...regAssign('companyId', { required: true })}
-          />
-          <Select
-            label="Access Scope"
-            options={ACCESS_SCOPES}
-            {...regAssign('accessScope', { required: true })}
+          <Select label="User" options={userOptions} {...regAssign('userId', { required: true })} />
+          <Select label="Role" options={roleOptions} {...regAssign('roleName', { required: true })} />
+          <Select label="Company" options={companyOptions} {...regAssign('companyId', { required: true })} />
+          <Select label="Access Scope" options={ACCESS_SCOPES} {...regAssign('accessScope', { required: true })} />
+        </div>
+      </Modal>
+
+      {/* Admin Reset Password Modal */}
+      <Modal
+        open={resetModal}
+        onClose={closeResetModal}
+        title="Reset User Password"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeResetModal}>Cancel</Button>
+            <Button loading={resetLoading} onClick={handleResetSubmit(onAdminResetPassword)}>Reset Password</Button>
+          </div>
+        }>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
+            <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+              {resetTarget?.username?.[0]?.toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900">{resetTarget?.username}</p>
+              <p className="text-xs text-gray-400 truncate">{resetTarget?.email}</p>
+            </div>
+          </div>
+          <Input
+            label="New Password"
+            type="password"
+            {...regReset('newPassword', { required: 'Required', minLength: { value: 6, message: 'Min 6 characters' } })}
+            error={resetErrors.newPassword?.message}
           />
         </div>
       </Modal>

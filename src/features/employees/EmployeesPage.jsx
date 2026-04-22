@@ -78,7 +78,7 @@ function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isO
               <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-gray-300'}`} title={isOnline ? 'Online' : 'Offline'} />
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{employee.fullName || '—'}</p>
+              <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || '—'}</p>
               <p className="text-xs text-gray-400 mt-0.5 truncate">{employee.email || '—'}</p>
             </div>
           </div>

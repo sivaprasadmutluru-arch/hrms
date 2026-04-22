@@ -37,6 +37,15 @@ export const resetPassword = createAsyncThunk('auth/resetPassword', async (data,
   }
 })
 
+export const adminResetPassword = createAsyncThunk('auth/adminResetPassword', async ({ userId, newPassword }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/auth/admin/reset-password/${userId}`, { newPassword })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to reset password')
+  }
+})
+
 export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/auth/me')

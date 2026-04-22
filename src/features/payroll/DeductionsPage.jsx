@@ -22,6 +22,7 @@ const BASED_ON_OPTIONS = [
   { value: 'gross_pay', label: 'Gross Pay' },
   { value: 'taxable_gross_pay', label: 'Taxable Gross Pay' },
   { value: 'net_pay', label: 'Net Pay' },
+  { value: 'late_come', label: 'Late Come (per occurrence)' },
 ]
 
 const UPDATE_COMPENSATION_OPTIONS = [
@@ -70,6 +71,7 @@ export default function DeductionsPage() {
   const isFixed = watch('isFixed')
   const isConditionBased = watch('isConditionBased')
   const hasMaxLimit = watch('hasMaxLimit')
+  const basedOn = watch('basedOn')
 
   useEffect(() => { dispatch(fetchDeductions()) }, [dispatch])
 
@@ -173,7 +175,16 @@ export default function DeductionsPage() {
           ) : (
             <div className="grid grid-cols-2 gap-4">
               <Select label="Based On" options={BASED_ON_OPTIONS} {...register('basedOn')} />
-              <Input label="Employee Rate (%)" type="number" step="0.01" {...register('rate', { valueAsNumber: true })} />
+              {basedOn === 'late_come' ? (
+                <Input
+                  label="Amount Per Late Come"
+                  type="number"
+                  step="0.01"
+                  {...register('perAttendanceFixedAmount', { valueAsNumber: true })}
+                />
+              ) : (
+                <Input label="Employee Rate (%)" type="number" step="0.01" {...register('rate', { valueAsNumber: true })} />
+              )}
             </div>
           )}
 

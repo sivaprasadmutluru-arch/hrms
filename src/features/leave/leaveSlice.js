@@ -93,7 +93,7 @@ export const approveLeave = createAsyncThunk('leave/approveLeave', async (id, { 
 
 export const rejectLeave = createAsyncThunk('leave/rejectLeave', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    const res = await api.post(`/leave/requests/${id}/reject`, reason ? { reason } : null)
+    const res = await api.post(`/leave/requests/${id}/reject`, { reason: reason || '' })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to reject leave request')

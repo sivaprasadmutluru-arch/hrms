@@ -29,7 +29,9 @@ function useRotatingSchedules() {
       setRotatingShifts(s.data.content || s.data)
       setRotatingWorkTypes(wt.data.content || wt.data)
       setEmployeeShifts(es.data.content || es.data)
-    } catch {}
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to load rotating schedules')
+    }
     setLoading(false)
   }
 

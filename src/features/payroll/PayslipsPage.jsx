@@ -31,8 +31,10 @@ const STATUS_VARIANT = {
 export default function PayslipsPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { user, isEmployee } = useAuth()
+  const { user, isEmployee, isAccountant, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const isEmp = isEmployee()
+  // Can approve payslips (confirm / mark-paid / send email) — roles with payroll:approve authority
+  const canApprovePayroll = isAccountant() || isBranchAdmin() || isEnterpriseAdmin() || isPlatformAdmin()
   const formatCurrency = useCurrency().format
   const payslips = useSelector(s => s.payroll.payslips)
   const loading = useSelector(selectLoading)
@@ -156,7 +158,7 @@ export default function PayslipsPage() {
           >
             <ArrowDownTrayIcon className="h-4 w-4" />
           </button>
-          {!isEmp && (
+          {canApprovePayroll && (
             <button
               onClick={() => handleSendEmail(row.original.id)}
               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -165,7 +167,7 @@ export default function PayslipsPage() {
               <EnvelopeIcon className="h-4 w-4" />
             </button>
           )}
-          {!isEmp && row.original.status === 'DRAFT' && (
+          {canApprovePayroll && row.original.status === 'DRAFT' && (
             <button
               onClick={() => handleConfirm(row.original.id)}
               className="px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -173,7 +175,7 @@ export default function PayslipsPage() {
               Confirm
             </button>
           )}
-          {!isEmp && row.original.status === 'CONFIRMED' && (
+          {canApprovePayroll && row.original.status === 'CONFIRMED' && (
             <button
               onClick={() => handleMarkPaid(row.original.id)}
               className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
@@ -213,15 +215,17 @@ export default function PayslipsPage() {
               <ArrowUpTrayIcon className="w-4 h-4" />
               Import
             </button>
-            <button
-              onClick={() => { reset({}); setGenModal(true) }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Generate Payslips
-            </button>
+            {canApprovePayroll && (
+              <button
+                onClick={() => { reset({}); setGenModal(true) }}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Generate Payslips
+              </button>
+            )}
           </div>
         )}
       </div>

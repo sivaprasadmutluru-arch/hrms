@@ -7,6 +7,7 @@ import {
   fetchRegister, updateRegisterCell,
   selectRegister, selectRegisterLoading,
 } from './attendanceSlice'
+import { fetchAll as fetchCompanies, fetchBranches } from '../companies/companiesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Spinner from '../../components/common/Spinner'
 import useAuth from '../../hooks/useAuth'
@@ -107,28 +108,30 @@ export default function AttendanceRegisterPage() {
   // Load companies for super admin / branches for enterprise admin
   useEffect(() => {
     if (isPlatformAdmin()) {
-      api.get('/companies', { params: { page: 0, size: 200 } })
-        .then(r => {
-          const list = r.data.content || r.data
+      dispatch(fetchCompanies({ page: 0, size: 200 }))
+        .unwrap()
+        .then(data => {
+          const list = data.content || data
           setCompanies(list)
           if (list.length > 0) setCompanyId(list[0].id)
         })
-        .catch(() => {})
+        .catch(() => toast.error('Failed to load companies'))
     } else if (isEnterpriseAdmin()) {
       const headId = user?.companyId
       if (!headId) return
       Promise.all([
-        api.get(`/companies/${headId}`),
-        api.get(`/companies/${headId}/branches`),
+        dispatch(fetchCompanies({ companyId: headId })).unwrap(),
+        dispatch(fetchBranches(headId)).unwrap(),
       ])
-        .then(([headRes, branchRes]) => {
-          const list = [headRes.data, ...(branchRes.data || [])]
+        .then(([headData, branchData]) => {
+          const head = Array.isArray(headData?.content) ? headData.content[0] : headData
+          const list = [head, ...(Array.isArray(branchData) ? branchData : branchData?.content || [])].filter(Boolean)
           setCompanies(list)
           setCompanyId(headId)
         })
-        .catch(() => {})
+        .catch(() => toast.error('Failed to load companies'))
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load departments when company changes
   useEffect(() => {

@@ -86,7 +86,7 @@ function CheckInOutWidget({ user }) {
 
   let elapsed = ''
   if (isClockedIn && myRecord.checkIn) {
-    const [h, m] = myRecord.checkIn.split(':').map(Number)
+    const [h, m] = (myRecord.checkIn || '00:00').split(':').map(Number)
     const checkInTime = new Date()
     checkInTime.setHours(h, m, 0, 0)
     const diffMs = now - checkInTime

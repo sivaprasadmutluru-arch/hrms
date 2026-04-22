@@ -57,9 +57,7 @@ export const fetchCrossAccess = createAsyncThunk('roles/fetchCrossAccess', async
 
 export const grantAccess = createAsyncThunk('roles/grantAccess', async ({ userId, targetCompanyId, grantedByCompanyId, reason }, { rejectWithValue }) => {
   try {
-    const res = await api.post('/cross-branch-access/grant', null, {
-      params: { userId, targetCompanyId, grantedByCompanyId, reason },
-    })
+    const res = await api.post('/cross-branch-access/grant', { userId, targetCompanyId, grantedByCompanyId, reason })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to grant cross-access')

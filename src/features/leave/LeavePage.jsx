@@ -70,9 +70,11 @@ export default function LeavePage() {
   const openDetail = (request) => {
     setSelectedRequest(request)
     setDetailOpen(true)
-    dispatch(fetchLeaveRequestComments(request.id))
-    dispatch(fetchConditionApprovals(request.id))
-    dispatch(fetchLeaveRequestFiles(request.id))
+    Promise.all([
+      dispatch(fetchLeaveRequestComments(request.id)),
+      dispatch(fetchConditionApprovals(request.id)),
+      dispatch(fetchLeaveRequestFiles(request.id)),
+    ]).catch(() => {})
   }
 
   const handleFileUpload = async (e) => {

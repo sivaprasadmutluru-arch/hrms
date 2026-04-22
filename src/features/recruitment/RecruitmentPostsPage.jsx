@@ -61,7 +61,7 @@ export default function RecruitmentPostsPage() {
             <Input label="Location" {...register('location')} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Employment Type" options={['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN']} {...register('type')} />
+            <Select label="Employment Type" options={[{value:'FULL_TIME',label:'Full Time'},{value:'PART_TIME',label:'Part Time'},{value:'CONTRACT',label:'Contract'},{value:'INTERN',label:'Intern'}]} {...register('type')} />
             <Input label="Application Deadline" type="date" {...register('deadline')} />
           </div>
           <div>

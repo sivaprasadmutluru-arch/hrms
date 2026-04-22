@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   HomeIcon, BuildingOffice2Icon, BuildingOfficeIcon, UsersIcon,
   ClockIcon, CalendarDaysIcon, BanknotesIcon, ArchiveBoxIcon,
@@ -606,11 +606,29 @@ function getNavSections(auth) {
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [openGroups, setOpenGroups] = useState(new Set())
+  const location = useLocation()
   const auth = useAuth()
   const { user, logout } = auth
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
 
   const sections = getNavSections(auth)
+
+  // Auto-expand groups whose child route is active
+  useEffect(() => {
+    const activeGroups = new Set()
+    sections.forEach(section => {
+      section.items.forEach(item => {
+        if (item.group && item.children) {
+          if (item.children.some(child => location.pathname.startsWith(child.to))) {
+            activeGroups.add(item.group)
+          }
+        }
+      })
+    })
+    if (activeGroups.size > 0) {
+      setOpenGroups(prev => new Set([...prev, ...activeGroups]))
+    }
+  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleGroup = (key) => {
     setOpenGroups(prev => {
@@ -680,6 +698,7 @@ export default function Sidebar() {
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors mt-0.5 ${
                       isActive ? 'bg-indigo-600 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -701,6 +720,7 @@ export default function Sidebar() {
           )}
           <NavLink
             to="/notifications"
+            end
             className={({ isActive }) =>
               `flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors ${
                 isActive ? 'bg-indigo-600 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'

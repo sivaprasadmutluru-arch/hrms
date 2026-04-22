@@ -70,7 +70,7 @@ export const deletePayslip = createAsyncThunk('payroll/deletePayslip', async (id
 })
 
 export const deletePayslipGroup = createAsyncThunk('payroll/deletePayslipGroup', async (ids, { rejectWithValue }) => {
-  try { await api.delete('/payroll/payslips/bulk', { data: ids }); return ids }
+  try { await api.post('/payroll/payslips/bulk-delete', ids); return ids }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete payslips') }
 })
 
