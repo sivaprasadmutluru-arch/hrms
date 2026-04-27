@@ -608,8 +608,9 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState(new Set())
   const location = useLocation()
   const auth = useAuth()
-  const { user, logout } = auth
+  const { user, logout, isPlatformAdmin } = auth
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
+  const displayName = (!isPlatformAdmin() && user?.companyName) ? user.companyName : APP_NAME
 
   const sections = getNavSections(auth)
 
@@ -642,7 +643,29 @@ export default function Sidebar() {
     <aside className={`flex flex-col h-screen bg-[#1E1B4B] text-white transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} flex-shrink-0`}>
       {/* Logo */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
-        {!collapsed && <span className="font-bold text-lg tracking-tight text-white">{APP_NAME}</span>}
+        {!collapsed && (
+          <div className="flex items-center gap-2 min-w-0">
+            {user?.companyLogoUrl ? (
+              <img
+                src={user.companyLogoUrl}
+                alt="Company logo"
+                className="h-7 w-7 rounded object-contain flex-shrink-0 bg-white/10 p-0.5"
+              />
+            ) : (
+              <div className="h-7 w-7 rounded bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                <BuildingOffice2Icon className="h-4 w-4 text-white" />
+              </div>
+            )}
+            <span className="font-bold text-lg tracking-tight text-white truncate">{displayName}</span>
+          </div>
+        )}
+        {collapsed && user?.companyLogoUrl && (
+          <img
+            src={user.companyLogoUrl}
+            alt="Company logo"
+            className="h-7 w-7 rounded object-contain bg-white/10 mx-auto p-0.5"
+          />
+        )}
         <button onClick={() => setCollapsed(c => !c)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors ml-auto">
           {collapsed ? <ChevronRightIcon className="h-4 w-4" /> : <ChevronLeftIcon className="h-4 w-4" />}
         </button>

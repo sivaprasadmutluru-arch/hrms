@@ -129,13 +129,15 @@ const authSlice = createSlice({
 
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.roles = action.payload.roles || []
-        // Merge companyId, organizationId and employeeId into user object if backend returns them
+        // Merge companyId, companyName, organizationId and employeeId into user object if backend returns them
         if (state.user) {
           const updates = {}
           if (action.payload.companyId !== undefined) updates.companyId = action.payload.companyId
+          if (action.payload.companyName !== undefined) updates.companyName = action.payload.companyName
           if (action.payload.organizationId !== undefined) updates.organizationId = action.payload.organizationId
           if (action.payload.employeeId !== undefined) updates.employeeId = action.payload.employeeId
           if (action.payload.firstName !== undefined) updates.firstName = action.payload.firstName
+          if (action.payload.companyLogoUrl !== undefined) updates.companyLogoUrl = action.payload.companyLogoUrl
           if (Object.keys(updates).length > 0) {
             state.user = { ...state.user, ...updates }
             localStorage.setItem('user', JSON.stringify(state.user))

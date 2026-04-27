@@ -13,6 +13,7 @@ import {
 import StatCard from '../../components/common/StatCard'
 import Card from '../../components/common/Card'
 import PageHeader from '../../components/common/PageHeader'
+import WelcomeHeader from '../../components/common/WelcomeHeader'
 import Badge from '../../components/common/Badge'
 import Spinner from '../../components/common/Spinner'
 import Avatar from '../../components/common/Avatar'
@@ -64,6 +65,7 @@ const CHART_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0
 function CheckInOutWidget({ user }) {
   const dispatch = useDispatch()
   const myAttendance = useSelector(selectEssAttendance)
+  const workInfo = useSelector(selectEssWorkInfo)
   const [actionLoading, setActionLoading] = useState(false)
   const [now, setNow] = useState(new Date())
 
@@ -74,6 +76,7 @@ function CheckInOutWidget({ user }) {
 
   useEffect(() => {
     dispatch(fetchMyAttendance())
+    dispatch(fetchMyWorkInfo())
   }, [dispatch])
 
   const todayStr = new Date().toISOString().slice(0, 10)
@@ -112,47 +115,71 @@ function CheckInOutWidget({ user }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-6 w-full">
       {/* Clock */}
-      <div className="text-center sm:text-left">
-        <p className="text-2xl font-bold text-gray-800 tabular-nums tracking-tight">{timeStr}</p>
-        <p className="text-sm text-gray-400 mt-0.5">{dateStr}</p>
+      <div className="flex-shrink-0">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Current Time</p>
+        <p className="text-base font-bold text-gray-900 tabular-nums mt-0.5">{timeStr}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{dateStr}</p>
       </div>
 
+      {/* Divider */}
+      <div className="h-10 w-px bg-gray-100 flex-shrink-0" />
+
       {/* Status info */}
-      <div className="flex items-center gap-6">
+      <div className="flex-1">
         {isClockedIn && (
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <div>
-              <p className="text-xs text-gray-400">Checked in at</p>
-              <p className="text-sm font-semibold text-gray-700">{myRecord.checkIn}</p>
-              {elapsed && <p className="text-xs text-green-600 font-medium">{elapsed}</p>}
-            </div>
-          </div>
+          <>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Checked in at</p>
+            <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkIn}</p>
+            {elapsed && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <p className="text-xs font-medium text-green-600">{elapsed}</p>
+              </div>
+            )}
+          </>
         )}
         {isClockedOut && (
           <div className="flex items-center gap-6">
             <div>
-              <p className="text-xs text-gray-400">Check In</p>
-              <p className="text-sm font-semibold text-gray-700">{myRecord.checkIn}</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check In</p>
+              <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkIn}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Check Out</p>
-              <p className="text-sm font-semibold text-gray-700">{myRecord.checkOut}</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check Out</p>
+              <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkOut}</p>
             </div>
           </div>
         )}
         {!myRecord && user?.employeeId && (
-          <p className="text-sm text-gray-400">Not checked in today</p>
+          <>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Status</p>
+            <p className="text-sm font-medium text-gray-500 mt-0.5">Not checked in today</p>
+          </>
+        )}
+        {!user?.employeeId && (
+          <p className="text-xs text-gray-400">No employee account</p>
         )}
       </div>
 
+      {/* Divider */}
+      <div className="h-10 w-px bg-gray-100 flex-shrink-0" />
+
+      {/* Shift */}
+      <div className="flex-shrink-0">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Shift</p>
+        <p className="text-sm font-semibold text-gray-900 mt-0.5">
+          {workInfo?.shiftName || '—'}
+        </p>
+      </div>
+
+      {/* Divider */}
+      <div className="h-10 w-px bg-gray-100 flex-shrink-0" />
+
       {/* Action button */}
-      <div>
-        {!user?.employeeId ? (
-          <span className="text-xs text-gray-400">No employee account</span>
-        ) : isClockedOut ? (
+      <div className="flex-shrink-0">
+        {!user?.employeeId ? null : isClockedOut ? (
           <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-100 text-gray-500 text-sm font-medium">
             <CheckCircleIcon className="h-4 w-4 text-green-500" />
             Done for today
@@ -891,9 +918,11 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle={subtitle} />
-
-      {/* Check-in / Check-out — all roles */}
-      <CheckInOutWidget user={user} />
+      {/* Welcome + Check-in side by side */}
+      <div className="flex flex-col xl:flex-row items-stretch gap-4 mb-6">
+        <div className="flex-1 flex"><WelcomeHeader /></div>
+        <div className="flex"><CheckInOutWidget user={user} /></div>
+      </div>
 
       {/* Employee-only: welcome banner + today's attendance status */}
       {isEmployee && <WelcomeBanner user={user} today={todayAttendance} workInfo={myWorkInfo} />}
