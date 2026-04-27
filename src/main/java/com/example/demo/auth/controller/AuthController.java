@@ -64,6 +64,14 @@ public class AuthController {
                         .map(c -> c.getOrganization() != null ? c.getOrganization().getId() : null)
                         .orElse(null)
                 : null;
+        String companyName = companyId != null
+                ? companyRepository.findById(companyId).map(c -> c.getName()).orElse(null)
+                : null;
+        String companyLogoUrl = companyId != null
+                ? companyRepository.findById(companyId)
+                        .map(c -> c.getLogoPath() != null ? "/api/files/" + c.getLogoPath() : null)
+                        .orElse(null)
+                : null;
 
         // Auto-create an employee profile for admin users who don't have one yet
         Long employeeId = employeeRepository.findByUserId(principal.getId())
@@ -94,6 +102,8 @@ public class AuthController {
         response.put("email", principal.getEmail());
         response.put("roles", roles);
         response.put("companyId", companyId);
+        response.put("companyName", companyName);
+        response.put("companyLogoUrl", companyLogoUrl);
         response.put("organizationId", organizationId);
         response.put("employeeId", employeeId);
         response.put("firstName", firstName);

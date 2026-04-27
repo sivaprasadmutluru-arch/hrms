@@ -13,15 +13,17 @@ public class LoginResponse {
     private final String email;
     private final List<String> roles;
     private final Long companyId;
+    private final String companyName;
     private final Long employeeId;
 
-    public LoginResponse(String token, Long userId, String username, String email, List<String> roles, Long companyId, Long employeeId) {
+    public LoginResponse(String token, Long userId, String username, String email, List<String> roles, Long companyId, String companyName, Long employeeId) {
         this.token = token;
         this.userId = userId;
         this.username = username;
         this.email = email;
         this.roles = roles;
         this.companyId = companyId;
+        this.companyName = companyName;
         this.employeeId = employeeId;
     }
 }

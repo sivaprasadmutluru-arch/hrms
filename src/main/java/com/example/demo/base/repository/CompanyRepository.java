@@ -67,4 +67,8 @@ public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpec
     // Get organization status for a given company — used to enforce suspension checks
     @Query("SELECT c.organization.status FROM Company c WHERE c.id = :companyId")
     Optional<Organization.OrgStatus> findOrgStatusByCompanyId(@Param("companyId") Long companyId);
+
+    // Find companies that have no organization linked (directly created in DB)
+    @Query(value = "SELECT * FROM public.companies WHERE organization_id IS NULL", nativeQuery = true)
+    List<Company> findAllOrphanCompaniesPublic();
 }

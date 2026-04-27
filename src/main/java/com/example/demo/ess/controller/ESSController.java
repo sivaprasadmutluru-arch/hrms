@@ -80,6 +80,27 @@ public class ESSController {
         return workInfoRepository.findByEmployeeId(emp.getId())
                 .map(wi -> {
                     WorkInfoResponse res = WorkInfoResponse.from(wi);
+                    // Fall back to Employee-level fields when WorkInformation fields are not set
+                    if (res.getShiftId() == null && emp.getShift() != null) {
+                        res.setShiftId(emp.getShift().getId());
+                        res.setShiftName(emp.getShift().getName());
+                    }
+                    if (res.getDepartmentId() == null && emp.getDepartment() != null) {
+                        res.setDepartmentId(emp.getDepartment().getId());
+                        res.setDepartmentName(emp.getDepartment().getName());
+                    }
+                    if (res.getJobPositionId() == null && emp.getJobPosition() != null) {
+                        res.setJobPositionId(emp.getJobPosition().getId());
+                        res.setJobPositionName(emp.getJobPosition().getName());
+                    }
+                    if (res.getJobRoleId() == null && emp.getJobRole() != null) {
+                        res.setJobRoleId(emp.getJobRole().getId());
+                        res.setJobRoleName(emp.getJobRole().getName());
+                    }
+                    if (res.getWorkTypeId() == null && emp.getWorkType() != null) {
+                        res.setWorkTypeId(emp.getWorkType().getId());
+                        res.setWorkTypeName(emp.getWorkType().getName());
+                    }
                     // Merge salary from active Contract if not set in WorkInformation
                     if (res.getBasicSalary() == null && res.getHousingAllowance() == null) {
                         contractRepository.findByEmployeeIdAndContractStatus(emp.getId(), com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE)

@@ -14,6 +14,7 @@ import com.example.demo.base.repository.OrganizationRepository;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
+import com.example.demo.common.tenant.SchemaProvisioningService;
 import com.example.demo.employee.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -44,6 +45,7 @@ public class OrganizationService {
     private final UserGroupRepository userGroupRepository;
     private final CrossBranchAccessGrantRepository crossBranchAccessGrantRepository;
     private final CompanyService companyService;
+    private final SchemaProvisioningService schemaProvisioningService;
 
     public OrganizationService(OrganizationRepository organizationRepository,
                                 CompanyRepository companyRepository,
@@ -52,7 +54,8 @@ public class OrganizationService {
                                 UserRoleRepository userRoleRepository,
                                 UserGroupRepository userGroupRepository,
                                 CrossBranchAccessGrantRepository crossBranchAccessGrantRepository,
-                                @Lazy CompanyService companyService) {
+                                @Lazy CompanyService companyService,
+                                SchemaProvisioningService schemaProvisioningService) {
         this.organizationRepository = organizationRepository;
         this.companyRepository = companyRepository;
         this.employeeRepository = employeeRepository;
@@ -61,6 +64,7 @@ public class OrganizationService {
         this.userGroupRepository = userGroupRepository;
         this.crossBranchAccessGrantRepository = crossBranchAccessGrantRepository;
         this.companyService = companyService;
+        this.schemaProvisioningService = schemaProvisioningService;
     }
 
     @PersistenceContext
@@ -294,6 +298,81 @@ public class OrganizationService {
         result.put("crossBranchAccessAllowed", plan.isCrossBranchAccessAllowed());
         result.put("currentBranches", currentBranches);
         result.put("currentEmployees", currentEmployees);
+        return result;
+    }
+
+    /** Lists HEAD_OFFICE companies that have no organization linked (directly inserted into DB). */
+    public List<Company> getOrphanCompanies() {
+        return companyRepository.findAllOrphanCompaniesPublic().stream()
+                .filter(Company::isHeadOffice)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Auto-provisions an organization and (if missing) a tenant schema for a company
+     * that was directly inserted into the database without going through the normal
+     * organization-creation flow.
+     *
+     * Steps:
+     *  1. If the company already has an org, skip org creation.
+     *  2. Create an Organization with the company's name.
+     *  3. Link the company to the new org.
+     *  4. If the company has no schemaName, generate one and provision the schema.
+     */
+    @Transactional
+    public Map<String, Object> provisionOrganizationForCompany(Long companyId) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("companyId", companyId);
+        result.put("companyName", company.getName());
+
+        // Step 1 — create org if missing
+        if (company.getOrganization() == null) {
+            Organization org = new Organization();
+            org.setName(company.getName());
+            org.setStatus(Organization.OrgStatus.ACTIVE);
+            org.setSubscriptionPlan(SubscriptionPlan.STANDARD);
+            String baseSlug = company.getName().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+            String slug = baseSlug;
+            int i = 1;
+            while (organizationRepository.findBySlug(slug).isPresent()) {
+                slug = baseSlug + "-" + i++;
+            }
+            org.setSlug(slug);
+            Organization savedOrg = organizationRepository.save(org);
+            company.setOrganization(savedOrg);
+            result.put("orgCreated", true);
+            result.put("orgId", savedOrg.getId());
+        } else {
+            result.put("orgCreated", false);
+            result.put("orgId", company.getOrganization().getId());
+        }
+
+        // Step 2 — provision schema if missing
+        if (company.getSchemaName() == null || company.getSchemaName().isBlank()) {
+            String baseSchema = SchemaProvisioningService.toSchemaName(company.getName());
+            // Ensure uniqueness — can't use mutable var in lambda, so collect existing names first
+            java.util.Set<String> existingSchemas = companyRepository.findAll().stream()
+                    .map(Company::getSchemaName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(java.util.stream.Collectors.toSet());
+            String candidate = baseSchema;
+            int i = 1;
+            while (existingSchemas.contains(candidate)) {
+                candidate = baseSchema + "_" + i++;
+            }
+            company.setSchemaName(candidate);
+            schemaProvisioningService.provisionSchema(candidate);
+            result.put("schemaProvisioned", true);
+            result.put("schemaName", candidate);
+        } else {
+            result.put("schemaProvisioned", false);
+            result.put("schemaName", company.getSchemaName());
+        }
+
+        companyRepository.save(company);
         return result;
     }
 

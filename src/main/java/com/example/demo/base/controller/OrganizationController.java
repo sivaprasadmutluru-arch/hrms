@@ -121,4 +121,18 @@ public class OrganizationController {
         Organization org = organizationService.uploadLogo(id, file);
         return ResponseEntity.ok(Map.of("logoPath", org.getLogoPath(), "url", "/api/files/" + org.getLogoPath()));
     }
+
+    @GetMapping("/orphan-companies")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "List HEAD_OFFICE companies that have no organization (directly inserted into DB)")
+    public ResponseEntity<List<com.example.demo.base.entity.Company>> listOrphanCompanies() {
+        return ResponseEntity.ok(organizationService.getOrphanCompanies());
+    }
+
+    @PostMapping("/provision-for-company/{companyId}")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Auto-create an organization (and provision schema if missing) for a directly-created company")
+    public ResponseEntity<Map<String, Object>> provisionForCompany(@PathVariable Long companyId) {
+        return ResponseEntity.ok(organizationService.provisionOrganizationForCompany(companyId));
+    }
 }

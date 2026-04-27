@@ -88,7 +88,11 @@ public class AuthService {
                 .map(e -> e.getId())
                 .orElse(null);
 
-        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, employeeId);
+        String companyName = companyId != null
+                ? companyRepository.findById(companyId).map(Company::getName).orElse(null)
+                : null;
+
+        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId);
     }
 
     @Transactional

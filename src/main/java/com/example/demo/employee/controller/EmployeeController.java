@@ -437,10 +437,10 @@ public class EmployeeController {
             sheet.setDefaultRowHeightInPoints(18);
 
             // ── Theme colours ──────────────────────────────────────────
-            // Primary: indigo-600 #4F46E5
-            XSSFColor indigo     = new XSSFColor(new byte[]{(byte)79,  (byte)70,  (byte)229}, null);
-            // Light bg: indigo-50 #EEF2FF
-            XSSFColor indigoLight= new XSSFColor(new byte[]{(byte)238,(byte)242,(byte)255}, null);
+            // Primary: purple-600 #7C3AED
+            XSSFColor indigo     = new XSSFColor(new byte[]{(byte)124, (byte)58,  (byte)237}, null);
+            // Light bg: purple-50 #F5F3FF
+            XSSFColor indigoLight= new XSSFColor(new byte[]{(byte)245,(byte)243,(byte)255}, null);
             // Hint row: slate-100 #F1F5F9
             XSSFColor slateLight = new XSSFColor(new byte[]{(byte)241,(byte)245,(byte)249}, null);
             // Border: gray-300 #D1D5DB
@@ -608,30 +608,156 @@ public class EmployeeController {
     @Operation(summary = "Export employees for a company as Excel")
     public void exportEmployees(@RequestParam Long companyId,
                                 jakarta.servlet.http.HttpServletResponse response) throws IOException {
-        List<Employee> employees = employeeRepository.findByCompanyId(companyId);
-        response.setContentType("application/octet-stream");
-        response.setHeader("Content-Disposition", "attachment; filename=employees_" + companyId + ".xlsx");
+        // Resolve company name for use in export
+        String companyDisplayName = companyRepository.findById(companyId)
+                .map(c -> c.getName())
+                .orElse("Unknown Company");
 
-        try (Workbook wb = new XSSFWorkbook()) {
-            Sheet sheet = wb.createSheet("Employees");
-            String[] headers = {"Name", "Email", "Department", "Job Position", "Active"};
-            Row header = sheet.createRow(0);
-            for (int i = 0; i < headers.length; i++) {
-                header.createCell(i).setCellValue(headers[i]);
+        // Use scope-aware spec so enterprise admins get all accessible employees
+        var spec = com.example.demo.common.util.ScopeFilter.<Employee>byCompany();
+        List<Employee> employees = spec != null
+                ? employeeRepository.findAll(spec)
+                : employeeRepository.findByCompanyId(companyId);
+
+        // Pre-fetch work info for all employees (keyed by employee ID)
+        Map<Long, com.example.demo.employee.entity.EmployeeWorkInformation> workInfoMap = new java.util.HashMap<>();
+        for (Employee e : employees) {
+            if (e.getId() != null) {
+                employeeWorkInformationRepository.findByEmployeeId(e.getId())
+                        .ifPresent(wi -> workInfoMap.put(e.getId(), wi));
             }
+        }
+
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition",
+                "attachment; filename=employees_" + companyDisplayName.replaceAll("[^a-zA-Z0-9_-]", "_") + ".xlsx");
+
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            XSSFSheet sheet = wb.createSheet("Employees");
+            sheet.setDefaultRowHeightInPoints(18);
+
+            // Purple theme
+            XSSFColor purple      = new XSSFColor(new byte[]{(byte)124, (byte)58,  (byte)237}, null);
+            XSSFColor purpleLight = new XSSFColor(new byte[]{(byte)245,(byte)243,(byte)255}, null);
+            XSSFColor borderGray  = new XSSFColor(new byte[]{(byte)209,(byte)213,(byte)219}, null);
+
+            // Header cell style
+            XSSFCellStyle headerStyle = wb.createCellStyle();
+            XSSFFont headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(purple);
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            headerStyle.setBorderBottom(BorderStyle.MEDIUM);
+            headerStyle.setBottomBorderColor(purple);
+
+            // Data cell style
+            XSSFCellStyle dataStyle = wb.createCellStyle();
+            XSSFFont dataFont = wb.createFont();
+            dataFont.setFontHeightInPoints((short) 10);
+            dataStyle.setFont(dataFont);
+            dataStyle.setFillForegroundColor(purpleLight);
+            dataStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            dataStyle.setAlignment(HorizontalAlignment.LEFT);
+            dataStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            setBorders(dataStyle, borderGray);
+
+            // Alternating white row style
+            XSSFCellStyle altStyle = wb.createCellStyle();
+            altStyle.cloneStyleFrom(dataStyle);
+            altStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte)255,(byte)255,(byte)255}, null));
+            altStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            String[] headers = {
+                "ID", "First Name", "Last Name", "Email", "Phone", "Gender",
+                "Department", "Job Position", "Job Role", "Shift", "Work Type",
+                "Reporting Manager", "Employee Type", "Location", "Date of Joining",
+                "Basic Salary", "Housing Allowance", "Transport Allowance", "Other Allowance",
+                "Total Salary", "Salary Per Hour", "Contract End Date", "Company"
+            };
+            int[] colWidths = {
+                3500, 5000, 5000, 7500, 5500, 4500,
+                6500, 7000, 6500, 6000, 6000,
+                7000, 6000, 6000, 6000,
+                6000, 7000, 7500, 6500,
+                6000, 6500, 6500, 7000
+            };
+
+            // Header row
+            XSSFRow headerRow = sheet.createRow(0);
+            headerRow.setHeightInPoints(24);
+            for (int i = 0; i < headers.length; i++) {
+                XSSFCell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, colWidths[i]);
+            }
+
+            // Data rows
             int rowIdx = 1;
             for (Employee e : employees) {
-                Row row = sheet.createRow(rowIdx++);
-                row.createCell(0).setCellValue(
-                        (e.getFirstName() != null ? e.getFirstName() : "") + " " +
-                        (e.getLastName() != null ? e.getLastName() : ""));
-                row.createCell(1).setCellValue(e.getEmail() != null ? e.getEmail() : "");
-                row.createCell(2).setCellValue(e.getDepartment() != null ? e.getDepartment().getName() : "");
-                row.createCell(3).setCellValue(e.getJobPosition() != null ? e.getJobPosition().getName() : "");
-                row.createCell(4).setCellValue(e.isActive() ? "Yes" : "No");
+                XSSFRow row = sheet.createRow(rowIdx);
+                XSSFCellStyle rowStyle = (rowIdx % 2 == 0) ? altStyle : dataStyle;
+                row.setHeightInPoints(18);
+
+                com.example.demo.employee.entity.EmployeeWorkInformation wi =
+                        e.getId() != null ? workInfoMap.get(e.getId()) : null;
+
+                // Salary fields (default to ZERO if null)
+                java.math.BigDecimal basic     = wi != null && wi.getBasicSalary()         != null ? wi.getBasicSalary()         : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal housing   = wi != null && wi.getHousingAllowance()    != null ? wi.getHousingAllowance()    : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal transport = wi != null && wi.getTransportAllowance()  != null ? wi.getTransportAllowance()  : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal other     = wi != null && wi.getOtherAllowance()      != null ? wi.getOtherAllowance()      : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal total     = basic.add(housing).add(transport).add(other);
+
+                String reportingMgr = "";
+                if (e.getReportingManager() != null) {
+                    String fn = e.getReportingManager().getFirstName() != null ? e.getReportingManager().getFirstName() : "";
+                    String ln = e.getReportingManager().getLastName()  != null ? e.getReportingManager().getLastName()  : "";
+                    reportingMgr = (fn + " " + ln).trim();
+                }
+
+                String empCompanyName = e.getCompany() != null ? e.getCompany().getName() : companyDisplayName;
+
+                createStyledCell(row,  0, e.getId()                    != null ? String.valueOf(e.getId())                      : "", rowStyle);
+                createStyledCell(row,  1, e.getFirstName()             != null ? e.getFirstName()                               : "", rowStyle);
+                createStyledCell(row,  2, e.getLastName()              != null ? e.getLastName()                                : "", rowStyle);
+                createStyledCell(row,  3, e.getEmail()                 != null ? e.getEmail()                                   : "", rowStyle);
+                createStyledCell(row,  4, e.getPhone()                 != null ? e.getPhone()                                   : "", rowStyle);
+                createStyledCell(row,  5, e.getGender()                != null ? e.getGender().name()                          : "", rowStyle);
+                createStyledCell(row,  6, e.getDepartment()            != null ? e.getDepartment().getName()                   : "", rowStyle);
+                createStyledCell(row,  7, e.getJobPosition()           != null ? e.getJobPosition().getName()                  : "", rowStyle);
+                createStyledCell(row,  8, e.getJobRole()               != null ? e.getJobRole().getName()                      : "", rowStyle);
+                createStyledCell(row,  9, e.getShift()                 != null ? e.getShift().getName()                        : "", rowStyle);
+                createStyledCell(row, 10, e.getWorkType()              != null ? e.getWorkType().getName()                     : "", rowStyle);
+                createStyledCell(row, 11, reportingMgr,                                                                              rowStyle);
+                createStyledCell(row, 12, e.getEmployeeType()          != null ? e.getEmployeeType().name()                    : "", rowStyle);
+                createStyledCell(row, 13, wi != null && wi.getLocation()         != null ? wi.getLocation()                    : "", rowStyle);
+                createStyledCell(row, 14, e.getDateJoining()           != null ? e.getDateJoining().toString()                 : "", rowStyle);
+                createStyledCell(row, 15, basic.compareTo(java.math.BigDecimal.ZERO)     != 0 ? basic.toPlainString()          : "", rowStyle);
+                createStyledCell(row, 16, housing.compareTo(java.math.BigDecimal.ZERO)   != 0 ? housing.toPlainString()        : "", rowStyle);
+                createStyledCell(row, 17, transport.compareTo(java.math.BigDecimal.ZERO) != 0 ? transport.toPlainString()      : "", rowStyle);
+                createStyledCell(row, 18, other.compareTo(java.math.BigDecimal.ZERO)     != 0 ? other.toPlainString()          : "", rowStyle);
+                createStyledCell(row, 19, total.compareTo(java.math.BigDecimal.ZERO)     != 0 ? total.toPlainString()          : "", rowStyle);
+                createStyledCell(row, 20, wi != null && wi.getSalaryHour()       != null ? String.valueOf(wi.getSalaryHour())  : "", rowStyle);
+                createStyledCell(row, 21, wi != null && wi.getContractEndDate()  != null ? wi.getContractEndDate().toString()  : "", rowStyle);
+                createStyledCell(row, 22, empCompanyName,                                                                             rowStyle);
+                rowIdx++;
             }
+
+            sheet.createFreezePane(0, 1);
             wb.write(response.getOutputStream());
         }
+    }
+
+    private void createStyledCell(XSSFRow row, int col, String value, XSSFCellStyle style) {
+        XSSFCell cell = row.createCell(col);
+        cell.setCellValue(value);
+        cell.setCellStyle(style);
     }
 
     // ─── Work Info Export ─────────────────────────────────────────────────────
@@ -838,7 +964,11 @@ public class EmployeeController {
     @Transactional(readOnly = true)
     @Operation(summary = "Get employee dashboard stats for a company")
     public ResponseEntity<Map<String, Object>> dashboard(@RequestParam Long companyId) {
-        List<Employee> all = employeeRepository.findByCompanyId(companyId);
+        // Use scope-aware spec so enterprise admins see all accessible employees (HO + branches)
+        var spec = ScopeFilter.<Employee>byCompany();
+        List<Employee> all = spec != null
+                ? employeeRepository.findAll(spec)
+                : employeeRepository.findByCompanyId(companyId);
         long total = all.size();
         long active = all.stream().filter(Employee::isActive).count();
         long inactive = total - active;
