@@ -6,6 +6,8 @@ import {
   fetchAll, fetchMyCompany, create, update, remove, uploadLogo,
   fetchBranches, selectAll, selectLoading, selectBranches,
 } from './companiesSlice'
+import { validateCompanyScope } from '../platform/platformSlice'
+import { setSelectedCompany } from '../auth/authSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Modal from '../../components/common/Modal'
@@ -425,6 +427,21 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
     setBranchModalOpen(true)
   }
 
+  const handleOpenCompanyDashboard = async (companyId) => {
+    try {
+      const result = await dispatch(validateCompanyScope(companyId)).unwrap()
+      if (!result.valid) {
+        toast.error(`Access denied for ${result.companyName || 'this company'}`)
+        return
+      }
+    } catch {
+      toast.error('Could not validate company access. Try again.')
+      return
+    }
+    dispatch(setSelectedCompany(companyId))
+    window.location.href = '/dashboard'
+  }
+
   return (
     <div className="space-y-6">
       {headOffices.length > 0 && (
@@ -459,7 +476,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
             return (
               <div
                 key={company.id}
-                onClick={() => openBranchModal(company.id)}
+                onClick={() => handleOpenCompanyDashboard(company.id)}
                 className="relative cursor-pointer aspect-square flex flex-col rounded-2xl border-2 border-gray-100 overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md hover:border-indigo-200 group"
               >
                 <div className="flex-1 flex flex-col items-center justify-center p-5 bg-gradient-to-br from-indigo-50 to-violet-50 group-hover:from-indigo-100 group-hover:to-violet-100 transition-colors">
@@ -491,9 +508,12 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                     </p>
                   )}
                   <div className="flex items-center justify-between pt-1">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${atLimit ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {branchCount}/5 branches
-                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openBranchModal(company.id) }}
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full transition-colors ${atLimit ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-500 hover:bg-indigo-100 hover:text-indigo-600'}`}
+                    >
+                      {branchCount}/5 branches ↓
+                    </button>
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditHeadOffice(company) }}
@@ -507,7 +527,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                       >
                         <TrashIcon className="h-3.5 w-3.5" />
                       </button>
-                      <span className="text-xs text-indigo-400 font-medium">View →</span>
+                      <span className="text-xs text-indigo-400 font-medium">Open Dashboard →</span>
                     </div>
                   </div>
                 </div>

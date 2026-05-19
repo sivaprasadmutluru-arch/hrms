@@ -12,6 +12,7 @@ import { useSelector } from 'react-redux'
 import useAuth from '../../hooks/useAuth'
 import Avatar from '../common/Avatar'
 import { APP_NAME } from '../../config/constants'
+import { selectPlatformCompanies } from '../../features/platform/platformSlice'
 
 // ─── Collapsible nav groups ────────────────────────────────────────────────────
 
@@ -84,7 +85,8 @@ const LEAVE_GROUP = {
     { label: 'Leave Requests',  to: '/leave' },
     { label: 'Leave Balance',   to: '/leave/balance' },
     { label: 'Allocations',     to: '/leave/allocations' },
-    { label: 'Restrictions',    to: '/leave/restrictions' },
+    { label: 'Leave Types',          to: '/leave/types' },
+    { label: 'Restrictions',         to: '/leave/restrictions' },
     { label: 'Holidays',             to: '/leave/holidays' },
     { label: 'Holiday Allocations',  to: '/leave/holiday-allocations' },
     { label: 'Company Leaves',       to: '/leave/company-leaves' },
@@ -293,14 +295,17 @@ function getNavSections(auth) {
         ],
       },
       {
-        title: 'Admin',
+        title: 'Admin Settings',
         items: [
-          { label: 'Roles & Access', to: '/roles',        icon: Cog6ToothIcon },
+          { label: 'Roles & Access', to: '/roles',             icon: Cog6ToothIcon },
           { label: 'User Groups',    to: '/roles/user-groups', icon: UsersIcon },
-          { label: 'Audit Logs',     to: '/audit/logs',   icon: DocumentTextIcon },
+          { label: 'Audit Logs',     to: '/audit/logs',        icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
-          SETTINGS_GROUP,
         ],
+      },
+      {
+        title: 'Settings',
+        items: [SETTINGS_GROUP],
       },
       {
         title: 'Reports',
@@ -355,13 +360,16 @@ function getNavSections(auth) {
         ],
       },
       {
-        title: 'Management',
+        title: 'Admin Settings',
         items: [
-          { label: 'Roles & Access', to: '/roles',        icon: Cog6ToothIcon },
-          { label: 'Audit Logs',     to: '/audit/logs',   icon: DocumentTextIcon },
+          { label: 'Roles & Access', to: '/roles',       icon: Cog6ToothIcon },
+          { label: 'Audit Logs',     to: '/audit/logs',  icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
-          SETTINGS_GROUP,
         ],
+      },
+      {
+        title: 'Settings',
+        items: [SETTINGS_GROUP],
       },
       {
         title: 'Reports',
@@ -416,12 +424,15 @@ function getNavSections(auth) {
         ],
       },
       {
-        title: 'Admin',
+        title: 'Admin Settings',
         items: [
           { label: 'Audit Logs', to: '/audit/logs', icon: DocumentTextIcon },
           BIOMETRIC_GROUP,
-          SETTINGS_GROUP,
         ],
+      },
+      {
+        title: 'Settings',
+        items: [SETTINGS_GROUP],
       },
       {
         title: 'Reports',
@@ -610,7 +621,24 @@ export default function Sidebar() {
   const auth = useAuth()
   const { user, logout, isPlatformAdmin } = auth
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
-  const displayName = (!isPlatformAdmin() && user?.companyName) ? user.companyName : APP_NAME
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const platformCompanies = useSelector(selectPlatformCompanies)
+  const companiesData = useSelector(s => s.companies.data)
+  // Look up selected company in both slices (platformCompanies has logoUrl after scope fetch;
+  // companiesData has logoPath from full entity fetches — use whichever is available)
+  const selectedCompanyScope = selectedCompanyId
+    ? platformCompanies.find(c => String(c.id) === String(selectedCompanyId))
+    : null
+  const selectedCompanyFull = selectedCompanyId
+    ? companiesData.find(c => String(c.id) === String(selectedCompanyId))
+    : null
+  const displayName = isPlatformAdmin()
+    ? (selectedCompanyScope?.name || selectedCompanyFull?.name || APP_NAME)
+    : (user?.companyName || APP_NAME)
+  const displayLogoUrl = isPlatformAdmin()
+    ? (selectedCompanyScope?.logoUrl
+        || (selectedCompanyFull?.logoPath ? `/api/files/${selectedCompanyFull.logoPath}` : null))
+    : (user?.companyLogoUrl || null)
 
   const sections = getNavSections(auth)
 
@@ -645,9 +673,9 @@ export default function Sidebar() {
       <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
         {!collapsed && (
           <div className="flex items-center gap-2 min-w-0">
-            {user?.companyLogoUrl ? (
+            {displayLogoUrl ? (
               <img
-                src={user.companyLogoUrl}
+                src={displayLogoUrl}
                 alt="Company logo"
                 className="h-7 w-7 rounded object-contain flex-shrink-0 bg-white/10 p-0.5"
               />
@@ -659,9 +687,9 @@ export default function Sidebar() {
             <span className="font-bold text-lg tracking-tight text-white truncate">{displayName}</span>
           </div>
         )}
-        {collapsed && user?.companyLogoUrl && (
+        {collapsed && displayLogoUrl && (
           <img
-            src={user.companyLogoUrl}
+            src={displayLogoUrl}
             alt="Company logo"
             className="h-7 w-7 rounded object-contain bg-white/10 mx-auto p-0.5"
           />

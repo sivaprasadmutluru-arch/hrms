@@ -21,6 +21,7 @@ import { fetchAll as fetchLeave, fetchHolidays } from '../leave/leaveSlice'
 import { fetchAll as fetchTickets } from '../helpdesk/helpdeskSlice'
 import { fetchAll as fetchOrganizations } from '../organizations/organizationsSlice'
 import { fetchBranchesSummary, selectBranchesSummary } from '../companies/companiesSlice'
+import { selectPlatformCompanies } from '../platform/platformSlice'
 import { fetchHeadcount as fetchHeadcountReport, fetchAttendanceReport } from '../reports/reportsSlice'
 import { fetchEmployeeDashboard } from '../employees/employeesSlice'
 import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, selectCalendarDays, selectCalendarLoading } from '../attendance/attendanceSlice'
@@ -880,11 +881,23 @@ export default function DashboardPage() {
   const isDeptMgr = isDeptManager()
   const isEmployee = !isSuperAdmin && !isEntAdmin && !isBranchMgr && !isHR && !isAcc && !isDeptMgr
 
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const isSuperAdminViewingCompany = isSuperAdmin && !!selectedCompanyId
+
+  // If the selected company is a branch, resolve to its parent head office for branch-summary calls
+  const platformCompanies = useSelector(selectPlatformCompanies)
+  const selectedCompany = platformCompanies.find(c => String(c.id) === String(selectedCompanyId))
+  const effectiveHeadOfficeId = selectedCompany?.type === 'BRANCH' && selectedCompany?.parentCompanyId
+    ? selectedCompany.parentCompanyId
+    : selectedCompanyId
+
   const today = new Date().toISOString().split('T')[0]
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const companyId = user?.companyId
 
-  const branchSummaryList = user?.companyId ? (branchesSummary[user.companyId] || []) : []
+  const branchSummaryList = isSuperAdminViewingCompany
+    ? (branchesSummary[effectiveHeadOfficeId] || [])
+    : user?.companyId ? (branchesSummary[user.companyId] || []) : []
 
   useEffect(() => {
     dispatch(fetchLeave({ page: 0, size: 10 }))
@@ -897,11 +910,14 @@ export default function DashboardPage() {
       dispatch(fetchToday({ companyId }))
       if (user?.employeeId) dispatch(fetchMyWorkInfo())
     }
-    if (isSuperAdmin) dispatch(fetchOrganizations({ page: 0, size: 100 }))
+    if (isSuperAdmin && !selectedCompanyId) dispatch(fetchOrganizations({ page: 0, size: 100 }))
+    if (isSuperAdminViewingCompany) dispatch(fetchBranchesSummary(effectiveHeadOfficeId))
     if (isEntAdmin && companyId) dispatch(fetchBranchesSummary(companyId))
-  }, [dispatch, isSuperAdmin, isEntAdmin, companyId])
+  }, [dispatch, isSuperAdmin, isEntAdmin, companyId, selectedCompanyId, effectiveHeadOfficeId])
 
-  const subtitle = isSuperAdmin
+  const subtitle = isSuperAdminViewingCompany
+    ? 'Company admin view — head office & branches'
+    : isSuperAdmin
     ? 'Platform overview — all client organizations'
     : isEntAdmin
       ? 'Head office overview — all branches'
@@ -931,12 +947,23 @@ export default function DashboardPage() {
       <PersonalAttendanceSection attendanceDashboard={attendanceDashboard} />
 
       {/* Role-specific content */}
-      {isSuperAdmin && (
+      {isSuperAdmin && !selectedCompanyId && (
         <PlatformAdminDashboard
           organizations={organizations}
           headcount={headcount}
           leave={leave}
           helpdesk={helpdesk}
+        />
+      )}
+
+      {isSuperAdminViewingCompany && (
+        <EnterpriseAdminDashboard
+          branchSummaryList={branchSummaryList}
+          headcount={headcount}
+          leave={leave}
+          attendanceReport={attendanceReport}
+          helpdesk={helpdesk}
+          companies={companies}
         />
       )}
 

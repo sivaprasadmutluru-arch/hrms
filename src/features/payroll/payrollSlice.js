@@ -474,6 +474,53 @@ export const sendPayslipEmail = createAsyncThunk('payroll/sendPayslipEmail', asy
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to send email') }
 })
 
+export const inlineEditPayslip = createAsyncThunk('payroll/inlineEditPayslip', async ({ id, fields }, { rejectWithValue }) => {
+  try {
+    const res = await api.patch(`/payroll/payslips/${id}/inline`, fields)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to save changes')
+  }
+})
+
+export const downloadPayslipPdf = createAsyncThunk('payroll/downloadPayslipPdf', async ({ id, filename }, { rejectWithValue }) => {
+  try {
+    const res = await api.get(`/payroll/payslips/${id}/pdf`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename || `payslip-${id}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    return true
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download PDF')
+  }
+})
+
+export const downloadBulkPayslipsPdf = createAsyncThunk('payroll/downloadBulkPayslipsPdf', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/payroll/payslips/bulk-pdf', {
+      params: { ids: ids.join(',') },
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    const today = new Date().toISOString().slice(0, 10)
+    link.setAttribute('download', `payslips-bulk-${today}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    return true
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download bulk PDF')
+  }
+})
+
 export const deleteLoan = createAsyncThunk('payroll/deleteLoan', async (id, { rejectWithValue }) => {
   try { await api.delete(`/payroll/loans/${id}`); return id }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed to delete loan') }
@@ -773,6 +820,13 @@ const payrollSlice = createSlice({
         state.batchGroups = state.batchGroups.filter(g => g.id !== action.payload)
       })
       .addCase(fetchPayrollDashboard.fulfilled, (state, action) => { state.payrollDashboard = action.payload })
+
+      .addCase(inlineEditPayslip.fulfilled, (state, action) => {
+        const idx = state.payslips.findIndex(p => p.id === action.payload.id)
+        if (idx !== -1) state.payslips[idx] = action.payload
+        const aIdx = state.autoPayslips.findIndex(p => p.id === action.payload.id)
+        if (aIdx !== -1) state.autoPayslips[aIdx] = action.payload
+      })
       .addCase(deleteLoan.fulfilled, (state, action) => {
         if (state.loans) state.loans = state.loans.filter(l => l.id !== action.payload)
       })

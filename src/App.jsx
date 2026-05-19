@@ -110,11 +110,13 @@ const HolidaysPage            = lazy(() => import('./features/leave/HolidaysPage
 const HolidayAllocationPage   = lazy(() => import('./features/leave/HolidayAllocationPage'))
 const CompanyLeavesPage       = lazy(() => import('./features/leave/CompanyLeavesPage'))
 const LeaveDashboardPage      = lazy(() => import('./features/leave/LeaveDashboardPage'))
+const LeaveTypesPage          = lazy(() => import('./features/leave/LeaveTypesPage'))
 const AssetCategoriesPage     = lazy(() => import('./features/assets/AssetCategoriesPage'))
 const AssetRequestsPage       = lazy(() => import('./features/assets/AssetRequestsPage'))
 const PayrollBatchGroupsPage  = lazy(() => import('./features/payroll/PayrollBatchGroupsPage'))
 const PayrollDashboardPage    = lazy(() => import('./features/payroll/PayrollDashboardPage'))
 const PayslipImportPage       = lazy(() => import('./features/payroll/PayslipImportPage'))
+const ManualPayrollPage       = lazy(() => import('./features/payroll/ManualPayrollPage'))
 const AttendanceDashboardPage = lazy(() => import('./features/attendance/AttendanceDashboardPage'))
 const RecruitmentPipelinePage = lazy(() => import('./features/recruitment/RecruitmentPipelinePage'))
 const RecruitmentDashboardPage = lazy(() => import('./features/recruitment/RecruitmentDashboardPage'))
@@ -191,7 +193,7 @@ export default function App() {
 
           {/* Finance routes */}
           <Route path="payroll/payroll"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollPage />} />} />
-          <Route path="payroll/manual"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollPage />} />} />
+          <Route path="payroll/manual"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<ManualPayrollPage />} />} />
           <Route path="payroll/automated"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AutomatedPayrollPage />} />} />
           <Route path="payroll/contracts"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<ContractsPage />} />} />
           <Route path="payroll/tax-settings"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<TaxSettingsPage />} />} />
@@ -227,6 +229,7 @@ export default function App() {
           <Route path="leave/holiday-allocations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<HolidayAllocationPage />} />} />
           <Route path="leave/company-leaves"     element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<CompanyLeavesPage />} />} />
           <Route path="leave/dashboard"          element={<LeaveDashboardPage />} />
+          <Route path="leave/types"             element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<LeaveTypesPage />} />} />
           <Route path="payroll/payslips"         element={<PayslipsPage />} />
           <Route path="payroll/import"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<PayslipImportPage />} />} />
           <Route path="assets"                   element={<AssetsPage />} />
