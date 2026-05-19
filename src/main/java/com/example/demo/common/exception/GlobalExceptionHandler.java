@@ -11,6 +11,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 import java.time.LocalDateTime;
@@ -70,6 +71,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(),
                         "No endpoint: " + ex.getHttpMethod() + " " + ex.getRequestURL()));
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleBrokenPipe(AsyncRequestNotUsableException ex) {
+        // Client disconnected mid-transfer (broken pipe) — nothing to respond to, suppress noisy logging
+        log.debug("Client disconnected before response was fully written: {}", ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

@@ -71,4 +71,12 @@ public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpec
     // Find companies that have no organization linked (directly created in DB)
     @Query(value = "SELECT * FROM public.companies WHERE organization_id IS NULL", nativeQuery = true)
     List<Company> findAllOrphanCompaniesPublic();
+
+    // Public-schema lookups used when a tenant search_path is already active
+    // (e.g. Super Admin viewing a company via X-Company-Id header)
+    @Query(value = "SELECT * FROM public.companies WHERE id = :id", nativeQuery = true)
+    Optional<Company> findByIdPublic(@Param("id") Long id);
+
+    @Query(value = "SELECT * FROM public.companies WHERE parent_company_id = :parentId AND is_active = true", nativeQuery = true)
+    List<Company> findByParentCompanyIdAndIsActiveTruePublic(@Param("parentId") Long parentId);
 }

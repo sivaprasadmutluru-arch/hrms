@@ -44,6 +44,7 @@ public class PlatformCompanyScopeController {
             entry.put("status", c.getStatus() != null ? c.getStatus().name() : "UNKNOWN");
             entry.put("parentCompanyId", c.getParentCompany() != null ? c.getParentCompany().getId() : null);
             entry.put("currency", c.getCurrency() != null ? c.getCurrency() : "USD");
+            entry.put("logoUrl", c.getLogoPath() != null ? "/api/files/" + c.getLogoPath() : null);
             return entry;
         }).toList();
         return ResponseEntity.ok(result);

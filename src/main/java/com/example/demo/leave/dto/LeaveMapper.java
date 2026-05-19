@@ -38,6 +38,10 @@ public final class LeaveMapper {
     }
 
     public static LeaveTypeDTO toDTO(LeaveType lt) {
+        java.util.List<Long> empTypeIds = lt.getApplicableEmployeeTypes() == null ? java.util.List.of()
+                : lt.getApplicableEmployeeTypes().stream().map(com.example.demo.common.entity.BaseEntity::getId).toList();
+        java.util.List<String> empTypeNames = lt.getApplicableEmployeeTypes() == null ? java.util.List.of()
+                : lt.getApplicableEmployeeTypes().stream().map(com.example.demo.base.entity.EmployeeType::getName).toList();
         return new LeaveTypeDTO(
                 lt.getId(),
                 lt.getName(),
@@ -50,7 +54,10 @@ public final class LeaveMapper {
                 lt.getAccrualEnabled(),
                 lt.getMidYearJoinerMode(),
                 lt.getNegativeBalanceAllowed(),
-                lt.getNegativeBalanceLimit()
+                lt.getNegativeBalanceLimit(),
+                lt.isActive(),
+                empTypeIds,
+                empTypeNames
         );
     }
 

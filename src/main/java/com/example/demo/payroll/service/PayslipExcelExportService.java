@@ -486,8 +486,8 @@ public class PayslipExcelExportService {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             XSSFSheet sheet = wb.createSheet("Payslips");
 
-            // Column widths
-            for (int i = 0; i < 16; i++) sheet.setColumnWidth(i, 20 * 256);
+            // Column widths (17 columns now: 8 static + 1 paid days + gross + 3 deductions + 3 additions + net)
+            for (int i = 0; i < 17; i++) sheet.setColumnWidth(i, 20 * 256);
 
             // ── Styles ────────────────────────────────────────────────────────
             XSSFCellStyle mergedHeaderStyle = wb.createCellStyle();
@@ -505,20 +505,20 @@ public class PayslipExcelExportService {
             // ── Row 0: Merged section headers (DEDUCTION / ADDITION) ──────────
             Row row0 = sheet.createRow(0);
             row0.setHeightInPoints(20);
-            for (int c = 0; c < 16; c++) createCell(row0, c, "", mergedHeaderStyle);
-            // Columns 9-11 = DEDUCTION (J, K, L)
-            row0.getCell(9).setCellValue("DEDUCTION");
-            sheet.addMergedRegion(new CellRangeAddress(0, 0, 9, 11));
-            // Columns 12-14 = ADDITION (M, N, O)
-            row0.getCell(12).setCellValue("ADDITION");
-            sheet.addMergedRegion(new CellRangeAddress(0, 0, 12, 14));
+            for (int c = 0; c < 17; c++) createCell(row0, c, "", mergedHeaderStyle);
+            // Columns 10-12 = DEDUCTION (K, L, M)
+            row0.getCell(10).setCellValue("DEDUCTION");
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 10, 12));
+            // Columns 13-15 = ADDITION (N, O, P)
+            row0.getCell(13).setCellValue("ADDITION");
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 13, 15));
 
             // ── Row 1: blank spacer ───────────────────────────────────────────
             sheet.createRow(1).setHeightInPoints(5);
 
             // ── Row 2: Column headers ─────────────────────────────────────────
             String[] staticCols = {
-                "Employee Id", "Employee Name", "Department",
+                "Employee Id", "Employee Name", "Department", "Designation",
                 "Basic Salary", "Housing Allowance", "Transport Allowance", "Other Allowance"
             };
             String[] varCols = {
@@ -546,7 +546,8 @@ public class PayslipExcelExportService {
                 double transport   = contract != null && contract.getTransportAllowance()  != null ? contract.getTransportAllowance().doubleValue()  : 0.0;
                 double other       = contract != null && contract.getOtherAllowance()      != null ? contract.getOtherAllowance().doubleValue()      : 0.0;
 
-                String dept = emp.getDepartment() != null ? emp.getDepartment().getName() : "";
+                String dept        = emp.getDepartment()  != null ? emp.getDepartment().getName()  : "";
+                String designation = emp.getJobPosition() != null ? emp.getJobPosition().getName() : "";
                 String name = trim(emp.getFirstName())
                         + (emp.getLastName() != null ? " " + emp.getLastName().trim() : "");
                 String badge = emp.getBadgeId() != null ? emp.getBadgeId() : String.valueOf(emp.getId());
@@ -554,44 +555,47 @@ public class PayslipExcelExportService {
                 Row row = sheet.createRow(dataRow);
                 int excelRow = dataRow + 1; // 1-based Excel row
 
-                // Static columns (green data)
-                createCell(row, 0, badge, greenData);
-                createCell(row, 1, name,  greenData);
-                createCell(row, 2, dept,  greenData);
+                // Static columns (green data) — col 0-7
+                // A=Employee Id, B=Employee Name, C=Department, D=Designation
+                // E=Basic Salary, F=Housing Allowance, G=Transport Allowance, H=Other Allowance
+                createCell(row, 0, badge,       greenData);
+                createCell(row, 1, name,         greenData);
+                createCell(row, 2, dept,         greenData);
+                createCell(row, 3, designation,  greenData);
 
-                // Basic Salary formula: =ROUND((base/daysInMonth)*H{excelRow}, 2)
-                createFormulaCell(row, 3,
-                    "=ROUND((" + basicSalary + "/" + daysInMonth + ")*H" + excelRow + ",2)", greenData);
+                // Salary formulas reference I (Total Paid Days, col 8)
                 createFormulaCell(row, 4,
-                    "=ROUND((" + housing    + "/" + daysInMonth + ")*H" + excelRow + ",2)", greenData);
+                    "=ROUND((" + basicSalary + "/" + daysInMonth + ")*I" + excelRow + ",2)", greenData);
                 createFormulaCell(row, 5,
-                    "=ROUND((" + transport  + "/" + daysInMonth + ")*H" + excelRow + ",2)", greenData);
+                    "=ROUND((" + housing    + "/" + daysInMonth + ")*I" + excelRow + ",2)", greenData);
                 createFormulaCell(row, 6,
-                    "=ROUND((" + other      + "/" + daysInMonth + ")*H" + excelRow + ",2)", greenData);
+                    "=ROUND((" + transport  + "/" + daysInMonth + ")*I" + excelRow + ",2)", greenData);
+                createFormulaCell(row, 7,
+                    "=ROUND((" + other      + "/" + daysInMonth + ")*I" + excelRow + ",2)", greenData);
 
                 // Variable columns (orange data)
-                // H = Total Paid Days (col 7) — default to daysInMonth
-                Cell paidDaysCell = row.createCell(7);
+                // I = Total Paid Days (col 8) — default to daysInMonth
+                Cell paidDaysCell = row.createCell(8);
                 paidDaysCell.setCellValue(daysInMonth);
                 paidDaysCell.setCellStyle(orangeData);
 
-                // I = Gross Salary: =SUM(D:G)
-                createFormulaCell(row, 8, "=SUM(D" + excelRow + ":G" + excelRow + ")", orangeData);
+                // J = Gross Salary: =SUM(E:H)
+                createFormulaCell(row, 9, "=SUM(E" + excelRow + ":H" + excelRow + ")", orangeData);
 
-                // J, K, L = Loss of Pay, salary_advance_loan_recovery, Deduction (user-editable numeric)
-                createInputCell(row, 9,  orangeData);
+                // K, L, M = Loss of Pay, salary_advance_loan_recovery, Deduction (user-editable)
                 createInputCell(row, 10, orangeData);
                 createInputCell(row, 11, orangeData);
-
-                // M, N, O = Overtime, salary_advance, bonus (user-editable numeric)
                 createInputCell(row, 12, orangeData);
+
+                // N, O, P = Overtime, salary_advance, bonus (user-editable)
                 createInputCell(row, 13, orangeData);
                 createInputCell(row, 14, orangeData);
+                createInputCell(row, 15, orangeData);
 
-                // P = Net Salary: =I - SUM(J:L) + SUM(M:O)
-                createFormulaCell(row, 15,
-                    "=I" + excelRow + "-SUM(J" + excelRow + ":L" + excelRow
-                    + ")+SUM(M" + excelRow + ":O" + excelRow + ")", orangeData);
+                // Q = Net Salary: =J - SUM(K:M) + SUM(N:P)
+                createFormulaCell(row, 16,
+                    "=J" + excelRow + "-SUM(K" + excelRow + ":M" + excelRow
+                    + ")+SUM(N" + excelRow + ":P" + excelRow + ")", orangeData);
 
                 dataRow++;
             }

@@ -116,8 +116,20 @@ public class PayslipImportService {
                 // Skip label rows from multi-sheet templates
                 if (badgeId.toLowerCase().contains("static") || badgeId.toLowerCase().contains("variable")) continue;
 
-                // Find employee by badge_id
+                // Find employee — try scoped lookup first, then cross-company, then by DB id
                 Optional<Employee> empOpt = employeeRepository.findByBadgeIdAndCompanyId(badgeId, companyId);
+                if (empOpt.isEmpty()) {
+                    // Try without company restriction (covers multi-branch scenarios where the employee
+                    // belongs to a child/branch company but payslip is attached to the parent company)
+                    empOpt = employeeRepository.findByBadgeId(badgeId);
+                }
+                if (empOpt.isEmpty()) {
+                    // Last resort: if badge value is a plain number, try matching by DB primary key
+                    try {
+                        Long dbId = Long.parseLong(badgeId);
+                        empOpt = employeeRepository.findById(dbId);
+                    } catch (NumberFormatException ignored) {}
+                }
                 if (empOpt.isEmpty()) {
                     errors.add("Row " + (rowIdx + 1) + ": Employee with badge ID '" + badgeId + "' not found.");
                     continue;

@@ -58,7 +58,20 @@ public class AuthController {
                         ur.getAccessScope() != null ? ur.getAccessScope().ordinal() : -1))
                 .orElse(null);
 
-        Long companyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
+        Long rawCompanyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
+        // For ENTERPRISE scope, ensure we return the head office ID.
+        // If the role was assigned to a branch, walk up to its parent head office.
+        Long companyId;
+        if (rawCompanyId != null && primaryRole.getAccessScope() == UserRole.AccessScope.ENTERPRISE) {
+            com.example.demo.base.entity.Company roleCompany = companyRepository.findById(rawCompanyId).orElse(null);
+            if (roleCompany != null && roleCompany.isBranch() && roleCompany.getParentCompany() != null) {
+                companyId = roleCompany.getParentCompany().getId();
+            } else {
+                companyId = rawCompanyId;
+            }
+        } else {
+            companyId = rawCompanyId;
+        }
         Long organizationId = companyId != null
                 ? companyRepository.findById(companyId)
                         .map(c -> c.getOrganization() != null ? c.getOrganization().getId() : null)

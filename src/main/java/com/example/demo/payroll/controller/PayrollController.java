@@ -5,6 +5,7 @@ import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.employee.repository.EmployeeBankDetailsRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.payroll.entity.*;
 import com.example.demo.payroll.repository.*;
@@ -70,6 +71,7 @@ public class PayrollController {
     private final PayrollBatchGroupRepository payrollBatchGroupRepository;
     private final PayrollScheduler payrollScheduler;
     private final PayslipImportService payslipImportService;
+    private final EmployeeBankDetailsRepository employeeBankDetailsRepository;
 
     @GetMapping("/contracts")
     @PreAuthorize("hasAuthority('payroll:view')")
@@ -966,301 +968,7 @@ public class PayrollController {
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            // ── Colours (indigo web theme) ─────────────────────────────────────
-            Color INDIGO   = new Color(79,  70,  229);  // indigo-600
-            Color INDIGO_D = new Color(55,  48,  163);  // indigo-800 (footer)
-            Color INDIGO_L = new Color(238, 242, 255);  // indigo-50
-            Color INDIGO_B = new Color(199, 210, 254);  // indigo-200 (border)
-            Color GREEN_L  = new Color(220, 252, 231);  // green-100
-            Color GREEN    = new Color(21,  128,  61);  // green-700
-            Color GRAY_L   = new Color(243, 244, 246);  // gray-100
-            Color GRAY     = new Color(55,   65,  81);  // gray-700
-            Color GRAY_M   = new Color(107, 114, 128);  // gray-500
-            Color WHITE    = Color.WHITE;
-            Color BLACK    = new Color(17,  24,  39);   // gray-900
-
-            // ── Fonts ──────────────────────────────────────────────────────────
-            Font fTitle    = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  20, INDIGO);
-            Font fSubtitle = FontFactory.getFont(FontFactory.HELVETICA,       10, GRAY_M);
-            Font fCardLbl  = FontFactory.getFont(FontFactory.HELVETICA,        8, GRAY_M);
-            Font fCardVal  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  14, INDIGO);
-            Font fSecHead  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  10, INDIGO);
-            Font fFieldLbl = FontFactory.getFont(FontFactory.HELVETICA,        7, GRAY_M);
-            Font fFieldVal = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, BLACK);
-            Font fRowLbl   = FontFactory.getFont(FontFactory.HELVETICA,        9, GRAY);
-            Font fRowAmt   = FontFactory.getFont(FontFactory.HELVETICA,        9, BLACK);
-            Font fTotalLbl = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GREEN);
-            Font fTotalAmt = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GREEN);
-            Font fDedLbl   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GRAY);
-            Font fDedAmt   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GRAY);
-            Font fNetLbl   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  11, WHITE);
-            Font fNetWords = FontFactory.getFont(FontFactory.HELVETICA,         8, new Color(199,210,254));
-            Font fNetAmt   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  18, WHITE);
-            Font fCompany  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  10, BLACK);
-
-            // ── Parse payHeadData ──────────────────────────────────────────────
-            java.util.Map<String, Object> phd = new java.util.HashMap<>();
-            if (p.getPayHeadData() != null && !p.getPayHeadData().isBlank()) {
-                try {
-                    phd = new ObjectMapper().readValue(p.getPayHeadData(),
-                            new TypeReference<java.util.Map<String, Object>>() {});
-                } catch (Exception ignored) {}
-            }
-
-            double paidDays    = toDouble(phd.getOrDefault("paid_days", 0));
-            double lossOfPay   = toDouble(phd.getOrDefault("loss_of_pay", 0));
-            double bonus       = toDouble(phd.getOrDefault("bonus", 0));
-            double overtime    = toDouble(phd.getOrDefault("overtime_pay", 0));
-            double salAdv      = toDouble(phd.getOrDefault("salary_advance", 0));
-            double loanRec     = toDouble(phd.getOrDefault("loan_recovery", 0));
-            double salAdvDed   = toDouble(phd.getOrDefault("salary_advance_deduction", 0));
-
-            // Additional named deductions from buckets
-            double otherDed = toDouble(phd.getOrDefault("total_deductions", 0)) - lossOfPay - loanRec - salAdvDed;
-            if (otherDed < 0) otherDed = 0;
-
-            // ── Employee info ──────────────────────────────────────────────────
-            var emp = p.getEmployee();
-            String empName     = emp != null ? (emp.getFirstName() + " " + emp.getLastName()).trim() : "N/A";
-            String badgeId     = emp != null && emp.getBadgeId() != null ? emp.getBadgeId() : "-";
-            String dept        = emp != null && emp.getDepartment() != null ? emp.getDepartment().getName() : "-";
-            String designation = emp != null && emp.getJobPosition() != null ? emp.getJobPosition().getName() : "-";
-            String joining     = emp != null && emp.getDateJoining() != null
-                    ? emp.getDateJoining().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")) : "-";
-            String bankAcc     = "-";
-
-            // ── Period label ──────────────────────────────────────────────────
-            String periodLabel = "";
-            if (p.getStartDate() != null) {
-                periodLabel = p.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy"));
-            }
-
-            // ── Company name ──────────────────────────────────────────────────
-            String companyName = p.getCompany() != null && p.getCompany().getName() != null
-                    ? p.getCompany().getName() : "";
-
-            // ── Document setup ────────────────────────────────────────────────
-            Document doc = new Document(PageSize.A4, 36, 36, 40, 40);
-            PdfWriter.getInstance(doc, baos);
-            doc.open();
-
-            float pageW = doc.right() - doc.left(); // usable width
-
-            // ═══════════════════════════════════════════════════════════════
-            // SECTION 1 — Header
-            // ═══════════════════════════════════════════════════════════════
-            PdfPTable header = new PdfPTable(2);
-            header.setWidthPercentage(100);
-            header.setWidths(new float[]{1f, 1f});
-            header.setSpacingAfter(10f);
-
-            // Left: Payslip title
-            PdfPCell hLeft = new PdfPCell();
-            hLeft.setBorder(Rectangle.NO_BORDER);
-            hLeft.setPadding(0);
-            Paragraph titleP = new Paragraph("Payslip", fTitle);
-            titleP.setSpacingAfter(2f);
-            hLeft.addElement(titleP);
-            hLeft.addElement(new Paragraph(periodLabel, fSubtitle));
-            header.addCell(hLeft);
-
-            // Right: Company name
-            PdfPCell hRight = new PdfPCell(new Phrase(companyName, fCompany));
-            hRight.setBorder(Rectangle.NO_BORDER);
-            hRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            hRight.setVerticalAlignment(Element.ALIGN_BOTTOM);
-            header.addCell(hRight);
-
-            doc.add(header);
-
-            // Horizontal rule
-            PdfPTable rule = new PdfPTable(1);
-            rule.setWidthPercentage(100);
-            rule.setSpacingAfter(14f);
-            PdfPCell rulCell = new PdfPCell(new Phrase(" "));
-            rulCell.setBorder(Rectangle.BOTTOM);
-            rulCell.setBorderColorBottom(INDIGO_B);
-            rulCell.setBorderWidthBottom(1f);
-            rulCell.setPaddingBottom(0f);
-            rulCell.setFixedHeight(1f);
-            rule.addCell(rulCell);
-            doc.add(rule);
-
-            // ═══════════════════════════════════════════════════════════════
-            // SECTION 2 — Summary cards
-            // ═══════════════════════════════════════════════════════════════
-            PdfPTable cards = new PdfPTable(4);
-            cards.setWidthPercentage(100);
-            cards.setSpacingAfter(14f);
-
-            String[][] cardData = {
-                {"Net Salary",      formatAmount(p.getNetPay())},
-                {"Gross Salary",    formatAmount(p.getGrossPay())},
-                {"Total Deductions", formatAmount(p.getDeduction())},
-                {"Paid Days",       String.format("%.2f", paidDays)},
-            };
-            for (String[] cd : cardData) {
-                PdfPCell cell = new PdfPCell();
-                cell.setBackgroundColor(INDIGO_L);
-                cell.setBorderColor(INDIGO_B);
-                cell.setBorderWidth(0.5f);
-                cell.setPadding(10f);
-                cell.setHorizontalAlignment(Element.ALIGN_CENTER);
-                Paragraph lbl = new Paragraph(cd[0], fCardLbl);
-                lbl.setAlignment(Element.ALIGN_CENTER);
-                lbl.setSpacingAfter(4f);
-                Paragraph val = new Paragraph(cd[1], fCardVal);
-                val.setAlignment(Element.ALIGN_CENTER);
-                cell.addElement(lbl);
-                cell.addElement(val);
-                cards.addCell(cell);
-            }
-            doc.add(cards);
-
-            // ═══════════════════════════════════════════════════════════════
-            // SECTION 3 — Employee Details
-            // ═══════════════════════════════════════════════════════════════
-            PdfPTable empBox = new PdfPTable(1);
-            empBox.setWidthPercentage(100);
-            empBox.setSpacingAfter(14f);
-
-            // Header row
-            PdfPCell empHeadCell = new PdfPCell(new Phrase("Employee Details", fSecHead));
-            empHeadCell.setBackgroundColor(INDIGO_L);
-            empHeadCell.setBorderColor(INDIGO_B);
-            empHeadCell.setBorderWidth(0.5f);
-            empHeadCell.setPadding(8f);
-            empBox.addCell(empHeadCell);
-
-            // 3-col fields row 1
-            PdfPTable empRow1 = new PdfPTable(3);
-            empRow1.setWidthPercentage(100);
-            addEmpField(empRow1, "EMPLOYEE ID",   badgeId,   fFieldLbl, fFieldVal, INDIGO_B);
-            addEmpField(empRow1, "EMPLOYEE NAME", empName,   fFieldLbl, fFieldVal, INDIGO_B);
-            addEmpField(empRow1, "DEPARTMENT",    dept,      fFieldLbl, fFieldVal, INDIGO_B);
-
-            PdfPCell row1Wrapper = new PdfPCell(empRow1);
-            row1Wrapper.setPadding(0);
-            row1Wrapper.setBorderColor(INDIGO_B);
-            row1Wrapper.setBorderWidth(0.5f);
-            row1Wrapper.setBorderWidthTop(0);
-            empBox.addCell(row1Wrapper);
-
-            // 3-col fields row 2
-            PdfPTable empRow2 = new PdfPTable(3);
-            empRow2.setWidthPercentage(100);
-            addEmpField(empRow2, "DESIGNATION",        designation, fFieldLbl, fFieldVal, INDIGO_B);
-            addEmpField(empRow2, "BANK ACC./CHEQUE NO.", bankAcc,   fFieldLbl, fFieldVal, INDIGO_B);
-            addEmpField(empRow2, "DATE OF JOINING",    joining,     fFieldLbl, fFieldVal, INDIGO_B);
-
-            PdfPCell row2Wrapper = new PdfPCell(empRow2);
-            row2Wrapper.setPadding(0);
-            row2Wrapper.setBorderColor(INDIGO_B);
-            row2Wrapper.setBorderWidth(0.5f);
-            row2Wrapper.setBorderWidthTop(0);
-            empBox.addCell(row2Wrapper);
-
-            doc.add(empBox);
-
-            // ═══════════════════════════════════════════════════════════════
-            // SECTION 4 — Allowances & Deductions (two columns)
-            // ═══════════════════════════════════════════════════════════════
-            PdfPTable twoCol = new PdfPTable(2);
-            twoCol.setWidthPercentage(100);
-            twoCol.setSpacingAfter(14f);
-            twoCol.setWidths(new float[]{1f, 1f});
-
-            // ── LEFT: Allowances ──────────────────────────────────────────
-            PdfPTable allowTable = new PdfPTable(2);
-            allowTable.setWidthPercentage(100);
-            allowTable.setWidths(new float[]{3f, 1.5f});
-
-            // Section header
-            PdfPCell aHead = new PdfPCell(new Phrase("Allowances", fSecHead));
-            aHead.setColspan(2);
-            aHead.setBackgroundColor(INDIGO_L);
-            aHead.setBorderColor(INDIGO_B);
-            aHead.setBorderWidth(0.5f);
-            aHead.setPadding(8f);
-            allowTable.addCell(aHead);
-
-            // Allowance rows
-            addLineRow(allowTable, "Basic Pay",          formatAmount(p.getBasicPay()),           fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            addLineRow(allowTable, "Housing Allowance",  formatAmount(p.getHousingAllowance()),   fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            addLineRow(allowTable, "Transport Allowance",formatAmount(p.getTransportAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            addLineRow(allowTable, "Other Allowance",    formatAmount(p.getOtherAllowance()),     fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (bonus > 0)    addLineRow(allowTable, "Bonus",          formatAmt(bonus),   fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (overtime > 0) addLineRow(allowTable, "Overtime",       formatAmt(overtime),fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (salAdv > 0)   addLineRow(allowTable, "Salary Advance", formatAmt(salAdv),  fRowLbl, fRowAmt, INDIGO_B, WHITE);
-
-            // Total Gross Pay footer
-            addLineRow(allowTable, "Total Gross Pay", formatAmount(p.getGrossPay()), fTotalLbl, fTotalAmt, INDIGO_B, GREEN_L);
-
-            PdfPCell leftCell = new PdfPCell(allowTable);
-            leftCell.setBorder(Rectangle.NO_BORDER);
-            leftCell.setPadding(0);
-            twoCol.addCell(leftCell);
-
-            // ── RIGHT: Deductions ─────────────────────────────────────────
-            PdfPTable dedTable = new PdfPTable(2);
-            dedTable.setWidthPercentage(100);
-            dedTable.setWidths(new float[]{3f, 1.5f});
-
-            PdfPCell dHead = new PdfPCell(new Phrase("Deductions", fSecHead));
-            dHead.setColspan(2);
-            dHead.setBackgroundColor(INDIGO_L);
-            dHead.setBorderColor(INDIGO_B);
-            dHead.setBorderWidth(0.5f);
-            dHead.setPadding(8f);
-            dedTable.addCell(dHead);
-
-            if (lossOfPay > 0)  addLineRow(dedTable, "Loss of Pay",                 formatAmt(lossOfPay),  fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (loanRec + salAdvDed > 0) addLineRow(dedTable, "Salary Advance / Loan Recovery", formatAmt(loanRec + salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (otherDed > 0)   addLineRow(dedTable, "Deduction",                   formatAmt(otherDed),   fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            if (lossOfPay == 0 && loanRec + salAdvDed == 0 && otherDed == 0) {
-                // at least show total deduction if no breakdown
-                addLineRow(dedTable, "Deduction", formatAmount(p.getDeduction()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-            }
-
-            addLineRow(dedTable, "Total Deductions", formatAmount(p.getDeduction()), fDedLbl, fDedAmt, INDIGO_B, GRAY_L);
-
-            PdfPCell rightCell = new PdfPCell(dedTable);
-            rightCell.setBorder(Rectangle.NO_BORDER);
-            rightCell.setPadding(0);
-            twoCol.addCell(rightCell);
-
-            doc.add(twoCol);
-
-            // ═══════════════════════════════════════════════════════════════
-            // SECTION 5 — Total Net Payable footer bar
-            // ═══════════════════════════════════════════════════════════════
-            PdfPTable footer = new PdfPTable(2);
-            footer.setWidthPercentage(100);
-            footer.setWidths(new float[]{1.8f, 1f});
-
-            // Left: label + words
-            PdfPCell fLeft = new PdfPCell();
-            fLeft.setBackgroundColor(INDIGO_D);
-            fLeft.setBorder(Rectangle.NO_BORDER);
-            fLeft.setPadding(14f);
-            Paragraph netLbl = new Paragraph("Total Net Payable", fNetLbl);
-            netLbl.setSpacingAfter(3f);
-            fLeft.addElement(netLbl);
-            fLeft.addElement(new Paragraph(numberToWords(p.getNetPay()), fNetWords));
-            footer.addCell(fLeft);
-
-            // Right: big amount
-            PdfPCell fRight = new PdfPCell(new Phrase(formatAmount(p.getNetPay()), fNetAmt));
-            fRight.setBackgroundColor(INDIGO_D);
-            fRight.setBorder(Rectangle.NO_BORDER);
-            fRight.setPadding(14f);
-            fRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            fRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
-            footer.addCell(fRight);
-
-            doc.add(footer);
-            doc.close();
-
+            generateSinglePayslipPdf(p, baos);
             HttpHeaders httpHeaders = new HttpHeaders();
             httpHeaders.setContentType(MediaType.APPLICATION_PDF);
             httpHeaders.setContentDispositionFormData("inline", "payslip-" + id + ".pdf");
@@ -1348,6 +1056,306 @@ public class PayrollController {
         if (n >= 20)        { result += TENS[(int)(n / 10)]; if (n % 10 != 0) result += " " + ONES[(int)(n % 10)]; }
         else if (n > 0)     { result += ONES[(int)n]; }
         return result.trim();
+    }
+
+    // ─── Bulk Payslip PDF ─────────────────────────────────────────────────────
+
+    @GetMapping("/payslips/bulk-pdf")
+    @PreAuthorize("hasAuthority('payroll:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Download multiple payslips as a single merged PDF")
+    public ResponseEntity<byte[]> downloadBulkPayslipPdf(@RequestParam List<Long> ids) {
+        try (ByteArrayOutputStream mergedOut = new ByteArrayOutputStream()) {
+            com.lowagie.text.Document mergedDoc = new com.lowagie.text.Document(PageSize.A4, 36, 36, 40, 40);
+            PdfCopy copy = new PdfCopy(mergedDoc, mergedOut);
+            mergedDoc.open();
+
+            for (Long id : ids) {
+                payslipRepository.findById(id).ifPresent(p -> {
+                    try (ByteArrayOutputStream singleOut = new ByteArrayOutputStream()) {
+                        generateSinglePayslipPdf(p, singleOut);
+                        PdfReader reader = new PdfReader(singleOut.toByteArray());
+                        for (int i = 1; i <= reader.getNumberOfPages(); i++) {
+                            copy.addPage(copy.getImportedPage(reader, i));
+                        }
+                        reader.close();
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to generate PDF for payslip " + id, e);
+                    }
+                });
+            }
+
+            mergedDoc.close();
+            HttpHeaders httpHeaders = new HttpHeaders();
+            httpHeaders.setContentType(MediaType.APPLICATION_PDF);
+            httpHeaders.setContentDispositionFormData("attachment", "payslips-bulk.pdf");
+            return ResponseEntity.ok().headers(httpHeaders).body(mergedOut.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate bulk payslip PDF", e);
+        }
+    }
+
+    /** Generates a single payslip PDF into the given output stream (shared by single + bulk endpoints) */
+    private void generateSinglePayslipPdf(Payslip p, ByteArrayOutputStream baos) throws Exception {
+        Color INDIGO   = new Color(79,  70,  229);
+        Color INDIGO_D = new Color(55,  48,  163);
+        Color INDIGO_L = new Color(238, 242, 255);
+        Color INDIGO_B = new Color(199, 210, 254);
+        Color GREEN_L  = new Color(220, 252, 231);
+        Color GREEN    = new Color(21,  128,  61);
+        Color GRAY_L   = new Color(243, 244, 246);
+        Color GRAY     = new Color(55,   65,  81);
+        Color GRAY_M   = new Color(107, 114, 128);
+        Color WHITE    = Color.WHITE;
+        Color BLACK    = new Color(17,  24,  39);
+
+        Font fTitle    = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  20, INDIGO);
+        Font fSubtitle = FontFactory.getFont(FontFactory.HELVETICA,       10, GRAY_M);
+        Font fCardLbl  = FontFactory.getFont(FontFactory.HELVETICA,        8, GRAY_M);
+        Font fCardVal  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  14, INDIGO);
+        Font fSecHead  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  10, INDIGO);
+        Font fFieldLbl = FontFactory.getFont(FontFactory.HELVETICA,        7, GRAY_M);
+        Font fFieldVal = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, BLACK);
+        Font fRowLbl   = FontFactory.getFont(FontFactory.HELVETICA,        9, GRAY);
+        Font fRowAmt   = FontFactory.getFont(FontFactory.HELVETICA,        9, BLACK);
+        Font fTotalLbl = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GREEN);
+        Font fTotalAmt = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GREEN);
+        Font fDedLbl   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GRAY);
+        Font fDedAmt   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,   9, GRAY);
+        Font fNetLbl   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  11, WHITE);
+        Font fNetWords = FontFactory.getFont(FontFactory.HELVETICA,         8, new Color(199,210,254));
+        Font fNetAmt   = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  18, WHITE);
+        Font fCompany  = FontFactory.getFont(FontFactory.HELVETICA_BOLD,  10, BLACK);
+
+        java.util.Map<String, Object> phd = new java.util.HashMap<>();
+        if (p.getPayHeadData() != null && !p.getPayHeadData().isBlank()) {
+            try { phd = new ObjectMapper().readValue(p.getPayHeadData(), new TypeReference<>() {}); } catch (Exception ignored) {}
+        }
+
+        double bonus     = toDouble(phd.getOrDefault("bonus", 0));
+        double overtime  = toDouble(phd.getOrDefault("overtime", toDouble(phd.getOrDefault("overtime_pay", 0))));
+        double salAdv    = toDouble(phd.getOrDefault("salary_advance", 0));
+        double lossOfPay = toDouble(phd.getOrDefault("loss_of_pay", 0));
+        double loanRec   = toDouble(phd.getOrDefault("loan_recovery", 0));
+        double salAdvDed = toDouble(phd.getOrDefault("salary_advance_deduction", 0));
+        double otherDed  = toDouble(phd.getOrDefault("total_deductions", 0)) - lossOfPay - loanRec - salAdvDed;
+        if (otherDed < 0) otherDed = 0;
+
+        var emp = p.getEmployee();
+        String empName     = emp != null ? (emp.getFirstName() + " " + emp.getLastName()).trim() : "N/A";
+        String badgeId     = emp != null && emp.getBadgeId()      != null ? emp.getBadgeId()                   : "-";
+        String dept        = emp != null && emp.getDepartment()   != null ? emp.getDepartment().getName()      : "-";
+        String designation = emp != null && emp.getJobPosition()  != null ? emp.getJobPosition().getName()     : "-";
+        String joining     = emp != null && emp.getDateJoining()  != null
+                ? emp.getDateJoining().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")) : "-";
+        String periodLabel = p.getStartDate() != null
+                ? p.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")) : "";
+        var bankDetails = emp != null
+                ? employeeBankDetailsRepository.findByEmployeeId(emp.getId()).orElse(null) : null;
+        String bankAccNo = bankDetails != null && bankDetails.getAccountNumber() != null
+                && !bankDetails.getAccountNumber().isBlank() ? bankDetails.getAccountNumber() : "-";
+
+        var co = p.getCompany();
+        String companyName    = co != null && co.getName()    != null ? co.getName()    : "";
+        String companyAddress = co != null ? buildAddress(co.getAddress(), co.getCity(), co.getState(), co.getCountry()) : "";
+        String logoPath       = co != null ? co.getLogoPath() : null;
+
+        Document doc = new Document(PageSize.A4, 36, 36, 40, 40);
+        PdfWriter.getInstance(doc, baos);
+        doc.open();
+
+        // Header
+        PdfPTable header = new PdfPTable(2);
+        header.setWidthPercentage(100); header.setWidths(new float[]{1.2f, 1f}); header.setSpacingAfter(10f);
+        // Left: title + period
+        PdfPCell hLeft = new PdfPCell(); hLeft.setBorder(Rectangle.NO_BORDER); hLeft.setPadding(0);
+        Paragraph titleP = new Paragraph("Payslip", fTitle); titleP.setSpacingAfter(2f);
+        hLeft.addElement(titleP); hLeft.addElement(new Paragraph(periodLabel, fSubtitle)); header.addCell(hLeft);
+        // Right: logo (if available) + company name + address
+        PdfPCell hRight = new PdfPCell(); hRight.setBorder(Rectangle.NO_BORDER);
+        hRight.setHorizontalAlignment(Element.ALIGN_RIGHT); hRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        hRight.setPadding(0);
+        if (logoPath != null && !logoPath.isBlank()) {
+            try {
+                java.nio.file.Path lp = java.nio.file.Paths.get(logoPath);
+                if (java.nio.file.Files.exists(lp)) {
+                    com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(lp.toAbsolutePath().toString());
+                    logo.scaleToFit(90f, 45f);
+                    logo.setAlignment(com.lowagie.text.Image.ALIGN_RIGHT);
+                    hRight.addElement(logo);
+                }
+            } catch (Exception ignored) { /* logo load failure is non-fatal */ }
+        }
+        Paragraph compNameP = new Paragraph(companyName, fCompany); compNameP.setAlignment(Element.ALIGN_RIGHT);
+        hRight.addElement(compNameP);
+        if (!companyAddress.isBlank()) {
+            Font fAddr = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, GRAY_M);
+            Paragraph addrP = new Paragraph(companyAddress, fAddr); addrP.setAlignment(Element.ALIGN_RIGHT);
+            hRight.addElement(addrP);
+        }
+        header.addCell(hRight);
+        doc.add(header);
+
+        PdfPTable rule = new PdfPTable(1); rule.setWidthPercentage(100); rule.setSpacingAfter(14f);
+        PdfPCell rulCell = new PdfPCell(new Phrase(" ")); rulCell.setBorder(Rectangle.BOTTOM);
+        rulCell.setBorderColorBottom(INDIGO_B); rulCell.setBorderWidthBottom(1f);
+        rulCell.setPaddingBottom(0f); rulCell.setFixedHeight(1f); rule.addCell(rulCell); doc.add(rule);
+
+        // Summary cards (5 cards)
+        PdfPTable cards = new PdfPTable(5); cards.setWidthPercentage(100); cards.setSpacingAfter(14f);
+        double paidDays = toDouble(phd.getOrDefault("paid_days", 0));
+        String payStatus = p.getStatus() != null ? switch (p.getStatus()) {
+            case DRAFT           -> "Draft";
+            case REVIEW_ONGOING  -> "Pending";
+            case CONFIRMED       -> "Approved";
+            case PAID            -> "Paid";
+        } : "-";
+        String[][] cardData = {
+            {"Net Salary",       formatAmount(p.getNetPay())},
+            {"Gross Salary",     formatAmount(p.getGrossPay())},
+            {"Total Deductions", formatAmount(p.getDeduction())},
+            {"Paid Days",        String.format("%.2f", paidDays)},
+            {"Payment Status",   payStatus},
+        };
+        for (String[] cd : cardData) {
+            PdfPCell cell = new PdfPCell(); cell.setBackgroundColor(INDIGO_L); cell.setBorderColor(INDIGO_B);
+            cell.setBorderWidth(0.5f); cell.setPadding(10f); cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            Paragraph lbl = new Paragraph(cd[0], fCardLbl); lbl.setAlignment(Element.ALIGN_CENTER); lbl.setSpacingAfter(4f);
+            Paragraph val = new Paragraph(cd[1], fCardVal); val.setAlignment(Element.ALIGN_CENTER);
+            cell.addElement(lbl); cell.addElement(val); cards.addCell(cell);
+        }
+        doc.add(cards);
+
+        // Employee details
+        PdfPTable empBox = new PdfPTable(1); empBox.setWidthPercentage(100); empBox.setSpacingAfter(14f);
+        PdfPCell empHeadCell = new PdfPCell(new Phrase("Employee Details", fSecHead));
+        empHeadCell.setBackgroundColor(INDIGO_L); empHeadCell.setBorderColor(INDIGO_B);
+        empHeadCell.setBorderWidth(0.5f); empHeadCell.setPadding(8f); empBox.addCell(empHeadCell);
+        PdfPTable empRow1 = new PdfPTable(3); empRow1.setWidthPercentage(100);
+        addEmpField(empRow1, "EMPLOYEE ID", badgeId, fFieldLbl, fFieldVal, INDIGO_B);
+        addEmpField(empRow1, "EMPLOYEE NAME", empName, fFieldLbl, fFieldVal, INDIGO_B);
+        addEmpField(empRow1, "DEPARTMENT", dept, fFieldLbl, fFieldVal, INDIGO_B);
+        PdfPCell row1Wrapper = new PdfPCell(empRow1); row1Wrapper.setPadding(0);
+        row1Wrapper.setBorderColor(INDIGO_B); row1Wrapper.setBorderWidth(0.5f); row1Wrapper.setBorderWidthTop(0);
+        empBox.addCell(row1Wrapper);
+        PdfPTable empRow2 = new PdfPTable(3); empRow2.setWidthPercentage(100);
+        addEmpField(empRow2, "DESIGNATION", designation, fFieldLbl, fFieldVal, INDIGO_B);
+        addEmpField(empRow2, "BANK ACC./CHEQUE NO.", bankAccNo, fFieldLbl, fFieldVal, INDIGO_B);
+        addEmpField(empRow2, "DATE OF JOINING", joining, fFieldLbl, fFieldVal, INDIGO_B);
+        PdfPCell row2Wrapper = new PdfPCell(empRow2); row2Wrapper.setPadding(0);
+        row2Wrapper.setBorderColor(INDIGO_B); row2Wrapper.setBorderWidth(0.5f); row2Wrapper.setBorderWidthTop(0);
+        empBox.addCell(row2Wrapper);
+        doc.add(empBox);
+
+        // Allowances & Deductions
+        PdfPTable twoCol = new PdfPTable(2); twoCol.setWidthPercentage(100); twoCol.setSpacingAfter(14f);
+        twoCol.setWidths(new float[]{1f,1f});
+        PdfPTable allowTable = new PdfPTable(2); allowTable.setWidthPercentage(100); allowTable.setWidths(new float[]{3f,1.5f});
+        PdfPCell aHead = new PdfPCell(new Phrase("Allowances", fSecHead)); aHead.setColspan(2);
+        aHead.setBackgroundColor(INDIGO_L); aHead.setBorderColor(INDIGO_B); aHead.setBorderWidth(0.5f); aHead.setPadding(8f);
+        allowTable.addCell(aHead);
+        addLineRow(allowTable, "Basic Pay", formatAmount(p.getBasicPay()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Housing Allowance", formatAmount(p.getHousingAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Transport Allowance", formatAmount(p.getTransportAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Other Allowance", formatAmount(p.getOtherAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (bonus > 0)    addLineRow(allowTable, "Bonus",    formatAmt(bonus),    fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (overtime > 0) addLineRow(allowTable, "Overtime", formatAmt(overtime), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (salAdv > 0)   addLineRow(allowTable, "Salary Advance", formatAmt(salAdv), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Total Gross Pay", formatAmount(p.getGrossPay()), fTotalLbl, fTotalAmt, INDIGO_B, GREEN_L);
+        PdfPCell leftCell = new PdfPCell(allowTable); leftCell.setBorder(Rectangle.NO_BORDER); leftCell.setPadding(0);
+        twoCol.addCell(leftCell);
+
+        PdfPTable dedTable = new PdfPTable(2); dedTable.setWidthPercentage(100); dedTable.setWidths(new float[]{3f,1.5f});
+        PdfPCell dHead = new PdfPCell(new Phrase("Deductions", fSecHead)); dHead.setColspan(2);
+        dHead.setBackgroundColor(INDIGO_L); dHead.setBorderColor(INDIGO_B); dHead.setBorderWidth(0.5f); dHead.setPadding(8f);
+        dedTable.addCell(dHead);
+        if (lossOfPay > 0) addLineRow(dedTable, "Loss of Pay", formatAmt(lossOfPay), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (loanRec + salAdvDed > 0) addLineRow(dedTable, "Salary Advance / Loan Recovery", formatAmt(loanRec + salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (otherDed > 0) addLineRow(dedTable, "Deduction", formatAmt(otherDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (lossOfPay == 0 && loanRec + salAdvDed == 0 && otherDed == 0)
+            addLineRow(dedTable, "Deduction", formatAmount(p.getDeduction()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(dedTable, "Total Deductions", formatAmount(p.getDeduction()), fDedLbl, fDedAmt, INDIGO_B, GRAY_L);
+        PdfPCell rightCell = new PdfPCell(dedTable); rightCell.setBorder(Rectangle.NO_BORDER); rightCell.setPadding(0);
+        twoCol.addCell(rightCell);
+        doc.add(twoCol);
+
+        // Net payable footer
+        PdfPTable footer = new PdfPTable(2); footer.setWidthPercentage(100); footer.setWidths(new float[]{1.8f,1f});
+        PdfPCell fLeft = new PdfPCell(); fLeft.setBackgroundColor(INDIGO_D); fLeft.setBorder(Rectangle.NO_BORDER); fLeft.setPadding(14f);
+        Paragraph netLbl = new Paragraph("Total Net Payable", fNetLbl); netLbl.setSpacingAfter(3f);
+        fLeft.addElement(netLbl); fLeft.addElement(new Paragraph(numberToWords(p.getNetPay()), fNetWords));
+        footer.addCell(fLeft);
+        PdfPCell fRight = new PdfPCell(new Phrase(formatAmount(p.getNetPay()), fNetAmt));
+        fRight.setBackgroundColor(INDIGO_D); fRight.setBorder(Rectangle.NO_BORDER); fRight.setPadding(14f);
+        fRight.setHorizontalAlignment(Element.ALIGN_RIGHT); fRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        footer.addCell(fRight);
+        doc.add(footer);
+
+        // Signature / stamp section
+        doc.add(new Paragraph(" ", FontFactory.getFont(FontFactory.HELVETICA, 10)));
+        PdfPTable sigTable = new PdfPTable(3); sigTable.setWidthPercentage(100);
+        sigTable.setWidths(new float[]{1f, 1f, 1f}); sigTable.setSpacingBefore(6f);
+        Font fSigLbl = FontFactory.getFont(FontFactory.HELVETICA, 8, GRAY_M);
+        Font fSigLine = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, GRAY);
+        // Employee signature
+        PdfPCell sigEmp = new PdfPCell(); sigEmp.setBorder(Rectangle.NO_BORDER); sigEmp.setPadding(4f);
+        sigEmp.addElement(new Paragraph("________________________________", fSigLine));
+        sigEmp.addElement(new Paragraph("Employee Signature", fSigLbl));
+        sigTable.addCell(sigEmp);
+        // Stamp placeholder (center)
+        PdfPCell sigStamp = new PdfPCell(); sigStamp.setBorder(Rectangle.BOX); sigStamp.setBorderColor(INDIGO_B);
+        sigStamp.setBorderWidth(0.5f); sigStamp.setPadding(12f); sigStamp.setHorizontalAlignment(Element.ALIGN_CENTER);
+        Paragraph stampP = new Paragraph("Company Stamp", fSigLbl); stampP.setAlignment(Element.ALIGN_CENTER);
+        sigStamp.addElement(stampP); sigTable.addCell(sigStamp);
+        // Authorized signature
+        PdfPCell sigAuth = new PdfPCell(); sigAuth.setBorder(Rectangle.NO_BORDER); sigAuth.setPadding(4f);
+        sigAuth.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        Paragraph authLine = new Paragraph("________________________________", fSigLine); authLine.setAlignment(Element.ALIGN_RIGHT);
+        Paragraph authLbl  = new Paragraph("Authorized Signature",            fSigLbl);  authLbl.setAlignment(Element.ALIGN_RIGHT);
+        sigAuth.addElement(authLine); sigAuth.addElement(authLbl);
+        sigTable.addCell(sigAuth);
+        doc.add(sigTable);
+
+        doc.close();
+    }
+
+    /** Build a single-line address string from Company address fields, skipping null/blank parts. */
+    private String buildAddress(String address, String city, String state, String country) {
+        return java.util.stream.Stream.of(address, city, state, country)
+                .filter(s -> s != null && !s.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /**
+     * Fetches all active employees visible to the current user for payroll template generation.
+     * Uses AccessScopeContext to include employees from all accessible companies (branch/child companies),
+     * not just the exact companyId — this ensures multi-branch admins see all their employees.
+     */
+    private java.util.List<com.example.demo.employee.entity.Employee> fetchActiveEmployeesForPayroll(Long companyId) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        java.util.List<Long> companyIds;
+        if (scope == null || scope.hasUnrestrictedAccess()) {
+            // Admin with unrestricted access — use the requested companyId as anchor,
+            // but also include any child companies visible through the scope.
+            companyIds = scope != null && scope.getCompanyId() != null
+                    ? java.util.List.of(scope.getCompanyId())
+                    : java.util.List.of(companyId);
+        } else {
+            companyIds = scope.getAccessibleCompanyIds();
+            if (companyIds.isEmpty()) companyIds = java.util.List.of(companyId);
+        }
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        java.util.List<com.example.demo.employee.entity.Employee> result = new java.util.ArrayList<>();
+        for (Long cid : companyIds) {
+            for (com.example.demo.employee.entity.Employee emp : employeeRepository.findByCompanyIdAndIsActiveTrue(cid)) {
+                if (seen.add(emp.getId())) result.add(emp);
+            }
+        }
+        // If scope gave us zero employees (e.g., wrong branch mapping), fall back to the requested companyId
+        if (result.isEmpty()) {
+            result.addAll(employeeRepository.findByCompanyIdAndIsActiveTrue(companyId));
+        }
+        return result;
     }
 
     /**
@@ -1480,15 +1488,36 @@ public class PayrollController {
         Payslip p = payslipRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
 
+        boolean recalcGross = fields.containsKey("basicPay") || fields.containsKey("housingAllowance")
+                || fields.containsKey("transportAllowance") || fields.containsKey("otherAllowance");
+
         fields.forEach((key, value) -> {
             switch (key) {
                 case "groupName" -> p.setGroupName(value != null ? value.toString() : null);
                 case "reference" -> p.setReference(value != null ? value.toString() : null);
                 case "status" -> {
-                    if (value != null) p.setStatus(Payslip.PayslipStatus.valueOf(value.toString()));
+                    if (value != null) {
+                        String sv = value.toString();
+                        // Accept frontend-friendly labels as aliases
+                        Payslip.PayslipStatus status = switch (sv) {
+                            case "PENDING" -> Payslip.PayslipStatus.REVIEW_ONGOING;
+                            case "APPROVED" -> Payslip.PayslipStatus.CONFIRMED;
+                            default -> Payslip.PayslipStatus.valueOf(sv);
+                        };
+                        p.setStatus(status);
+                    }
                 }
                 case "basicPay" -> {
                     if (value != null) p.setBasicPay(new java.math.BigDecimal(value.toString()));
+                }
+                case "housingAllowance" -> {
+                    if (value != null) p.setHousingAllowance(new java.math.BigDecimal(value.toString()));
+                }
+                case "transportAllowance" -> {
+                    if (value != null) p.setTransportAllowance(new java.math.BigDecimal(value.toString()));
+                }
+                case "otherAllowance" -> {
+                    if (value != null) p.setOtherAllowance(new java.math.BigDecimal(value.toString()));
                 }
                 case "grossPay" -> {
                     if (value != null) p.setGrossPay(new java.math.BigDecimal(value.toString()));
@@ -1499,9 +1528,44 @@ public class PayrollController {
                 case "netPay" -> {
                     if (value != null) p.setNetPay(new java.math.BigDecimal(value.toString()));
                 }
+                case "overtime", "leaveDeduction", "bonus" -> {
+                    // Store in payHeadData JSON
+                    try {
+                        java.util.Map<String, Object> phd = new java.util.LinkedHashMap<>();
+                        if (p.getPayHeadData() != null && !p.getPayHeadData().isBlank()) {
+                            phd = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                                    p.getPayHeadData(), new TypeReference<>() {});
+                        }
+                        String phdKey = switch (key) {
+                            case "overtime"      -> "overtime";
+                            case "leaveDeduction"-> "loss_of_pay";
+                            case "bonus"         -> "bonus";
+                            default              -> key;
+                        };
+                        phd.put(phdKey, value != null ? Double.parseDouble(value.toString()) : 0.0);
+                        p.setPayHeadData(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(phd));
+                    } catch (Exception ignored) {}
+                }
                 default -> { /* ignore unknown fields */ }
             }
         });
+
+        // Auto-recalculate gross when any component field was updated
+        if (recalcGross) {
+            java.math.BigDecimal basic    = p.getBasicPay()           != null ? p.getBasicPay()           : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal housing  = p.getHousingAllowance()   != null ? p.getHousingAllowance()   : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal transport= p.getTransportAllowance() != null ? p.getTransportAllowance() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal other    = p.getOtherAllowance()     != null ? p.getOtherAllowance()     : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal gross    = basic.add(housing).add(transport).add(other);
+            p.setGrossPay(gross);
+            java.math.BigDecimal ded = p.getDeduction() != null ? p.getDeduction() : java.math.BigDecimal.ZERO;
+            p.setNetPay(gross.subtract(ded));
+        } else if (fields.containsKey("deduction") || fields.containsKey("grossPay")) {
+            // Recalculate netPay = grossPay - deduction
+            java.math.BigDecimal gross = p.getGrossPay() != null ? p.getGrossPay() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal ded   = p.getDeduction() != null ? p.getDeduction() : java.math.BigDecimal.ZERO;
+            p.setNetPay(gross.subtract(ded));
+        }
 
         payslipRepository.save(p);
         return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
@@ -1539,7 +1603,7 @@ public class PayrollController {
         if (year  == 0) year  = LocalDate.now().getYear();
 
         java.util.List<com.example.demo.employee.entity.Employee> employees =
-                employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+                fetchActiveEmployeesForPayroll(companyId);
 
         try {
             byte[] bytes = payslipExcelExportService.exportImportTemplate(employees, month, year);
@@ -1585,7 +1649,7 @@ public class PayrollController {
         if (year  == 0) year  = LocalDate.now().getYear();
 
         java.util.List<com.example.demo.employee.entity.Employee> employees =
-                employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+                fetchActiveEmployeesForPayroll(companyId);
 
         try {
             byte[] bytes = payslipExcelExportService.exportImportTemplate(employees, month, year);

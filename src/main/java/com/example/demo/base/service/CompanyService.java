@@ -273,12 +273,17 @@ public class CompanyService {
      * Gets all branches under a Head Office.
      */
     public List<Company> getBranches(Long headOfficeId) {
-        Company headOffice = companyRepository.findById(headOfficeId)
+        Company company = companyRepository.findByIdPublic(headOfficeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", headOfficeId));
+        // If a branch ID was passed, resolve up to its parent head office transparently
+        Company headOffice = company.isBranch() && company.getParentCompany() != null
+                ? companyRepository.findByIdPublic(company.getParentCompany().getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Company", company.getParentCompany().getId()))
+                : company;
         if (!headOffice.isHeadOffice()) {
             throw new BadRequestException("Company '" + headOffice.getName() + "' is not a Head Office");
         }
-        return companyRepository.findByParentCompanyIdAndIsActiveTrue(headOfficeId);
+        return companyRepository.findByParentCompanyIdAndIsActiveTruePublic(headOffice.getId());
     }
 
     /**

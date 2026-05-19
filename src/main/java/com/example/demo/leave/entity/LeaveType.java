@@ -83,6 +83,15 @@ public class LeaveType extends BaseEntity {
     @Column(name = "is_organization_wide")
     private Boolean isOrganizationWide = false;
 
+    // Employee categories this leave type applies to (empty = all categories)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "leave_type_employee_types",
+            joinColumns = @JoinColumn(name = "leave_type_id"),
+            inverseJoinColumns = @JoinColumn(name = "employee_type_id")
+    )
+    private java.util.List<com.example.demo.base.entity.EmployeeType> applicableEmployeeTypes = new java.util.ArrayList<>();
+
     // ─── Accrual Settings ─────────────────────────────────────────────────────
 
     /** If true, leave accrues monthly instead of being allocated upfront */

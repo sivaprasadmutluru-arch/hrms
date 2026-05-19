@@ -17,5 +17,8 @@ public record LeaveTypeDTO(
         Boolean accrualEnabled,
         MidYearJoinerMode midYearJoinerMode,
         Boolean negativeBalanceAllowed,
-        Double negativeBalanceLimit
+        Double negativeBalanceLimit,
+        boolean isActive,
+        java.util.List<Long> applicableEmployeeTypeIds,
+        java.util.List<String> applicableEmployeeTypeNames
 ) {}

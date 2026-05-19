@@ -91,6 +91,7 @@ public class LeaveController {
 
     @GetMapping("/types")
     @PreAuthorize("hasAuthority('leave:view')")
+    @Transactional(readOnly = true)
     @Operation(summary = "Get leave types for company")
     public ResponseEntity<List<LeaveTypeDTO>> getTypes() {
         return ResponseEntity.ok(leaveService.getLeaveTypes().stream().map(LeaveMapper::toDTO).toList());

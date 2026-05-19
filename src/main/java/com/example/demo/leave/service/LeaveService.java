@@ -1,6 +1,8 @@
 package com.example.demo.leave.service;
 
+import com.example.demo.base.entity.EmployeeType;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.repository.EmployeeTypeRepository;
 import com.example.demo.common.event.LeaveApprovedEvent;
 import com.example.demo.common.event.LeaveRejectedEvent;
 import com.example.demo.common.exception.BadRequestException;
@@ -41,6 +43,7 @@ public class LeaveService {
     private final CompanyLeaveRepository companyLeaveRepository;
     private final EmployeeRepository employeeRepository;
     private final CompanyRepository companyRepository;
+    private final EmployeeTypeRepository employeeTypeRepository;
     private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
 
     // ─── Queries ──────────────────────────────────────────────────────────────
@@ -218,14 +221,21 @@ public class LeaveService {
 
     @Transactional
     public LeaveType createLeaveType(LeaveType leaveType) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (Boolean.TRUE.equals(leaveType.getIsOrganizationWide())) {
-            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
             if (scope != null && !scope.hasUnrestrictedAccess()
                     && scope.getScope() == com.example.demo.auth.entity.UserRole.AccessScope.BRANCH) {
                 throw new BadRequestException(
                         "Only Head Office admins can create organization-wide leave policies.");
             }
         }
+        if (leaveType.getCompany() == null) {
+            Long companyId = scope != null ? scope.getCompanyId() : null;
+            if (companyId == null) throw new BadRequestException("Unable to determine company from session.");
+            leaveType.setCompany(companyRepository.findById(companyId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", companyId)));
+        }
+        resolveApplicableEmployeeTypes(leaveType);
         return leaveTypeRepository.save(leaveType);
     }
 
@@ -257,7 +267,23 @@ public class LeaveService {
         lt.setMidYearJoinerMode(updated.getMidYearJoinerMode());
         lt.setNegativeBalanceAllowed(updated.getNegativeBalanceAllowed());
         lt.setNegativeBalanceLimit(updated.getNegativeBalanceLimit());
+        lt.setActive(updated.isActive());
+        if (updated.getApplicableEmployeeTypes() != null) {
+            List<Long> ids = updated.getApplicableEmployeeTypes().stream()
+                    .filter(et -> et.getId() != null).map(EmployeeType::getId).toList();
+            lt.setApplicableEmployeeTypes(ids.isEmpty() ? new java.util.ArrayList<>()
+                    : employeeTypeRepository.findAllById(ids));
+        }
         return leaveTypeRepository.save(lt);
+    }
+
+    private void resolveApplicableEmployeeTypes(LeaveType leaveType) {
+        if (leaveType.getApplicableEmployeeTypes() != null && !leaveType.getApplicableEmployeeTypes().isEmpty()) {
+            List<Long> ids = leaveType.getApplicableEmployeeTypes().stream()
+                    .filter(et -> et.getId() != null).map(EmployeeType::getId).toList();
+            leaveType.setApplicableEmployeeTypes(ids.isEmpty() ? new java.util.ArrayList<>()
+                    : employeeTypeRepository.findAllById(ids));
+        }
     }
 
     @Transactional
