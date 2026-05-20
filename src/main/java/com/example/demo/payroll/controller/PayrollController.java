@@ -72,6 +72,8 @@ public class PayrollController {
     private final PayrollScheduler payrollScheduler;
     private final PayslipImportService payslipImportService;
     private final EmployeeBankDetailsRepository employeeBankDetailsRepository;
+    private final com.example.demo.attendance.repository.AttendanceRepository attendanceRepository;
+    private final com.example.demo.attendance.repository.AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
 
     @GetMapping("/contracts")
     @PreAuthorize("hasAuthority('payroll:view')")
@@ -895,8 +897,11 @@ public class PayrollController {
             @RequestParam Long employeeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam Long companyId) {
-        return ResponseEntity.ok(payrollService.generatePayslip(employeeId, startDate, endDate, companyId));
+            @RequestParam Long companyId,
+            @RequestParam(defaultValue = "true") boolean weekendSat,
+            @RequestParam(defaultValue = "true") boolean weekendSun,
+            @RequestParam(defaultValue = "0.5") double lateDeductionRate) {
+        return ResponseEntity.ok(payrollService.generatePayslip(employeeId, startDate, endDate, companyId, false, weekendSat, weekendSun, lateDeductionRate));
     }
 
     @PostMapping("/payslips/generate/bulk")
@@ -905,8 +910,324 @@ public class PayrollController {
     public ResponseEntity<List<Payslip>> generateBulkPayslips(
             @RequestParam Long companyId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "true") boolean weekendSat,
+            @RequestParam(defaultValue = "true") boolean weekendSun,
+            @RequestParam(defaultValue = "0.5") double lateDeductionRate) {
+        return ResponseEntity.ok(payrollService.generateBulkPayslips(companyId, startDate, endDate, false, weekendSat, weekendSun, lateDeductionRate));
+    }
+
+    // ─── Attendance Check (used by Automated Payroll workflow) ────────────────
+
+    @GetMapping("/attendance-check")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Check if HRMS attendance data exists for a payroll period")
+    public ResponseEntity<Map<String, Object>> checkAttendance(
+            @RequestParam Long companyId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ResponseEntity.ok(payrollService.generateBulkPayslips(companyId, startDate, endDate));
+        long cnt = attendanceRepository.countByCompanyAndPeriod(companyId, startDate, endDate);
+        return ResponseEntity.ok(Map.of("hasAttendance", cnt > 0, "count", cnt));
+    }
+
+    // ─── Biometric Attendance Upload (Automated Payroll) ──────────────────────
+
+    @PostMapping("/biometric-upload")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Upload biometric machine attendance Excel for a payroll period",
+               description = "Expected columns: Employee ID, Employee Name, Date (YYYY-MM-DD), " +
+                             "Clock-In (HH:mm), Clock-Out (HH:mm), Total Working Hours, " +
+                             "Late Coming, Early Leaving, Overtime Hours, Attendance Status")
+    public ResponseEntity<Map<String, Object>> uploadBiometricAttendance(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Long companyId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        var co = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+
+        List<com.example.demo.employee.entity.Employee> employees =
+                employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        Map<String, com.example.demo.employee.entity.Employee> byBadge = new java.util.LinkedHashMap<>();
+        Map<String, com.example.demo.employee.entity.Employee> byName  = new java.util.LinkedHashMap<>();
+        for (var e : employees) {
+            if (e.getBadgeId() != null && !e.getBadgeId().isBlank())
+                byBadge.put(e.getBadgeId().trim().toLowerCase(), e);
+            String fullName = ((e.getFirstName() != null ? e.getFirstName() : "") + " "
+                    + (e.getLastName() != null ? e.getLastName() : "")).trim().toLowerCase();
+            byName.put(fullName, e);
+        }
+
+        int imported = 0;
+        List<String> errors = new java.util.ArrayList<>();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook(file.getInputStream())) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheetAt(0);
+            // Columns: 0=EmpID, 1=EmpName, 2=Date, 3=ClockIn, 4=ClockOut,
+            //          5=TotalHours, 6=LateComing, 7=EarlyLeaving, 8=OvertimeHours, 9=Status
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(i);
+                if (row == null) continue;
+                try {
+                    String empId     = getCellStr(row, 0);
+                    String empName   = getCellStr(row, 1);
+                    String dateStr   = getCellStr(row, 2);
+                    String inStr       = getCellStr(row, 3);
+                    String outStr      = getCellStr(row, 4);
+                    String totalHrsStr = getCellStr(row, 5);
+                    String lateMinStr  = getCellStr(row, 6);
+                    String earlyMinStr = getCellStr(row, 7);
+                    String otHrsStr    = getCellStr(row, 8);
+                    String statusStr   = getCellStr(row, 9);
+
+                    if (dateStr == null || dateStr.isBlank()) continue;
+
+                    com.example.demo.employee.entity.Employee emp = null;
+                    if (empId != null && !empId.isBlank())
+                        emp = byBadge.get(empId.trim().toLowerCase());
+                    if (emp == null && empName != null && !empName.isBlank())
+                        emp = byName.get(empName.trim().toLowerCase());
+                    if (emp == null) {
+                        errors.add("Row " + (i + 1) + ": Employee not found — " + empId + " / " + empName);
+                        continue;
+                    }
+
+                    LocalDate attDate;
+                    try { attDate = LocalDate.parse(dateStr.trim()); }
+                    catch (Exception ex) {
+                        errors.add("Row " + (i + 1) + ": Invalid date format — " + dateStr + " (expected YYYY-MM-DD)");
+                        continue;
+                    }
+
+                    if (attDate.isBefore(startDate) || attDate.isAfter(endDate)) continue;
+
+                    com.example.demo.attendance.entity.Attendance att =
+                            attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), attDate)
+                                    .orElse(new com.example.demo.attendance.entity.Attendance());
+
+                    att.setEmployee(emp);
+                    att.setCompany(co);
+                    att.setAttendanceDate(attDate);
+                    if (inStr != null && !inStr.isBlank()) {
+                        try { att.setCheckIn(java.time.LocalTime.parse(inStr.trim())); }
+                        catch (Exception ignored) {
+                            try { att.setCheckIn(java.time.LocalTime.parse(inStr.trim() + ":00")); }
+                            catch (Exception ignored2) {}
+                        }
+                    }
+                    if (outStr != null && !outStr.isBlank()) {
+                        try { att.setCheckOut(java.time.LocalTime.parse(outStr.trim())); }
+                        catch (Exception ignored) {
+                            try { att.setCheckOut(java.time.LocalTime.parse(outStr.trim() + ":00")); }
+                            catch (Exception ignored2) {}
+                        }
+                    }
+                    // Column 5: Total Working Hours — authoritative from biometric device
+                    if (totalHrsStr != null && !totalHrsStr.isBlank()) {
+                        try {
+                            double totalH = Double.parseDouble(totalHrsStr.trim());
+                            if (totalH > 0) att.setAtWorkSecond((int) Math.round(totalH * 3600));
+                        } catch (Exception ignored) {}
+                    }
+                    att.setAttendanceValidated(
+                            (statusStr != null && statusStr.trim().equalsIgnoreCase("Present"))
+                                    ? com.example.demo.attendance.entity.Attendance.AttendanceStatus.APPROVED
+                                    : com.example.demo.attendance.entity.Attendance.AttendanceStatus.PENDING);
+
+                    // Column 8: Overtime Hours — store on attendance record
+                    if (otHrsStr != null && !otHrsStr.isBlank()) {
+                        try {
+                            double otH = Double.parseDouble(otHrsStr.trim());
+                            if (otH > 0) {
+                                int otSec = (int) Math.round(otH * 3600);
+                                att.setOvertimeSecond(otSec);
+                                att.setApprovedOvertimeSecond(otSec);
+                                att.setAttendanceOvertimeApprove(true);
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    com.example.demo.attendance.entity.Attendance savedAtt = attendanceRepository.save(att);
+
+                    // Column 6: Late Coming (minutes) — create/update AttendanceLateComeEarlyOut
+                    if (lateMinStr != null && !lateMinStr.isBlank()) {
+                        try {
+                            int lateMin = (int) Math.round(Double.parseDouble(lateMinStr.trim()));
+                            if (lateMin > 0) {
+                                com.example.demo.attendance.entity.AttendanceLateComeEarlyOut lateRec =
+                                        lateComeEarlyOutRepository.findByAttendanceId(savedAtt.getId()).stream()
+                                                .filter(r -> r.getType() == com.example.demo.attendance.entity.AttendanceLateComeEarlyOut.EntryType.LATE_COME)
+                                                .findFirst()
+                                                .orElse(new com.example.demo.attendance.entity.AttendanceLateComeEarlyOut());
+                                lateRec.setAttendance(savedAtt);
+                                lateRec.setEmployee(emp);
+                                lateRec.setType(com.example.demo.attendance.entity.AttendanceLateComeEarlyOut.EntryType.LATE_COME);
+                                lateRec.setLateComeSecond(lateMin * 60);
+                                lateRec.setLateCome(lateMin + "m");
+                                lateComeEarlyOutRepository.save(lateRec);
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    // Column 7: Early Leaving (minutes) — create/update AttendanceLateComeEarlyOut
+                    if (earlyMinStr != null && !earlyMinStr.isBlank()) {
+                        try {
+                            int earlyMin = (int) Math.round(Double.parseDouble(earlyMinStr.trim()));
+                            if (earlyMin > 0) {
+                                com.example.demo.attendance.entity.AttendanceLateComeEarlyOut earlyRec =
+                                        lateComeEarlyOutRepository.findByAttendanceId(savedAtt.getId()).stream()
+                                                .filter(r -> r.getType() == com.example.demo.attendance.entity.AttendanceLateComeEarlyOut.EntryType.EARLY_OUT)
+                                                .findFirst()
+                                                .orElse(new com.example.demo.attendance.entity.AttendanceLateComeEarlyOut());
+                                earlyRec.setAttendance(savedAtt);
+                                earlyRec.setEmployee(emp);
+                                earlyRec.setType(com.example.demo.attendance.entity.AttendanceLateComeEarlyOut.EntryType.EARLY_OUT);
+                                earlyRec.setEarlyOutSecond(earlyMin * 60);
+                                earlyRec.setEarlyOut(earlyMin + "m");
+                                lateComeEarlyOutRepository.save(earlyRec);
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    imported++;
+                } catch (Exception rowEx) {
+                    errors.add("Row " + (i + 1) + ": " + rowEx.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Biometric upload failed: " + e.getMessage(), e);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("imported", imported);
+        result.put("errors", errors);
+        return ResponseEntity.ok(result);
+    }
+
+    // ─── Payslip Update (inline editing in Automated Payroll) ─────────────────
+
+    @PatchMapping("/payslips/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Update payslip fields and auto-recalculate gross/net pay")
+    public ResponseEntity<Payslip> patchPayslip(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> updates) {
+        Payslip p = payslipRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+
+        // Parse existing pay_head_data
+        Map<String, Object> phd = new java.util.LinkedHashMap<>();
+        if (p.getPayHeadData() != null && !p.getPayHeadData().isBlank()) {
+            try {
+                phd = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(p.getPayHeadData(),
+                                new com.fasterxml.jackson.core.type.TypeReference<java.util.LinkedHashMap<String, Object>>() {});
+            } catch (Exception ignored) {}
+        }
+
+        // Apply updates to entity fields
+        if (updates.containsKey("housingAllowance"))
+            p.setHousingAllowance(new java.math.BigDecimal(updates.get("housingAllowance").toString()));
+        if (updates.containsKey("transportAllowance"))
+            p.setTransportAllowance(new java.math.BigDecimal(updates.get("transportAllowance").toString()));
+        if (updates.containsKey("otherAllowance"))
+            p.setOtherAllowance(new java.math.BigDecimal(updates.get("otherAllowance").toString()));
+        if (updates.containsKey("status")) {
+            try { p.setStatus(Payslip.PayslipStatus.valueOf(updates.get("status").toString())); }
+            catch (Exception ignored) {}
+        }
+
+        // Apply updates to pay_head_data
+        if (updates.containsKey("overtime"))
+            phd.put("overtime_pay", toDouble(updates.get("overtime")));
+        if (updates.containsKey("loanDeduction"))
+            phd.put("loan_recovery", toDouble(updates.get("loanDeduction")));
+        if (updates.containsKey("otherDeductions"))
+            phd.put("other_deductions", toDouble(updates.get("otherDeductions")));
+        if (updates.containsKey("remarks"))
+            phd.put("remarks", updates.get("remarks"));
+
+        // Recalculate gross and net
+        double basicPay   = toDouble(phd.getOrDefault("basic_pay",
+                p.getBasicPay() != null ? p.getBasicPay() : java.math.BigDecimal.ZERO));
+        double housing    = p.getHousingAllowance()   != null ? p.getHousingAllowance().doubleValue()   : 0;
+        double transport  = p.getTransportAllowance() != null ? p.getTransportAllowance().doubleValue() : 0;
+        double other      = p.getOtherAllowance()     != null ? p.getOtherAllowance().doubleValue()     : 0;
+        double overtimePay = toDouble(phd.getOrDefault("overtime_pay", 0));
+        double bonus       = toDouble(phd.getOrDefault("bonus", 0));
+        double salAdvance  = toDouble(phd.getOrDefault("salary_advance", 0));
+
+        // Dynamic allowances from list
+        double dynamicAllowances = 0;
+        Object allowList = phd.get("allowances");
+        if (allowList instanceof java.util.List) {
+            for (Object item : (java.util.List<?>) allowList) {
+                if (item instanceof java.util.Map<?, ?> m) dynamicAllowances += toDouble(m.get("amount"));
+            }
+        }
+
+        double grossPay = basicPay + housing + transport + other + dynamicAllowances
+                + overtimePay + bonus + salAdvance;
+
+        double lossOfPay  = toDouble(phd.getOrDefault("loss_of_pay", 0));
+        double loanRec    = toDouble(phd.getOrDefault("loan_recovery", 0));
+        double salAdvDed  = toDouble(phd.getOrDefault("salary_advance_deduction", 0));
+        double otherDed   = toDouble(phd.getOrDefault("other_deductions", 0));
+        double fedTax     = toDouble(phd.getOrDefault("federal_tax", 0));
+
+        // Sum structured deduction lists
+        double pretaxTotal   = sumDeductionAmounts(phd, "pretax_deductions");
+        double postTaxTotal  = sumDeductionAmounts(phd, "post_tax_deductions");
+        double netDedTotal   = sumDeductionAmounts(phd, "net_deductions");
+
+        double lateDeductionPatch = toDouble(phd.getOrDefault("late_deduction", 0));
+        double totalDeductions = lossOfPay + loanRec + salAdvDed + otherDed + fedTax
+                + pretaxTotal + postTaxTotal + netDedTotal + lateDeductionPatch;
+        double netPay = Math.max(0, grossPay - totalDeductions);
+
+        p.setGrossPay(java.math.BigDecimal.valueOf(round2(grossPay)));
+        p.setDeduction(java.math.BigDecimal.valueOf(round2(totalDeductions)));
+        p.setNetPay(java.math.BigDecimal.valueOf(round2(netPay)));
+
+        phd.put("gross_pay",       round2(grossPay));
+        phd.put("net_pay",         round2(netPay));
+        phd.put("total_deductions", round2(totalDeductions));
+
+        try {
+            p.setPayHeadData(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(phd));
+        } catch (Exception ignored) {}
+
+        return ResponseEntity.ok(payslipRepository.save(p));
+    }
+
+    private double sumDeductionAmounts(Map<String, Object> phd, String key) {
+        Object list = phd.get(key);
+        if (!(list instanceof java.util.List)) return 0.0;
+        double total = 0;
+        for (Object item : (java.util.List<?>) list) {
+            if (item instanceof java.util.Map<?, ?> m) total += toDouble(m.get("amount"));
+        }
+        return total;
+    }
+
+    private double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
+    }
+
+    private String getCellStr(org.apache.poi.ss.usermodel.Row row, int col) {
+        var cell = row.getCell(col);
+        if (cell == null) return null;
+        return switch (cell.getCellType()) {
+            case STRING  -> cell.getStringCellValue().trim();
+            case NUMERIC -> org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)
+                    ? cell.getLocalDateTimeCellValue().toLocalDate().toString()
+                    : String.valueOf((long) cell.getNumericCellValue());
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            default -> null;
+        };
     }
 
     // ─── Payslip Excel Export ──────────────────────────────────────────────────
@@ -1018,6 +1339,11 @@ public class PayrollController {
     private double toDouble(Object v) {
         if (v == null) return 0.0;
         try { return Double.parseDouble(v.toString()); } catch (Exception e) { return 0.0; }
+    }
+
+    private long toLong(Object v) {
+        if (v == null) return 0L;
+        try { return Long.parseLong(v.toString().replace(".0", "").replace(".00", "")); } catch (Exception e) { return 0L; }
     }
 
     private String formatAmt(double v) {
@@ -1148,8 +1474,11 @@ public class PayrollController {
         String designation = emp != null && emp.getJobPosition()  != null ? emp.getJobPosition().getName()     : "-";
         String joining     = emp != null && emp.getDateJoining()  != null
                 ? emp.getDateJoining().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")) : "-";
-        String periodLabel = p.getStartDate() != null
-                ? p.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")) : "";
+        String periodLabel = (p.getStartDate() != null && p.getEndDate() != null)
+                ? p.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy"))
+                  + " – " + p.getEndDate().format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy"))
+                : (p.getStartDate() != null
+                  ? p.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")) : "");
         var bankDetails = emp != null
                 ? employeeBankDetailsRepository.findByEmployeeId(emp.getId()).orElse(null) : null;
         String bankAccNo = bankDetails != null && bankDetails.getAccountNumber() != null
@@ -1247,6 +1576,83 @@ public class PayrollController {
         empBox.addCell(row2Wrapper);
         doc.add(empBox);
 
+        // ── Attendance Summary ────────────────────────────────────────────────
+        long calDays     = toLong(phd.getOrDefault("total_calendar_days", 0));
+        long wrkDays     = toLong(phd.getOrDefault("working_days", 0));
+        long presDays    = toLong(phd.getOrDefault("present_days", 0));
+        long absDays     = toLong(phd.getOrDefault("absent_days", 0));
+        double pldDays   = toDouble(phd.getOrDefault("paid_leave_days", 0));
+        double unpaidD   = toDouble(phd.getOrDefault("unpaid_days", 0));
+        long lateD       = toLong(phd.getOrDefault("late_coming_days", 0));
+        long earlyD      = toLong(phd.getOrDefault("early_leaving_days", 0));
+        double otHrs     = toDouble(phd.getOrDefault("overtime_hours", toDouble(phd.getOrDefault("overtime_hours", 0))));
+
+        if (calDays > 0 || presDays > 0 || wrkDays > 0) {
+            PdfPTable attBox = new PdfPTable(1); attBox.setWidthPercentage(100); attBox.setSpacingAfter(14f);
+            PdfPCell attHead = new PdfPCell(new Phrase("Attendance Summary", fSecHead));
+            attHead.setBackgroundColor(INDIGO_L); attHead.setBorderColor(INDIGO_B);
+            attHead.setBorderWidth(0.5f); attHead.setPadding(8f); attBox.addCell(attHead);
+
+            String[][] attFields = {
+                {"Total Calendar Days", String.valueOf(calDays)},
+                {"Working Days",        String.valueOf(wrkDays)},
+                {"Present Days",        String.valueOf(presDays)},
+                {"Absent Days",         String.valueOf(absDays)},
+                {"Paid Leave Days",     String.format("%.1f", pldDays)},
+                {"Unpaid Leave Days",   String.format("%.1f", unpaidD)},
+                {"Late Coming",         String.valueOf(lateD) + " day(s)"},
+                {"Early Leaving",       String.valueOf(earlyD) + " day(s)"},
+                {"Overtime Hours",      String.format("%.2f", otHrs)},
+            };
+            // 3-column grid: label | value | label | value | label | value
+            PdfPTable attGrid = new PdfPTable(6);
+            attGrid.setWidthPercentage(100);
+            attGrid.setWidths(new float[]{2f, 1.2f, 2f, 1.2f, 2f, 1.2f});
+            Font fAttLbl = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, GRAY_M);
+            Font fAttVal = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.5f, BLACK);
+            int col = 0;
+            for (String[] af : attFields) {
+                PdfPCell lc = new PdfPCell(new Phrase(af[0], fAttLbl));
+                lc.setBorderColor(INDIGO_B); lc.setBorderWidth(0.5f); lc.setPadding(6f);
+                lc.setBackgroundColor(col % 2 == 0 ? INDIGO_L : WHITE);
+                PdfPCell vc = new PdfPCell(new Phrase(af[1], fAttVal));
+                vc.setBorderColor(INDIGO_B); vc.setBorderWidth(0.5f); vc.setPadding(6f);
+                vc.setBackgroundColor(col % 2 == 0 ? INDIGO_L : WHITE);
+                attGrid.addCell(lc); attGrid.addCell(vc);
+                col++;
+            }
+            // Pad to complete the last row if needed (9 fields → 3 rows of 3 = full)
+            PdfPCell attWrapper = new PdfPCell(attGrid);
+            attWrapper.setPadding(0); attWrapper.setBorderColor(INDIGO_B); attWrapper.setBorderWidth(0.5f);
+            attWrapper.setBorderWidthTop(0);
+            attBox.addCell(attWrapper);
+            doc.add(attBox);
+        }
+
+        // ── Overtime Details ──────────────────────────────────────────────────
+        if (overtime > 0 && otHrs > 0) {
+            double otRate = otHrs > 0 ? overtime / otHrs : 0.0;
+            PdfPTable otBox = new PdfPTable(1); otBox.setWidthPercentage(100); otBox.setSpacingAfter(14f);
+            PdfPCell otHead = new PdfPCell(new Phrase("Overtime Details", fSecHead));
+            otHead.setBackgroundColor(INDIGO_L); otHead.setBorderColor(INDIGO_B);
+            otHead.setBorderWidth(0.5f); otHead.setPadding(8f); otBox.addCell(otHead);
+            PdfPTable otGrid = new PdfPTable(3); otGrid.setWidthPercentage(100);
+            otGrid.setWidths(new float[]{2f, 2f, 2f});
+            Font fOtLbl = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, GRAY_M);
+            Font fOtVal = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.5f, BLACK);
+            PdfPCell oh1 = new PdfPCell(new Phrase("Overtime Hours", fOtLbl)); oh1.setBorderColor(INDIGO_B); oh1.setBorderWidth(0.5f); oh1.setPadding(6f); oh1.setBackgroundColor(INDIGO_L);
+            PdfPCell oh2 = new PdfPCell(new Phrase("Rate per Hour", fOtLbl)); oh2.setBorderColor(INDIGO_B); oh2.setBorderWidth(0.5f); oh2.setPadding(6f); oh2.setBackgroundColor(INDIGO_L);
+            PdfPCell oh3 = new PdfPCell(new Phrase("Overtime Amount", fOtLbl)); oh3.setBorderColor(INDIGO_B); oh3.setBorderWidth(0.5f); oh3.setPadding(6f); oh3.setBackgroundColor(INDIGO_L);
+            otGrid.addCell(oh1); otGrid.addCell(oh2); otGrid.addCell(oh3);
+            PdfPCell ov1 = new PdfPCell(new Phrase(String.format("%.2f hrs", otHrs), fOtVal)); ov1.setBorderColor(INDIGO_B); ov1.setBorderWidth(0.5f); ov1.setPadding(6f);
+            PdfPCell ov2 = new PdfPCell(new Phrase(formatAmt(otRate), fOtVal)); ov2.setBorderColor(INDIGO_B); ov2.setBorderWidth(0.5f); ov2.setPadding(6f);
+            PdfPCell ov3 = new PdfPCell(new Phrase(formatAmt(overtime), fOtVal)); ov3.setBorderColor(INDIGO_B); ov3.setBorderWidth(0.5f); ov3.setPadding(6f);
+            otGrid.addCell(ov1); otGrid.addCell(ov2); otGrid.addCell(ov3);
+            PdfPCell otWrapper = new PdfPCell(otGrid); otWrapper.setPadding(0); otWrapper.setBorderColor(INDIGO_B); otWrapper.setBorderWidth(0.5f); otWrapper.setBorderWidthTop(0);
+            otBox.addCell(otWrapper);
+            doc.add(otBox);
+        }
+
         // Allowances & Deductions
         PdfPTable twoCol = new PdfPTable(2); twoCol.setWidthPercentage(100); twoCol.setSpacingAfter(14f);
         twoCol.setWidths(new float[]{1f,1f});
@@ -1270,9 +1676,21 @@ public class PayrollController {
         dHead.setBackgroundColor(INDIGO_L); dHead.setBorderColor(INDIGO_B); dHead.setBorderWidth(0.5f); dHead.setPadding(8f);
         dedTable.addCell(dHead);
         if (lossOfPay > 0) addLineRow(dedTable, "Loss of Pay", formatAmt(lossOfPay), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (loanRec + salAdvDed > 0) addLineRow(dedTable, "Salary Advance / Loan Recovery", formatAmt(loanRec + salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        double lateDeductionPdf = toDouble(phd.getOrDefault("late_deduction", 0));
+        if (lateDeductionPdf > 0) addLineRow(dedTable, "Late Coming Deduction", formatAmt(lateDeductionPdf), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        // Itemized loan deductions
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> loanDedList = (java.util.List<Map<String, Object>>) phd.getOrDefault("loan_deductions", java.util.List.of());
+        for (Map<String, Object> ll : loanDedList) {
+            String loanTitle = (String) ll.getOrDefault("title", "Loan");
+            double loanAmt = toDouble(ll.getOrDefault("amount", 0));
+            if (loanAmt > 0) addLineRow(dedTable, loanTitle, formatAmt(loanAmt), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        }
+        if (loanDedList.isEmpty() && loanRec > 0)
+            addLineRow(dedTable, "Loan Recovery", formatAmt(loanRec), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (salAdvDed > 0) addLineRow(dedTable, "Salary Advance Deduction", formatAmt(salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         if (otherDed > 0) addLineRow(dedTable, "Deduction", formatAmt(otherDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (lossOfPay == 0 && loanRec + salAdvDed == 0 && otherDed == 0)
+        if (lossOfPay == 0 && lateDeductionPdf == 0 && loanDedList.isEmpty() && loanRec == 0 && salAdvDed == 0 && otherDed == 0)
             addLineRow(dedTable, "Deduction", formatAmount(p.getDeduction()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         addLineRow(dedTable, "Total Deductions", formatAmount(p.getDeduction()), fDedLbl, fDedAmt, INDIGO_B, GRAY_L);
         PdfPCell rightCell = new PdfPCell(dedTable); rightCell.setBorder(Rectangle.NO_BORDER); rightCell.setPadding(0);

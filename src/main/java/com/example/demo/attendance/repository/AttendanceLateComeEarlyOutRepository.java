@@ -29,4 +29,13 @@ public interface AttendanceLateComeEarlyOutRepository
     Long countLateComesForEmployee(@Param("employeeId") Long employeeId,
                                    @Param("startDate") LocalDate startDate,
                                    @Param("endDate") LocalDate endDate);
+
+    /** Count EARLY_OUT entries for an employee within a payroll period — used for attendance summary in payslip */
+    @Query("SELECT COUNT(l) FROM AttendanceLateComeEarlyOut l " +
+           "WHERE l.employee.id = :employeeId " +
+           "AND l.type = com.example.demo.attendance.entity.AttendanceLateComeEarlyOut.EntryType.EARLY_OUT " +
+           "AND l.attendance.attendanceDate BETWEEN :startDate AND :endDate")
+    Long countEarlyOutsForEmployee(@Param("employeeId") Long employeeId,
+                                   @Param("startDate") LocalDate startDate,
+                                   @Param("endDate") LocalDate endDate);
 }

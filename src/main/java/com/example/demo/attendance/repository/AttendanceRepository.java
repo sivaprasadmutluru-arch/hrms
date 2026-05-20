@@ -45,4 +45,12 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
     /** Find all attendance records for an employee in a given calendar month/year — used for overtime approval propagation */
     @Query("SELECT a FROM Attendance a WHERE a.employee.id = :employeeId AND FUNCTION('YEAR', a.attendanceDate) = :year AND FUNCTION('MONTH', a.attendanceDate) = :month")
     List<Attendance> findByEmployeeIdAndYearAndMonth(@Param("employeeId") Long employeeId, @Param("year") int year, @Param("month") int month);
+
+    /** Count all attendance records for an employee in a date range — used for present_days in payroll summary */
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate")
+    Long countAttendanceByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    /** Count all attendance records for a company in a date range — used for attendance-check before payroll generation */
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.company.id = :companyId AND a.attendanceDate BETWEEN :startDate AND :endDate")
+    Long countByCompanyAndPeriod(@Param("companyId") Long companyId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

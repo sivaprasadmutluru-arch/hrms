@@ -84,6 +84,7 @@ public class LeaveController {
 
     @GetMapping("/requests")
     @PreAuthorize("hasAuthority('leave:view')")
+    @Transactional(readOnly = true)
     @Operation(summary = "List all leave requests (company-scoped)")
     public ResponseEntity<Page<LeaveRequestDTO>> listRequests(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(leaveService.getAllRequests(pageable).map(LeaveMapper::toDTO));
