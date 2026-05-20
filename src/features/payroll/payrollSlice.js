@@ -405,6 +405,38 @@ export const generateBulkPayslips = createAsyncThunk('payroll/generateBulkPaysli
   }
 })
 
+// ─── Automated Payroll thunks ─────────────────────────────────────────────────
+
+export const checkAttendanceStatus = createAsyncThunk('payroll/checkAttendanceStatus', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/payroll/attendance-check', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to check attendance')
+  }
+})
+
+export const uploadBiometricAttendance = createAsyncThunk('payroll/uploadBiometricAttendance', async ({ formData, params }, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/payroll/biometric-upload', formData, {
+      params,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Biometric upload failed')
+  }
+})
+
+export const patchPayslip = createAsyncThunk('payroll/patchPayslip', async ({ id, updates }, { rejectWithValue }) => {
+  try {
+    const res = await api.patch(`/payroll/payslips/${id}`, updates)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update payslip')
+  }
+})
+
 export const fetchConditions = createAsyncThunk('payroll/fetchConditions', async (params, { rejectWithValue }) => {
   try { const res = await api.get('/payroll/conditions', { params }); return res.data }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
@@ -590,6 +622,7 @@ const payrollSlice = createSlice({
     payrollGeneralSettings: null,
     encashmentSettings: null,
     payslipAutoGenerate: null,
+    attendanceStatus: null,
     conditions: [],
     allowances: [],
     deductions: [],
@@ -782,6 +815,18 @@ const payrollSlice = createSlice({
       })
       .addCase(generateBulkPayslips.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
+      // Automated payroll
+      .addCase(checkAttendanceStatus.fulfilled, (state, action) => { state.attendanceStatus = action.payload })
+      .addCase(uploadBiometricAttendance.pending, (state) => { state.loading = true })
+      .addCase(uploadBiometricAttendance.fulfilled, (state) => { state.loading = false })
+      .addCase(uploadBiometricAttendance.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(patchPayslip.fulfilled, (state, action) => {
+        const idx = state.payslips.findIndex(p => p.id === action.payload.id)
+        if (idx !== -1) state.payslips[idx] = action.payload
+        const idx2 = state.autoPayslips.findIndex(p => p.id === action.payload.id)
+        if (idx2 !== -1) state.autoPayslips[idx2] = action.payload
+      })
+
       .addCase(fetchConditions.fulfilled, (state, action) => { state.conditions = action.payload })
       .addCase(createCondition.fulfilled, (state, action) => { state.conditions.push(action.payload) })
       .addCase(updateCondition.fulfilled, (state, action) => {
@@ -865,6 +910,7 @@ export const selectReimbursementComments = (state) => state.payroll.reimbursemen
 export const selectPayrollGeneralSettings = (state) => state.payroll.payrollGeneralSettings
 export const selectEncashmentSettings = (state) => state.payroll.encashmentSettings
 export const selectPayslipAutoGenerate = (state) => state.payroll.payslipAutoGenerate
+export const selectAttendanceStatus = (state) => state.payroll.attendanceStatus
 export const selectConditions = (state) => state.payroll.conditions
 export const selectAllowances = (state) => state.payroll.allowances
 export const selectDeductions = (state) => state.payroll.deductions
