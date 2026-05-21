@@ -115,6 +115,7 @@ const AssetCategoriesPage     = lazy(() => import('./features/assets/AssetCatego
 const AssetRequestsPage       = lazy(() => import('./features/assets/AssetRequestsPage'))
 const PayrollBatchGroupsPage  = lazy(() => import('./features/payroll/PayrollBatchGroupsPage'))
 const PayrollDashboardPage    = lazy(() => import('./features/payroll/PayrollDashboardPage'))
+const GratuityPage            = lazy(() => import('./features/payroll/GratuityPage'))
 const PayslipImportPage       = lazy(() => import('./features/payroll/PayslipImportPage'))
 const ManualPayrollPage       = lazy(() => import('./features/payroll/ManualPayrollPage'))
 const AttendanceDashboardPage = lazy(() => import('./features/attendance/AttendanceDashboardPage'))
@@ -204,6 +205,7 @@ export default function App() {
           <Route path="payroll/deductions" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<DeductionsPage />} />} />
           <Route path="payroll/batch-groups"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollBatchGroupsPage />} />} />
           <Route path="payroll/dashboard"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollDashboardPage />} />} />
+          <Route path="payroll/gratuity"       element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<GratuityPage />} />} />
 
           {/* Reports — admin and managers */}
           <Route path="reports" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT']} element={<ReportsPage />} />} />

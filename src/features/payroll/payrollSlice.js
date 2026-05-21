@@ -607,6 +607,53 @@ export const exportPayslipsExcel = createAsyncThunk('payroll/exportPayslipsExcel
   }
 })
 
+// ─── Gratuity / EOSB Thunks ──────────────────────────────────────────────────
+
+export const fetchGratuities = createAsyncThunk('payroll/fetchGratuities', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/gratuity')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch gratuity records')
+  }
+})
+
+export const calculateGratuity = createAsyncThunk('payroll/calculateGratuity', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/gratuity/calculate', data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to calculate EOSB')
+  }
+})
+
+export const updateGratuity = createAsyncThunk('payroll/updateGratuity', async ({ id, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/gratuity/${id}`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update gratuity record')
+  }
+})
+
+export const approveGratuity = createAsyncThunk('payroll/approveGratuity', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/gratuity/${id}/approve`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to approve EOSB')
+  }
+})
+
+export const deleteGratuity = createAsyncThunk('payroll/deleteGratuity', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/gratuity/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete gratuity record')
+  }
+})
+
 const payrollSlice = createSlice({
   name: 'payroll',
   initialState: {
@@ -627,6 +674,7 @@ const payrollSlice = createSlice({
     allowances: [],
     deductions: [],
     batchGroups: [],
+    gratuities: [],
     payrollDashboard: null,
     importInfo: null,
     importLoading: false,
@@ -866,6 +914,21 @@ const payrollSlice = createSlice({
       })
       .addCase(fetchPayrollDashboard.fulfilled, (state, action) => { state.payrollDashboard = action.payload })
 
+      // Gratuity / EOSB
+      .addCase(fetchGratuities.fulfilled, (state, action) => { state.gratuities = action.payload })
+      .addCase(calculateGratuity.fulfilled, (state, action) => { state.gratuities.unshift(action.payload) })
+      .addCase(updateGratuity.fulfilled, (state, action) => {
+        const idx = state.gratuities.findIndex(g => g.id === action.payload.id)
+        if (idx !== -1) state.gratuities[idx] = action.payload
+      })
+      .addCase(approveGratuity.fulfilled, (state, action) => {
+        const idx = state.gratuities.findIndex(g => g.id === action.payload.id)
+        if (idx !== -1) state.gratuities[idx] = action.payload
+      })
+      .addCase(deleteGratuity.fulfilled, (state, action) => {
+        state.gratuities = state.gratuities.filter(g => g.id !== action.payload)
+      })
+
       .addCase(inlineEditPayslip.fulfilled, (state, action) => {
         const idx = state.payslips.findIndex(p => p.id === action.payload.id)
         if (idx !== -1) state.payslips[idx] = action.payload
@@ -894,6 +957,8 @@ const payrollSlice = createSlice({
       .addCase(downloadExportImportFormat.rejected,  (state) => { state.exportingExcel = false })
   },
 })
+
+export const selectGratuities = (state) => state.payroll.gratuities
 
 export const selectAll = (state) => state.payroll.contracts
 export const selectSelected = (state) => state.payroll.selected
