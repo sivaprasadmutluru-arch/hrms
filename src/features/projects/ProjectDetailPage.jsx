@@ -98,7 +98,7 @@ export default function ProjectDetailPage() {
   return (
     <div>
       <PageHeader
-        title={project.name}
+        title={project.title}
         subtitle={project.description}
         actions={<Button variant="secondary" onClick={() => navigate('/projects')}>← Back</Button>}
       />
@@ -107,7 +107,7 @@ export default function ProjectDetailPage() {
       <div className="bg-white rounded-lg border p-4 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="text-gray-500 text-xs uppercase tracking-wide">Status</p>
-          <Badge label={project.status || 'ACTIVE'} variant={project.status === 'COMPLETED' ? 'success' : project.status === 'ON_HOLD' ? 'warning' : 'primary'} />
+          <Badge label={project.status || 'PLANNED'} variant={project.status === 'COMPLETED' ? 'primary' : project.status === 'ON_HOLD' ? 'warning' : project.status === 'CANCELLED' ? 'danger' : project.status === 'IN_PROGRESS' ? 'success' : 'default'} />
         </div>
         {project.startDate && (
           <div>

@@ -16,7 +16,7 @@ import EmptyState from '../../components/common/EmptyState'
 import { formatDate } from '../../utils/formatters'
 import { FolderIcon, CalendarIcon } from '@heroicons/react/24/outline'
 
-const STATUS_VARIANT = { ACTIVE: 'success', COMPLETED: 'primary', ON_HOLD: 'warning', CANCELLED: 'danger' }
+const STATUS_VARIANT = { PLANNED: 'default', IN_PROGRESS: 'success', ON_HOLD: 'warning', COMPLETED: 'primary', CANCELLED: 'danger' }
 
 export default function ProjectsPage() {
   const dispatch = useDispatch()
@@ -58,7 +58,7 @@ export default function ProjectsPage() {
                 </div>
                 <Badge label={project.status || 'Active'} variant={STATUS_VARIANT[project.status] || 'default'} />
               </div>
-              <h3 className="font-semibold text-gray-900 mb-1">{project.name}</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">{project.title}</h3>
               <p className="text-sm text-gray-500 mb-3 line-clamp-2">{project.description || 'No description'}</p>
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{formatDate(project.startDate)}</span>
@@ -71,12 +71,12 @@ export default function ProjectsPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Project' : 'New Project'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
-          <Input label="Project Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
+          <Input label="Project Name" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" rows={3} {...register('description')} />
           </div>
-          <Select label="Status" options={['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']} {...register('status')} />
+          <Select label="Status" options={['PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED']} {...register('status')} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Start Date" type="date" {...register('startDate')} />
             <Input label="End Date" type="date" {...register('endDate')} />
