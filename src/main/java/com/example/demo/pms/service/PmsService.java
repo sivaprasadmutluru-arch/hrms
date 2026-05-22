@@ -55,6 +55,11 @@ public class PmsService {
     public PerformanceCycle createCycle(PerformanceCycle cycle) {
         if (cycle.getCompany() != null && cycle.getCompany().getId() != null) {
             cycle.setCompany(companyRepository.getReferenceById(cycle.getCompany().getId()));
+        } else {
+            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+            if (scope != null && scope.getCompanyId() != null) {
+                cycle.setCompany(companyRepository.getReferenceById(scope.getCompanyId()));
+            }
         }
         log.info("Creating performance cycle: {}", cycle.getName());
         return cycleRepository.save(cycle);

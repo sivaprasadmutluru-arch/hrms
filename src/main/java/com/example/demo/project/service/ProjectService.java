@@ -1,6 +1,7 @@
 package com.example.demo.project.service;
 
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
@@ -54,6 +55,11 @@ public class ProjectService {
     public Project createProject(Project project) {
         if (project.getCompany() != null && project.getCompany().getId() != null) {
             project.setCompany(companyRepository.getReferenceById(project.getCompany().getId()));
+        } else {
+            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+            if (scope != null && scope.getCompanyId() != null) {
+                project.setCompany(companyRepository.getReferenceById(scope.getCompanyId()));
+            }
         }
         if (project.getManager() != null && project.getManager().getId() != null) {
             project.setManager(employeeRepository.getReferenceById(project.getManager().getId()));
