@@ -73,8 +73,14 @@ public class AvailableLeave extends BaseEntity {
         } else {
             this.carryforwardDays = 0.0;
         }
-        this.availableDays = leaveType.getTotalDays() != null
-                ? leaveType.getTotalDays().doubleValue() : 0.0;
+        // If accrual is enabled, zero out available days on reset — monthly accrual will refill it.
+        // If accrual is disabled, restore the full annual entitlement immediately.
+        if (Boolean.TRUE.equals(leaveType.getAccrualEnabled())) {
+            this.availableDays = 0.0;
+        } else {
+            this.availableDays = leaveType.getTotalDays() != null
+                    ? leaveType.getTotalDays().doubleValue() : 0.0;
+        }
     }
 
     /**

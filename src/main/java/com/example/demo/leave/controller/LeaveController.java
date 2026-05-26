@@ -212,6 +212,70 @@ public class LeaveController {
         return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId).stream().map(LeaveMapper::toDTO).toList());
     }
 
+    @PutMapping("/balance/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Directly update an employee's leave balance record")
+    public ResponseEntity<AvailableLeaveDTO> updateBalance(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        AvailableLeave al = availableLeaveRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("AvailableLeave", id));
+        if (body.containsKey("availableDays")) al.setAvailableDays(((Number) body.get("availableDays")).doubleValue());
+        if (body.containsKey("carryforwardDays")) al.setCarryforwardDays(((Number) body.get("carryforwardDays")).doubleValue());
+        if (body.containsKey("totalLeaveDays")) al.setTotalLeaveDays(((Number) body.get("totalLeaveDays")).doubleValue());
+        if (body.containsKey("resetDate") && body.get("resetDate") != null)
+            al.setResetDate(LocalDate.parse(body.get("resetDate").toString()));
+        if (body.containsKey("expiredDate"))
+            al.setExpiredDate(body.get("expiredDate") != null ? LocalDate.parse(body.get("expiredDate").toString()) : null);
+        return ResponseEntity.ok(LeaveMapper.toDTO(availableLeaveRepository.save(al)));
+    }
+
+    @GetMapping("/balance/export")
+    @PreAuthorize("hasAuthority('leave:view')")
+    @Operation(summary = "Export leave balances as Excel")
+    public void exportBalance(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
+        var spec = ScopeFilter.<AvailableLeave>byEmployeeCompany();
+        List<AvailableLeave> records = spec != null
+                ? availableLeaveRepository.findAll(spec)
+                : availableLeaveRepository.findAll();
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=leave_balance.xlsx");
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Leave Balance");
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font font = workbook.createFont();
+            font.setBold(true);
+            headerStyle.setFont(font);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Row header = sheet.createRow(0);
+            String[] cols = {"Employee", "Leave Type", "Available Days", "Carry Forward", "Total Days", "Assigned Date", "Reset Date", "Expires"};
+            for (int i = 0; i < cols.length; i++) {
+                Cell cell = header.createCell(i);
+                cell.setCellValue(cols[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            int rowNum = 1;
+            for (AvailableLeave al : records) {
+                Row row = sheet.createRow(rowNum++);
+                String empName = al.getEmployee() != null
+                        ? (al.getEmployee().getFirstName() != null ? al.getEmployee().getFirstName() : "") + " "
+                          + (al.getEmployee().getLastName() != null ? al.getEmployee().getLastName() : "")
+                        : "";
+                row.createCell(0).setCellValue(empName.trim());
+                row.createCell(1).setCellValue(al.getLeaveType() != null ? al.getLeaveType().getName() : "");
+                row.createCell(2).setCellValue(al.getAvailableDays() != null ? al.getAvailableDays() : 0.0);
+                row.createCell(3).setCellValue(al.getCarryforwardDays() != null ? al.getCarryforwardDays() : 0.0);
+                row.createCell(4).setCellValue(al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0);
+                row.createCell(5).setCellValue(al.getAssignedDate() != null ? al.getAssignedDate().toString() : "");
+                row.createCell(6).setCellValue(al.getResetDate() != null ? al.getResetDate().toString() : "");
+                row.createCell(7).setCellValue(al.getExpiredDate() != null ? al.getExpiredDate().toString() : "");
+            }
+            for (int i = 0; i < cols.length; i++) sheet.autoSizeColumn(i);
+            workbook.write(response.getOutputStream());
+        }
+    }
+
     @PostMapping("/balance/credit")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional

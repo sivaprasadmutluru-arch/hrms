@@ -53,17 +53,20 @@ public class LeaveScheduler {
                 if (today.equals(al.getResetDate())) {
                     al.updateCarryforward();
                     al.setResetDate(al.computeNextResetDate(today));
+                    // Fix 1: set expiry date on the balance when carry forward type is CARRYFORWARD_EXPIRE
+                    if (leaveType.getCarryforwardType() == LeaveType.CarryforwardType.CARRYFORWARD_EXPIRE) {
+                        al.setExpiredDate(computeNewExpiredDate(leaveType, today));
+                    }
                     availableLeaveRepository.save(al);
                     log.info("Leave reset for employee={} leaveType={}", al.getEmployee().getId(), leaveType.getName());
                 }
 
-                // Carryforward expiry: if expired_date <= today, zero out carryforward and set new expiry
+                // Carryforward expiry: if expired_date <= today, zero out carryforward only
                 LocalDate expiredDate = al.getExpiredDate();
                 if (expiredDate != null && !expiredDate.isAfter(today)) {
+                    // Fix 2: only zero out carried-forward days; do not touch availableDays
                     al.setCarryforwardDays(0.0);
-                    al.setAvailableDays(leaveType.getTotalDays() != null ? leaveType.getTotalDays().doubleValue() : 0.0);
-                    // Compute new expiry date from today
-                    al.setExpiredDate(computeNewExpiredDate(leaveType, today));
+                    al.setExpiredDate(null);
                     availableLeaveRepository.save(al);
                     log.info("Carryforward expired for employee={} leaveType={}", al.getEmployee().getId(), leaveType.getName());
                 }
