@@ -1,21 +1,34 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import toast from 'react-hot-toast'
 import {
   fetchLeaveBalance, selectLeaveBalance, selectLoading,
   fetchAccrualLog, selectAccrualLog,
+  updateLeaveBalance, exportLeaveBalance,
 } from './leaveSlice'
 import PageHeader from '../../components/common/PageHeader'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Button from '../../components/common/Button'
+import Input from '../../components/common/Input'
 import { formatDate } from '../../utils/formatters'
+import useAuth from '../../hooks/useAuth'
 
 export default function LeaveBalancePage() {
   const dispatch = useDispatch()
+  const { user, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
+  const companyId = user?.companyId
   const leaveBalance = useSelector(selectLeaveBalance)
   const loading = useSelector(selectLoading)
   const accrualLog = useSelector(selectAccrualLog)
-  const [logModal, setLogModal] = useState(null) // { employeeId, leaveTypeId, name }
+
+  const [logModal, setLogModal] = useState(null)
+  const [editTarget, setEditTarget] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
     dispatch(fetchLeaveBalance())
@@ -24,6 +37,50 @@ export default function LeaveBalancePage() {
   const openLog = (row) => {
     setLogModal({ employeeId: row.employeeId, leaveTypeId: row.leaveTypeId, name: `${row.employeeName} – ${row.leaveTypeName}` })
     dispatch(fetchAccrualLog({ employeeId: row.employeeId, leaveTypeId: row.leaveTypeId }))
+  }
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    setEditForm({
+      availableDays: row.availableDays ?? 0,
+      carryforwardDays: row.carryforwardDays ?? 0,
+      totalLeaveDays: row.totalLeaveDays ?? 0,
+      resetDate: row.resetDate || '',
+      expiredDate: row.expiredDate || '',
+    })
+  }
+
+  const handleEditSave = async () => {
+    setSaving(true)
+    try {
+      await dispatch(updateLeaveBalance({
+        id: editTarget.id,
+        data: {
+          availableDays: editForm.availableDays !== '' ? Number(editForm.availableDays) : 0,
+          carryforwardDays: editForm.carryforwardDays !== '' ? Number(editForm.carryforwardDays) : 0,
+          totalLeaveDays: editForm.totalLeaveDays !== '' ? Number(editForm.totalLeaveDays) : 0,
+          resetDate: editForm.resetDate || null,
+          expiredDate: editForm.expiredDate || null,
+        },
+      })).unwrap()
+      toast.success('Leave balance updated')
+      setEditTarget(null)
+    } catch (e) {
+      toast.error(e || 'Failed to update leave balance')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await dispatch(exportLeaveBalance(companyId)).unwrap()
+    } catch (e) {
+      toast.error(e || 'Failed to export')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const columns = [
@@ -40,16 +97,30 @@ export default function LeaveBalancePage() {
     }},
     { accessorKey: 'assignedDate', header: 'Assigned', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'expiredDate', header: 'Expires', cell: ({ getValue }) => getValue() || '—' },
-    { id: 'accrualLog', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="ghost" onClick={() => openLog(row.original)}>Accrual Log</Button>
+    { id: 'actions', header: '', cell: ({ row }) => (
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" onClick={() => openLog(row.original)}>Accrual Log</Button>
+        {canManage && (
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        )}
+      </div>
     )},
   ]
 
   return (
     <div>
-      <PageHeader title="Leave Balance" subtitle="Available leave days per employee and type" />
+      <PageHeader
+        title="Leave Balance"
+        subtitle="Available leave days per employee and type"
+        actions={
+          <Button variant="secondary" onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Exporting…' : 'Export Excel'}
+          </Button>
+        }
+      />
       <DataTable columns={columns} data={leaveBalance} loading={loading} />
 
+      {/* Accrual Log Modal */}
       <Modal open={!!logModal} onClose={() => setLogModal(null)}
         title={`Accrual History — ${logModal?.name || ''}`}>
         {accrualLog.length === 0
@@ -74,6 +145,58 @@ export default function LeaveBalancePage() {
               </tbody>
             </table>
           )}
+      </Modal>
+
+      {/* Edit Balance Modal */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title={`Edit Balance — ${editTarget?.employeeName || ''} / ${editTarget?.leaveTypeName || ''}`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Available Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={editForm.availableDays}
+            onChange={e => setEditForm(f => ({ ...f, availableDays: e.target.value }))}
+          />
+          <Input
+            label="Carry Forward Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={editForm.carryforwardDays}
+            onChange={e => setEditForm(f => ({ ...f, carryforwardDays: e.target.value }))}
+          />
+          <Input
+            label="Total Leave Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={editForm.totalLeaveDays}
+            onChange={e => setEditForm(f => ({ ...f, totalLeaveDays: e.target.value }))}
+          />
+          <Input
+            label="Reset Date"
+            type="date"
+            value={editForm.resetDate}
+            onChange={e => setEditForm(f => ({ ...f, resetDate: e.target.value }))}
+          />
+          <Input
+            label="Expiry Date (carry forward)"
+            type="date"
+            value={editForm.expiredDate}
+            onChange={e => setEditForm(f => ({ ...f, expiredDate: e.target.value }))}
+          />
+        </div>
       </Modal>
     </div>
   )

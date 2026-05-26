@@ -40,15 +40,61 @@ const STATUS_OPTIONS = [
 
 const PAYMENT_BADGE = { PAID: 'success', UNPAID: 'warning' }
 
+const EXPIRE_PERIOD_OPTIONS = [
+  { value: 'day', label: 'Day(s)' },
+  { value: 'month', label: 'Month(s)' },
+  { value: 'year', label: 'Year(s)' },
+]
+
+const RESET_BASED_OPTIONS = [
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'weekly', label: 'Weekly' },
+]
+
+const RESET_MONTH_OPTIONS = [
+  { value: '1', label: 'January' }, { value: '2', label: 'February' },
+  { value: '3', label: 'March' }, { value: '4', label: 'April' },
+  { value: '5', label: 'May' }, { value: '6', label: 'June' },
+  { value: '7', label: 'July' }, { value: '8', label: 'August' },
+  { value: '9', label: 'September' }, { value: '10', label: 'October' },
+  { value: '11', label: 'November' }, { value: '12', label: 'December' },
+]
+
+const RESET_DAY_OPTIONS = [
+  ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+  { value: 'last day', label: 'Last day' },
+]
+
+const RESET_WEEKDAY_OPTIONS = [
+  { value: '0', label: 'Monday' }, { value: '1', label: 'Tuesday' },
+  { value: '2', label: 'Wednesday' }, { value: '3', label: 'Thursday' },
+  { value: '4', label: 'Friday' }, { value: '5', label: 'Saturday' },
+  { value: '6', label: 'Sunday' },
+]
+
 function defaultValues(lt) {
   return {
     name: lt?.name || '',
     totalDays: lt?.totalDays ?? '',
     paymentType: lt?.paymentType || 'PAID',
     carryforwardType: lt?.carryforwardType || 'NO_CARRYFORWARD',
+    carryforwardMax: lt?.carryforwardMax ?? '',
+    carryforwardExpireIn: lt?.carryforwardExpireIn ?? '',
+    carryforwardExpirePeriod: lt?.carryforwardExpirePeriod || 'month',
+    carryforwardExpireDate: lt?.carryforwardExpireDate || '',
     leaveValidationType: lt?.leaveValidationType || 'AUTOMATIC',
     isActive: lt ? String(lt.isActive !== false) : 'true',
     applicableEmployeeTypeIds: lt?.applicableEmployeeTypeIds?.map(String) || [],
+    accrualEnabled: lt?.accrualEnabled || false,
+    midYearJoinerMode: lt?.midYearJoinerMode || 'MANUAL',
+    negativeBalanceAllowed: lt?.negativeBalanceAllowed || false,
+    negativeBalanceLimit: lt?.negativeBalanceLimit ?? '',
+    reset: lt?.reset || false,
+    resetBased: lt?.resetBased || 'yearly',
+    resetMonth: lt?.resetMonth || '1',
+    resetDay: lt?.resetDay || '1',
+    resetWeekend: lt?.resetWeekend || '0',
   }
 }
 
@@ -65,7 +111,7 @@ export default function LeaveTypesPage() {
 
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
-  const { register, handleSubmit, reset, control, formState: { errors, isSubmitting } } = useForm()
+  const { register, handleSubmit, reset, control, watch, formState: { errors, isSubmitting } } = useForm()
 
   useEffect(() => {
     dispatch(fetchLeaveTypes())
@@ -85,14 +131,30 @@ export default function LeaveTypesPage() {
   }
 
   const onSubmit = async (data) => {
+    const hasCF = data.carryforwardType !== 'NO_CARRYFORWARD'
+    const hasExpiry = data.carryforwardType === 'CARRYFORWARD_EXPIRE'
+    const resetEnabled = data.reset === true || data.reset === 'true'
     const payload = {
       name: data.name,
       totalDays: data.totalDays !== '' ? Number(data.totalDays) : null,
       paymentType: data.paymentType,
       carryforwardType: data.carryforwardType,
+      carryforwardMax: hasCF && data.carryforwardMax !== '' ? Number(data.carryforwardMax) : null,
+      carryforwardExpireIn: hasExpiry && data.carryforwardExpireIn !== '' ? Number(data.carryforwardExpireIn) : null,
+      carryforwardExpirePeriod: hasExpiry && data.carryforwardExpireIn !== '' ? data.carryforwardExpirePeriod : null,
+      carryforwardExpireDate: hasExpiry && data.carryforwardExpireDate ? data.carryforwardExpireDate : null,
       leaveValidationType: data.leaveValidationType,
       isActive: data.isActive === 'true',
       applicableEmployeeTypes: (data.applicableEmployeeTypeIds || []).map(id => ({ id: Number(id) })),
+      accrualEnabled: data.accrualEnabled,
+      midYearJoinerMode: data.midYearJoinerMode || 'MANUAL',
+      negativeBalanceAllowed: data.negativeBalanceAllowed,
+      negativeBalanceLimit: data.negativeBalanceAllowed && data.negativeBalanceLimit !== '' ? Number(data.negativeBalanceLimit) : null,
+      reset: resetEnabled,
+      resetBased: resetEnabled ? data.resetBased : null,
+      resetMonth: resetEnabled && data.resetBased === 'yearly' ? data.resetMonth : null,
+      resetDay: resetEnabled && data.resetBased !== 'weekly' ? data.resetDay : null,
+      resetWeekend: resetEnabled && data.resetBased === 'weekly' ? data.resetWeekend : null,
     }
     try {
       if (editTarget) {
@@ -276,6 +338,46 @@ export default function LeaveTypesPage() {
             {...register('carryforwardType')}
           />
 
+          {watch('carryforwardType') !== 'NO_CARRYFORWARD' && (
+            <Input
+              label="Max Carry Forward Days"
+              type="number"
+              min="0"
+              step="0.5"
+              placeholder="e.g. 5"
+              {...register('carryforwardMax')}
+            />
+          )}
+
+          {watch('carryforwardType') === 'CARRYFORWARD_EXPIRE' && (
+            <div className="space-y-3 pl-3 border-l-2 border-indigo-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiry Configuration</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Input
+                    label="Expires After"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 3"
+                    {...register('carryforwardExpireIn')}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Select
+                    label="Period"
+                    options={EXPIRE_PERIOD_OPTIONS}
+                    {...register('carryforwardExpirePeriod')}
+                  />
+                </div>
+              </div>
+              <Input
+                label="Fixed Expiry Date (optional)"
+                type="date"
+                {...register('carryforwardExpireDate')}
+              />
+            </div>
+          )}
+
           <Select
             label="Approval Required"
             options={APPROVAL_OPTIONS}
@@ -287,6 +389,81 @@ export default function LeaveTypesPage() {
             options={STATUS_OPTIONS}
             {...register('isActive')}
           />
+
+          {/* Accrual Settings */}
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Accrual Settings</p>
+            <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+              <input type="checkbox" {...register('accrualEnabled')} />
+              Enable monthly accrual (leave earned gradually, not upfront)
+            </label>
+            {watch('accrualEnabled') && (
+              <>
+                <p className="text-xs text-gray-500 mb-3">
+                  Monthly rate = {watch('totalDays') ? (Number(watch('totalDays')) / 12).toFixed(1) : '?'} days/month
+                </p>
+                <Select
+                  label="Mid-year joiner mode"
+                  options={[
+                    { value: 'MANUAL', label: 'Manual (HR sets opening balance; skip joining month)' },
+                    { value: 'AUTO_PRORATA', label: 'Auto pro-rata (system calculates joining month)' },
+                  ]}
+                  {...register('midYearJoinerMode')}
+                />
+              </>
+            )}
+            <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer">
+              <input type="checkbox" {...register('negativeBalanceAllowed')} />
+              Allow negative balance
+            </label>
+            {watch('negativeBalanceAllowed') && (
+              <Input
+                label="Max negative balance (days)"
+                type="number"
+                min="0"
+                step="0.5"
+                className="mt-2"
+                {...register('negativeBalanceLimit')}
+              />
+            )}
+          </div>
+
+          {/* Reset Settings */}
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Reset Settings</p>
+            <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+              <input type="checkbox" {...register('reset')} />
+              Enable automatic leave balance reset
+            </label>
+            {watch('reset') && (
+              <div className="space-y-3 pl-3 border-l-2 border-orange-100">
+                <Select
+                  label="Reset frequency"
+                  options={RESET_BASED_OPTIONS}
+                  {...register('resetBased')}
+                />
+
+                {watch('resetBased') === 'yearly' && (
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Select label="Reset month" options={RESET_MONTH_OPTIONS} {...register('resetMonth')} />
+                    </div>
+                    <div className="flex-1">
+                      <Select label="Reset day" options={RESET_DAY_OPTIONS} {...register('resetDay')} />
+                    </div>
+                  </div>
+                )}
+
+                {watch('resetBased') === 'monthly' && (
+                  <Select label="Reset day of month" options={RESET_DAY_OPTIONS} {...register('resetDay')} />
+                )}
+
+                {watch('resetBased') === 'weekly' && (
+                  <Select label="Reset day of week" options={RESET_WEEKDAY_OPTIONS} {...register('resetWeekend')} />
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 

@@ -170,30 +170,57 @@ export default function LeavePage() {
 
   const openCreateType = () => setTypeModal({
     name: '', totalDays: '', paymentType: 'PAID',
-    carryforwardType: 'NO_CARRYFORWARD', leaveValidationType: 'AUTOMATIC', colorCode: '',
+    carryforwardType: 'NO_CARRYFORWARD', carryforwardMax: '',
+    carryforwardExpireIn: '', carryforwardExpirePeriod: 'month', carryforwardExpireDate: '',
+    leaveValidationType: 'AUTOMATIC', colorCode: '',
     accrualEnabled: false, midYearJoinerMode: 'MANUAL',
     negativeBalanceAllowed: false, negativeBalanceLimit: '',
+    reset: false, resetBased: 'yearly', resetMonth: '1', resetDay: '1', resetWeekend: '0',
   })
   const openEditType = (lt) => setTypeModal({
     id: lt.id, name: lt.name, totalDays: String(lt.totalDays ?? ''),
     paymentType: lt.paymentType || 'PAID',
     carryforwardType: lt.carryforwardType || 'NO_CARRYFORWARD',
+    carryforwardMax: lt.carryforwardMax != null ? String(lt.carryforwardMax) : '',
+    carryforwardExpireIn: lt.carryforwardExpireIn != null ? String(lt.carryforwardExpireIn) : '',
+    carryforwardExpirePeriod: lt.carryforwardExpirePeriod || 'month',
+    carryforwardExpireDate: lt.carryforwardExpireDate || '',
     leaveValidationType: lt.leaveValidationType || 'AUTOMATIC',
     colorCode: lt.colorCode || '',
     accrualEnabled: lt.accrualEnabled || false,
     midYearJoinerMode: lt.midYearJoinerMode || 'MANUAL',
     negativeBalanceAllowed: lt.negativeBalanceAllowed || false,
     negativeBalanceLimit: lt.negativeBalanceLimit != null ? String(lt.negativeBalanceLimit) : '',
+    reset: lt.reset || false,
+    resetBased: lt.resetBased || 'yearly',
+    resetMonth: lt.resetMonth || '1',
+    resetDay: lt.resetDay || '1',
+    resetWeekend: lt.resetWeekend || '0',
   })
   const submitTypeModal = async () => {
-    const { id, name, totalDays, paymentType, carryforwardType, leaveValidationType, colorCode,
-            accrualEnabled, midYearJoinerMode, negativeBalanceAllowed, negativeBalanceLimit } = typeModal
+    const { id, name, totalDays, paymentType, carryforwardType, carryforwardMax,
+            carryforwardExpireIn, carryforwardExpirePeriod, carryforwardExpireDate,
+            leaveValidationType, colorCode,
+            accrualEnabled, midYearJoinerMode, negativeBalanceAllowed, negativeBalanceLimit,
+            reset, resetBased, resetMonth, resetDay, resetWeekend } = typeModal
     if (!name.trim() || !totalDays) { toast.error('Name and days are required'); return }
+    const hasCF = carryforwardType !== 'NO_CARRYFORWARD'
+    const hasExpiry = carryforwardType === 'CARRYFORWARD_EXPIRE'
     const payload = {
-      name, totalDays: Number(totalDays), paymentType, carryforwardType, leaveValidationType,
+      name, totalDays: Number(totalDays), paymentType, carryforwardType,
+      carryforwardMax: hasCF && carryforwardMax !== '' ? Number(carryforwardMax) : null,
+      carryforwardExpireIn: hasExpiry && carryforwardExpireIn !== '' ? Number(carryforwardExpireIn) : null,
+      carryforwardExpirePeriod: hasExpiry && carryforwardExpireIn !== '' ? carryforwardExpirePeriod : null,
+      carryforwardExpireDate: hasExpiry && carryforwardExpireDate ? carryforwardExpireDate : null,
+      leaveValidationType,
       colorCode: colorCode || null, accrualEnabled, midYearJoinerMode,
       negativeBalanceAllowed,
       negativeBalanceLimit: negativeBalanceAllowed && negativeBalanceLimit ? Number(negativeBalanceLimit) : null,
+      reset,
+      resetBased: reset ? resetBased : null,
+      resetMonth: reset && resetBased === 'yearly' ? resetMonth : null,
+      resetDay: reset && resetBased !== 'weekly' ? resetDay : null,
+      resetWeekend: reset && resetBased === 'weekly' ? resetWeekend : null,
     }
     try {
       if (id) {
@@ -460,6 +487,39 @@ export default function LeavePage() {
               ]}
               value={typeModal.carryforwardType}
               onChange={e => setTypeModal(m => ({ ...m, carryforwardType: e.target.value }))} />
+
+            {typeModal.carryforwardType !== 'NO_CARRYFORWARD' && (
+              <Input label="Max carry forward days" type="number" min="0" step="0.5" placeholder="e.g. 5"
+                value={typeModal.carryforwardMax}
+                onChange={e => setTypeModal(m => ({ ...m, carryforwardMax: e.target.value }))} />
+            )}
+
+            {typeModal.carryforwardType === 'CARRYFORWARD_EXPIRE' && (
+              <div className="space-y-3 pl-3 border-l-2 border-indigo-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiry Configuration</p>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Input label="Expires after" type="number" min="1" placeholder="e.g. 3"
+                      value={typeModal.carryforwardExpireIn}
+                      onChange={e => setTypeModal(m => ({ ...m, carryforwardExpireIn: e.target.value }))} />
+                  </div>
+                  <div className="flex-1">
+                    <Select label="Period"
+                      options={[
+                        { value: 'day', label: 'Day(s)' },
+                        { value: 'month', label: 'Month(s)' },
+                        { value: 'year', label: 'Year(s)' },
+                      ]}
+                      value={typeModal.carryforwardExpirePeriod}
+                      onChange={e => setTypeModal(m => ({ ...m, carryforwardExpirePeriod: e.target.value }))} />
+                  </div>
+                </div>
+                <Input label="Fixed expiry date (optional)" type="date"
+                  value={typeModal.carryforwardExpireDate}
+                  onChange={e => setTypeModal(m => ({ ...m, carryforwardExpireDate: e.target.value }))} />
+              </div>
+            )}
+
             <Select label="Approval"
               options={[
                 { value: 'AUTOMATIC', label: 'Automatic' },
@@ -502,6 +562,76 @@ export default function LeavePage() {
                   value={typeModal.negativeBalanceLimit}
                   onChange={e => setTypeModal(m => ({ ...m, negativeBalanceLimit: e.target.value }))}
                   className="mt-2" />
+              )}
+            </div>
+
+            <div className="border-t pt-4 mt-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Reset Settings</p>
+              <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+                <input type="checkbox" checked={!!typeModal.reset}
+                  onChange={e => setTypeModal(m => ({ ...m, reset: e.target.checked }))} />
+                Enable automatic leave balance reset
+              </label>
+              {typeModal.reset && (
+                <div className="space-y-3 pl-3 border-l-2 border-orange-100">
+                  <Select label="Reset frequency"
+                    options={[
+                      { value: 'yearly', label: 'Yearly' },
+                      { value: 'monthly', label: 'Monthly' },
+                      { value: 'weekly', label: 'Weekly' },
+                    ]}
+                    value={typeModal.resetBased}
+                    onChange={e => setTypeModal(m => ({ ...m, resetBased: e.target.value }))} />
+
+                  {typeModal.resetBased === 'yearly' && (
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Select label="Reset month"
+                          options={[
+                            { value: '1', label: 'January' }, { value: '2', label: 'February' },
+                            { value: '3', label: 'March' }, { value: '4', label: 'April' },
+                            { value: '5', label: 'May' }, { value: '6', label: 'June' },
+                            { value: '7', label: 'July' }, { value: '8', label: 'August' },
+                            { value: '9', label: 'September' }, { value: '10', label: 'October' },
+                            { value: '11', label: 'November' }, { value: '12', label: 'December' },
+                          ]}
+                          value={typeModal.resetMonth}
+                          onChange={e => setTypeModal(m => ({ ...m, resetMonth: e.target.value }))} />
+                      </div>
+                      <div className="flex-1">
+                        <Select label="Reset day"
+                          options={[
+                            ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+                            { value: 'last day', label: 'Last day' },
+                          ]}
+                          value={typeModal.resetDay}
+                          onChange={e => setTypeModal(m => ({ ...m, resetDay: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+
+                  {typeModal.resetBased === 'monthly' && (
+                    <Select label="Reset day of month"
+                      options={[
+                        ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+                        { value: 'last day', label: 'Last day' },
+                      ]}
+                      value={typeModal.resetDay}
+                      onChange={e => setTypeModal(m => ({ ...m, resetDay: e.target.value }))} />
+                  )}
+
+                  {typeModal.resetBased === 'weekly' && (
+                    <Select label="Reset day of week"
+                      options={[
+                        { value: '0', label: 'Monday' }, { value: '1', label: 'Tuesday' },
+                        { value: '2', label: 'Wednesday' }, { value: '3', label: 'Thursday' },
+                        { value: '4', label: 'Friday' }, { value: '5', label: 'Saturday' },
+                        { value: '6', label: 'Sunday' },
+                      ]}
+                      value={typeModal.resetWeekend}
+                      onChange={e => setTypeModal(m => ({ ...m, resetWeekend: e.target.value }))} />
+                  )}
+                </div>
               )}
             </div>
           </div>

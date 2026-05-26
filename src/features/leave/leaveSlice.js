@@ -137,6 +137,31 @@ export const creditLeaveBalance = createAsyncThunk('leave/creditLeaveBalance', a
   }
 })
 
+export const updateLeaveBalance = createAsyncThunk('leave/updateLeaveBalance', async ({ id, data }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/leave/balance/${id}`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update leave balance')
+  }
+})
+
+export const exportLeaveBalance = createAsyncThunk('leave/exportLeaveBalance', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/leave/balance/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'leave_balance.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to export leave balance')
+  }
+})
+
 export const fetchAllocationRequests = createAsyncThunk('leave/fetchAllocationRequests', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/leave/allocation-requests')
@@ -620,6 +645,12 @@ const leaveSlice = createSlice({
       .addCase(fetchLeaveBalance.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(creditLeaveBalance.fulfilled, (state) => { state.loading = false })
+
+      .addCase(updateLeaveBalance.fulfilled, (state, action) => {
+        const idx = state.leaveBalance.findIndex(b => b.id === action.payload.id)
+        if (idx !== -1) state.leaveBalance[idx] = action.payload
+      })
+      .addCase(updateLeaveBalance.rejected, (state, action) => { state.error = action.payload })
 
       .addCase(fetchAllocationRequests.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchAllocationRequests.fulfilled, (state, action) => {
