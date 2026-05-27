@@ -5,9 +5,7 @@ export const fetchAll = createAsyncThunk('employees/fetchAll', async (params, { 
   try {
     const { companyIdOverride, ...queryParams } = params || {}
     const headers = companyIdOverride ? { 'X-Company-Id': companyIdOverride } : {}
-    console.log('[employeesSlice] fetchAll → X-Company-Id override:', companyIdOverride ?? '(none)', '| headers sent:', headers)
     const res = await api.get('/employees', { params: queryParams, headers })
-    console.log('[employeesSlice] fetchAll ← response:', { totalElements: res.data?.totalElements, contentLength: res.data?.content?.length, keys: Object.keys(res.data || {}) })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch employees')

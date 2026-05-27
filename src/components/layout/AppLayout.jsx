@@ -24,7 +24,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!isAuthenticated) return
     dispatch(fetchUnreadCount())
-    const interval = setInterval(() => dispatch(fetchUnreadCount()), 30000)
+    const interval = setInterval(() => dispatch(fetchUnreadCount()), 120000)
     return () => clearInterval(interval)
   }, [isAuthenticated])
 

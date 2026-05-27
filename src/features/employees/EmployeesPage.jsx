@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -47,7 +47,7 @@ const ROLE_OPTIONS_BY_LEVEL = {
   ],
 }
 
-function StatCard({ label, value, icon, color }) {
+const StatCard = memo(function StatCard({ label, value, icon, color }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl ${color}`}>
@@ -59,9 +59,9 @@ function StatCard({ label, value, icon, color }) {
       </div>
     </div>
   )
-}
+})
 
-function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isOnline }) {
+const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isOnline }) {
   return (
     <div
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
@@ -174,7 +174,7 @@ function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isO
       </div>
     </div>
   )
-}
+})
 
 export default function EmployeesPage() {
   const dispatch = useDispatch()
@@ -272,8 +272,8 @@ export default function EmployeesPage() {
     }
   }
 
-  const openCreate = () => { setEditing(null); setModalOpen(true) }
-  const openEdit = (row) => { setEditing(row); setModalOpen(true) }
+  const openCreate = useCallback(() => { setEditing(null); setModalOpen(true) }, [])
+  const openEdit = useCallback((row) => { setEditing(row); setModalOpen(true) }, [])
 
   useEffect(() => {
     if (!modalOpen) return

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
@@ -61,19 +61,57 @@ function buildCalendarGrid(year, month, days) {
 
 const CHART_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899']
 
-// ─── Check-In / Check-Out Widget — shown for all roles ───────────────────────
-
-function CheckInOutWidget({ user }) {
-  const dispatch = useDispatch()
-  const myAttendance = useSelector(selectEssAttendance)
-  const workInfo = useSelector(selectEssWorkInfo)
-  const [actionLoading, setActionLoading] = useState(false)
+// ─── Isolated live clock — 1s timer stays inside this tiny component only ────
+function LiveClock() {
   const [now, setNow] = useState(new Date())
-
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
+  return (
+    <>
+      <p className="text-base font-bold text-gray-900 tabular-nums mt-0.5">
+        {now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </p>
+      <p className="text-xs text-gray-400 mt-0.5">
+        {now.toLocaleDateString('en', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
+    </>
+  )
+}
+
+// ─── Check-In / Check-Out Widget — shown for all roles ───────────────────────
+
+const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
+  const dispatch = useDispatch()
+  const myAttendance = useSelector(selectEssAttendance)
+  const workInfo = useSelector(selectEssWorkInfo)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [elapsed, setElapsed] = useState('')
+
+  useEffect(() => {
+    function computeElapsed() {
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
+      const isClockedIn = myRecord?.checkIn && !myRecord?.checkOut
+      if (isClockedIn && myRecord.checkIn) {
+        const [h, m] = myRecord.checkIn.split(':').map(Number)
+        const checkInTime = new Date()
+        checkInTime.setHours(h, m, 0, 0)
+        const diffMs = Date.now() - checkInTime
+        if (diffMs > 0) {
+          const diffH = Math.floor(diffMs / 3600000)
+          const diffM = Math.floor((diffMs % 3600000) / 60000)
+          setElapsed(`${diffH}h ${diffM}m worked`)
+          return
+        }
+      }
+      setElapsed('')
+    }
+    computeElapsed()
+    const timer = setInterval(computeElapsed, 60000)
+    return () => clearInterval(timer)
+  }, [myAttendance])
 
   useEffect(() => {
     dispatch(fetchMyAttendance())
@@ -84,22 +122,6 @@ function CheckInOutWidget({ user }) {
   const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
   const isClockedIn  = myRecord?.checkIn && !myRecord?.checkOut
   const isClockedOut = myRecord?.checkIn && myRecord?.checkOut
-
-  const timeStr = now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const dateStr = now.toLocaleDateString('en', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-
-  let elapsed = ''
-  if (isClockedIn && myRecord.checkIn) {
-    const [h, m] = (myRecord.checkIn || '00:00').split(':').map(Number)
-    const checkInTime = new Date()
-    checkInTime.setHours(h, m, 0, 0)
-    const diffMs = now - checkInTime
-    if (diffMs > 0) {
-      const diffH = Math.floor(diffMs / 3600000)
-      const diffM = Math.floor((diffMs % 3600000) / 60000)
-      elapsed = `${diffH}h ${diffM}m worked`
-    }
-  }
 
   const handleCheckIn = async () => {
     setActionLoading(true)
@@ -117,11 +139,10 @@ function CheckInOutWidget({ user }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-6 w-full">
-      {/* Clock */}
+      {/* Clock — isolated in its own component so the 1s tick only re-renders this tiny node */}
       <div className="flex-shrink-0">
         <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Current Time</p>
-        <p className="text-base font-bold text-gray-900 tabular-nums mt-0.5">{timeStr}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{dateStr}</p>
+        <LiveClock />
       </div>
 
       {/* Divider */}
@@ -207,7 +228,7 @@ function CheckInOutWidget({ user }) {
       </div>
     </div>
   )
-}
+})
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
@@ -305,20 +326,20 @@ function PlatformAdminDashboard({ organizations, headcount, leave, helpdesk }) {
   )
 }
 
-function EnterpriseAdminDashboard({ branchSummaryList, headcount, leave, attendanceReport, helpdesk, companies }) {
-  const pendingLeaves = (leave.data || []).filter(l => l.status === 'PENDING')
-  const openTickets = (helpdesk.data || []).filter(t => t.status === 'OPEN')
+const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branchSummaryList, headcount, leave, attendanceReport, helpdesk, companies }) {
+  const pendingLeaves = useMemo(() => (leave.data || []).filter(l => l.status === 'PENDING'), [leave.data])
+  const openTickets = useMemo(() => (helpdesk.data || []).filter(t => t.status === 'OPEN'), [helpdesk.data])
 
-  const deptData = (headcount?.departmentBreakdown || []).map(d => ({
+  const deptData = useMemo(() => (headcount?.departmentBreakdown || []).map(d => ({
     name: d.department?.length > 12 ? d.department.slice(0, 12) + '…' : d.department,
     count: d.count,
-  }))
+  })), [headcount?.departmentBreakdown])
 
-  const attendanceChartData = (attendanceReport?.daily || []).slice(-7).map(d => ({
+  const attendanceChartData = useMemo(() => (attendanceReport?.daily || []).slice(-7).map(d => ({
     day: new Date(d.date).toLocaleDateString('en', { weekday: 'short' }),
     present: d.present ?? 0,
     absent: d.absent ?? 0,
-  }))
+  })), [attendanceReport?.daily])
 
   return (
     <>
@@ -450,22 +471,22 @@ function EnterpriseAdminDashboard({ branchSummaryList, headcount, leave, attenda
       </div>
     </>
   )
-}
+})
 
-function BranchHRDashboard({ headcount, attendanceDashboard, attendanceReport, leave, helpdesk, user }) {
-  const pendingLeaves = (leave.data || []).filter(l => l.status === 'PENDING')
-  const openTickets = (helpdesk.data || []).filter(t => t.status === 'OPEN')
+const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanceDashboard, attendanceReport, leave, helpdesk, user }) {
+  const pendingLeaves = useMemo(() => (leave.data || []).filter(l => l.status === 'PENDING'), [leave.data])
+  const openTickets = useMemo(() => (helpdesk.data || []).filter(t => t.status === 'OPEN'), [helpdesk.data])
 
-  const deptData = (headcount?.departmentBreakdown || []).map(d => ({
+  const deptData = useMemo(() => (headcount?.departmentBreakdown || []).map(d => ({
     name: d.department?.length > 14 ? d.department.slice(0, 14) + '…' : d.department,
     count: d.count,
-  }))
+  })), [headcount?.departmentBreakdown])
 
-  const attendanceChartData = (attendanceReport?.daily || []).slice(-7).map(d => ({
+  const attendanceChartData = useMemo(() => (attendanceReport?.daily || []).slice(-7).map(d => ({
     day: new Date(d.date).toLocaleDateString('en', { weekday: 'short' }),
     present: d.present ?? 0,
     absent: d.absent ?? 0,
-  }))
+  })), [attendanceReport?.daily])
 
   const todayStats = [
     { label: 'Total Employees', value: headcount?.total ?? '—', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -568,7 +589,7 @@ function BranchHRDashboard({ headcount, attendanceDashboard, attendanceReport, l
       </div>
     </>
   )
-}
+})
 
 function AccountantDashboard({ leave, helpdesk }) {
   const pendingLeaves = (leave.data || []).filter(l => l.status === 'PENDING')

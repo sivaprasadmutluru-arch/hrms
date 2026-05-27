@@ -61,8 +61,8 @@ export default function PayrollPage() {
   const genMode = watchGen('mode')
 
   useEffect(() => {
-    dispatch(fetchPayslips({ page: 0, size: 500 }))
-    dispatch(fetchEmployees({ page: 0, size: 500 }))
+    dispatch(fetchPayslips({ page: 0, size: 100 }))
+    dispatch(fetchEmployees({ page: 0, size: 100 }))
   }, [dispatch])
 
   // Group payslips by groupName, fall back to period key
