@@ -11,17 +11,21 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "leave_requests")
+@Table(name = "leave_requests", indexes = {
+        @Index(name = "idx_leave_request_emp_status", columnList = "employee_id, status"),
+        @Index(name = "idx_leave_request_dates", columnList = "start_date, end_date"),
+        @Index(name = "idx_leave_request_company", columnList = "company_id, status")
+})
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter
 public class LeaveRequest extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "leave_type_id", nullable = false)
     private LeaveType leaveType;
 

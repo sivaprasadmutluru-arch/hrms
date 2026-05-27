@@ -13,7 +13,12 @@ import java.time.LocalDate;
 import java.util.Set;
 
 @Entity
-@Table(name = "payslips")
+@Table(name = "payslips", indexes = {
+        @Index(name = "idx_payslip_emp_start", columnList = "employee_id, start_date"),
+        @Index(name = "idx_payslip_emp_dates", columnList = "employee_id, start_date, end_date"),
+        @Index(name = "idx_payslip_company_status", columnList = "company_id, status"),
+        @Index(name = "idx_payslip_auto_generated", columnList = "auto_generated")
+})
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Getter
 @Setter

@@ -164,7 +164,7 @@ public class EmployeeService {
             if (planMaxEmployees != Integer.MAX_VALUE) {
                 List<Company> orgCompanies = companyRepository.findByOrganizationId(org.getId());
                 long currentCount = orgCompanies.stream()
-                        .mapToLong(c -> employeeRepository.findByCompanyIdAndIsActiveTrue(c.getId()).size())
+                        .mapToLong(c -> employeeRepository.countByCompanyIdAndIsActiveTrue(c.getId()))
                         .sum();
                 if (currentCount >= planMaxEmployees) {
                     throw new BadRequestException(

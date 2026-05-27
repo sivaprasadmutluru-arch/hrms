@@ -15,7 +15,11 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "attendances")
+@Table(name = "attendances", indexes = {
+        @Index(name = "idx_attendance_emp_date", columnList = "employee_id, attendance_date"),
+        @Index(name = "idx_attendance_company_date", columnList = "company_id, attendance_date"),
+        @Index(name = "idx_attendance_validated_date", columnList = "attendance_validated, attendance_date")
+})
 @Getter
 @Setter
 public class Attendance extends BaseEntity {

@@ -130,6 +130,7 @@ public class Allowance extends BaseEntity {
             joinColumns = @JoinColumn(name = "allowance_id"),
             inverseJoinColumns = @JoinColumn(name = "condition_id"))
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @org.hibernate.annotations.BatchSize(size = 30)
     private Set<MultipleCondition> otherConditions;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
