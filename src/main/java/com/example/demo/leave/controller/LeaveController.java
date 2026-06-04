@@ -231,9 +231,36 @@ public class LeaveController {
 
     @GetMapping("/balance/export")
     @PreAuthorize("hasAuthority('leave:view')")
+    @Transactional(readOnly = true)
     @Operation(summary = "Export leave balances as Excel")
-    public void exportBalance(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
-        var spec = ScopeFilter.<AvailableLeave>byEmployeeCompany();
+    public void exportBalance(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) List<Long> employeeIds,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            HttpServletResponse response) throws IOException {
+        var scopeSpec = ScopeFilter.<AvailableLeave>byEmployeeCompany();
+
+        org.springframework.data.jpa.domain.Specification<AvailableLeave> spec = scopeSpec;
+
+        if (employeeIds != null && !employeeIds.isEmpty()) {
+            org.springframework.data.jpa.domain.Specification<AvailableLeave> empSpec =
+                (root, query, cb) -> root.get("employee").get("id").in(employeeIds);
+            spec = spec != null ? spec.and(empSpec) : empSpec;
+        }
+        if (fromDate != null) {
+            LocalDate fd = fromDate;
+            org.springframework.data.jpa.domain.Specification<AvailableLeave> fromSpec =
+                (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("assignedDate"), fd);
+            spec = spec != null ? spec.and(fromSpec) : fromSpec;
+        }
+        if (toDate != null) {
+            LocalDate td = toDate;
+            org.springframework.data.jpa.domain.Specification<AvailableLeave> toSpec =
+                (root, query, cb) -> cb.lessThanOrEqualTo(root.get("assignedDate"), td);
+            spec = spec != null ? spec.and(toSpec) : toSpec;
+        }
+
         List<AvailableLeave> records = spec != null
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();
