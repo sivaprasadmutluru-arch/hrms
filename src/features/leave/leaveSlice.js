@@ -146,9 +146,13 @@ export const updateLeaveBalance = createAsyncThunk('leave/updateLeaveBalance', a
   }
 })
 
-export const exportLeaveBalance = createAsyncThunk('leave/exportLeaveBalance', async (companyId, { rejectWithValue }) => {
+export const exportLeaveBalance = createAsyncThunk('leave/exportLeaveBalance', async ({ companyId, employeeIds, fromDate, toDate }, { rejectWithValue }) => {
   try {
-    const res = await api.get('/leave/balance/export', { params: { companyId }, responseType: 'blob' })
+    const params = { companyId }
+    if (employeeIds && employeeIds.length > 0) params.employeeIds = employeeIds
+    if (fromDate) params.fromDate = fromDate
+    if (toDate) params.toDate = toDate
+    const res = await api.get('/leave/balance/export', { params, responseType: 'blob' })
     const url = URL.createObjectURL(new Blob([res.data]))
     const link = document.createElement('a')
     link.href = url

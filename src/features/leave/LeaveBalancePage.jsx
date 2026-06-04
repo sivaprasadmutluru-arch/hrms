@@ -6,6 +6,7 @@ import {
   fetchAccrualLog, selectAccrualLog,
   updateLeaveBalance, exportLeaveBalance,
 } from './leaveSlice'
+import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
@@ -22,16 +23,24 @@ export default function LeaveBalancePage() {
   const loading = useSelector(selectLoading)
   const accrualLog = useSelector(selectAccrualLog)
 
+  const employees = useSelector(selectEmployees)
+
   const [logModal, setLogModal] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
 
+  // Export filters
+  const [filterEmployeeIds, setFilterEmployeeIds] = useState([])
+  const [filterFromDate, setFilterFromDate] = useState('')
+  const [filterToDate, setFilterToDate] = useState('')
+
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
   useEffect(() => {
     dispatch(fetchLeaveBalance())
+    dispatch(fetchEmployees({ page: 0, size: 500 }))
   }, [dispatch])
 
   const openLog = (row) => {
@@ -72,16 +81,44 @@ export default function LeaveBalancePage() {
     }
   }
 
+  const [exportModal, setExportModal] = useState(false)
+  const [empSearch, setEmpSearch] = useState('')
+
+  const openExportModal = () => {
+    setFilterEmployeeIds([])
+    setFilterFromDate('')
+    setFilterToDate('')
+    setEmpSearch('')
+    setExportModal(true)
+  }
+
   const handleExport = async () => {
     setExporting(true)
     try {
-      await dispatch(exportLeaveBalance(companyId)).unwrap()
+      await dispatch(exportLeaveBalance({
+        companyId,
+        employeeIds: filterEmployeeIds.length > 0 ? filterEmployeeIds : undefined,
+        fromDate: filterFromDate || undefined,
+        toDate: filterToDate || undefined,
+      })).unwrap()
+      setExportModal(false)
     } catch (e) {
       toast.error(e || 'Failed to export')
     } finally {
       setExporting(false)
     }
   }
+
+  const toggleEmployeeFilter = (id) => {
+    setFilterEmployeeIds(prev =>
+      prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]
+    )
+  }
+
+  const filteredEmployees = employees.filter(emp => {
+    const name = `${emp.firstName || ''} ${emp.lastName || ''}`.trim().toLowerCase()
+    return name.includes(empSearch.toLowerCase())
+  })
 
   const columns = [
     { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
@@ -113,11 +150,12 @@ export default function LeaveBalancePage() {
         title="Leave Balance"
         subtitle="Available leave days per employee and type"
         actions={
-          <Button variant="secondary" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exporting…' : 'Export Excel'}
+          <Button variant="secondary" onClick={openExportModal}>
+            Export Excel
           </Button>
         }
       />
+
       <DataTable columns={columns} data={leaveBalance} loading={loading} />
 
       {/* Accrual Log Modal */}
@@ -196,6 +234,87 @@ export default function LeaveBalancePage() {
             value={editForm.expiredDate}
             onChange={e => setEditForm(f => ({ ...f, expiredDate: e.target.value }))}
           />
+        </div>
+      </Modal>
+
+      {/* Export Modal */}
+      <Modal
+        open={exportModal}
+        onClose={() => setExportModal(false)}
+        title="Export Leave Balance"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setExportModal(false)}>Cancel</Button>
+            <Button onClick={handleExport} disabled={exporting}>
+              {exporting ? 'Exporting…' : 'Download Excel'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          {/* Employee selection */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-gray-700">Employees</label>
+              {filterEmployeeIds.length > 0
+                ? <button className="text-xs text-blue-500 hover:underline" onClick={() => setFilterEmployeeIds([])}>
+                    Clear ({filterEmployeeIds.length} selected)
+                  </button>
+                : <span className="text-xs text-gray-400">All employees (none selected)</span>
+              }
+            </div>
+            <input
+              type="text"
+              placeholder="Search employees…"
+              value={empSearch}
+              onChange={e => setEmpSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="border border-gray-200 rounded-lg bg-gray-50 max-h-48 overflow-y-auto divide-y divide-gray-100">
+              {filteredEmployees.length === 0 && (
+                <p className="text-sm text-gray-400 italic px-3 py-3">No employees found</p>
+              )}
+              {filteredEmployees.map(emp => {
+                const id = emp.id
+                const name = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.email
+                const checked = filterEmployeeIds.includes(id)
+                return (
+                  <label key={id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white transition-colors ${checked ? 'bg-blue-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleEmployeeFilter(id)}
+                      className="rounded border-gray-300 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-800">{name}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Date range */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Assigned From</label>
+              <input
+                type="date"
+                value={filterFromDate}
+                onChange={e => setFilterFromDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Assigned To</label>
+              <input
+                type="date"
+                value={filterToDate}
+                onChange={e => setFilterToDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
