@@ -11,6 +11,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -42,6 +43,12 @@ public class Attendance extends BaseEntity {
 
     @Column(name = "check_out_date")
     private LocalDate checkOutDate;
+
+    @Column(name = "check_in_utc")
+    private Instant checkInUtc;
+
+    @Column(name = "check_out_utc")
+    private Instant checkOutUtc;
 
     @Column(name = "worked_hour")
     private Double workedHour;

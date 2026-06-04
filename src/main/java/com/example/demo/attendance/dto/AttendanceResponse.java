@@ -4,6 +4,7 @@ import com.example.demo.attendance.entity.Attendance;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -18,6 +19,8 @@ public class AttendanceResponse {
     private LocalDate attendanceDate;
     private LocalTime checkIn;
     private LocalTime checkOut;
+    private Instant checkInUtc;
+    private Instant checkOutUtc;
     private Double workedHour;
     private Double minimumHour;
     private Double attendanceOvertime;
@@ -37,6 +40,8 @@ public class AttendanceResponse {
         r.setAttendanceDate(a.getAttendanceDate());
         r.setCheckIn(a.getCheckIn());
         r.setCheckOut(a.getCheckOut());
+        r.setCheckInUtc(a.getCheckInUtc());
+        r.setCheckOutUtc(a.getCheckOutUtc());
         r.setWorkedHour(a.getWorkedHour());
         r.setMinimumHour(a.getMinimumHour());
         r.setAttendanceOvertime(a.getAttendanceOvertime());

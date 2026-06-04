@@ -3,6 +3,7 @@ package com.example.demo.attendance.dto;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -18,6 +19,8 @@ public class AttendanceCalendarDayDto {
     private LocalDate checkInDate;
     private LocalTime checkOut;
     private LocalDate checkOutDate;
+    private Instant checkInUtc;
+    private Instant checkOutUtc;
     private String shiftName;
     private String workTypeName;
     private Double minimumHour;

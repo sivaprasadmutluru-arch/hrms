@@ -43,6 +43,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
@@ -668,6 +669,8 @@ public class AttendanceService {
                 dto.setCheckInDate(att.getCheckInDate());
                 dto.setCheckOut(att.getCheckOut());
                 dto.setCheckOutDate(att.getCheckOutDate());
+                dto.setCheckInUtc(att.getCheckInUtc());
+                dto.setCheckOutUtc(att.getCheckOutUtc());
                 dto.setMinimumHour(att.getMinimumHour());
                 dto.setWorkedHour(att.getWorkedHour());
                 if (att.getShift() != null) dto.setShiftName(att.getShift().getName());
@@ -722,6 +725,7 @@ public class AttendanceService {
         att.setAttendanceDate(LocalDate.now());
         att.setCheckIn(LocalTime.now());
         att.setCheckInDate(LocalDate.now());
+        att.setCheckInUtc(Instant.now());
         att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
 
         // Auto-attach employee's assigned shift and derive minimum hours for the day
@@ -742,6 +746,7 @@ public class AttendanceService {
         Attendance att = find(attendanceId);
         att.setCheckOut(LocalTime.now());
         att.setCheckOutDate(LocalDate.now());
+        att.setCheckOutUtc(Instant.now());
         att = attendanceRepository.save(att);
         autoComputeOnCheckout(att);
         return AttendanceResponse.from(att);
