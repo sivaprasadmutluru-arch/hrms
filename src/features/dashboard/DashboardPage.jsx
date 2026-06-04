@@ -94,11 +94,8 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
       const todayStr = new Date().toISOString().slice(0, 10)
       const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
       const isClockedIn = myRecord?.checkIn && !myRecord?.checkOut
-      if (isClockedIn && myRecord.checkIn) {
-        const [h, m] = myRecord.checkIn.split(':').map(Number)
-        const checkInTime = new Date()
-        checkInTime.setHours(h, m, 0, 0)
-        const diffMs = Date.now() - checkInTime
+      if (isClockedIn && myRecord.checkInUtc) {
+        const diffMs = Date.now() - new Date(myRecord.checkInUtc).getTime()
         if (diffMs > 0) {
           const diffH = Math.floor(diffMs / 3600000)
           const diffM = Math.floor((diffMs % 3600000) / 60000)
@@ -153,7 +150,11 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
         {isClockedIn && (
           <>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Checked in at</p>
-            <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkIn}</p>
+            <p className="text-sm font-semibold text-gray-900 mt-0.5">
+              {myRecord.checkInUtc
+                ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
+            </p>
             {elapsed && (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -166,11 +167,19 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
           <div className="flex items-center gap-6">
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check In</p>
-              <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkIn}</p>
+              <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                {myRecord.checkInUtc
+                  ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                  : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
+              </p>
             </div>
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check Out</p>
-              <p className="text-sm font-semibold text-gray-900 mt-0.5">{myRecord.checkOut}</p>
+              <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                {myRecord.checkOutUtc
+                  ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                  : (myRecord.checkOut ? String(myRecord.checkOut).substring(0, 5) : '—')}
+              </p>
             </div>
           </div>
         )}

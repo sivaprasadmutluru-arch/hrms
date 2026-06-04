@@ -66,7 +66,8 @@ export default function CompanySettingsPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
   const { currency: activeCurrency } = useCurrency()
-  const companyId = user?.companyId
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const companyId = selectedCompanyId ?? user?.companyId
   const loading = useSelector(selectBaseExtrasLoading)
   const emailConfig = useSelector(selectEmailConfig)
   const tags = useSelector(selectTags)

@@ -45,9 +45,10 @@ function formatHour(val) {
   return `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`
 }
 
-function formatTime(t) {
-  if (!t) return '—'
-  return String(t).substring(0, 5)
+function formatTime(utcIso, fallback) {
+  if (utcIso) return new Date(utcIso).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+  if (fallback) return String(fallback).substring(0, 5)
+  return '—'
 }
 
 // ─── Employee picker (for admin users with no employee record) ────────────────
@@ -335,13 +336,13 @@ export default function AttendanceCalendarPage() {
                 {selectedData.checkIn && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Check In</span>
-                    <span className="font-semibold text-gray-800">{formatTime(selectedData.checkIn)}</span>
+                    <span className="font-semibold text-gray-800">{formatTime(selectedData.checkInUtc, selectedData.checkIn)}</span>
                   </div>
                 )}
                 {selectedData.checkOut && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Check Out</span>
-                    <span className="font-semibold text-gray-800">{formatTime(selectedData.checkOut)}</span>
+                    <span className="font-semibold text-gray-800">{formatTime(selectedData.checkOutUtc, selectedData.checkOut)}</span>
                   </div>
                 )}
                 {selectedData.workedHour != null && (

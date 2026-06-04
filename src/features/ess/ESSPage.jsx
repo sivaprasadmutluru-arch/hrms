@@ -199,8 +199,12 @@ function AttendanceTab({ attendance, loading }) {
             ) : attendance.map(a => (
               <tr key={a.id} className="hover:bg-gray-50/50">
                 <td className="px-4 py-3 text-sm text-gray-700">{formatDate(a.attendanceDate)}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{a.checkIn || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{a.checkOut || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">
+                  {a.checkInUtc ? new Date(a.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) : (a.checkIn || '—')}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700">
+                  {a.checkOutUtc ? new Date(a.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) : (a.checkOut || '—')}
+                </td>
                 <td className="px-4 py-3 text-sm text-gray-700">{a.workedHour != null ? `${Number(a.workedHour).toFixed(1)}h` : '—'}</td>
                 <td className="px-4 py-3">
                   <Badge label={a.attendanceValidated ? 'Validated' : 'Pending'} variant={a.attendanceValidated ? 'success' : 'warning'} />
