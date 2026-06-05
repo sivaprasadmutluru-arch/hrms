@@ -201,7 +201,19 @@ public class LeaveController {
         List<AvailableLeave> result = spec != null
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();
-        return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
+        var scope = AccessScopeContext.get();
+        Long companyId = scope != null ? scope.getCompanyId() : null;
+        java.util.Map<String, Double> usedDaysMap = new java.util.HashMap<>();
+        if (companyId != null) {
+            leaveRequestRepository.sumApprovedDaysByEmployeeAndLeaveType(companyId)
+                    .forEach(row -> usedDaysMap.put(row[0] + ":" + row[1], ((Number) row[2]).doubleValue()));
+        }
+        return ResponseEntity.ok(result.stream().map(al -> {
+            Long empId = al.getEmployee() != null ? al.getEmployee().getId() : null;
+            Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
+            double used = (empId != null && ltId != null) ? usedDaysMap.getOrDefault(empId + ":" + ltId, 0.0) : 0.0;
+            return LeaveMapper.toDTO(al, used);
+        }).toList());
     }
 
     @GetMapping("/balance/employee/{employeeId}")
@@ -209,7 +221,14 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "Get leave balance for a specific employee")
     public ResponseEntity<List<AvailableLeaveDTO>> getEmployeeBalance(@PathVariable Long employeeId) {
-        return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId).stream().map(LeaveMapper::toDTO).toList());
+        java.util.Map<Long, Double> usedByType = new java.util.HashMap<>();
+        leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(employeeId)
+                .forEach(row -> usedByType.put(((Number) row[0]).longValue(), ((Number) row[1]).doubleValue()));
+        return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId).stream().map(al -> {
+            Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
+            double used = ltId != null ? usedByType.getOrDefault(ltId, 0.0) : 0.0;
+            return LeaveMapper.toDTO(al, used);
+        }).toList());
     }
 
     @PutMapping("/balance/{id}")
@@ -264,6 +283,18 @@ public class LeaveController {
         List<AvailableLeave> records = spec != null
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();
+
+        // Build used-days lookup: key = "employeeId:leaveTypeId"
+        // Use AccessScopeContext company ID (same source as /balance endpoint) to ensure consistency
+        var exportScope = AccessScopeContext.get();
+        Long usedDaysCompanyId = (exportScope != null && exportScope.getCompanyId() != null)
+                ? exportScope.getCompanyId() : companyId;
+        java.util.Map<String, Double> usedDaysMap = new java.util.HashMap<>();
+        if (usedDaysCompanyId != null) {
+            leaveRequestRepository.sumApprovedDaysByEmployeeAndLeaveType(usedDaysCompanyId)
+                    .forEach(row -> usedDaysMap.put(row[0] + ":" + row[1], ((Number) row[2]).doubleValue()));
+        }
+
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=leave_balance.xlsx");
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
@@ -276,7 +307,7 @@ public class LeaveController {
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
             Row header = sheet.createRow(0);
-            String[] cols = {"Employee", "Leave Type", "Available Days", "Carry Forward", "Total Days", "Assigned Date", "Reset Date", "Expires"};
+            String[] cols = {"Employee", "Leave Type", "Available Days", "Carry Forward", "Used Days", "Total Days", "Assigned Date", "Reset Date", "Expires"};
             for (int i = 0; i < cols.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(cols[i]);
@@ -289,14 +320,19 @@ public class LeaveController {
                         ? (al.getEmployee().getFirstName() != null ? al.getEmployee().getFirstName() : "") + " "
                           + (al.getEmployee().getLastName() != null ? al.getEmployee().getLastName() : "")
                         : "";
+                Long empId = al.getEmployee() != null ? al.getEmployee().getId() : null;
+                Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
+                double usedDays = (empId != null && ltId != null)
+                        ? usedDaysMap.getOrDefault(empId + ":" + ltId, 0.0) : 0.0;
                 row.createCell(0).setCellValue(empName.trim());
                 row.createCell(1).setCellValue(al.getLeaveType() != null ? al.getLeaveType().getName() : "");
                 row.createCell(2).setCellValue(al.getAvailableDays() != null ? al.getAvailableDays() : 0.0);
                 row.createCell(3).setCellValue(al.getCarryforwardDays() != null ? al.getCarryforwardDays() : 0.0);
-                row.createCell(4).setCellValue(al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0);
-                row.createCell(5).setCellValue(al.getAssignedDate() != null ? al.getAssignedDate().toString() : "");
-                row.createCell(6).setCellValue(al.getResetDate() != null ? al.getResetDate().toString() : "");
-                row.createCell(7).setCellValue(al.getExpiredDate() != null ? al.getExpiredDate().toString() : "");
+                row.createCell(4).setCellValue(usedDays);
+                row.createCell(5).setCellValue(al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0);
+                row.createCell(6).setCellValue(al.getAssignedDate() != null ? al.getAssignedDate().toString() : "");
+                row.createCell(7).setCellValue(al.getResetDate() != null ? al.getResetDate().toString() : "");
+                row.createCell(8).setCellValue(al.getExpiredDate() != null ? al.getExpiredDate().toString() : "");
             }
             for (int i = 0; i < cols.length; i++) sheet.autoSizeColumn(i);
             workbook.write(response.getOutputStream());

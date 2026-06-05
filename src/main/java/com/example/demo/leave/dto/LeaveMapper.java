@@ -70,6 +70,10 @@ public final class LeaveMapper {
     }
 
     public static AvailableLeaveDTO toDTO(AvailableLeave al) {
+        return toDTO(al, 0.0);
+    }
+
+    public static AvailableLeaveDTO toDTO(AvailableLeave al, double usedDays) {
         return new AvailableLeaveDTO(
                 al.getId(),
                 al.getEmployee() != null ? al.getEmployee().getId() : null,
@@ -79,6 +83,7 @@ public final class LeaveMapper {
                 al.getAvailableDays(),
                 al.getCarryforwardDays(),
                 al.getTotalLeaveDays(),
+                usedDays,
                 al.getAssignedDate(),
                 al.getResetDate(),
                 al.getExpiredDate()

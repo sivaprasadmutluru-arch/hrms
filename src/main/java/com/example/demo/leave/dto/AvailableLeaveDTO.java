@@ -11,6 +11,7 @@ public record AvailableLeaveDTO(
         Double availableDays,
         Double carryforwardDays,
         Double totalLeaveDays,
+        Double usedDays,
         LocalDate assignedDate,
         LocalDate resetDate,
         LocalDate expiredDate

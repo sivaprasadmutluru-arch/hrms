@@ -24,4 +24,18 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findApprovedOverlapping(@Param("employeeId") Long employeeId,
                                                @Param("startDate") LocalDate startDate,
                                                @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT lr.employee.id, lr.leaveType.id, COALESCE(SUM(lr.requestedDays), 0) " +
+           "FROM LeaveRequest lr " +
+           "WHERE lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.company.id = :companyId " +
+           "GROUP BY lr.employee.id, lr.leaveType.id")
+    List<Object[]> sumApprovedDaysByEmployeeAndLeaveType(@Param("companyId") Long companyId);
+
+    @Query("SELECT lr.leaveType.id, COALESCE(SUM(lr.requestedDays), 0) " +
+           "FROM LeaveRequest lr " +
+           "WHERE lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.employee.id = :employeeId " +
+           "GROUP BY lr.leaveType.id")
+    List<Object[]> sumApprovedDaysByLeaveTypeForEmployee(@Param("employeeId") Long employeeId);
 }
