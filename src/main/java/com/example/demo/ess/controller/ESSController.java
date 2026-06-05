@@ -193,6 +193,7 @@ public class ESSController {
                     att.setAttendanceDate(req.getAttendanceDate() != null ? req.getAttendanceDate() : today);
                     att.setCheckIn(req.getCheckIn() != null ? req.getCheckIn() : java.time.LocalTime.now());
                     att.setCheckInDate(req.getCheckInDate() != null ? req.getCheckInDate() : today);
+                    att.setCheckInUtc(java.time.Instant.now());
                     // Populate shift and work type from employee's work information
                     workInfoRepository.findByEmployeeId(emp.getId()).ifPresent(wi -> {
                         if (wi.getShift() != null) att.setShift(wi.getShift());
