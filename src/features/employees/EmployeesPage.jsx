@@ -213,6 +213,7 @@ export default function EmployeesPage() {
   )
   const [selectedRows, setSelectedRows] = useState([])
   const [showBulkUpdate, setShowBulkUpdate] = useState(false)
+  const [pageSize, setPageSize] = useState(20)
   const importEmployeesRef = useRef()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -237,12 +238,12 @@ export default function EmployeesPage() {
       // Use the persisted company filter (from the header switcher) if present
       const initCompanyId = authSelectedCompanyId ? Number(authSelectedCompanyId) : null
       if (initCompanyId) {
-        dispatch(fetchAll({ page: 0, size: 20, sort: 'id,desc', companyIdOverride: initCompanyId }))
+        dispatch(fetchAll({ page: 0, size: pageSize, sort: 'id,desc', companyIdOverride: initCompanyId }))
       } else {
-        dispatch(fetchAllGlobal({ page: 0, size: 20, sort: 'id,desc' }))
+        dispatch(fetchAllGlobal({ page: 0, size: pageSize, sort: 'id,desc' }))
       }
     } else {
-      dispatch(fetchAll({ page: 0, size: 20, sort: 'id,desc' }))
+      dispatch(fetchAll({ page: 0, size: pageSize, sort: 'id,desc' }))
     }
     dispatch(fetchUserRoles())
     dispatch(fetchDepartments({ page: 0, size: 100 }))
@@ -264,11 +265,11 @@ export default function EmployeesPage() {
   }, [dispatch])
 
   // Super Admin with no company filter → global; otherwise scoped
-  const load = (page) => {
+  const load = (page, size = pageSize) => {
     if (isPlatformAdmin() && !selectedCompanyId) {
-      dispatch(fetchAllGlobal({ page, size: 20, sort: 'id,desc' }))
+      dispatch(fetchAllGlobal({ page, size, sort: 'id,desc' }))
     } else {
-      dispatch(fetchAll({ page, size: 20, sort: 'id,desc', ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
+      dispatch(fetchAll({ page, size, sort: 'id,desc', ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
     }
   }
 
@@ -519,7 +520,7 @@ export default function EmployeesPage() {
                 } else {
                   const { successCount, failureCount } = res.payload
                   toast.success(`Imported ${successCount} employee(s)${failureCount > 0 ? `, ${failureCount} failed` : ''}`)
-                  dispatch(fetchAll({ page: 0, size: 20 }))
+                  dispatch(fetchAll({ page: 0, size: pageSize }))
                 }
                 e.target.value = ''
               }}
@@ -583,10 +584,10 @@ export default function EmployeesPage() {
                 setSelectedCompanyId(id)
                 dispatch(setSelectedCompany(id)) // keep in sync with header switcher
                 if (id) {
-                  dispatch(fetchAll({ page: 0, size: 20, companyIdOverride: id }))
+                  dispatch(fetchAll({ page: 0, size: pageSize, companyIdOverride: id }))
                   dispatch(fetchOnlineStatus(id))
                 } else {
-                  dispatch(fetchAllGlobal({ page: 0, size: 20 }))
+                  dispatch(fetchAllGlobal({ page: 0, size: pageSize }))
                   dispatch(fetchOnlineStatus(null))
                 }
               }}
@@ -606,7 +607,7 @@ export default function EmployeesPage() {
               onChange={e => {
                 const id = e.target.value ? Number(e.target.value) : null
                 setSelectedCompanyId(id)
-                dispatch(fetchAll({ page: 0, size: 20, ...(id ? { companyIdOverride: id } : {}) }))
+                dispatch(fetchAll({ page: 0, size: pageSize, ...(id ? { companyIdOverride: id } : {}) }))
               }}
               className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
             >
@@ -619,6 +620,21 @@ export default function EmployeesPage() {
               ))}
             </select>
           )}
+
+          {/* Page size selector */}
+          <select
+            value={pageSize}
+            onChange={e => {
+              const size = Number(e.target.value)
+              setPageSize(size)
+              load(0, size)
+            }}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+          >
+            <option value={20}>20 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
 
           {/* View toggle */}
           <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5 ml-auto">
@@ -678,7 +694,7 @@ export default function EmployeesPage() {
 
       <Pagination
         page={pagination.page}
-        totalPages={Math.ceil(pagination.total / pagination.size)}
+        totalPages={Math.ceil(pagination.total / pageSize)}
         onPageChange={load}
       />
 
