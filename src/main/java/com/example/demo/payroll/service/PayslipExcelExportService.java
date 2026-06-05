@@ -37,6 +37,13 @@ public class PayslipExcelExportService {
      * - Labels row at the bottom
      */
     public byte[] exportPayslips(List<Payslip> payslips, LocalDate startDate, LocalDate endDate) throws IOException {
+        return exportPayslips(payslips, startDate, endDate, "");
+    }
+
+    public byte[] exportPayslips(List<Payslip> payslips, LocalDate startDate, LocalDate endDate,
+                                  String currencySymbol) throws IOException {
+        boolean prefix = true;
+
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
 
             // Group payslips by company name
@@ -53,7 +60,7 @@ public class PayslipExcelExportService {
             }
 
             for (Map.Entry<String, List<Payslip>> entry : byCompany.entrySet()) {
-                buildCompanySheet(workbook, entry.getKey(), entry.getValue());
+                buildCompanySheet(workbook, entry.getKey(), entry.getValue(), currencySymbol, prefix);
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -69,6 +76,11 @@ public class PayslipExcelExportService {
     }
 
     private void buildCompanySheet(XSSFWorkbook wb, String sheetName, List<Payslip> payslips) {
+        buildCompanySheet(wb, sheetName, payslips, "", true);
+    }
+
+    private void buildCompanySheet(XSSFWorkbook wb, String sheetName, List<Payslip> payslips,
+                                    String currencySymbol, boolean prefix) {
         XSSFSheet sheet = wb.createSheet(sheetName);
 
         // ── Styles ────────────────────────────────────────────────────────
@@ -76,6 +88,19 @@ public class PayslipExcelExportService {
         CellStyle greenData   = coloredStyle(wb, new byte[]{(byte)0xD8,(byte)0xE4,(byte)0xBC}, false);
         CellStyle orangeHeader= coloredStyle(wb, new byte[]{(byte)0xFC,(byte)0xD5,(byte)0xB4}, true);
         CellStyle orangeData  = coloredStyle(wb, new byte[]{(byte)0xFC,(byte)0xD5,(byte)0xB4}, false);
+
+        // Currency styles — clone base styles and apply number format
+        CellStyle greenDataCurr  = greenData;
+        CellStyle orangeDataCurr = orangeData;
+        if (!currencySymbol.isEmpty()) {
+            String escaped = currencySymbol.replace("\"", "\\\"");
+            String fmtStr = prefix
+                    ? "\"" + escaped + "\"#,##0.00"
+                    : "#,##0.00\"" + escaped + "\"";
+            short fmtIdx = wb.createDataFormat().getFormat(fmtStr);
+            greenDataCurr  = wb.createCellStyle(); greenDataCurr.cloneStyleFrom(greenData);   greenDataCurr.setDataFormat(fmtIdx);
+            orangeDataCurr = wb.createCellStyle(); orangeDataCurr.cloneStyleFrom(orangeData); orangeDataCurr.setDataFormat(fmtIdx);
+        }
 
         // Label styles
         XSSFCellStyle labelGreen = wb.createCellStyle();
@@ -137,22 +162,22 @@ public class PayslipExcelExportService {
             Row row = sheet.createRow(rowNum++);
             row.setHeightInPoints(18);
 
-            createNumCell(row, 0,  badgeId,         greenData);
-            createCell   (row, 1,  empName,          greenData);
-            createCell   (row, 2,  dept,             greenData);
-            createNumCell(row, 3,  fmtD(basicPay),   greenData);
-            createNumCell(row, 4,  fmtD(housing),    greenData);
-            createNumCell(row, 5,  fmtD(transport),  greenData);
-            createNumCell(row, 6,  fmtD(other),      greenData);
-            createNumCell(row, 7,  fmtD(grossPay),   greenData);
-            createNumCell(row, 8,  fmtD(paidDays),   orangeData);
-            createNumCell(row, 9,  fmtD(lop),        orangeData);
-            createNumCell(row, 10, fmtD(loanRec),    orangeData);
-            createNumCell(row, 11, fmtD(otherDeduction),  orangeData);
-            createNumCell(row, 12, fmtD(overtime),   orangeData);
-            createNumCell(row, 13, fmtD(salAdv),     orangeData);
-            createNumCell(row, 14, fmtD(bonus),      orangeData);
-            createNumCell(row, 15, fmtD(netPay),     orangeData);
+            createNumCell(row, 0,  badgeId,             greenData);
+            createCell   (row, 1,  empName,             greenData);
+            createCell   (row, 2,  dept,                greenData);
+            createNumCell(row, 3,  fmtD(basicPay),      greenDataCurr);
+            createNumCell(row, 4,  fmtD(housing),       greenDataCurr);
+            createNumCell(row, 5,  fmtD(transport),     greenDataCurr);
+            createNumCell(row, 6,  fmtD(other),         greenDataCurr);
+            createNumCell(row, 7,  fmtD(grossPay),      greenDataCurr);
+            createNumCell(row, 8,  fmtD(paidDays),      orangeData);        // days, not money
+            createNumCell(row, 9,  fmtD(lop),           orangeDataCurr);
+            createNumCell(row, 10, fmtD(loanRec),       orangeDataCurr);
+            createNumCell(row, 11, fmtD(otherDeduction),orangeDataCurr);
+            createNumCell(row, 12, fmtD(overtime),      orangeDataCurr);
+            createNumCell(row, 13, fmtD(salAdv),        orangeDataCurr);
+            createNumCell(row, 14, fmtD(bonus),         orangeDataCurr);
+            createNumCell(row, 15, fmtD(netPay),        orangeDataCurr);
         }
 
         // ── Labels row at bottom ──────────────────────────────────────────

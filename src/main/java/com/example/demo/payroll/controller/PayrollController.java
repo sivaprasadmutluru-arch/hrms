@@ -1266,7 +1266,16 @@ public class PayrollController {
                 .toList();
 
         try {
-            byte[] bytes = payslipExcelExportService.exportPayslips(payslips, startDate, endDate);
+            var scopeForSettings = AccessScopeContext.get();
+            Long settingsCompanyId = scopeForSettings != null ? scopeForSettings.getCompanyId() : null;
+            String excelCurrSym = "";
+            if (settingsCompanyId != null) {
+                var co = companyRepository.findById(settingsCompanyId).orElse(null);
+                if (co != null && co.getCurrency() != null && !co.getCurrency().isBlank()) {
+                    excelCurrSym = co.getCurrency() + " ";
+                }
+            }
+            byte[] bytes = payslipExcelExportService.exportPayslips(payslips, startDate, endDate, excelCurrSym);
             String filename = "Payslip_export_" + LocalDate.now() + ".xlsx";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType(
@@ -1458,6 +1467,20 @@ public class PayrollController {
             try { phd = new ObjectMapper().readValue(p.getPayHeadData(), new TypeReference<>() {}); } catch (Exception ignored) {}
         }
 
+        // Use ISO currency code as prefix (e.g. "AED 39,612.90") matching screen display
+        String _isoCode = (p.getCompany() != null && p.getCompany().getCurrency() != null)
+                ? p.getCompany().getCurrency() : "";
+        final String currSym = _isoCode.isBlank() ? "" : _isoCode + " ";
+        final boolean currPrefix = true;
+        java.util.function.Function<Double, String> fmtCurr = v -> {
+            String n = String.format("%.2f", v);
+            return currPrefix ? currSym + n : n + currSym;
+        };
+        java.util.function.Function<java.math.BigDecimal, String> fmtCurrBD = v -> {
+            String n = v != null ? v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() : "0.00";
+            return currPrefix ? currSym + n : n + currSym;
+        };
+
         double bonus     = toDouble(phd.getOrDefault("bonus", 0));
         double overtime  = toDouble(phd.getOrDefault("overtime", toDouble(phd.getOrDefault("overtime_pay", 0))));
         double salAdv    = toDouble(phd.getOrDefault("salary_advance", 0));
@@ -1540,9 +1563,9 @@ public class PayrollController {
             case PAID            -> "Paid";
         } : "-";
         String[][] cardData = {
-            {"Net Salary",       formatAmount(p.getNetPay())},
-            {"Gross Salary",     formatAmount(p.getGrossPay())},
-            {"Total Deductions", formatAmount(p.getDeduction())},
+            {"Net Salary",       fmtCurrBD.apply(p.getNetPay())},
+            {"Gross Salary",     fmtCurrBD.apply(p.getGrossPay())},
+            {"Total Deductions", fmtCurrBD.apply(p.getDeduction())},
             {"Paid Days",        String.format("%.2f", paidDays)},
             {"Payment Status",   payStatus},
         };
@@ -1645,8 +1668,8 @@ public class PayrollController {
             PdfPCell oh3 = new PdfPCell(new Phrase("Overtime Amount", fOtLbl)); oh3.setBorderColor(INDIGO_B); oh3.setBorderWidth(0.5f); oh3.setPadding(6f); oh3.setBackgroundColor(INDIGO_L);
             otGrid.addCell(oh1); otGrid.addCell(oh2); otGrid.addCell(oh3);
             PdfPCell ov1 = new PdfPCell(new Phrase(String.format("%.2f hrs", otHrs), fOtVal)); ov1.setBorderColor(INDIGO_B); ov1.setBorderWidth(0.5f); ov1.setPadding(6f);
-            PdfPCell ov2 = new PdfPCell(new Phrase(formatAmt(otRate), fOtVal)); ov2.setBorderColor(INDIGO_B); ov2.setBorderWidth(0.5f); ov2.setPadding(6f);
-            PdfPCell ov3 = new PdfPCell(new Phrase(formatAmt(overtime), fOtVal)); ov3.setBorderColor(INDIGO_B); ov3.setBorderWidth(0.5f); ov3.setPadding(6f);
+            PdfPCell ov2 = new PdfPCell(new Phrase(fmtCurr.apply(otRate), fOtVal)); ov2.setBorderColor(INDIGO_B); ov2.setBorderWidth(0.5f); ov2.setPadding(6f);
+            PdfPCell ov3 = new PdfPCell(new Phrase(fmtCurr.apply(overtime), fOtVal)); ov3.setBorderColor(INDIGO_B); ov3.setBorderWidth(0.5f); ov3.setPadding(6f);
             otGrid.addCell(ov1); otGrid.addCell(ov2); otGrid.addCell(ov3);
             PdfPCell otWrapper = new PdfPCell(otGrid); otWrapper.setPadding(0); otWrapper.setBorderColor(INDIGO_B); otWrapper.setBorderWidth(0.5f); otWrapper.setBorderWidthTop(0);
             otBox.addCell(otWrapper);
@@ -1660,14 +1683,14 @@ public class PayrollController {
         PdfPCell aHead = new PdfPCell(new Phrase("Allowances", fSecHead)); aHead.setColspan(2);
         aHead.setBackgroundColor(INDIGO_L); aHead.setBorderColor(INDIGO_B); aHead.setBorderWidth(0.5f); aHead.setPadding(8f);
         allowTable.addCell(aHead);
-        addLineRow(allowTable, "Basic Pay", formatAmount(p.getBasicPay()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        addLineRow(allowTable, "Housing Allowance", formatAmount(p.getHousingAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        addLineRow(allowTable, "Transport Allowance", formatAmount(p.getTransportAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        addLineRow(allowTable, "Other Allowance", formatAmount(p.getOtherAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (bonus > 0)    addLineRow(allowTable, "Bonus",    formatAmt(bonus),    fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (overtime > 0) addLineRow(allowTable, "Overtime", formatAmt(overtime), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (salAdv > 0)   addLineRow(allowTable, "Salary Advance", formatAmt(salAdv), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        addLineRow(allowTable, "Total Gross Pay", formatAmount(p.getGrossPay()), fTotalLbl, fTotalAmt, INDIGO_B, GREEN_L);
+        addLineRow(allowTable, "Basic Pay", fmtCurrBD.apply(p.getBasicPay()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Housing Allowance", fmtCurrBD.apply(p.getHousingAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Transport Allowance", fmtCurrBD.apply(p.getTransportAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Other Allowance", fmtCurrBD.apply(p.getOtherAllowance()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (bonus > 0)    addLineRow(allowTable, "Bonus",    fmtCurr.apply(bonus),    fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (overtime > 0) addLineRow(allowTable, "Overtime", fmtCurr.apply(overtime), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (salAdv > 0)   addLineRow(allowTable, "Salary Advance", fmtCurr.apply(salAdv), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(allowTable, "Total Gross Pay", fmtCurrBD.apply(p.getGrossPay()), fTotalLbl, fTotalAmt, INDIGO_B, GREEN_L);
         PdfPCell leftCell = new PdfPCell(allowTable); leftCell.setBorder(Rectangle.NO_BORDER); leftCell.setPadding(0);
         twoCol.addCell(leftCell);
 
@@ -1675,24 +1698,24 @@ public class PayrollController {
         PdfPCell dHead = new PdfPCell(new Phrase("Deductions", fSecHead)); dHead.setColspan(2);
         dHead.setBackgroundColor(INDIGO_L); dHead.setBorderColor(INDIGO_B); dHead.setBorderWidth(0.5f); dHead.setPadding(8f);
         dedTable.addCell(dHead);
-        if (lossOfPay > 0) addLineRow(dedTable, "Loss of Pay", formatAmt(lossOfPay), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (lossOfPay > 0) addLineRow(dedTable, "Loss of Pay", fmtCurr.apply(lossOfPay), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         double lateDeductionPdf = toDouble(phd.getOrDefault("late_deduction", 0));
-        if (lateDeductionPdf > 0) addLineRow(dedTable, "Late Coming Deduction", formatAmt(lateDeductionPdf), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (lateDeductionPdf > 0) addLineRow(dedTable, "Late Coming Deduction", fmtCurr.apply(lateDeductionPdf), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         // Itemized loan deductions
         @SuppressWarnings("unchecked")
         java.util.List<Map<String, Object>> loanDedList = (java.util.List<Map<String, Object>>) phd.getOrDefault("loan_deductions", java.util.List.of());
         for (Map<String, Object> ll : loanDedList) {
             String loanTitle = (String) ll.getOrDefault("title", "Loan");
             double loanAmt = toDouble(ll.getOrDefault("amount", 0));
-            if (loanAmt > 0) addLineRow(dedTable, loanTitle, formatAmt(loanAmt), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+            if (loanAmt > 0) addLineRow(dedTable, loanTitle, fmtCurr.apply(loanAmt), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         }
         if (loanDedList.isEmpty() && loanRec > 0)
-            addLineRow(dedTable, "Loan Recovery", formatAmt(loanRec), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (salAdvDed > 0) addLineRow(dedTable, "Salary Advance Deduction", formatAmt(salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        if (otherDed > 0) addLineRow(dedTable, "Deduction", formatAmt(otherDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+            addLineRow(dedTable, "Loan Recovery", fmtCurr.apply(loanRec), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (salAdvDed > 0) addLineRow(dedTable, "Salary Advance Deduction", fmtCurr.apply(salAdvDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        if (otherDed > 0) addLineRow(dedTable, "Deduction", fmtCurr.apply(otherDed), fRowLbl, fRowAmt, INDIGO_B, WHITE);
         if (lossOfPay == 0 && lateDeductionPdf == 0 && loanDedList.isEmpty() && loanRec == 0 && salAdvDed == 0 && otherDed == 0)
-            addLineRow(dedTable, "Deduction", formatAmount(p.getDeduction()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
-        addLineRow(dedTable, "Total Deductions", formatAmount(p.getDeduction()), fDedLbl, fDedAmt, INDIGO_B, GRAY_L);
+            addLineRow(dedTable, "Deduction", fmtCurrBD.apply(p.getDeduction()), fRowLbl, fRowAmt, INDIGO_B, WHITE);
+        addLineRow(dedTable, "Total Deductions", fmtCurrBD.apply(p.getDeduction()), fDedLbl, fDedAmt, INDIGO_B, GRAY_L);
         PdfPCell rightCell = new PdfPCell(dedTable); rightCell.setBorder(Rectangle.NO_BORDER); rightCell.setPadding(0);
         twoCol.addCell(rightCell);
         doc.add(twoCol);
@@ -1703,7 +1726,7 @@ public class PayrollController {
         Paragraph netLbl = new Paragraph("Total Net Payable", fNetLbl); netLbl.setSpacingAfter(3f);
         fLeft.addElement(netLbl); fLeft.addElement(new Paragraph(numberToWords(p.getNetPay()), fNetWords));
         footer.addCell(fLeft);
-        PdfPCell fRight = new PdfPCell(new Phrase(formatAmount(p.getNetPay()), fNetAmt));
+        PdfPCell fRight = new PdfPCell(new Phrase(fmtCurrBD.apply(p.getNetPay()), fNetAmt));
         fRight.setBackgroundColor(INDIGO_D); fRight.setBorder(Rectangle.NO_BORDER); fRight.setPadding(14f);
         fRight.setHorizontalAlignment(Element.ALIGN_RIGHT); fRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
         footer.addCell(fRight);
