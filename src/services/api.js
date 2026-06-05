@@ -33,7 +33,21 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Spring Boot 3.3+ VIA_DTO mode nests pagination metadata under a `page` key.
+    // Flatten it to top-level so all slices can read totalElements/number/size as before.
+    const d = response.data
+    if (d && d.page && Array.isArray(d.content)) {
+      response.data = {
+        ...d,
+        totalElements: d.page.totalElements,
+        totalPages: d.page.totalPages,
+        number: d.page.number,
+        size: d.page.size,
+      }
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 403 && error.response?.data?.message === 'ORGANIZATION_SUSPENDED') {
       localStorage.removeItem('token')

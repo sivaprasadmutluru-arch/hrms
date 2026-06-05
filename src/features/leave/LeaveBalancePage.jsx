@@ -126,12 +126,7 @@ export default function LeaveBalancePage() {
     { accessorKey: 'availableDays', header: 'Available', cell: ({ getValue }) => <span className="font-semibold">{(getValue() ?? 0).toFixed(1)}</span> },
     { accessorKey: 'carryforwardDays', header: 'Carry Forward', cell: ({ getValue }) => (getValue() ?? 0).toFixed(1) },
     { accessorKey: 'totalLeaveDays', header: 'Total (avail+cf)', cell: ({ getValue }) => (getValue() ?? 0).toFixed(1) },
-    { id: 'used', header: 'Used', cell: ({ row }) => {
-      const total = row.original.totalLeaveDays ?? 0
-      const available = row.original.availableDays ?? 0
-      const cf = row.original.carryforwardDays ?? 0
-      return Math.max(0, total - available - cf).toFixed(1)
-    }},
+    { accessorKey: 'usedDays', header: 'Used', cell: ({ getValue }) => (getValue() ?? 0).toFixed(1) },
     { accessorKey: 'assignedDate', header: 'Assigned', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'expiredDate', header: 'Expires', cell: ({ getValue }) => getValue() || '—' },
     { id: 'actions', header: '', cell: ({ row }) => (
