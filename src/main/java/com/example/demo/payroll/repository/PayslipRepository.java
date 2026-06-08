@@ -34,6 +34,19 @@ public interface PayslipRepository extends JpaRepository<Payslip, Long>, JpaSpec
     List<Payslip> findByCompanyIdAndStatus(Long companyId, Payslip.PayslipStatus status);
     List<Payslip> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);
 
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company " +
+           "WHERE p.company.id IN :companyIds AND p.startDate >= :startDate AND p.startDate <= :endDate")
+    List<Payslip> findAllWithAssociationsByCompanyIdInAndStartDateBetween(
+            @Param("companyIds") List<Long> companyIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company " +
+           "WHERE p.startDate >= :startDate AND p.startDate <= :endDate")
+    List<Payslip> findAllWithAssociationsByStartDateBetween(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     /** Count payslips that include at least one of the given installment deduction IDs (mirrors GCP installment_ratio) */
     @Query("SELECT COUNT(DISTINCT p) FROM Payslip p JOIN p.installmentIds d WHERE d.id IN :deductionIds")
     long countByInstallmentIdIn(@Param("deductionIds") List<Long> deductionIds);

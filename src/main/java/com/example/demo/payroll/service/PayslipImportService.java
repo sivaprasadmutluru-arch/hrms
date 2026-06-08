@@ -34,16 +34,27 @@ public class PayslipImportService {
      * Returns month grid data for the import info page (mirrors GCP payslip_import_info).
      * Each month has: month_num, month_name, year, status ("completed"/"pending"), date_range.
      */
-    public List<Map<String, Object>> getImportInfo(Long companyId, int year) {
+    /**
+     * @param scopedCompanyIds the company IDs from AccessScopeContext (null = unrestricted / all companies)
+     */
+    public List<Map<String, Object>> getImportInfo(List<Long> scopedCompanyIds, int year) {
+        // Fetch the whole year's payslips once — same scope as listPayslips endpoint
+        LocalDate yearStart = LocalDate.of(year, 1, 1);
+        LocalDate yearEnd   = LocalDate.of(year, 12, 31);
+        List<Payslip> yearPayslips = scopedCompanyIds == null
+                ? payslipRepository.findAllWithAssociationsByStartDateBetween(yearStart, yearEnd)
+                : payslipRepository.findAllWithAssociationsByCompanyIdInAndStartDateBetween(scopedCompanyIds, yearStart, yearEnd);
+
         List<Map<String, Object>> monthsData = new ArrayList<>();
         for (int m = 1; m <= 12; m++) {
             LocalDate monthStart = LocalDate.of(year, m, 1);
             LocalDate monthEnd   = YearMonth.of(year, m).atEndOfMonth();
 
-            long count = payslipRepository.findByCompanyId(companyId).stream()
-                    .filter(p -> p.getStartDate() != null && p.getEndDate() != null
-                            && !p.getStartDate().isBefore(monthStart)
-                            && !p.getEndDate().isAfter(monthEnd))
+            final int month = m;
+            long count = yearPayslips.stream()
+                    .filter(p -> p.getStartDate() != null
+                            && !p.getStartDate().isBefore(LocalDate.of(year, month, 1))
+                            && !p.getStartDate().isAfter(YearMonth.of(year, month).atEndOfMonth()))
                     .count();
 
             Map<String, Object> monthData = new LinkedHashMap<>();
