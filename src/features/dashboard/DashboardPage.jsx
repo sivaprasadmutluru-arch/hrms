@@ -71,10 +71,10 @@ function LiveClock() {
   return (
     <>
       <p className="text-base font-bold text-gray-900 tabular-nums mt-0.5">
-        {now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        {now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Dubai' })}
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
-        {now.toLocaleDateString('en', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        {now.toLocaleDateString('en', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Dubai' })}
       </p>
     </>
   )
@@ -152,7 +152,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Checked in at</p>
             <p className="text-sm font-semibold text-gray-900 mt-0.5">
               {myRecord.checkInUtc
-                ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
                 : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
             </p>
             {elapsed && (
@@ -169,7 +169,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check In</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">
                 {myRecord.checkInUtc
-                  ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                  ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
                   : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
               </p>
             </div>
@@ -177,7 +177,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check Out</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">
                 {myRecord.checkOutUtc
-                  ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+                  ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
                   : (myRecord.checkOut ? String(myRecord.checkOut).substring(0, 5) : '—')}
               </p>
             </div>

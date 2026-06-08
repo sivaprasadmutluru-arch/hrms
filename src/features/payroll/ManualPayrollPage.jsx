@@ -5,7 +5,7 @@ import {
   fetchImportInfo,
   downloadImportTemplate,
   processPayslipImport,
-  fetchPayslips,
+  fetchMonthPayslips,
   inlineEditPayslip,
   downloadPayslipPdf,
   downloadBulkPayslipsPdf,
@@ -102,7 +102,7 @@ export default function ManualPayrollPage() {
   const importInfo    = useSelector(s => s.payroll.importInfo)
   const importLoading = useSelector(s => s.payroll.importLoading)
   const importResult  = useSelector(s => s.payroll.importResult)
-  const allPayslips   = useSelector(s => s.payroll.payslips)
+  const allPayslips   = useSelector(s => s.payroll.monthPayslips)
 
   const companyId    = user?.companyId || user?.company?.id
   const currentYear  = new Date().getFullYear()
@@ -129,12 +129,16 @@ export default function ManualPayrollPage() {
     }
   }, [dispatch, companyId, selectedYear])
 
+  // Load all payslips for the selected year once — month filtering is client-side.
+  // This avoids per-month fetch mismatches caused by AccessScopeContext vs explicit companyId.
   useEffect(() => {
-    if (companyId) dispatch(fetchPayslips())
-  }, [dispatch, companyId])
+    if (companyId) {
+      dispatch(fetchMonthPayslips({ year: selectedYear, companyId }))
+      setRowEdits({})
+    }
+  }, [dispatch, companyId, selectedYear])
 
-  // ── Month payslips (filtered client-side) ───────────────────────────────────
-
+  // Client-side filter for the selected month
   const monthPayslips = selectedMonth
     ? allPayslips.filter(p => {
         if (!p.startDate) return false
@@ -153,15 +157,19 @@ export default function ManualPayrollPage() {
           // Parse extra fields from payHeadData JSON
           let phd = {}
           try { phd = p.payHeadData ? JSON.parse(p.payHeadData) : {} } catch (_) {}
+          // p.deduction stores TOTAL deductions (including loss_of_pay).
+          // We subtract loss_of_pay here so the "Deduction" column shows only the
+          // "other deductions" component, and calcTotalDeductions() doesn't double-count it.
+          const leaveAmt = parseFloat(phd.loss_of_pay ?? 0)
           next[p.id] = {
             basicPay:           parseFloat(p.basicPay ?? 0),
             housingAllowance:   parseFloat(p.housingAllowance ?? 0),
             transportAllowance: parseFloat(p.transportAllowance ?? 0),
             otherAllowance:     parseFloat(p.otherAllowance ?? 0),
             overtime:           parseFloat(phd.overtime ?? phd.overtime_pay ?? 0),
-            leaveDeduction:     parseFloat(phd.loss_of_pay ?? 0),
+            leaveDeduction:     leaveAmt,
             bonus:              parseFloat(phd.bonus ?? 0),
-            deduction:          parseFloat(p.deduction ?? 0),
+            deduction:          Math.max(0, parseFloat(p.deduction ?? 0) - leaveAmt),
           }
         }
       })
@@ -212,7 +220,7 @@ export default function ManualPayrollPage() {
         setFile(null)
         if (fileRef.current) fileRef.current.value = ''
         dispatch(fetchImportInfo({ companyId, year: selectedYear }))
-        dispatch(fetchPayslips())
+        dispatch(fetchMonthPayslips({ year: selectedYear }))
         setRowEdits({})
       })
       .catch(e => toast.error(e || 'Import failed'))
@@ -228,7 +236,7 @@ export default function ManualPayrollPage() {
       await dispatch(generateBulkPayslips({ companyId, startDate, endDate })).unwrap()
       toast.success(`Payslips generated for ${MONTH_NAMES[selectedMonth]} ${selectedYear}`)
       dispatch(fetchImportInfo({ companyId, year: selectedYear }))
-      dispatch(fetchPayslips())
+      dispatch(fetchMonthPayslips({ year: selectedYear, month: selectedMonth }))
       setRowEdits({})
     } catch (e) {
       toast.error(e || 'Generation failed')
