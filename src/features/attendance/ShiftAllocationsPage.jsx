@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import { fetchShiftAllocations, approveShiftAllocation, cancelShiftAllocation, deleteShiftAllocation, selectShiftAllocations, selectShiftAllocationsLoading } from './shiftAllocationsSlice'
+import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
 import useAuth from '../../hooks/useAuth'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -33,10 +34,14 @@ export default function ShiftAllocationsPage() {
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   useEffect(() => {
-    const params = { companyId: user?.companyId }
+    dispatch(fetchEmployees({ page: 0, size: 500 }))
+  }, [dispatch])
+
+  useEffect(() => {
+    const params = {}
     if (statusFilter !== 'All') params.status = statusFilter
     dispatch(fetchShiftAllocations(params))
-  }, [dispatch, user?.companyId, statusFilter])
+  }, [dispatch, statusFilter])
 
   const handleApprove = async (id) => {
     const res = await dispatch(approveShiftAllocation(id))
@@ -64,7 +69,7 @@ export default function ShiftAllocationsPage() {
       <PageHeader
         title="Shift Allocations"
         subtitle="Allocate shifts to employees and manage approvals"
-        action={
+        actions={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setShowBulk(true)}>Bulk Allocate</Button>
             <Button onClick={() => { setEditing(null); setShowForm(true) }}>+ New Allocation</Button>
@@ -107,7 +112,7 @@ export default function ShiftAllocationsPage() {
               {allocations.map(a => (
                 <tr key={a.id} className="hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium text-gray-900">
-                    {a.employee?.name || a.employee?.id || '—'}
+                    {[a.employee?.firstName, a.employee?.lastName].filter(Boolean).join(' ') || a.employee?.employeeCode || a.employee?.id || '—'}
                   </td>
                   <td className="py-3 px-4 text-gray-600">{a.allocatedShift?.name || '—'}</td>
                   <td className="py-3 px-4 text-gray-500">{a.previousShift?.name || '—'}</td>
@@ -115,15 +120,21 @@ export default function ShiftAllocationsPage() {
                   <td className="py-3 px-4">
                     <Badge variant={STATUS_BADGE[a.status] || 'default'}>{a.status}</Badge>
                   </td>
-                  <td className="py-3 px-4 text-gray-500">{a.allocatedBy?.username || '—'}</td>
+                  <td className="py-3 px-4 text-gray-500">
+                    {[a.allocatedBy?.firstName, a.allocatedBy?.lastName].filter(Boolean).join(' ') || a.allocatedBy?.employeeCode || '—'}
+                  </td>
                   <td className="py-3 px-4">
-                    <div className="flex gap-1">
+                    <div className="flex gap-2">
                       {a.status === 'PENDING' && (
                         <button onClick={() => handleApprove(a.id)} className="text-xs text-green-600 hover:underline">Approve</button>
                       )}
                       {a.status === 'PENDING' && (
                         <button onClick={() => handleCancel(a.id)} className="text-xs text-yellow-600 hover:underline">Cancel</button>
                       )}
+                      <button
+                        onClick={() => { setEditing(a); setShowForm(true) }}
+                        className="text-xs text-indigo-600 hover:underline"
+                      >Edit</button>
                       <button onClick={() => setConfirmDelete(a)} className="text-xs text-red-500 hover:underline">Delete</button>
                     </div>
                   </td>
@@ -136,6 +147,7 @@ export default function ShiftAllocationsPage() {
 
       {showForm && (
         <ShiftAllocationFormModal
+          open
           allocation={editing}
           companyId={user?.companyId}
           onClose={() => { setShowForm(false); setEditing(null) }}
@@ -144,6 +156,7 @@ export default function ShiftAllocationsPage() {
 
       {showBulk && (
         <BulkAllocateModal
+          open
           companyId={user?.companyId}
           onClose={() => setShowBulk(false)}
         />

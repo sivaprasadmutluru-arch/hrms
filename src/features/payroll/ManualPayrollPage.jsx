@@ -104,7 +104,8 @@ export default function ManualPayrollPage() {
   const importResult  = useSelector(s => s.payroll.importResult)
   const allPayslips   = useSelector(s => s.payroll.monthPayslips)
 
-  const companyId    = user?.companyId || user?.company?.id
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const companyId    = selectedCompanyId || localStorage.getItem('selectedCompanyId') || user?.companyId || user?.company?.id
   const currentYear  = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
 
