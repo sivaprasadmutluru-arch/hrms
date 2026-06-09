@@ -47,12 +47,19 @@ public class RotatingShiftAssign extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "current_shift_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift currentShift;
+    private ShiftSchedule currentShift;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "next_shift_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift nextShift;
+    private ShiftSchedule nextShift;
+
+    /**
+     * Tracks position in the rotation list for patterns with 3+ shifts.
+     * Points to the index of the shift that will be applied on the NEXT rotation.
+     */
+    @Column(name = "next_shift_index")
+    private Integer nextShiftIndex = 0;
 
     @Column(name = "rotate_after_day")
     private Integer rotateAfterDay = 7;

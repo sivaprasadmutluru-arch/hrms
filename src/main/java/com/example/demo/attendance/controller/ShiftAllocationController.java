@@ -1,16 +1,23 @@
 package com.example.demo.attendance.controller;
 
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.ShiftAllocationRequest;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.ShiftAllocationRequestRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.auth.security.UserPrincipal;
+import com.example.demo.common.context.AccessScopeContext;
+import org.springframework.security.access.AccessDeniedException;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,18 +40,33 @@ public class ShiftAllocationController {
     private final EmployeeRepository employeeRepository;
     private final ShiftScheduleRepository shiftScheduleRepository;
     private final CompanyRepository companyRepository;
+    private final EmployeeWorkInformationRepository workInfoRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional(readOnly = true)
-    @Operation(summary = "List shift allocation requests for a company")
-    public ResponseEntity<List<ShiftAllocationRequest>> list(@RequestParam Long companyId,
-                                                              @RequestParam(required = false) String status) {
-        if (status != null) {
-            return ResponseEntity.ok(allocationRepository.findByCompanyIdAndStatus(
-                    companyId, ShiftAllocationRequest.AllocationStatus.valueOf(status.toUpperCase())));
+    @Operation(summary = "List shift allocation requests (scope-filtered)")
+    public ResponseEntity<List<ShiftAllocationRequest>> list(@RequestParam(required = false) String status) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        ShiftAllocationRequest.AllocationStatus statusEnum = status != null
+                ? ShiftAllocationRequest.AllocationStatus.valueOf(status.toUpperCase()) : null;
+
+        // No scope context or super admin with no company selected — return all
+        if (scope == null || (scope.hasUnrestrictedAccess() && scope.getCompanyId() == null)) {
+            return ResponseEntity.ok(allocationRepository.findAll());
         }
-        return ResponseEntity.ok(allocationRepository.findByCompanyId(companyId));
+
+        java.util.List<Long> companyIds;
+        if (scope.hasUnrestrictedAccess()) {
+            // Platform super admin with a company selected: expand to full org (HO + all branches)
+            companyIds = resolveOrgCompanyIds(scope.getCompanyId());
+        } else {
+            companyIds = scope.getAccessibleCompanyIds();
+        }
+
+        return ResponseEntity.ok(statusEnum != null
+                ? allocationRepository.findByCompanyIdInAndStatus(companyIds, statusEnum)
+                : allocationRepository.findByCompanyIdIn(companyIds));
     }
 
     @GetMapping("/employee/{employeeId}")
@@ -70,7 +92,11 @@ public class ShiftAllocationController {
     @Operation(summary = "Create a shift allocation request (manager/admin-initiated)")
     public ResponseEntity<ShiftAllocationRequest> create(@RequestBody ShiftAllocationRequest request) {
         if (request.getEmployee() != null && request.getEmployee().getId() != null) {
-            request.setEmployee(employeeRepository.getReferenceById(request.getEmployee().getId()));
+            Employee emp =
+                    employeeRepository.findById(request.getEmployee().getId())
+                            .orElseThrow(() -> new ResourceNotFoundException("Employee", request.getEmployee().getId()));
+            assertEmployeeInScope(emp);
+            request.setEmployee(emp);
         }
         if (request.getAllocatedShift() != null && request.getAllocatedShift().getId() != null) {
             request.setAllocatedShift(shiftScheduleRepository.getReferenceById(request.getAllocatedShift().getId()));
@@ -78,8 +104,9 @@ public class ShiftAllocationController {
         if (request.getPreviousShift() != null && request.getPreviousShift().getId() != null) {
             request.setPreviousShift(shiftScheduleRepository.getReferenceById(request.getPreviousShift().getId()));
         }
-        if (request.getAllocatedBy() != null && request.getAllocatedBy().getId() != null) {
-            request.setAllocatedBy(employeeRepository.getReferenceById(request.getAllocatedBy().getId()));
+        // Auto-populate allocatedBy from the currently authenticated user
+        if (SecurityContextHolder.getContext().getAuthentication().getPrincipal() instanceof UserPrincipal principal) {
+            employeeRepository.findByUserId(principal.getId()).ifPresent(request::setAllocatedBy);
         }
         if (request.getCompany() != null && request.getCompany().getId() != null) {
             request.setCompany(companyRepository.getReferenceById(request.getCompany().getId()));
@@ -99,17 +126,36 @@ public class ShiftAllocationController {
         Long companyId = Long.valueOf(body.get("companyId").toString());
         String effectiveDateStr = body.containsKey("effectiveDate") ? body.get("effectiveDate").toString() : null;
 
+        // Resolve the allocatedBy employee once for all records
+        Employee allocatedByEmployee = null;
+        if (SecurityContextHolder.getContext().getAuthentication().getPrincipal() instanceof UserPrincipal principal) {
+            allocatedByEmployee = employeeRepository.findByUserId(principal.getId()).orElse(null);
+        }
+        final Employee allocatedBy = allocatedByEmployee;
+
         int created = 0;
         for (Integer empId : empIds) {
+            Employee emp =
+                    employeeRepository.findById(empId.longValue())
+                            .orElseThrow(() -> new ResourceNotFoundException("Employee", empId.longValue()));
+            assertEmployeeInScope(emp);
             ShiftAllocationRequest req = new ShiftAllocationRequest();
-            req.setEmployee(employeeRepository.getReferenceById(empId.longValue()));
+            req.setEmployee(emp);
             req.setAllocatedShift(shiftScheduleRepository.getReferenceById(shiftId));
             req.setCompany(companyRepository.getReferenceById(companyId));
+            req.setAllocatedBy(allocatedBy);
             req.setStatus(ShiftAllocationRequest.AllocationStatus.APPROVED);
             if (effectiveDateStr != null) {
                 req.setEffectiveDate(java.time.LocalDate.parse(effectiveDateStr));
             }
             allocationRepository.save(req);
+            // Apply the shift to the employee's work information
+            final Long empIdFinal = empId.longValue();
+            final ShiftAllocationRequest reqFinal = req;
+            workInfoRepository.findByEmployeeId(empIdFinal).ifPresent(workInfo -> {
+                workInfo.setShift(reqFinal.getAllocatedShift());
+                workInfoRepository.save(workInfo);
+            });
             created++;
         }
         return ResponseEntity.ok(Map.of("message", "Shift allocated", "count", created));
@@ -123,6 +169,7 @@ public class ShiftAllocationController {
                                                           @RequestBody ShiftAllocationRequest updated) {
         ShiftAllocationRequest req = allocationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ShiftAllocationRequest", id));
+        assertEmployeeInScope(req.getEmployee());
         if (updated.getAllocatedShift() != null && updated.getAllocatedShift().getId() != null) {
             req.setAllocatedShift(shiftScheduleRepository.getReferenceById(updated.getAllocatedShift().getId()));
         }
@@ -134,11 +181,18 @@ public class ShiftAllocationController {
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
-    @Operation(summary = "Approve a shift allocation request")
+    @Operation(summary = "Approve a shift allocation request and update employee's active shift")
     public ResponseEntity<ShiftAllocationRequest> approve(@PathVariable Long id) {
         ShiftAllocationRequest req = allocationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ShiftAllocationRequest", id));
         req.setStatus(ShiftAllocationRequest.AllocationStatus.APPROVED);
+        // Apply the allocated shift to the employee's work information
+        if (req.getAllocatedShift() != null) {
+            workInfoRepository.findByEmployeeId(req.getEmployee().getId()).ifPresent(workInfo -> {
+                workInfo.setShift(req.getAllocatedShift());
+                workInfoRepository.save(workInfo);
+            });
+        }
         return ResponseEntity.ok(allocationRepository.save(req));
     }
 
@@ -160,5 +214,44 @@ public class ShiftAllocationController {
     public ResponseEntity<Map<String, String>> delete(@PathVariable Long id) {
         allocationRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Shift allocation deleted"));
+    }
+
+    /**
+     * Throws AccessDeniedException if the employee's company is outside the current user's scope.
+     * Platform Super Admin is always allowed.
+     */
+    private void assertEmployeeInScope(Employee employee) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || scope.hasUnrestrictedAccess()) return; // platform admin — unrestricted
+        List<Long> accessible = scope.getAccessibleCompanyIds();
+        if (accessible.isEmpty()) return; // no restriction set
+        Long empCompanyId = employee.getCompany() != null ? employee.getCompany().getId() : null;
+        if (empCompanyId == null || !accessible.contains(empCompanyId)) {
+            throw new AccessDeniedException("You do not have permission to allocate shifts to this employee");
+        }
+    }
+
+    /**
+     * For a given company ID, returns the full list of accessible company IDs in its org:
+     * - If it's a head office → [headOfficeId] + all branch IDs
+     * - If it's a branch → [parentHeadOfficeId] + all sibling branch IDs
+     */
+    private java.util.List<Long> resolveOrgCompanyIds(Long companyId) {
+        Company company = companyRepository.findById(companyId).orElse(null);
+        if (company == null) return List.of(companyId);
+
+        Long headOfficeId;
+        if (company.isHeadOffice()) {
+            headOfficeId = companyId;
+        } else if (company.isBranch() && company.getParentCompanyId() != null) {
+            headOfficeId = company.getParentCompanyId();
+        } else {
+            return List.of(companyId);
+        }
+
+        List<Long> ids = new java.util.ArrayList<>();
+        ids.add(headOfficeId);
+        ids.addAll(companyRepository.findBranchIdsByHeadOfficeId(headOfficeId));
+        return ids;
     }
 }

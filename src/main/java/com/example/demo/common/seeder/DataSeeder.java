@@ -74,14 +74,15 @@ public class DataSeeder implements CommandLineRunner {
     static {
         MODULE_PERMISSIONS.put("employee",    new String[]{"view", "create", "edit", "delete"});
         MODULE_PERMISSIONS.put("attendance",  new String[]{"view", "create", "edit", "delete", "approve"});
-        MODULE_PERMISSIONS.put("leave",       new String[]{"view", "create", "edit", "delete", "approve"});
-        MODULE_PERMISSIONS.put("payroll",     new String[]{"view", "create", "edit", "delete", "approve"});
-        MODULE_PERMISSIONS.put("recruitment", new String[]{"view", "create", "edit", "delete"});
-        MODULE_PERMISSIONS.put("onboarding",  new String[]{"view", "create", "edit", "delete"});
-        MODULE_PERMISSIONS.put("offboarding", new String[]{"view", "create", "edit", "delete"});
-        MODULE_PERMISSIONS.put("pms",         new String[]{"view", "create", "edit", "delete", "approve"});
-        MODULE_PERMISSIONS.put("asset",       new String[]{"view", "create", "edit", "delete"});
-        MODULE_PERMISSIONS.put("helpdesk",    new String[]{"view", "create", "edit", "delete"});
+        MODULE_PERMISSIONS.put("leave",         new String[]{"view", "create", "edit", "delete", "approve", "manage"});
+        MODULE_PERMISSIONS.put("payroll",       new String[]{"view", "create", "edit", "delete", "approve"});
+        MODULE_PERMISSIONS.put("recruitment",   new String[]{"view", "create", "edit", "delete"});
+        MODULE_PERMISSIONS.put("onboarding",    new String[]{"view", "create", "edit", "delete"});
+        MODULE_PERMISSIONS.put("offboarding",   new String[]{"view", "create", "edit", "delete", "approve"});
+        MODULE_PERMISSIONS.put("pms",           new String[]{"view", "create", "edit", "delete", "approve"});
+        MODULE_PERMISSIONS.put("asset",         new String[]{"view", "create", "edit", "delete"});
+        MODULE_PERMISSIONS.put("helpdesk",      new String[]{"view", "create", "edit", "delete", "approve"});
+        MODULE_PERMISSIONS.put("announcements", new String[]{"view"});
         MODULE_PERMISSIONS.put("project",     new String[]{"view", "create", "edit", "delete"});
         MODULE_PERMISSIONS.put("company",     new String[]{"view", "create", "edit", "delete"});
         MODULE_PERMISSIONS.put("department",  new String[]{"view", "create", "edit", "delete"});

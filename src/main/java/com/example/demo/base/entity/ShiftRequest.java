@@ -51,6 +51,23 @@ public class ShiftRequest extends BaseEntity {
     @JoinColumn(name = "company_id")
     private Company company;
 
+    @Column(name = "shift_changed")
+    private Boolean shiftChanged = false;
+
+    @Column(name = "is_active")
+    private Boolean isActive = true;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reallocate_to_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Employee reallocateTo;
+
+    @Column(name = "reallocate_approved")
+    private Boolean reallocateApproved = false;
+
+    @Column(name = "reallocate_canceled")
+    private Boolean reallocateCanceled = false;
+
     public enum ShiftRequestStatus {
         REQUESTED, APPROVED, REJECTED, CANCELLED
     }

@@ -20,6 +20,15 @@ import java.time.LocalDate;
 @Table(name = "shift_allocation_requests")
 @Getter
 @Setter
+@NamedEntityGraph(
+    name = "ShiftAllocationRequest.withAssociations",
+    attributeNodes = {
+        @NamedAttributeNode("employee"),
+        @NamedAttributeNode("allocatedShift"),
+        @NamedAttributeNode("previousShift"),
+        @NamedAttributeNode("allocatedBy")
+    }
+)
 public class ShiftAllocationRequest extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

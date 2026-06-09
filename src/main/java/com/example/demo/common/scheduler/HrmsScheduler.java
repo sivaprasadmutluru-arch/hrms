@@ -1,8 +1,8 @@
 package com.example.demo.common.scheduler;
 
-import com.example.demo.attendance.controller.RotatingScheduleController;
 import com.example.demo.attendance.repository.AttendanceRepository;
 import com.example.demo.attendance.service.AttendanceService;
+import com.example.demo.attendance.service.ShiftRotationService;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.RotatingShiftAssign;
 import com.example.demo.base.repository.CompanyRepository;
@@ -36,6 +36,7 @@ public class HrmsScheduler {
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
     private final RotatingShiftAssignRepository rotatingShiftAssignRepository;
+    private final ShiftRotationService shiftRotationService;
 
     /**
      * Payslip auto-generation: runs daily at 01:00.
@@ -127,7 +128,8 @@ public class HrmsScheduler {
     /**
      * Rotating shift rotation: runs daily at 00:30.
      * Finds all RotatingShiftAssign records whose nextChangeDate has arrived,
-     * swaps currentShift ↔ nextShift, and advances nextChangeDate.
+     * advances through the shift rotation list using nextShiftIndex,
+     * and updates the employee's EmployeeWorkInformation.shift.
      */
     @Scheduled(cron = "0 30 0 * * *")
     public void rotateShifts() {
@@ -135,8 +137,7 @@ public class HrmsScheduler {
         List<RotatingShiftAssign> due = rotatingShiftAssignRepository.findByNextChangeDateLessThanEqual(today);
         for (RotatingShiftAssign assign : due) {
             try {
-                RotatingScheduleController.applyRotation(assign);
-                rotatingShiftAssignRepository.save(assign);
+                shiftRotationService.applyRotation(assign);
                 log.info("Rotated shift for employee {} → currentShift={}",
                         assign.getEmployee().getId(),
                         assign.getCurrentShift() != null ? assign.getCurrentShift().getName() : "null");
@@ -146,6 +147,34 @@ public class HrmsScheduler {
         }
         if (!due.isEmpty()) {
             log.info("Rotating shift job completed: {} assignments rotated", due.size());
+        }
+    }
+
+    /**
+     * Switch shift: runs daily at midnight (00:00).
+     * Applies approved shift requests whose requestedDate == today and shift has not yet been changed.
+     */
+    @Scheduled(cron = "0 0 0 * * *")
+    public void switchShift() {
+        try {
+            shiftRotationService.switchPendingShiftRequests();
+            log.info("switchShift job completed");
+        } catch (Exception e) {
+            log.error("switchShift job failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Undo shift: runs daily at 00:05.
+     * Reverts temporary approved shift requests that have expired (requestedTill < today).
+     */
+    @Scheduled(cron = "0 5 0 * * *")
+    public void undoShift() {
+        try {
+            shiftRotationService.undoExpiredShiftRequests();
+            log.info("undoShift job completed");
+        } catch (Exception e) {
+            log.error("undoShift job failed: {}", e.getMessage());
         }
     }
 

@@ -8,7 +8,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "rotating_shifts")
@@ -36,10 +38,24 @@ public class RotatingShift extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift1_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift shift1;
+    private ShiftSchedule shift1;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift2_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private EmployeeShift shift2;
+    private ShiftSchedule shift2;
+
+    /**
+     * Comma-separated IDs of additional ShiftSchedule entries beyond shift1 and shift2.
+     * Supports rotation patterns with 3+ shifts.
+     */
+    @Column(name = "additional_shift_ids", columnDefinition = "TEXT")
+    private String additionalShiftIds;
+
+    public List<Long> getAdditionalShiftIdList() {
+        if (additionalShiftIds == null || additionalShiftIds.isBlank()) return List.of();
+        return Arrays.stream(additionalShiftIds.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty())
+                .map(Long::parseLong).collect(Collectors.toList());
+    }
 }
