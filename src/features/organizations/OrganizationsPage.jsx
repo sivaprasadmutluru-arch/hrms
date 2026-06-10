@@ -104,11 +104,19 @@ export default function OrganizationsPage() {
 
   const deleteOrg = (org) => setConfirmModal({ open: true, org })
   const onConfirmDelete = async () => {
+    const orgId = confirmModal.org.id
+    console.log('[Delete Org] Starting delete for org:', orgId)
     try {
-      await dispatch(remove(confirmModal.org.id)).unwrap()
+      const result = await dispatch(remove(orgId)).unwrap()
+      console.log('[Delete Org] Success:', result)
       toast.success('Organization deleted')
-    } catch (e) { toast.error(e || 'Delete failed') }
-    finally { setConfirmModal({ open: false, org: null }) }
+    } catch (e) {
+      console.error('[Delete Org] Error:', e)
+      toast.error(e || 'Delete failed')
+    } finally {
+      console.log('[Delete Org] Finally — closing modal')
+      setConfirmModal({ open: false, org: null })
+    }
   }
 
   const columns = [

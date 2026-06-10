@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../cloudhrms-hrms-backend/src/main/resources/static',
+    outDir: '../demo/src/main/resources/static',
     emptyOutDir: true,
     rollupOptions: {
       output: {
