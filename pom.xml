@@ -168,7 +168,7 @@
 				<artifactId>frontend-maven-plugin</artifactId>
 				<version>${frontend-maven-plugin.version}</version>
 				<configuration>
-					<workingDirectory>../cloudhrms-hrms-web</workingDirectory>
+					<workingDirectory>../hrms-web</workingDirectory>
 					<nodeVersion>${node.version}</nodeVersion>
 				</configuration>
 				<executions>

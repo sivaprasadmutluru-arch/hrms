@@ -248,6 +248,19 @@ public class CompanyService {
 
         List<Long> companyIds = toDelete.stream().map(Company::getId).collect(Collectors.toList());
 
+        // Delete all tenant-schema data for these companies before removing the company rows.
+        // Without this, FK constraints from tenant tables (departments, employees, etc.)
+        // to public.companies prevent the DELETE.
+        String schemaName = company.isHeadOffice()
+                ? company.getSchemaName()
+                : (company.getParentCompanyId() != null
+                        ? companyRepository.findById(company.getParentCompanyId())
+                                .map(Company::getSchemaName).orElse(null)
+                        : null);
+        if (schemaName != null && !schemaName.isBlank()) {
+            schemaProvisioningService.cleanupTenantDataForCompanies(schemaName, companyIds);
+        }
+
         crossBranchAccessGrantRepository.deleteAllInBatch(
                 crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
 
@@ -258,8 +271,9 @@ public class CompanyService {
         userRoleRepository.deleteAllInBatch(
                 userRoleRepository.findByCompanyIdIn(companyIds));
 
-        toDelete.forEach(c -> employeeRepository.deleteAllInBatch(
-                employeeRepository.findByCompanyId(c.getId())));
+        // Delete all public-schema rows that reference these companies (contracts, payslips,
+        // attendance, leave, etc.) — same dynamic JDBC cleanup used for org deletion.
+        schemaProvisioningService.cleanupPublicSchemaDataForCompanies(companyIds);
 
         // Delete branches before head office to satisfy FK constraints
         List<Company> branches = toDelete.stream().filter(Company::isBranch).collect(Collectors.toList());
