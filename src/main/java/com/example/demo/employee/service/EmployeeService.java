@@ -97,11 +97,15 @@ public class EmployeeService {
         // Other scopes: company-level filter
         Specification<Employee> spec = ScopeFilter.byDepartmentOrCompany();
 
-        // Optional explicit company filter — used by enterprise admins who are branch employees
-        // to filter the enterprise-wide result down to a specific branch or HO.
-        // Only applied if the requested company is within the user's accessible scope.
-        if (filterByCompanyId != null && (scope == null || scope.canAccess(filterByCompanyId))) {
-            final Long compId = filterByCompanyId;
+        // Priority 1: explicit filterByCompanyId query param (in-page dropdown)
+        // Priority 2: X-Filter-Company-Id header (topbar branch switcher)
+        // Both are validated against the user's accessible scope before being applied.
+        Long effectiveCompanyFilter = filterByCompanyId;
+        if (effectiveCompanyFilter == null && scope != null && scope.getFilterCompanyId() != null) {
+            effectiveCompanyFilter = scope.getFilterCompanyId();
+        }
+        if (effectiveCompanyFilter != null && (scope == null || scope.canAccess(effectiveCompanyFilter))) {
+            final Long compId = effectiveCompanyFilter;
             Specification<Employee> companyFilter = (root, query, cb) ->
                     cb.equal(root.get("company").get("id"), compId);
             spec = spec != null ? spec.and(companyFilter) : companyFilter;

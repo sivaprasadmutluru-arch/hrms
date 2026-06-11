@@ -138,21 +138,26 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             accessibleCompanyIds = buildAccessibleCompanyIds(companyId, scope);
         }
 
-        // Step 6b: Apply X-Filter-Company-Id header — enterprise admin selected a specific branch/HO
-        // in the topbar. Narrow accessibleCompanyIds to just that one company so all queries
-        // automatically scope to the selected branch without any page-level changes.
+        // Step 6b: Read X-Filter-Company-Id — enterprise admin selected a specific branch/HO
+        // in the topbar. Store it as filterCompanyId in context so data services (employee,
+        // attendance, leave, etc.) can apply an extra WHERE company_id = filterCompanyId filter.
+        // We do NOT narrow accessibleCompanyIds here so that company/department structure APIs
+        // (which need to see the full enterprise tree for dropdowns) continue to work.
         String filterHeader = request.getHeader("X-Filter-Company-Id");
         Long filterCompanyId = parseCompanyId(filterHeader);
         if (filterCompanyId != null && scope != null
                 && (scope == UserRole.AccessScope.ENTERPRISE || scope == UserRole.AccessScope.HEAD_OFFICE)) {
-            if (accessibleCompanyIds.contains(filterCompanyId)) {
-                accessibleCompanyIds = List.of(filterCompanyId);
-                log.debug("X-Filter-Company-Id={} applied for user {} — narrowed accessible companies to [{}]",
-                        filterCompanyId, currentUser.getId(), filterCompanyId);
+            if (!accessibleCompanyIds.contains(filterCompanyId)) {
+                // Reject filter requests for companies outside the enterprise
+                filterCompanyId = null;
+                log.warn("X-Filter-Company-Id rejected for user {} — not in accessible list {}",
+                        currentUser.getId(), accessibleCompanyIds);
             } else {
-                log.warn("X-Filter-Company-Id={} rejected for user {} — not in accessible list {}",
-                        filterCompanyId, currentUser.getId(), accessibleCompanyIds);
+                log.debug("X-Filter-Company-Id={} stored for user {} — data services will apply branch filter",
+                        filterCompanyId, currentUser.getId());
             }
+        } else {
+            filterCompanyId = null; // not applicable for non-enterprise scopes
         }
 
         // Step 6c: Also add any companies explicitly granted via cross-branch access
@@ -186,7 +191,7 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
 
         // Step 9: Store in thread-local context for services to use
         AccessScopeContext.set(new AccessScopeContext.ScopeData(
-                currentUser.getId(), companyId, scope, accessibleCompanyIds, departmentId));
+                currentUser.getId(), companyId, scope, accessibleCompanyIds, departmentId, filterCompanyId));
 
         log.debug("User {} | Company {} | Scope {} | Accessible companies: {} | Tenant schema: {}",
                 currentUser.getId(), companyId, scope, accessibleCompanyIds, tenantSchema);

@@ -49,13 +49,22 @@ public class AccessScopeContext {
         private final List<Long> accessibleCompanyIds;
         // Populated for DEPARTMENT scope: the department ID of the current user's employee record
         private final Long departmentId;
+        // Optional: set when enterprise admin sends X-Filter-Company-Id to narrow data to one branch.
+        // Unlike accessibleCompanyIds, this does NOT restrict auth checks — only used by data services
+        // that choose to honour it (e.g. EmployeeService). Company/department structure APIs ignore it.
+        private final Long filterCompanyId;
 
         public ScopeData(Long userId, Long companyId, UserRole.AccessScope scope, List<Long> accessibleCompanyIds) {
-            this(userId, companyId, scope, accessibleCompanyIds, null);
+            this(userId, companyId, scope, accessibleCompanyIds, null, null);
         }
 
         public ScopeData(Long userId, Long companyId, UserRole.AccessScope scope,
                          List<Long> accessibleCompanyIds, Long departmentId) {
+            this(userId, companyId, scope, accessibleCompanyIds, departmentId, null);
+        }
+
+        public ScopeData(Long userId, Long companyId, UserRole.AccessScope scope,
+                         List<Long> accessibleCompanyIds, Long departmentId, Long filterCompanyId) {
             this.userId = userId;
             this.companyId = companyId;
             this.scope = scope;
@@ -63,6 +72,7 @@ public class AccessScopeContext {
                     ? Collections.unmodifiableList(accessibleCompanyIds)
                     : Collections.emptyList();
             this.departmentId = departmentId;
+            this.filterCompanyId = filterCompanyId;
         }
 
         public Long getUserId() { return userId; }
@@ -70,6 +80,7 @@ public class AccessScopeContext {
         public UserRole.AccessScope getScope() { return scope; }
         public List<Long> getAccessibleCompanyIds() { return accessibleCompanyIds; }
         public Long getDepartmentId() { return departmentId; }
+        public Long getFilterCompanyId() { return filterCompanyId; }
 
         // True when the user has no company restriction (Platform Super Admin)
         public boolean hasUnrestrictedAccess() {
