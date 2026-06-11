@@ -138,7 +138,24 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             accessibleCompanyIds = buildAccessibleCompanyIds(companyId, scope);
         }
 
-        // Step 6b: Also add any companies explicitly granted via cross-branch access
+        // Step 6b: Apply X-Filter-Company-Id header — enterprise admin selected a specific branch/HO
+        // in the topbar. Narrow accessibleCompanyIds to just that one company so all queries
+        // automatically scope to the selected branch without any page-level changes.
+        String filterHeader = request.getHeader("X-Filter-Company-Id");
+        Long filterCompanyId = parseCompanyId(filterHeader);
+        if (filterCompanyId != null && scope != null
+                && (scope == UserRole.AccessScope.ENTERPRISE || scope == UserRole.AccessScope.HEAD_OFFICE)) {
+            if (accessibleCompanyIds.contains(filterCompanyId)) {
+                accessibleCompanyIds = List.of(filterCompanyId);
+                log.debug("X-Filter-Company-Id={} applied for user {} — narrowed accessible companies to [{}]",
+                        filterCompanyId, currentUser.getId(), filterCompanyId);
+            } else {
+                log.warn("X-Filter-Company-Id={} rejected for user {} — not in accessible list {}",
+                        filterCompanyId, currentUser.getId(), accessibleCompanyIds);
+            }
+        }
+
+        // Step 6c: Also add any companies explicitly granted via cross-branch access
         if (scope != null) { // not platform admin (they already have unrestricted)
             List<Long> granted = crossBranchGrantRepository.findGrantedCompanyIdsByUserId(currentUser.getId());
             for (Long grantedId : granted) {
