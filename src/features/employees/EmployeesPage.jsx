@@ -268,8 +268,10 @@ export default function EmployeesPage() {
   const load = (page, size = pageSize) => {
     if (isPlatformAdmin() && !selectedCompanyId) {
       dispatch(fetchAllGlobal({ page, size, sort: 'id,desc' }))
+    } else if (isPlatformAdmin() && selectedCompanyId) {
+      dispatch(fetchAll({ page, size, sort: 'id,desc', companyIdOverride: selectedCompanyId }))
     } else {
-      dispatch(fetchAll({ page, size, sort: 'id,desc', ...(selectedCompanyId ? { companyIdOverride: selectedCompanyId } : {}) }))
+      dispatch(fetchAll({ page, size, sort: 'id,desc', ...(selectedCompanyId ? { filterByCompanyId: selectedCompanyId } : {}) }))
     }
   }
 
@@ -607,7 +609,7 @@ export default function EmployeesPage() {
               onChange={e => {
                 const id = e.target.value ? Number(e.target.value) : null
                 setSelectedCompanyId(id)
-                dispatch(fetchAll({ page: 0, size: pageSize, ...(id ? { companyIdOverride: id } : {}) }))
+                dispatch(fetchAll({ page: 0, size: pageSize, ...(id ? { filterByCompanyId: id } : {}) }))
               }}
               className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
             >
