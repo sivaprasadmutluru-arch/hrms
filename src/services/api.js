@@ -6,6 +6,11 @@ const api = axios.create({ baseURL: API_BASE_URL })
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  const enterpriseBranchFilter = localStorage.getItem('enterpriseBranchFilter')
+  if (enterpriseBranchFilter) {
+    config.headers['X-Filter-Company-Id'] = enterpriseBranchFilter
+  }
+
   if (!config.headers['X-Company-Id']) {
     const selectedCompanyId = localStorage.getItem('selectedCompanyId')
     if (selectedCompanyId) {

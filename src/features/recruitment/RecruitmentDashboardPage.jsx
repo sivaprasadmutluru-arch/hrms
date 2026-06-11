@@ -21,8 +21,8 @@ const PIE_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B
 
 export default function RecruitmentDashboardPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
 
   const dashboard = useSelector(s => s.recruitment.recruitmentDashboard)
   const posts = useSelector(s => s.recruitment.data || [])

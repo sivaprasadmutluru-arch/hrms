@@ -24,12 +24,12 @@ const MONTH_NAMES = [
 
 export default function PayslipImportPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
   const importInfo    = useSelector(s => s.payroll.importInfo)
   const importLoading = useSelector(s => s.payroll.importLoading)
   const importResult  = useSelector(s => s.payroll.importResult)
 
-  const companyId = user?.companyId || user?.company?.id
+  const companyId = effectiveCompanyId
   const currentYear  = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
 

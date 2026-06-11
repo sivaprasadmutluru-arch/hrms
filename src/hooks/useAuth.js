@@ -7,6 +7,8 @@ export default function useAuth() {
   const user = useSelector(selectUser)
   const roles = useSelector(selectRoles)
   const isAuthenticated = useSelector(selectIsAuthenticated)
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const enterpriseBranchFilter = useSelector(s => s.auth.enterpriseBranchFilter)
 
   const hasRole = (...checkRoles) => checkRoles.some(r => roles.includes(r))
 
@@ -40,10 +42,23 @@ export default function useAuth() {
 
   const handleLogout = () => dispatch(logout())
 
+  // The "active" company/branch for scoped data fetching.
+  // Platform admin: selectedCompanyId (from top nav company switcher) or user's own company
+  // Enterprise admin: enterpriseBranchFilter (from top nav branch switcher) or head office
+  // Others: user's company
+  const effectiveCompanyId = (() => {
+    if (roles.includes(ROLES.PLATFORM_SUPER_ADMIN))
+      return selectedCompanyId ? Number(selectedCompanyId) : (user?.companyId || null)
+    if (roles.includes(ROLES.ENTERPRISE_ADMIN))
+      return enterpriseBranchFilter ? Number(enterpriseBranchFilter) : (user?.companyId || null)
+    return user?.companyId || null
+  })()
+
   return {
     user,
     roles,
     isAuthenticated,
+    effectiveCompanyId,
     hasRole,
     isPlatformAdmin,
     isEnterpriseAdmin,

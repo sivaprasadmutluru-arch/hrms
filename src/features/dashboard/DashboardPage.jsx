@@ -890,7 +890,7 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
 
 export default function DashboardPage() {
   const dispatch = useDispatch()
-  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager, user } = useAuth()
+  const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager, user, effectiveCompanyId } = useAuth()
   const leave = useSelector(s => s.leave)
   const helpdesk = useSelector(s => s.helpdesk)
   const organizations = useSelector(s => s.organizations)
@@ -923,27 +923,27 @@ export default function DashboardPage() {
 
   const today = new Date().toISOString().split('T')[0]
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const companyId = user?.companyId
+  const headOfficeId = user?.companyId
 
   const branchSummaryList = isSuperAdminViewingCompany
     ? (branchesSummary[effectiveHeadOfficeId] || [])
-    : user?.companyId ? (branchesSummary[user.companyId] || []) : []
+    : headOfficeId ? (branchesSummary[headOfficeId] || []) : []
 
   useEffect(() => {
     dispatch(fetchLeave({ page: 0, size: 10 }))
     dispatch(fetchTickets({ page: 0, size: 10 }))
     dispatch(fetchHeadcountReport({}))
     dispatch(fetchAttendanceReport({ from: weekAgo, to: today }))
-    if (companyId) {
-      dispatch(fetchEmployeeDashboard({ companyId }))
-      dispatch(fetchAttendanceDashboard({ companyId, date: today }))
-      dispatch(fetchToday({ companyId }))
+    if (effectiveCompanyId) {
+      dispatch(fetchEmployeeDashboard({ companyId: effectiveCompanyId }))
+      dispatch(fetchAttendanceDashboard({ companyId: effectiveCompanyId, date: today }))
+      dispatch(fetchToday({ companyId: effectiveCompanyId }))
       if (user?.employeeId) dispatch(fetchMyWorkInfo())
     }
     if (isSuperAdmin && !selectedCompanyId) dispatch(fetchOrganizations({ page: 0, size: 100 }))
     if (isSuperAdminViewingCompany) dispatch(fetchBranchesSummary(effectiveHeadOfficeId))
-    if (isEntAdmin && companyId) dispatch(fetchBranchesSummary(companyId))
-  }, [dispatch, isSuperAdmin, isEntAdmin, companyId, selectedCompanyId, effectiveHeadOfficeId])
+    if (isEntAdmin && headOfficeId) dispatch(fetchBranchesSummary(headOfficeId))
+  }, [dispatch, isSuperAdmin, isEntAdmin, effectiveCompanyId, selectedCompanyId, effectiveHeadOfficeId])
 
   const subtitle = isSuperAdminViewingCompany
     ? 'Company admin view — head office & branches'

@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import Avatar from '../common/Avatar'
 import useAuth from '../../hooks/useAuth'
 import CompanySwitcher from './CompanySwitcher'
+import BranchSwitcher from './BranchSwitcher'
 
 function useBreadcrumb() {
   const { pathname } = useLocation()
@@ -32,6 +33,7 @@ export default function Topbar() {
       </nav>
       <div className="flex items-center gap-3">
         {auth.isPlatformAdmin?.() && <CompanySwitcher />}
+        {!auth.isPlatformAdmin?.() && auth.isEnterpriseAdmin?.() && <BranchSwitcher />}
         <button onClick={() => navigate('/notifications')} className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <BellIcon className="h-5 w-5 text-gray-500" />
           {unreadCount > 0 && <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">{unreadCount}</span>}

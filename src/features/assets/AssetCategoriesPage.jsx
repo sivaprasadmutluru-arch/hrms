@@ -13,8 +13,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function AssetCategoriesPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const categories = useSelector(s => s.assets.categories)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)

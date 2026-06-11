@@ -13,8 +13,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function CompanyLeavesPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const companyLeaves = useSelector(s => s.leave.companyLeaves)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)

@@ -211,22 +211,21 @@ function SecurityTab({ accountBlockFeature }) {
 
 export default function GeneralSettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
   const settings = useSelector(selectGeneralSettings)
   const [activeTab, setActiveTab] = useState('Date/Time')
 
   useEffect(() => {
-    const companyId = user?.companyId
-    dispatch(fetchDateTimeFormat(companyId))
-    dispatch(fetchDashboardComponents(companyId))
-    dispatch(fetchWhiteLabel(companyId))
-    dispatch(fetchHistoryTracking(companyId))
+    dispatch(fetchDateTimeFormat(effectiveCompanyId))
+    dispatch(fetchDashboardComponents(effectiveCompanyId))
+    dispatch(fetchWhiteLabel(effectiveCompanyId))
+    dispatch(fetchHistoryTracking(effectiveCompanyId))
     dispatch(fetchAccountBlockFeature())
-    dispatch(fetchAuditTags(companyId))
-    dispatch(fetchHelpdeskTags(companyId))
-  }, [dispatch, user?.companyId])
+    dispatch(fetchAuditTags(effectiveCompanyId))
+    dispatch(fetchHelpdeskTags(effectiveCompanyId))
+  }, [dispatch, effectiveCompanyId])
 
-  const companyId = user?.companyId
+  const companyId = effectiveCompanyId
 
   return (
     <div className="p-6">

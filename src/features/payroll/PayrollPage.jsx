@@ -36,9 +36,9 @@ function groupStatus(payslips) {
 
 export default function PayrollPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
   const formatCurrency = useCurrency().format
-  const companyId = user?.companyId
+  const companyId = effectiveCompanyId
   const payslips = useSelector(s => s.payroll.payslips)
   const employees = useSelector(selectEmployees)
   const loading = useSelector(selectLoading)

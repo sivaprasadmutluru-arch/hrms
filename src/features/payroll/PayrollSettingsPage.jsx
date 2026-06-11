@@ -23,8 +23,8 @@ const GENERATE_DAY_OPTIONS = [
 
 export default function PayrollSettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const loading = useSelector(selectLoading)
   const generalSettings = useSelector(selectPayrollGeneralSettings)
   const encashmentSettings = useSelector(selectEncashmentSettings)

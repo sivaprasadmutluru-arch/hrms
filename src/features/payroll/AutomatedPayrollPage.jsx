@@ -92,9 +92,9 @@ function StepBar({ current }) {
 
 export default function AutomatedPayrollPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
   const { format: formatCurrency } = useCurrency()
-  const companyId = user?.companyId
+  const companyId = effectiveCompanyId
   const attendanceStatus = useSelector(selectAttendanceStatus)
 
   const today = new Date()

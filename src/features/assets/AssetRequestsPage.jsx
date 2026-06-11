@@ -19,8 +19,8 @@ const STATUS_VARIANT = {
 
 export default function AssetRequestsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const requests = useSelector(s => s.assets.requests)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)

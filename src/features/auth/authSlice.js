@@ -74,6 +74,7 @@ const authSlice = createSlice({
     token: localStorage.getItem('token') || null,
     isAuthenticated: !!localStorage.getItem('token'),
     selectedCompanyId: localStorage.getItem('selectedCompanyId') || null,
+    enterpriseBranchFilter: localStorage.getItem('enterpriseBranchFilter') || null,
     loading: false,
     error: null,
   },
@@ -84,6 +85,14 @@ const authSlice = createSlice({
         localStorage.setItem('selectedCompanyId', action.payload)
       } else {
         localStorage.removeItem('selectedCompanyId')
+      }
+    },
+    setEnterpriseBranchFilter: (state, action) => {
+      state.enterpriseBranchFilter = action.payload
+      if (action.payload) {
+        localStorage.setItem('enterpriseBranchFilter', action.payload)
+      } else {
+        localStorage.removeItem('enterpriseBranchFilter')
       }
     },
     setCredentials: (state, action) => {
@@ -99,10 +108,12 @@ const authSlice = createSlice({
       state.token = null
       state.isAuthenticated = false
       state.selectedCompanyId = null
+      state.enterpriseBranchFilter = null
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       localStorage.removeItem('roles')
       localStorage.removeItem('selectedCompanyId')
+      localStorage.removeItem('enterpriseBranchFilter')
     },
   },
   extraReducers: (builder) => {
@@ -148,7 +159,7 @@ const authSlice = createSlice({
   },
 })
 
-export const { setCredentials, logout, setSelectedCompany } = authSlice.actions
+export const { setCredentials, logout, setSelectedCompany, setEnterpriseBranchFilter } = authSlice.actions
 export const selectAuth = (state) => state.auth
 export const selectUser = (state) => state.auth.user
 export const selectRoles = (state) => state.auth.roles?.length ? state.auth.roles : (state.auth.user?.roles || [])

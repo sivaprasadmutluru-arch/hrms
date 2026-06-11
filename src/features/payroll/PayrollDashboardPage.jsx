@@ -36,8 +36,8 @@ function getMonthOptions() {
 
 export default function PayrollDashboardPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const monthOptions = getMonthOptions()
 

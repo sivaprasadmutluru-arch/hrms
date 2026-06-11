@@ -7,7 +7,7 @@ import {
   fetchRegister, updateRegisterCell,
   selectRegister, selectRegisterLoading,
 } from './attendanceSlice'
-import { fetchAll as fetchCompanies, fetchBranches } from '../companies/companiesSlice'
+import { fetchAll as fetchCompanies } from '../companies/companiesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Spinner from '../../components/common/Spinner'
 import useAuth from '../../hooks/useAuth'
@@ -89,7 +89,7 @@ function RegisterCell({ cell, employeeId, date, companyId, onEdit, editingKey, s
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AttendanceRegisterPage() {
   const dispatch = useDispatch()
-  const { user, isPlatformAdmin, isEnterpriseAdmin } = useAuth()
+  const { user, isPlatformAdmin, isEnterpriseAdmin, effectiveCompanyId } = useAuth()
   const register = useSelector(selectRegister)
   const loading = useSelector(selectRegisterLoading)
 
@@ -97,15 +97,16 @@ export default function AttendanceRegisterPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [companies, setCompanies] = useState([])
-  const [companyId, setCompanyId] = useState(isPlatformAdmin() ? null : (user?.companyId || null))
+  const [companyId, setCompanyId] = useState(isPlatformAdmin() ? null : effectiveCompanyId)
   const [departments, setDepartments] = useState([])
   const [departmentId, setDepartmentId] = useState('')
   const [editingKey, setEditingKey] = useState(null)
   const [exporting, setExporting] = useState(false)
 
-  const isSuperScope = isPlatformAdmin() || isEnterpriseAdmin()
+  // Only platform admin gets a per-page company picker; enterprise admin uses the top-nav BranchSwitcher
+  const showCompanyDropdown = isPlatformAdmin()
 
-  // Load companies for super admin / branches for enterprise admin
+  // Load companies list for platform admin only
   useEffect(() => {
     if (isPlatformAdmin()) {
       dispatch(fetchCompanies({ page: 0, size: 200 }))
@@ -114,20 +115,6 @@ export default function AttendanceRegisterPage() {
           const list = data.content || data
           setCompanies(list)
           if (list.length > 0) setCompanyId(list[0].id)
-        })
-        .catch(() => toast.error('Failed to load companies'))
-    } else if (isEnterpriseAdmin()) {
-      const headId = user?.companyId
-      if (!headId) return
-      Promise.all([
-        dispatch(fetchCompanies({ companyId: headId })).unwrap(),
-        dispatch(fetchBranches(headId)).unwrap(),
-      ])
-        .then(([headData, branchData]) => {
-          const head = Array.isArray(headData?.content) ? headData.content[0] : headData
-          const list = [head, ...(Array.isArray(branchData) ? branchData : branchData?.content || [])].filter(Boolean)
-          setCompanies(list)
-          setCompanyId(headId)
         })
         .catch(() => toast.error('Failed to load companies'))
     }
@@ -227,13 +214,13 @@ export default function AttendanceRegisterPage() {
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        {isSuperScope && companies.length > 0 && (
+        {showCompanyDropdown && companies.length > 0 && (
           <select
             value={companyId || ''}
             onChange={e => setCompanyId(Number(e.target.value))}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white shadow-sm focus:ring-2 focus:ring-indigo-400 outline-none"
           >
-            {!companyId && <option value="">— Select {isEnterpriseAdmin() ? 'Branch' : 'Company'} —</option>}
+            {!companyId && <option value="">— Select Company —</option>}
             {companies.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}

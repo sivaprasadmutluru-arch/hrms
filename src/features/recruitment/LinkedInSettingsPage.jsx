@@ -10,8 +10,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function LinkedInSettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const [syncing, setSyncing] = useState(false)
   const { register, handleSubmit, formState: { errors } } = useForm()
 

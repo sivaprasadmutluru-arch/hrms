@@ -15,7 +15,7 @@ import useAuth from '../../hooks/useAuth'
 
 export default function DepartmentsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -34,7 +34,7 @@ export default function DepartmentsPage() {
   }
 
   const onSubmit = async (formData) => {
-    const companyId = user?.companyId
+    const companyId = effectiveCompanyId
     try {
       if (editing) {
         await dispatch(update({

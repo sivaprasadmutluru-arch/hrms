@@ -27,8 +27,8 @@ import useAuth from '../../hooks/useAuth'
 export default function AssetsPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)

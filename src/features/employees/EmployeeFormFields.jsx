@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 
@@ -63,9 +64,46 @@ export default function EmployeeFormFields({
   workTypeOptions = [],
   shiftOptions = [],
   reportingManagerOptions = [],
+  photoPreview = null,
+  onPhotoChange,
 }) {
+  const photoInputRef = useRef()
+
   return (
     <div className="space-y-4">
+
+      {/* Photo picker */}
+      <div className="flex items-center gap-4">
+        <div
+          className="w-16 h-16 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer hover:border-indigo-400 transition-colors"
+          onClick={() => photoInputRef.current?.click()}
+        >
+          {photoPreview ? (
+            <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+          ) : (
+            <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          )}
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+          >
+            {photoPreview ? 'Change photo' : 'Upload photo'}
+          </button>
+          <p className="text-xs text-gray-400 mt-0.5">JPG, PNG up to 5MB</p>
+        </div>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => onPhotoChange?.(e.target.files[0] || null)}
+        />
+      </div>
 
       {/* Badge ID — read-only in edit, editable on create */}
       <div className="grid grid-cols-2 gap-3">

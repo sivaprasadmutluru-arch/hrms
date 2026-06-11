@@ -54,7 +54,7 @@ export const remove = createAsyncThunk('employees/remove', async (id, { rejectWi
 export const uploadPhoto = createAsyncThunk('employees/uploadPhoto', async ({ id, file }, { rejectWithValue }) => {
   try {
     const formData = new FormData()
-    formData.append('photo', file)
+    formData.append('file', file)
     const res = await api.post(`/employees/${id}/photo`, formData)
     return res.data
   } catch (err) {

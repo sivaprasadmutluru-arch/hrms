@@ -199,8 +199,8 @@ function OrgNode({ node, search, depth = 0 }) {
 
 export default function OrgChartPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const orgChart = useSelector(s => s.employees.orgChart)
   const [search, setSearch] = useState('')
   const [loaded, setLoaded] = useState(false)

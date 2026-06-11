@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
@@ -74,7 +74,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, onV
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="shrink-0 relative">
-              <Avatar name={employee.fullName || employee.firstName} size="lg" />
+              <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `/api/files/${employee.photoPath}` : undefined} size="lg" />
               <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-gray-300'}`} title={isOnline ? 'Online' : 'Offline'} />
             </div>
             <div className="min-w-0">
@@ -205,6 +205,8 @@ export default function EmployeesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'online' | 'offline'
   const [viewMode, setViewMode] = useActiveView('grid') // persisted grid | list preference
@@ -275,8 +277,13 @@ export default function EmployeesPage() {
     }
   }
 
-  const openCreate = useCallback(() => { setEditing(null); setModalOpen(true) }, [])
-  const openEdit = useCallback((row) => { setEditing(row); setModalOpen(true) }, [])
+  const openCreate = useCallback(() => { setEditing(null); setPhotoFile(null); setPhotoPreview(null); setModalOpen(true) }, [])
+  const openEdit = useCallback((row) => {
+    setEditing(row)
+    setPhotoFile(null)
+    setPhotoPreview(row.photoPath ? `/api/files/${row.photoPath}` : null)
+    setModalOpen(true)
+  }, [])
 
   useEffect(() => {
     if (!modalOpen) return
@@ -354,14 +361,26 @@ export default function EmployeesPage() {
       contractEndDate: data.contractEndDate || undefined,
     }
     try {
+      let savedId
       if (editing) {
         await dispatch(update({ id: editing.id, data: payload })).unwrap()
+        savedId = editing.id
         toast.success('Employee updated')
       } else {
-        await dispatch(create(payload)).unwrap()
+        const created = await dispatch(create(payload)).unwrap()
+        savedId = created.id
         toast.success('Employee created')
       }
+      if (photoFile && savedId) {
+        try {
+          await dispatch(uploadPhoto({ id: savedId, file: photoFile })).unwrap()
+        } catch {
+          toast.error('Employee saved but photo upload failed')
+        }
+      }
       setModalOpen(false)
+      setPhotoFile(null)
+      setPhotoPreview(null)
       load(0)
     } catch (e) { toast.error(e || 'Error') }
   }
@@ -423,7 +442,7 @@ export default function EmployeesPage() {
       header: 'Employee',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <Avatar name={row.original.fullName || row.original.firstName} size="sm" />
+          <Avatar name={row.original.fullName || row.original.firstName} src={row.original.photoPath ? `/api/files/${row.original.photoPath}` : undefined} size="sm" />
           <div>
             <p className="font-medium text-gray-900 text-sm">{row.original.fullName || '—'}</p>
             <p className="text-xs text-gray-500">{row.original.email || '—'}</p>
@@ -703,7 +722,7 @@ export default function EmployeesPage() {
       {/* Create / Edit Modal */}
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); setPhotoFile(null); setPhotoPreview(null) }}
         title={editing ? 'Edit Employee' : 'New Employee'}
         footer={
           <div className="flex justify-end gap-2">
@@ -726,6 +745,11 @@ export default function EmployeesPage() {
           workTypeOptions={workTypeOptions}
           shiftOptions={shiftOptions}
           reportingManagerOptions={reportingManagerOptions}
+          photoPreview={photoPreview}
+          onPhotoChange={(file) => {
+            setPhotoFile(file)
+            setPhotoPreview(file ? URL.createObjectURL(file) : null)
+          }}
         />
       </Modal>
 

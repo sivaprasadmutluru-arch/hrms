@@ -11,7 +11,6 @@ import {
 } from './attendanceSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
 import useAuth from '../../hooks/useAuth'
-import { selectAuth } from '../auth/authSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -29,9 +28,8 @@ const TABS = ['Attendance', 'Late / Early Out', 'Overtime', 'Validation Requests
 
 export default function AttendancePage() {
   const dispatch = useDispatch()
-  const { user, isEmployee } = useAuth()
-  const auth = useSelector(selectAuth)
-  const companyId = user?.companyId || auth?.selectedCompanyId
+  const { user, isEmployee, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const isEmp = isEmployee()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)

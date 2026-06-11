@@ -20,8 +20,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function HolidayAllocationPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
 
   const holidays = useSelector(s => s.leave.holidays)
   const allocations = useSelector(s => s.leave.holidayAllocations)

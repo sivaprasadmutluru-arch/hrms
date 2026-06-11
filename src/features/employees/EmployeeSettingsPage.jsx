@@ -27,8 +27,8 @@ const PROFILE_FIELDS = ['phone', 'address', 'profile_image', 'bank_details', 'em
 
 export default function EmployeeSettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
-  const companyId = user?.companyId
+  const { user, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const loading = useSelector(selectLoading)
   const employeeTypes = useSelector(selectEmployeeTypes)
   const tags = useSelector(selectEmployeeTags)

@@ -22,8 +22,8 @@ import useAuth from '../../hooks/useAuth'
 
 export default function AttendanceDashboardPage() {
   const dispatch = useDispatch()
-  const { user, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
-  const companyId = user?.companyId
+  const { user, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, effectiveCompanyId } = useAuth()
+  const companyId = effectiveCompanyId
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [departmentId, setDepartmentId] = useState('')
 
