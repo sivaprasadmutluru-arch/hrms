@@ -8,6 +8,7 @@ import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.repository.RoleRepository;
 import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
@@ -71,16 +72,28 @@ public class UserRoleService {
                     " role in this company");
         }
 
+        // For ENTERPRISE or HEAD_OFFICE scope, the role must be anchored to the Head Office
+        // so the interceptor can correctly expand access to all branches.
+        // If the caller picked a branch company, silently resolve to its parent HO.
+        Long effectiveCompanyId = request.getCompanyId();
+        if (request.getAccessScope() == UserRole.AccessScope.ENTERPRISE
+                || request.getAccessScope() == UserRole.AccessScope.HEAD_OFFICE) {
+            Company selectedCompany = companyRepository.findById(request.getCompanyId()).orElseThrow();
+            if (selectedCompany.isBranch() && selectedCompany.getParentCompanyId() != null) {
+                effectiveCompanyId = selectedCompany.getParentCompanyId();
+            }
+        }
+
         UserRole userRole = new UserRole();
         userRole.setUser(userRepository.getReferenceById(request.getUserId()));
         userRole.setRole(role);
-        userRole.setCompany(companyRepository.getReferenceById(request.getCompanyId()));
+        userRole.setCompany(companyRepository.getReferenceById(effectiveCompanyId));
         userRole.setAccessScope(request.getAccessScope());
 
         UserRole saved = userRoleRepository.save(userRole);
         // Eagerly load associations before transaction ends so DTO can map them
         saved.setUser(userRepository.findById(request.getUserId()).orElseThrow());
-        saved.setCompany(companyRepository.findById(request.getCompanyId()).orElseThrow());
+        saved.setCompany(companyRepository.findById(effectiveCompanyId).orElseThrow());
         return UserRoleDto.from(saved);
     }
 

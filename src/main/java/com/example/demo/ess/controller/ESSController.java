@@ -31,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Employee Self-Service (ESS) endpoints.
@@ -144,6 +146,29 @@ public class ESSController {
     }
 
     // ── Attendance ────────────────────────────────────────────────────────────
+
+    @GetMapping("/clock-status")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get own clock-in/online status for today")
+    public ResponseEntity<Map<String, Object>> clockStatus(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), LocalDate.now())
+                .map(att -> {
+                    LocalTime checkIn = att.getCheckIn();
+                    LocalTime checkOut = att.getCheckOut();
+                    boolean online = checkIn != null && checkOut == null;
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "online", online,
+                            "checkIn", checkIn != null ? checkIn.toString() : "",
+                            "checkOut", checkOut != null ? checkOut.toString() : ""
+                    ));
+                })
+                .orElse(ResponseEntity.ok(Map.<String, Object>of(
+                        "online", false,
+                        "checkIn", "",
+                        "checkOut", ""
+                )));
+    }
 
     @GetMapping("/my-attendance")
     @PreAuthorize("isAuthenticated()")

@@ -965,7 +965,7 @@ public class PayrollController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         long cnt = attendanceRepository.countByCompanyAndPeriod(companyId, startDate, endDate);
-        return ResponseEntity.ok(Map.of("hasAttendance", cnt > 0, "count", cnt));
+        return ResponseEntity.ok(Map.<String, Object>of("hasAttendance", cnt > 0, "count", cnt));
     }
 
     // ─── Biometric Attendance Upload (Automated Payroll) ──────────────────────

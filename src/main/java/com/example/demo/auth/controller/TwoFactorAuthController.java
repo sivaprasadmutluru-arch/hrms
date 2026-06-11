@@ -74,7 +74,7 @@ public class TwoFactorAuthController {
         twoFactorAuthRepository.save(tfa);
 
         // In production, email the OTP — here we return it for testing
-        return ResponseEntity.ok(Map.of(
+        return ResponseEntity.ok(Map.<String, Object>of(
                 "message", "OTP generated. In production this would be emailed.",
                 "otp", otp,
                 "expiresInMinutes", OTP_EXPIRY_MINUTES
@@ -101,7 +101,7 @@ public class TwoFactorAuthController {
         tfa.setOtpExpiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES));
         twoFactorAuthRepository.save(tfa);
 
-        return ResponseEntity.ok(Map.of(
+        return ResponseEntity.ok(Map.<String, Object>of(
                 "message", "OTP sent.",
                 "otp", otp,
                 "expiresInMinutes", OTP_EXPIRY_MINUTES
@@ -175,7 +175,7 @@ public class TwoFactorAuthController {
     public ResponseEntity<Map<String, Object>> adminGetStatus(@PathVariable Long userId) {
         TwoFactorAuth tfa = twoFactorAuthRepository.findByUserId(userId).orElse(null);
         boolean enabled = tfa != null && tfa.isEnabled();
-        return ResponseEntity.ok(Map.of("userId", userId, "twoFactorEnabled", enabled));
+        return ResponseEntity.ok(Map.<String, Object>of("userId", userId, "twoFactorEnabled", enabled));
     }
 
     @PostMapping("/admin/user/{userId}/disable")

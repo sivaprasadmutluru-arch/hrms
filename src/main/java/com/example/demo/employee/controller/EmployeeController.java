@@ -71,8 +71,10 @@ public class EmployeeController {
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
     @Operation(summary = "List all employees (company-scoped)")
-    public ResponseEntity<Page<EmployeeResponse>> list(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(employeeService.getAll(pageable));
+    public ResponseEntity<Page<EmployeeResponse>> list(
+            @RequestParam(required = false) Long filterByCompanyId,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId));
     }
 
     @GetMapping("/online-status")
@@ -90,7 +92,10 @@ public class EmployeeController {
         } else {
             onlineIds = globalEmployeeService.getOnlineEmployeeIdsAcrossOrgs();
         }
-        return ResponseEntity.ok(Map.of("onlineEmployeeIds", onlineIds, "count", onlineIds.size()));
+        Map<String, Object> onlineResp = new java.util.LinkedHashMap<>();
+        onlineResp.put("onlineEmployeeIds", onlineIds);
+        onlineResp.put("count", onlineIds.size());
+        return ResponseEntity.ok(onlineResp);
     }
 
     @GetMapping("/global")
@@ -227,7 +232,9 @@ public class EmployeeController {
         List<Employee> employees = employeeRepository.findAllById(filteredIds);
         employees.forEach(e -> e.setActive(false));
         employeeRepository.saveAll(employees);
-        return ResponseEntity.ok(Map.of("count", employees.size()));
+        Map<String, Object> archiveResp = new java.util.LinkedHashMap<>();
+        archiveResp.put("count", employees.size());
+        return ResponseEntity.ok(archiveResp);
     }
 
     // ─── Import ───────────────────────────────────────────────────────────────
@@ -917,7 +924,9 @@ public class EmployeeController {
     @Operation(summary = "Bulk update work info fields for a list of employees")
     public ResponseEntity<Map<String, Object>> bulkUpdateWorkInfo(@RequestBody BulkUpdateRequest request) {
         if (request.employeeIds() == null || request.employeeIds().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "employeeIds is required"));
+            Map<String, Object> errResp = new java.util.LinkedHashMap<>();
+            errResp.put("message", "employeeIds is required");
+            return ResponseEntity.badRequest().body(errResp);
         }
 
         final com.example.demo.base.entity.Department finalDept = request.departmentId() != null
@@ -954,7 +963,9 @@ public class EmployeeController {
             updatedCount++;
         }
 
-        return ResponseEntity.ok(Map.of("updated", updatedCount));
+        Map<String, Object> updateResp = new java.util.LinkedHashMap<>();
+        updateResp.put("updated", updatedCount);
+        return ResponseEntity.ok(updateResp);
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────

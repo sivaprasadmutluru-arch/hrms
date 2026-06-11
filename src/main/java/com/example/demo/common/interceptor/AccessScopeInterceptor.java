@@ -86,26 +86,31 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
         CompanyContext.set(companyId);
 
         // Step 4: Find the user's role assignment for this company
-        List<UserRole> userRoles = userRoleRepository.findByUserIdAndCompanyId(currentUser.getId(), companyId);
+        List<UserRole> userRoles = new ArrayList<>(userRoleRepository.findByUserIdAndCompanyId(currentUser.getId(), companyId));
         boolean isBranchFilter = false;
 
-        // If no roles found for this company, check if it's a branch and the user has an
-        // ENTERPRISE / HEAD_OFFICE role on the parent head office.
-        // This handles the case where an enterprise admin filters the employee list by a specific
-        // branch: the frontend sends X-Company-Id = <branchId>, but the admin's UserRole is
-        // registered against the head-office company, not the branch.
-        if (userRoles.isEmpty()) {
-            Company requestedCompany = companyRepository.findById(companyId).orElse(null);
-            if (requestedCompany != null && requestedCompany.isBranch()
-                    && requestedCompany.getParentCompanyId() != null) {
-                List<UserRole> hoRoles = userRoleRepository.findByUserIdAndCompanyId(
-                        currentUser.getId(), requestedCompany.getParentCompanyId());
-                if (!hoRoles.isEmpty()) {
-                    userRoles = hoRoles;
-                    isBranchFilter = true;
+        // If the requested company is a branch, also merge any roles the user has on the parent
+        // head office. This handles the case where a branch employee is elevated to ENTERPRISE_ADMIN:
+        // the enterprise role is stored at the HO level, but the user still has a branch-level
+        // EMPLOYEE role — without this merge, the interceptor would find EMPLOYEE first and skip
+        // the HO lookup entirely (since userRoles is not empty), causing enterprise access to be lost.
+        Company requestedCompany = companyRepository.findById(companyId).orElse(null);
+        if (requestedCompany != null && requestedCompany.isBranch()
+                && requestedCompany.getParentCompanyId() != null) {
+            List<UserRole> hoRoles = userRoleRepository.findByUserIdAndCompanyId(
+                    currentUser.getId(), requestedCompany.getParentCompanyId());
+            if (!hoRoles.isEmpty()) {
+                if (userRoles.isEmpty()) {
+                    userRoles = new ArrayList<>(hoRoles);
                     log.debug("User {} has no direct role for branch {} — falling back to head-office roles ({})",
                             currentUser.getId(), companyId, requestedCompany.getParentCompanyId());
+                } else {
+                    // Merge HO roles into branch roles so the highest scope wins
+                    userRoles.addAll(hoRoles);
+                    log.debug("User {} has both branch and HO roles — merging for highest-scope resolution (branch={}, HO={})",
+                            currentUser.getId(), companyId, requestedCompany.getParentCompanyId());
                 }
+                isBranchFilter = true;
             }
         }
 
@@ -113,14 +118,22 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
         UserRole.AccessScope scope = resolveHighestScope(userRoles, currentUser);
 
         // Step 6: Build the list of company IDs this user can access.
-        // When an enterprise/HO admin is filtering by a specific branch (isBranchFilter = true),
-        // restrict the accessible list to only that branch instead of expanding to all branches.
+        // For ENTERPRISE/HEAD_OFFICE scope, always expand to the full company tree regardless
+        // of whether the request came via a branch X-Company-Id (isBranchFilter path).
+        // Explicit branch filtering is handled at the query level via the filterByCompanyId
+        // request parameter — not by restricting the scope here.
         List<Long> accessibleCompanyIds;
         if (isBranchFilter
                 && (scope == UserRole.AccessScope.ENTERPRISE || scope == UserRole.AccessScope.HEAD_OFFICE)) {
-            accessibleCompanyIds = new ArrayList<>(List.of(companyId));
-            log.debug("Enterprise admin {} filtering to branch {} — accessible: [{}]",
-                    currentUser.getId(), companyId, companyId);
+            // Resolve from the head office so the full enterprise tree is accessible
+            // (requestedCompany already resolved above in Step 4)
+            Long rootCompanyId = (requestedCompany != null && requestedCompany.isBranch()
+                    && requestedCompany.getParentCompanyId() != null)
+                    ? requestedCompany.getParentCompanyId()
+                    : companyId;
+            accessibleCompanyIds = buildAccessibleCompanyIds(rootCompanyId, scope);
+            log.debug("Enterprise admin {} via branch {} — expanding to full enterprise from HO {}",
+                    currentUser.getId(), companyId, rootCompanyId);
         } else {
             accessibleCompanyIds = buildAccessibleCompanyIds(companyId, scope);
         }

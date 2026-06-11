@@ -1022,7 +1022,7 @@ public class LeaveController {
             // Resolve header columns from row 0
             Row headerRow = sheet.getRow(0);
             if (headerRow == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Empty file", "imported", 0, "failed", 0));
+                return ResponseEntity.badRequest().body(Map.<String, Object>of("message", "Empty file", "imported", 0, "failed", 0));
             }
             Map<String, Integer> colIndex = new HashMap<>();
             for (int c = 0; c <= headerRow.getLastCellNum(); c++) {

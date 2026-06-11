@@ -332,7 +332,7 @@ public class AssetController {
                 count++;
             }
         }
-        return ResponseEntity.ok(Map.of("message", "Import completed", "count", count));
+        return ResponseEntity.ok(Map.<String, Object>of("message", "Import completed", "count", count));
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────

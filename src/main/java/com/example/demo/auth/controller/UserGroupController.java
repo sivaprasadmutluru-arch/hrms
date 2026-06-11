@@ -140,7 +140,7 @@ public class UserGroupController {
         List<User> users = userRepository.findAllById(userIds);
         group.getMembers().addAll(users);
         userGroupRepository.save(group);
-        return ResponseEntity.ok(Map.of("message", "Users assigned", "count", users.size()));
+        return ResponseEntity.ok(Map.<String, Object>of("message", "Users assigned", "count", users.size()));
     }
 
     @GetMapping("/user/{userId}")

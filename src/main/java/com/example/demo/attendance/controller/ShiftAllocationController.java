@@ -158,7 +158,7 @@ public class ShiftAllocationController {
             });
             created++;
         }
-        return ResponseEntity.ok(Map.of("message", "Shift allocated", "count", created));
+        return ResponseEntity.ok(Map.<String, Object>of("message", "Shift allocated", "count", created));
     }
 
     @PutMapping("/{id}")

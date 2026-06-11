@@ -207,9 +207,9 @@ public class GeneralSettingsController {
             message.setText("This is a test email from the HRMS system. If you received this, your email configuration is working correctly.");
             mailSender.send(message);
 
-            return ResponseEntity.ok(Map.of("success", true, "message", "Test email sent to " + testEmailTo));
+            return ResponseEntity.ok(Map.<String, Object>of("success", true, "message", "Test email sent to " + testEmailTo));
         } catch (Exception e) {
-            return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
+            return ResponseEntity.ok(Map.<String, Object>of("success", false, "error", e.getMessage()));
         }
     }
 

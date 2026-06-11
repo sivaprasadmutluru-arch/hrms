@@ -59,7 +59,7 @@ public class AuditController {
                 .orElseGet(AccountBlockUnblock::new);
         setting.setEnabled(!setting.isEnabled());
         accountBlockUnblockRepository.save(setting);
-        return ResponseEntity.ok(Map.of("isEnabled", setting.isEnabled(),
+        return ResponseEntity.ok(Map.<String, Object>of("isEnabled", setting.isEnabled(),
                 "message", "Account block/unblock feature " + (setting.isEnabled() ? "enabled" : "disabled")));
     }
 }
