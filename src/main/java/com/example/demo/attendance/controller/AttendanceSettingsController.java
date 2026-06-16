@@ -7,12 +7,14 @@ import com.example.demo.base.repository.OrganizationRepository;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.attendance.service.AttendanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,7 @@ public class AttendanceSettingsController {
     private final AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
     private final BatchAttendanceRepository batchAttendanceRepository;
     private final WorkRecordRepository workRecordRepository;
+    private final AttendanceService attendanceService;
 
     // ─── Grace Time ───────────────────────────────────────────────────────────
 
@@ -315,12 +318,54 @@ public class AttendanceSettingsController {
     @GetMapping("/work-records")
     @PreAuthorize("hasAuthority('attendance:view')")
     @Transactional(readOnly = true)
-    @Operation(summary = "List work records (company-scoped, paginated)")
-    public ResponseEntity<Page<WorkRecord>> listWorkRecords(@PageableDefault(size = 20) Pageable pageable) {
-        var spec = ScopeFilter.<WorkRecord>byEmployee();
+    @Operation(summary = "List work records (company-scoped, paginated, with filters)")
+    public ResponseEntity<Page<WorkRecord>> listWorkRecords(
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) Boolean calculated,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
+
+        Specification<WorkRecord> spec = ScopeFilter.byCompany();
+
+        if (employeeId != null) {
+            Specification<WorkRecord> empSpec = (root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId);
+            spec = spec != null ? spec.and(empSpec) : empSpec;
+        } else {
+            // Respect role-based scope only if no specific employeeId is requested
+            Specification<WorkRecord> scopeSpec = ScopeFilter.byEmployee();
+            if (scopeSpec != null) spec = spec != null ? spec.and(scopeSpec) : scopeSpec;
+        }
+
+        if (calculated != null) {
+            Specification<WorkRecord> calcSpec = (root, query, cb) -> cb.equal(root.get("isAttendanceRecord"), calculated);
+            spec = spec != null ? spec.and(calcSpec) : calcSpec;
+        }
+        if (from != null) {
+            Specification<WorkRecord> fromSpec = (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("date"), from);
+            spec = spec != null ? spec.and(fromSpec) : fromSpec;
+        }
+        if (to != null) {
+            Specification<WorkRecord> toSpec = (root, query, cb) -> cb.lessThanOrEqualTo(root.get("date"), to);
+            spec = spec != null ? spec.and(toSpec) : toSpec;
+        }
+
         return ResponseEntity.ok(spec != null
                 ? workRecordRepository.findAll(spec, pageable)
                 : workRecordRepository.findAll(pageable));
+    }
+
+    @GetMapping("/work-records/export")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Export work records to Excel")
+    public void exportWorkRecords(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) Boolean calculated,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
+            jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        attendanceService.exportWorkRecordsToExcel(companyId, employeeId, calculated, from, to, response);
     }
 
     @GetMapping("/work-records/employee/{employeeId}")

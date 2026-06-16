@@ -3,6 +3,8 @@ package com.example.demo.ess.controller;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
+import com.example.demo.attendance.entity.AttendanceActivity;
+import com.example.demo.attendance.repository.AttendanceActivityRepository;
 import com.example.demo.attendance.repository.AttendanceRepository;
 import com.example.demo.attendance.service.AttendanceService;
 import com.example.demo.auth.security.UserPrincipal;
@@ -51,10 +53,13 @@ import java.util.Map;
 @Transactional
 public class ESSController {
 
+    private static final java.time.ZoneId DUBAI_ZONE = java.time.ZoneId.of("Asia/Dubai");
+
     private final EmployeeRepository employeeRepository;
     private final EmployeeWorkInformationRepository workInfoRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final AttendanceRepository attendanceRepository;
+    private final AttendanceActivityRepository attendanceActivityRepository;
     private final AttendanceService attendanceService;
     private final PayslipRepository payslipRepository;
     private final LeaveService leaveService;
@@ -152,21 +157,37 @@ public class ESSController {
     @Operation(summary = "Get own clock-in/online status for today")
     public ResponseEntity<Map<String, Object>> clockStatus(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), LocalDate.now())
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
+
+        List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today);
+        AttendanceActivity active = activities.stream()
+                .filter(a -> a.getClockOut() == null)
+                .findFirst()
+                .orElse(null);
+        boolean online = active != null;
+
+        java.time.Instant currentSessionStartUtc = null;
+        if (active != null && active.getInDatetime() != null) {
+            currentSessionStartUtc = active.getInDatetime().atZone(DUBAI_ZONE).toInstant();
+        }
+
+        final java.time.Instant finalStart = currentSessionStartUtc;
+
+        return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today)
                 .map(att -> {
-                    LocalTime checkIn = att.getCheckIn();
-                    LocalTime checkOut = att.getCheckOut();
-                    boolean online = checkIn != null && checkOut == null;
-                    return ResponseEntity.ok(Map.<String, Object>of(
-                            "online", online,
-                            "checkIn", checkIn != null ? checkIn.toString() : "",
-                            "checkOut", checkOut != null ? checkOut.toString() : ""
-                    ));
+                    java.util.Map<String, Object> res = new java.util.HashMap<>();
+                    res.put("online", online);
+                    res.put("checkIn", att.getCheckIn() != null ? att.getCheckIn().toString() : "");
+                    res.put("checkOut", att.getCheckOut() != null ? att.getCheckOut().toString() : "");
+                    res.put("atWorkSecond", att.getAtWorkSecond() != null ? att.getAtWorkSecond() : 0);
+                    res.put("currentSessionStartUtc", finalStart);
+                    return ResponseEntity.ok(res);
                 })
-                .orElse(ResponseEntity.ok(Map.<String, Object>of(
+                .orElse(ResponseEntity.ok(Map.of(
                         "online", false,
                         "checkIn", "",
-                        "checkOut", ""
+                        "checkOut", "",
+                        "atWorkSecond", 0
                 )));
     }
 
@@ -178,55 +199,39 @@ public class ESSController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         Employee emp = resolveEmployee(auth);
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
         List<Attendance> records = (from != null && to != null)
                 ? attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(emp.getId(), from, to)
                 : attendanceRepository.findByEmployeeId(emp.getId());
-        return ResponseEntity.ok(records.stream().map(AttendanceResponse::from).toList());
+
+        List<AttendanceActivity> todayActivities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today);
+        AttendanceActivity active = todayActivities.stream()
+                .filter(a -> a.getClockOut() == null)
+                .findFirst()
+                .orElse(null);
+
+        java.time.Instant currentSessionStartUtc = null;
+        if (active != null && active.getInDatetime() != null) {
+            currentSessionStartUtc = active.getInDatetime().atZone(DUBAI_ZONE).toInstant();
+        }
+
+        final java.time.Instant finalStart = currentSessionStartUtc;
+
+        return ResponseEntity.ok(records.stream().map(att -> {
+            AttendanceResponse res = AttendanceResponse.from(att);
+            if (att.getAttendanceDate().equals(today)) {
+                res.setCurrentSessionStartUtc(finalStart);
+            }
+            return res;
+        }).toList());
     }
 
     @PostMapping("/check-in")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Self check-in for today")
-    public ResponseEntity<AttendanceResponse> checkIn(
-            Authentication auth,
-            @RequestBody(required = false) AttendanceRequest request) {
-        final AttendanceRequest req = (request != null) ? request : new AttendanceRequest();
+    public ResponseEntity<AttendanceResponse> checkIn(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        // Enforce that the employee can only check in for themselves
-        req.setEmployeeId(emp.getId());
-        req.setCompanyId(emp.getCompany().getId());
-        LocalDate today = LocalDate.now();
-        Attendance saved = attendanceRepository.findByEmployeeIdAndAttendanceDate(
-                        emp.getId(), req.getAttendanceDate() != null ? req.getAttendanceDate() : today)
-                .map(existing -> {
-                    // Update existing record with check-out time
-                    existing.setCheckOut(req.getCheckOut() != null ? req.getCheckOut() : java.time.LocalTime.now());
-                    existing.setCheckOutDate(req.getCheckOutDate() != null ? req.getCheckOutDate() : today);
-                    if (existing.getCheckIn() != null && existing.getCheckOut() != null) {
-                        long minutes = java.time.temporal.ChronoUnit.MINUTES.between(existing.getCheckIn(), existing.getCheckOut());
-                        if (minutes < 0) minutes += 24 * 60;
-                        existing.setWorkedHour(req.getWorkedHour() != null ? req.getWorkedHour() : minutes / 60.0);
-                    } else if (req.getWorkedHour() != null) {
-                        existing.setWorkedHour(req.getWorkedHour());
-                    }
-                    return attendanceRepository.save(existing);
-                })
-                .orElseGet(() -> {
-                    Attendance att = new Attendance();
-                    att.setEmployee(emp);
-                    att.setCompany(emp.getCompany());
-                    att.setAttendanceDate(req.getAttendanceDate() != null ? req.getAttendanceDate() : today);
-                    att.setCheckIn(req.getCheckIn() != null ? req.getCheckIn() : java.time.LocalTime.now());
-                    att.setCheckInDate(req.getCheckInDate() != null ? req.getCheckInDate() : today);
-                    att.setCheckInUtc(java.time.Instant.now());
-                    // Populate shift and work type from employee's work information
-                    workInfoRepository.findByEmployeeId(emp.getId()).ifPresent(wi -> {
-                        if (wi.getShift() != null) att.setShift(wi.getShift());
-                        if (wi.getWorkType() != null) att.setWorkType(wi.getWorkType());
-                    });
-                    return attendanceRepository.save(att);
-                });
-        return ResponseEntity.ok(AttendanceResponse.from(saved));
+        return ResponseEntity.ok(attendanceService.clockIn(emp.getId(), emp.getCompany().getId()));
     }
 
     @PostMapping("/check-out")
@@ -234,18 +239,13 @@ public class ESSController {
     @Operation(summary = "Self check-out for today")
     public ResponseEntity<?> checkOut(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        LocalDate today = LocalDate.now();
-        return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today)
-                .map(att -> {
-                    if (att.getCheckIn() == null) {
-                        return ResponseEntity.badRequest().body("No check-in found for today.");
-                    }
-                    if (att.getCheckOut() != null) {
-                        return ResponseEntity.badRequest().body("Already checked out for today.");
-                    }
-                    return ResponseEntity.ok(attendanceService.clockOut(att.getId()));
-                })
-                .orElse(ResponseEntity.badRequest().body("No attendance record found for today."));
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
+        java.util.Optional<Attendance> opt = attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today);
+        if (opt.isPresent()) {
+            return ResponseEntity.ok(attendanceService.clockOut(opt.get().getId()));
+        } else {
+            return ResponseEntity.badRequest().body("No attendance record found for today.");
+        }
     }
 
     @GetMapping("/my-validation-requests")
