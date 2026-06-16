@@ -7,6 +7,7 @@ import com.example.demo.attendance.dto.AttendanceRegisterRowDto;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
+import com.example.demo.attendance.entity.AttendanceActivity;
 import com.example.demo.attendance.entity.AttendanceLateComeEarlyOut;
 import com.example.demo.attendance.entity.AttendanceOverTime;
 import com.example.demo.attendance.entity.WorkRecord;
@@ -56,6 +57,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AttendanceService {
 
+    private static final java.time.ZoneId DUBAI_ZONE = java.time.ZoneId.of("Asia/Dubai");
+
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
     private final CompanyRepository companyRepository;
@@ -69,6 +72,8 @@ public class AttendanceService {
     private final HolidayRepository holidayRepository;
     private final HolidayAllocationRepository holidayAllocationRepository;
     private final AttendanceValidationConditionRepository validationConditionRepository;
+
+    private final AttendanceActivityRepository attendanceActivityRepository;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -157,67 +162,51 @@ public class AttendanceService {
     }
 
     private void autoComputeOnCheckout(Attendance att) {
-        // Compute worked hours
-        if (att.getCheckIn() != null) {
-            LocalTime in = att.getCheckIn();
-            LocalTime out = att.getCheckOut();
-            long minutes;
-            if (out.isBefore(in)) {
-                minutes = ChronoUnit.MINUTES.between(in, LocalTime.MAX) + 1
-                        + ChronoUnit.MINUTES.between(LocalTime.MIN, out);
-            } else {
-                minutes = ChronoUnit.MINUTES.between(in, out);
+        recalculateTotalHours(att);
+        double worked = att.getWorkedHour() != null ? att.getWorkedHour() : 0.0;
+
+        if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
+            double rawOt = Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0;
+
+            // Resolve shift-level values, fall back to company-level ValidationCondition
+            ShiftSchedule shift = att.getShift();
+            String cutoffStr = shift != null ? shift.getOvertimeCutoff() : null;
+            String minOtStr  = shift != null ? shift.getMinimumOvertimeToApprove() : null;
+
+            if (att.getCompany() != null && ((cutoffStr == null || cutoffStr.isBlank()) || (minOtStr == null || minOtStr.isBlank()))) {
+                var vc = validationConditionRepository.findByCompanyId(att.getCompany().getId()).orElse(null);
+                if (vc != null) {
+                    if (cutoffStr == null || cutoffStr.isBlank()) cutoffStr = vc.getOvertimeCutoff();
+                    if (minOtStr  == null || minOtStr.isBlank())  minOtStr  = vc.getMinimumOvertimeToApprove();
+                }
             }
-            double worked = Math.round((minutes / 60.0) * 100.0) / 100.0;
-            att.setWorkedHour(worked);
-            // FIX #1: persist raw worked seconds so hourly-pay queries work correctly
-            att.setAtWorkSecond((int)(minutes * 60L));
 
-            if (att.getMinimumHour() != null && worked > att.getMinimumHour()) {
-                double rawOt = Math.round((worked - att.getMinimumHour()) * 100.0) / 100.0;
-
-                // Resolve shift-level values, fall back to company-level ValidationCondition
-                ShiftSchedule shift = att.getShift();
-                String cutoffStr = shift != null ? shift.getOvertimeCutoff() : null;
-                String minOtStr  = shift != null ? shift.getMinimumOvertimeToApprove() : null;
-
-                if (att.getCompany() != null && ((cutoffStr == null || cutoffStr.isBlank()) || (minOtStr == null || minOtStr.isBlank()))) {
-                    var vc = validationConditionRepository.findByCompanyId(att.getCompany().getId()).orElse(null);
-                    if (vc != null) {
-                        if (cutoffStr == null || cutoffStr.isBlank()) cutoffStr = vc.getOvertimeCutoff();
-                        if (minOtStr  == null || minOtStr.isBlank())  minOtStr  = vc.getMinimumOvertimeToApprove();
-                    }
-                }
-
-                // Apply minimumOvertimeToApprove: discard OT below the threshold
-                Integer minOtMinutes = parseHhmm(minOtStr);
-                if (minOtMinutes != null && rawOt * 60 < minOtMinutes) {
-                    rawOt = 0.0;
-                }
-
-                // Apply overtimeCutoff: cap at maximum allowed
-                Integer cutoffMinutes = parseHhmm(cutoffStr);
-                if (cutoffMinutes != null) {
-                    rawOt = Math.min(rawOt, cutoffMinutes / 60.0);
-                }
-
-                att.setAttendanceOvertime(Math.round(rawOt * 100.0) / 100.0);
-                // FIX #1: persist overtime seconds so overtime-pay queries and approval flow work
-                att.setOvertimeSecond((int)(rawOt * 3600));
-            } else {
-                att.setOvertimeSecond(0);
+            // Apply minimumOvertimeToApprove: discard OT below the threshold
+            Integer minOtMinutes = parseHhmm(minOtStr);
+            if (minOtMinutes != null && rawOt * 60 < minOtMinutes) {
+                rawOt = 0.0;
             }
-            attendanceRepository.save(att);
 
-            // Auto-generate WorkRecord for payroll based on actual hours vs shift minimum
-            generateWorkRecord(att, worked);
+            // Apply overtimeCutoff: cap at maximum allowed
+            Integer cutoffMinutes = parseHhmm(cutoffStr);
+            if (cutoffMinutes != null) {
+                rawOt = Math.min(rawOt, cutoffMinutes / 60.0);
+            }
+
+            att.setAttendanceOvertime(Math.round(rawOt * 100.0) / 100.0);
+            att.setOvertimeSecond((int)(rawOt * 3600));
+        } else {
+            att.setOvertimeSecond(0);
         }
+        attendanceRepository.save(att);
+
+        // Auto-generate WorkRecord for payroll based on actual hours vs shift minimum
+        generateWorkRecord(att, worked);
 
         // Detect late/early: check branch-level grace first, then fall back to org-level
         int graceMinutes = 0;
         if (att.getCompany() != null) {
             Long companyId = att.getCompany().getId();
-            // FIX #10: use Math.round instead of integer division to preserve sub-minute precision
             graceMinutes = graceTimeRepository
                     .findFirstByCompanyIdAndIsDefaultTrue(companyId)
                     .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : 0)
@@ -233,11 +222,70 @@ public class AttendanceService {
         detectLateComeEarlyOut(att.getId(), graceMinutes);
     }
 
+    private void recalculateTotalHours(Attendance att) {
+        List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(
+                att.getEmployee().getId(), att.getAttendanceDate());
+
+        long totalSeconds = 0;
+        for (AttendanceActivity a : activities) {
+            if (a.getClockIn() != null && a.getClockOut() != null) {
+                LocalTime in = a.getClockIn();
+                LocalTime out = a.getClockOut();
+                long seconds;
+                if (out.isBefore(in)) {
+                    seconds = ChronoUnit.SECONDS.between(in, LocalTime.MAX) + 1
+                            + ChronoUnit.SECONDS.between(LocalTime.MIN, out);
+                } else {
+                    seconds = ChronoUnit.SECONDS.between(in, out);
+                }
+                totalSeconds += seconds;
+            }
+        }
+
+        double workedHours = Math.round((totalSeconds / 3600.0) * 100.0) / 100.0;
+        att.setWorkedHour(workedHours);
+        att.setAtWorkSecond((int) totalSeconds);
+    }
+
     /**
      * Auto-generate or update a WorkRecord from a completed attendance.
      * Classification: FDP (>= minHours), HDP (>= half minHours), or proportional HDP.
      * minimumWorkingHour on ShiftSchedule is stored in minutes (e.g. 480 = 8h).
      */
+    private void generatePunchWorkRecord(AttendanceActivity activity, Attendance summary) {
+        if (activity.getClockIn() == null || activity.getClockOut() == null) return;
+
+        LocalTime in = activity.getClockIn();
+        LocalTime out = activity.getClockOut();
+        long seconds;
+        if (out.isBefore(in)) {
+            seconds = ChronoUnit.SECONDS.between(in, LocalTime.MAX) + 1
+                    + ChronoUnit.SECONDS.between(LocalTime.MIN, out);
+        } else {
+            seconds = ChronoUnit.SECONDS.between(in, out);
+        }
+
+        double workedHours = Math.round((seconds / 3600.0) * 100.0) / 100.0;
+        int wh = (int) workedHours;
+        int wm = (int) Math.round((workedHours - wh) * 60);
+        String atWorkStr = String.format("%02d:%02d", wh, wm);
+
+        java.time.format.DateTimeFormatter timeFormatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss");
+
+        WorkRecord wr = new WorkRecord();
+        wr.setEmployee(activity.getEmployee());
+        wr.setCompany(summary.getCompany());
+        wr.setAttendance(summary);
+        wr.setDate(activity.getAttendanceDate());
+        wr.setWorkRecordType(WorkRecord.WorkRecordType.FDP);
+        wr.setAtWorkSecond((int) seconds);
+        wr.setAtWork(atWorkStr);
+        wr.setIsAttendanceRecord(false);
+        wr.setNote("Punch: " + in.format(timeFormatter) + " - " + out.format(timeFormatter));
+        wr.setLastUpdate(java.time.LocalDateTime.now(DUBAI_ZONE));
+        workRecordRepository.save(wr);
+    }
+
     private void generateWorkRecord(Attendance att, double workedHours) {
         if (att.getEmployee() == null || att.getAttendanceDate() == null) return;
 
@@ -294,7 +342,7 @@ public class AttendanceService {
         wr.setMinHour(minHourStr);
         wr.setDayPercentage(dayPercentage);
         wr.setIsAttendanceRecord(true);
-        wr.setLastUpdate(java.time.LocalDateTime.now());
+        wr.setLastUpdate(java.time.LocalDateTime.now(DUBAI_ZONE));
         workRecordRepository.save(wr);
     }
 
@@ -564,7 +612,7 @@ public class AttendanceService {
 
         LocalDate first = LocalDate.of(year, month, 1);
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
 
         // Attendance records for the month
         List<Attendance> attendances = attendanceRepository
@@ -729,36 +777,90 @@ public class AttendanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
-        Attendance att = new Attendance();
-        att.setEmployee(employee);
-        att.setCompany(company);
-        att.setAttendanceDate(LocalDate.now());
-        att.setCheckIn(LocalTime.now());
-        att.setCheckInDate(LocalDate.now());
-        att.setCheckInUtc(Instant.now());
-        att.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
 
-        // Auto-attach employee's assigned shift and derive minimum hours for the day
-        ShiftSchedule shift = employee.getShift();
-        if (shift != null) {
-            att.setShift(shift);
-            if (shift.getMinimumWorkingHour() != null) {
-                // minimumWorkingHour is in minutes; convert to hours for the attendance record
-                att.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
-            }
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
+
+        // 1. Find or create daily Attendance summary record
+        Attendance att = attendanceRepository.findByEmployeeIdAndAttendanceDate(employeeId, today)
+                .orElseGet(() -> {
+                    Attendance newAtt = new Attendance();
+                    newAtt.setEmployee(employee);
+                    newAtt.setCompany(company);
+                    newAtt.setAttendanceDate(today);
+                    newAtt.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+                    ShiftSchedule shift = employee.getShift();
+                    if (shift != null) {
+                        newAtt.setShift(shift);
+                        if (shift.getMinimumWorkingHour() != null) {
+                            newAtt.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
+                        }
+                    }
+                    return attendanceRepository.save(newAtt);
+                });
+
+        // 2. Check if there's already an open activity (clocked in but not out)
+        List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(employeeId, today);
+        boolean hasOpenActivity = activities.stream().anyMatch(a -> a.getClockOut() == null);
+
+        if (hasOpenActivity) {
+            return AttendanceResponse.from(att); // Already clocked in
         }
 
-        return AttendanceResponse.from(attendanceRepository.save(att));
+        // 3. Create new AttendanceActivity for this punch
+        AttendanceActivity activity = new AttendanceActivity();
+        activity.setEmployee(employee);
+        activity.setAttendanceDate(today);
+        activity.setClockIn(LocalTime.now(DUBAI_ZONE));
+        activity.setClockInDate(today);
+        activity.setInDatetime(java.time.LocalDateTime.now(DUBAI_ZONE));
+        attendanceActivityRepository.save(activity);
+
+        // 4. Update first check-in of the day if not set
+        if (att.getCheckIn() == null) {
+            att.setCheckIn(activity.getClockIn());
+            att.setCheckInDate(today);
+            att.setCheckInUtc(Instant.now());
+            attendanceRepository.save(att);
+        }
+
+        AttendanceResponse res = AttendanceResponse.from(att);
+        if (activity.getInDatetime() != null) {
+            res.setCurrentSessionStartUtc(activity.getInDatetime().atZone(DUBAI_ZONE).toInstant());
+        }
+        return res;
     }
 
     @Transactional
     public AttendanceResponse clockOut(Long attendanceId) {
         Attendance att = find(attendanceId);
-        att.setCheckOut(LocalTime.now());
-        att.setCheckOutDate(LocalDate.now());
+        LocalDate today = att.getAttendanceDate();
+        Long employeeId = att.getEmployee().getId();
+
+        // 1. Find the open activity for today
+        List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(employeeId, today);
+        AttendanceActivity openActivity = activities.stream()
+                .filter(a -> a.getClockOut() == null)
+                .findFirst()
+                .orElse(null);
+
+        if (openActivity != null) {
+            openActivity.setClockOut(LocalTime.now(DUBAI_ZONE));
+            openActivity.setClockOutDate(today);
+            openActivity.setOutDatetime(java.time.LocalDateTime.now(DUBAI_ZONE));
+            attendanceActivityRepository.save(openActivity);
+
+            // Create a WorkRecord for this specific punch
+            generatePunchWorkRecord(openActivity, att);
+        }
+
+        // 2. Update summary Attendance record
+        att.setCheckOut(LocalTime.now(DUBAI_ZONE));
+        att.setCheckOutDate(today);
         att.setCheckOutUtc(Instant.now());
-        att = attendanceRepository.save(att);
+
+        attendanceRepository.save(att);
         autoComputeOnCheckout(att);
+
         return AttendanceResponse.from(att);
     }
 
@@ -808,7 +910,7 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public List<AttendanceResponse> getTodayAttendance(Long companyId) {
-        return attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, LocalDate.now())
+        return attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, LocalDate.now(DUBAI_ZONE))
                 .stream().map(AttendanceResponse::from).collect(Collectors.toList());
     }
 
@@ -831,7 +933,7 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getDashboard(Long companyId, LocalDate date, Long departmentId) {
-        LocalDate targetDate = date != null ? date : LocalDate.now();
+        LocalDate targetDate = date != null ? date : LocalDate.now(DUBAI_ZONE);
 
         List<Employee> allActive = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
         if (departmentId != null) {
@@ -972,6 +1074,99 @@ public class AttendanceService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public void exportWorkRecordsToExcel(Long companyId, Long employeeId, Boolean calculated, LocalDate from, LocalDate to, HttpServletResponse response) throws IOException {
+        Specification<WorkRecord> spec = Specification.where((root, query, cb) -> cb.equal(root.get("company").get("id"), companyId));
+        if (employeeId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId));
+        }
+        if (calculated != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("isAttendanceRecord"), calculated));
+        }
+        if (from != null) {
+            spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("date"), from));
+        }
+        if (to != null) {
+            spec = spec.and((root, query, cb) -> cb.lessThanOrEqualTo(root.get("date"), to));
+        }
+
+        List<WorkRecord> records = workRecordRepository.findAll(spec);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=work_records.xlsx");
+
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Work Records");
+            sheet.setDefaultRowHeightInPoints(20);
+
+            XSSFCellStyle titleStyle  = xlTitleStyle(wb, "1E1B4B");
+            XSSFCellStyle headerStyle = xlHeaderStyle(wb, "6366F1");
+            XSSFCellStyle evenStyle   = xlBodyStyle(wb, "EEF2FF");
+            XSSFCellStyle oddStyle    = xlBodyStyle(wb, "FFFFFF");
+
+            String[] columns = {"Employee", "Date", "Status", "At Work", "Min Hour", "Day %", "Note"};
+
+            Row titleRow = sheet.createRow(0);
+            titleRow.setHeightInPoints(30);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("HRMS Pro  |  Work Records Export");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, columns.length - 1));
+            for (int i = 1; i < columns.length; i++) titleRow.createCell(i).setCellStyle(titleStyle);
+
+            Row headerRow = sheet.createRow(1);
+            headerRow.setHeightInPoints(22);
+            for (int i = 0; i < columns.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(columns[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowNum = 2;
+            for (WorkRecord r : records) {
+                Row row = sheet.createRow(rowNum);
+                row.setHeightInPoints(18);
+                XSSFCellStyle base = rowNum % 2 == 0 ? evenStyle : oddStyle;
+
+                xlCell(row, 0, r.getEmployee() != null ? r.getEmployee().getFirstName() + " " + (r.getEmployee().getLastName() != null ? r.getEmployee().getLastName() : "") : "", base);
+                xlCell(row, 1, r.getDate() != null ? r.getDate().toString() : "", base);
+                xlCell(row, 2, getWorkRecordTypeLabel(r.getWorkRecordType()), base);
+                xlCell(row, 3, r.getAtWork(), base);
+                xlCell(row, 4, r.getMinHour(), base);
+                
+                Cell pctCell = row.createCell(5);
+                pctCell.setCellValue(r.getDayPercentage() != null ? r.getDayPercentage() * 100 : 0.0);
+                pctCell.setCellStyle(base);
+                
+                xlCell(row, 6, r.getNote(), base);
+                rowNum++;
+            }
+
+            int[] widths = {6500, 3500, 3500, 3000, 3000, 3000, 8000};
+            for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i]);
+
+            sheet.createFreezePane(0, 2);
+            wb.write(response.getOutputStream());
+        }
+    }
+
+    private String getWorkRecordTypeLabel(WorkRecord.WorkRecordType type) {
+        if (type == null) return "—";
+        return switch (type) {
+            case FDP  -> "Present";
+            case HDP  -> "Half Day";
+            case ABS  -> "Absent";
+            case LEA  -> "On Leave";
+            case HD   -> "Holiday";
+            case MCO  -> "Missed Check Out";
+            case WOF  -> "Weekly Off";
+            case LFD  -> "On Leave";
+            case LHD  -> "Half Day Leave";
+            case CONF -> "Conflict";
+            case DFT  -> "Draft";
+            default   -> type.name();
+        };
+    }
+
     @Transactional
     public int importFromExcel(MultipartFile file, Long companyId) throws IOException {
         Company company = companyRepository.findById(companyId)
@@ -1024,7 +1219,7 @@ public class AttendanceService {
     public AttendanceRegisterResponse getRegister(Long companyId, Long departmentId, int year, int month) {
         LocalDate first = LocalDate.of(year, month, 1);
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
 
         // 1. Employees
         List<Employee> employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);

@@ -43,10 +43,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/attendance")
 @RequiredArgsConstructor
-@Tag(name = "Attendance")
+@Tag(name = "Attendance Management")
 public class AttendanceController {
 
+    private static final java.time.ZoneId DUBAI_ZONE = java.time.ZoneId.of("Asia/Dubai");
+
     private final AttendanceService attendanceService;
+
     private final AttendanceRepository attendanceRepository;
     private final AttendanceRequestCommentRepository requestCommentRepository;
     private final AttendanceRequestFileRepository requestFileRepository;
@@ -273,7 +276,7 @@ public class AttendanceController {
     public ResponseEntity<List<Map<String, Object>>> getNotClockedIn(
             @RequestParam Long companyId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(attendanceService.getNotClockedIn(companyId, date != null ? date : LocalDate.now()));
+        return ResponseEntity.ok(attendanceService.getNotClockedIn(companyId, date != null ? date : LocalDate.now(DUBAI_ZONE)));
     }
 
     @GetMapping("/not-out")
@@ -282,7 +285,7 @@ public class AttendanceController {
     public ResponseEntity<List<Map<String, Object>>> getNotClockedOut(
             @RequestParam Long companyId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(attendanceService.getNotClockedOut(companyId, date != null ? date : LocalDate.now()));
+        return ResponseEntity.ok(attendanceService.getNotClockedOut(companyId, date != null ? date : LocalDate.now(DUBAI_ZONE)));
     }
 
     // ─── Today's Attendance ───────────────────────────────────────────────────

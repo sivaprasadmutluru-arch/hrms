@@ -22,6 +22,8 @@ public class AttendanceResponse {
     private Instant checkInUtc;
     private Instant checkOutUtc;
     private Double workedHour;
+    private Integer atWorkSecond;
+    private Instant currentSessionStartUtc;
     private Double minimumHour;
     private Double attendanceOvertime;
     private Boolean attendanceOvertimeApprove;
@@ -43,6 +45,7 @@ public class AttendanceResponse {
         r.setCheckInUtc(a.getCheckInUtc());
         r.setCheckOutUtc(a.getCheckOutUtc());
         r.setWorkedHour(a.getWorkedHour());
+        r.setAtWorkSecond(a.getAtWorkSecond());
         r.setMinimumHour(a.getMinimumHour());
         r.setAttendanceOvertime(a.getAttendanceOvertime());
         r.setAttendanceOvertimeApprove(a.getAttendanceOvertimeApprove());
