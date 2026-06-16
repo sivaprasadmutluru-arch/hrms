@@ -39,7 +39,7 @@ public class LeaveScheduler {
         }
     }
 
-    @Scheduled(cron = "0 0 0 * * *") // midnight daily
+    @Scheduled(cron = "0 1 0 * * *") // 00:01 daily — runs AFTER monthEndAccrual to avoid reset wiping accrual credit
     @Transactional
     public void leaveReset() {
         LocalDate today = LocalDate.now();

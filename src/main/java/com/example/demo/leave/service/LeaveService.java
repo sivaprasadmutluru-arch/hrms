@@ -142,7 +142,7 @@ public class LeaveService {
     // ─── Approve / Reject / Cancel ────────────────────────────────────────────
 
     @Transactional
-    public LeaveRequest approve(Long requestId) {
+    public LeaveRequest approve(Long requestId, Long approverUserId) {
         LeaveRequest request = leaveRequestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveRequest", requestId));
         if (request.getStatus() != LeaveRequest.LeaveStatus.REQUESTED) {
@@ -175,6 +175,10 @@ public class LeaveService {
 
         deductBalance(balance, request.getRequestedDays(), request);
         request.setStatus(LeaveRequest.LeaveStatus.APPROVED);
+        if (approverUserId != null) {
+            employeeRepository.findByUserId(approverUserId)
+                    .ifPresent(request::setApprovedBy);
+        }
         LeaveRequest saved = leaveRequestRepository.save(request);
         eventPublisher.publishEvent(new LeaveApprovedEvent(this, saved));
         return saved;

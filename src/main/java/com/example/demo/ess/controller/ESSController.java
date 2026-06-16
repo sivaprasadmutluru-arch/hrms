@@ -12,8 +12,11 @@ import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
+import com.example.demo.leave.dto.AvailableLeaveDTO;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
+import com.example.demo.leave.dto.LeaveMapper;
+import com.example.demo.leave.repository.AvailableLeaveRepository;
 import com.example.demo.leave.repository.LeaveRequestRepository;
 import com.example.demo.leave.service.LeaveService;
 import com.example.demo.payroll.entity.Contract;
@@ -54,6 +57,7 @@ public class ESSController {
     private final EmployeeRepository employeeRepository;
     private final EmployeeWorkInformationRepository workInfoRepository;
     private final LeaveRequestRepository leaveRequestRepository;
+    private final AvailableLeaveRepository availableLeaveRepository;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceService attendanceService;
     private final PayslipRepository payslipRepository;
@@ -286,6 +290,27 @@ public class ESSController {
     public ResponseEntity<List<Payslip>> myPayslips(Authentication auth) {
         Employee emp = resolveEmployee(auth);
         return ResponseEntity.ok(payslipRepository.findByEmployeeId(emp.getId()));
+    }
+
+    // ── Leave balance (own) ───────────────────────────────────────────────────
+
+    @GetMapping("/my-balance")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get own leave balance per leave type")
+    public ResponseEntity<List<AvailableLeaveDTO>> myBalance(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        java.util.Map<Long, Double> usedByType = new java.util.HashMap<>();
+        leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(emp.getId())
+                .forEach(row -> usedByType.put(((Number) row[0]).longValue(), ((Number) row[1]).doubleValue()));
+        List<AvailableLeaveDTO> balance = availableLeaveRepository.findByEmployeeId(emp.getId()).stream()
+                .map(al -> {
+                    Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
+                    double used = ltId != null ? usedByType.getOrDefault(ltId, 0.0) : 0.0;
+                    return LeaveMapper.toDTO(al, used);
+                })
+                .toList();
+        return ResponseEntity.ok(balance);
     }
 
     // ── Leave types (for apply-leave form) ───────────────────────────────────

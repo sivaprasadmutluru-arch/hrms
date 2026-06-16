@@ -1,5 +1,7 @@
 package com.example.demo.leave.service;
 
+import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.leave.entity.AvailableLeave;
 import com.example.demo.leave.entity.LeaveAccrualLog;
 import com.example.demo.leave.entity.LeaveType;
@@ -13,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Handles monthly accrual logic for accrual-enabled leave types.
@@ -24,6 +28,7 @@ import java.util.List;
  * - MANUAL mode: joining month is skipped; HR sets opening balance manually
  * - AUTO_PRORATA mode: joining month gets (days_worked / total_days_in_month) * monthly_rate
  * - Employees who joined AFTER this month-end are skipped entirely
+ * - AvailableLeave rows are auto-created for eligible employees who don't have one yet
  */
 @Slf4j
 @Service
@@ -33,6 +38,7 @@ public class LeaveAccrualService {
     private final LeaveTypeRepository leaveTypeRepository;
     private final AvailableLeaveRepository availableLeaveRepository;
     private final LeaveAccrualLogRepository accrualLogRepository;
+    private final EmployeeRepository employeeRepository;
 
     /**
      * Process monthly accruals for all accrual-enabled leave types.
@@ -50,6 +56,31 @@ public class LeaveAccrualService {
             if (monthlyRate <= 0) continue;
 
             List<AvailableLeave> balances = availableLeaveRepository.findByLeaveTypeId(lt.getId());
+
+            // Auto-create missing AvailableLeave rows for active employees in this leave type's company
+            // who have already joined but were never explicitly allocated this leave type.
+            if (lt.getCompany() != null) {
+                Set<Long> alreadyHaveBalance = balances.stream()
+                        .map(b -> b.getEmployee().getId())
+                        .collect(Collectors.toSet());
+
+                List<Employee> companyEmployees = employeeRepository.findByCompanyIdAndIsActiveTrue(lt.getCompany().getId());
+                for (Employee emp : companyEmployees) {
+                    if (alreadyHaveBalance.contains(emp.getId())) continue;
+                    // Skip employees who haven't joined yet
+                    if (emp.getDateJoining() != null && emp.getDateJoining().isAfter(monthEnd)) continue;
+
+                    AvailableLeave newBalance = new AvailableLeave();
+                    newBalance.setEmployee(emp);
+                    newBalance.setLeaveType(lt);
+                    newBalance.setAvailableDays(0.0);
+                    newBalance.setAssignedDate(monthEnd);
+                    newBalance = availableLeaveRepository.save(newBalance);
+                    balances.add(newBalance);
+                    log.info("Auto-created AvailableLeave for employee={} leaveType={} (was missing before accrual)",
+                            emp.getId(), lt.getName());
+                }
+            }
 
             for (AvailableLeave balance : balances) {
                 Long empId = balance.getEmployee().getId();
