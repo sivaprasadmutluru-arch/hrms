@@ -25,7 +25,7 @@ import { selectPlatformCompanies } from '../platform/platformSlice'
 import { fetchHeadcount as fetchHeadcountReport, fetchAttendanceReport } from '../reports/reportsSlice'
 import { fetchEmployeeDashboard } from '../employees/employeesSlice'
 import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, selectCalendarDays, selectCalendarLoading } from '../attendance/attendanceSlice'
-import { fetchMyAttendance, checkIn, checkOut, selectEssAttendance, fetchMyWorkInfo, selectEssWorkInfo } from '../ess/essSlice'
+import { fetchMyAttendance, fetchClockStatus, checkIn, checkOut, selectEssAttendance, selectEssClockStatus, fetchMyWorkInfo, selectEssWorkInfo } from '../ess/essSlice'
 import { fetchAll as fetchNotifications, markAllRead as markAllNotificationsRead, selectAll as selectNotifications } from '../notifications/notificationsSlice'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
@@ -85,44 +85,59 @@ function LiveClock() {
 const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
   const dispatch = useDispatch()
   const myAttendance = useSelector(selectEssAttendance)
+  const clockStatus = useSelector(selectEssClockStatus)
   const workInfo = useSelector(selectEssWorkInfo)
   const [actionLoading, setActionLoading] = useState(false)
   const [elapsed, setElapsed] = useState('')
 
   useEffect(() => {
     function computeElapsed() {
-      const todayStr = new Date().toISOString().slice(0, 10)
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
       const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
-      const isClockedIn = myRecord?.checkIn && !myRecord?.checkOut
-      if (isClockedIn && myRecord.checkInUtc) {
-        const diffMs = Date.now() - new Date(myRecord.checkInUtc).getTime()
+      // Use clockStatus to determine if currently online
+      const isOnline = !!clockStatus?.online
+
+      // Calculate total worked time
+      // atWorkSecond contains completed sessions sum. currentSessionStartUtc is the start of current session.
+      const previousSeconds = clockStatus?.atWorkSecond || myRecord?.atWorkSecond || 0
+      const currentStart = clockStatus?.currentSessionStartUtc || myRecord?.currentSessionStartUtc
+
+      let totalMs = previousSeconds * 1000
+
+      if (isOnline && currentStart) {
+        const diffMs = Date.now() - new Date(currentStart).getTime()
         if (diffMs > 0) {
-          const diffH = Math.floor(diffMs / 3600000)
-          const diffM = Math.floor((diffMs % 3600000) / 60000)
-          setElapsed(`${diffH}h ${diffM}m worked`)
-          return
+          totalMs += diffMs
         }
       }
-      setElapsed('')
+
+      if (totalMs > 0) {
+        const diffH = Math.floor(totalMs / 3600000)
+        const diffM = Math.floor((totalMs % 3600000) / 60000)
+        setElapsed(`${diffH}h ${diffM}m worked today`)
+      } else {
+        setElapsed('')
+      }
     }
     computeElapsed()
     const timer = setInterval(computeElapsed, 60000)
     return () => clearInterval(timer)
-  }, [myAttendance])
+  }, [myAttendance, clockStatus])
 
   useEffect(() => {
+    dispatch(fetchClockStatus())
     dispatch(fetchMyAttendance())
     dispatch(fetchMyWorkInfo())
   }, [dispatch])
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
   const myRecord = myAttendance.find(r => r.attendanceDate === todayStr) || null
-  const isClockedIn  = myRecord?.checkIn && !myRecord?.checkOut
-  const isClockedOut = myRecord?.checkIn && myRecord?.checkOut
+  const isClockedIn = !!clockStatus?.online
 
   const handleCheckIn = async () => {
     setActionLoading(true)
     await dispatch(checkIn({}))
+    await dispatch(fetchClockStatus())
     dispatch(fetchMyAttendance())
     setActionLoading(false)
   }
@@ -130,6 +145,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
   const handleCheckOut = async () => {
     setActionLoading(true)
     await dispatch(checkOut())
+    await dispatch(fetchClockStatus())
     dispatch(fetchMyAttendance())
     setActionLoading(false)
   }
@@ -147,43 +163,34 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
       {/* Status info */}
       <div className="flex-1">
-        {isClockedIn && (
-          <>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Checked in at</p>
-            <p className="text-sm font-semibold text-gray-900 mt-0.5">
-              {myRecord.checkInUtc
-                ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
-                : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
-            </p>
-            {elapsed && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <p className="text-xs font-medium text-green-600">{elapsed}</p>
-              </div>
-            )}
-          </>
-        )}
-        {isClockedOut && (
+        {myRecord ? (
           <div className="flex items-center gap-6">
             <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check In</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">First In</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">
                 {myRecord.checkInUtc
                   ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
                   : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
               </p>
             </div>
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Check Out</p>
-              <p className="text-sm font-semibold text-gray-900 mt-0.5">
-                {myRecord.checkOutUtc
-                  ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
-                  : (myRecord.checkOut ? String(myRecord.checkOut).substring(0, 5) : '—')}
-              </p>
-            </div>
+            {myRecord.checkOut && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Last Out</p>
+                <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                  {myRecord.checkOutUtc
+                    ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
+                    : (myRecord.checkOut ? String(myRecord.checkOut).substring(0, 5) : '—')}
+                </p>
+              </div>
+            )}
+            {isClockedIn && elapsed && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <p className="text-xs font-medium text-green-600">{elapsed}</p>
+              </div>
+            )}
           </div>
-        )}
-        {!myRecord && user?.employeeId && (
+        ) : (
           <>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Status</p>
             <p className="text-sm font-medium text-gray-500 mt-0.5">Not checked in today</p>
@@ -210,12 +217,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
       {/* Action button */}
       <div className="flex-shrink-0">
-        {!user?.employeeId ? null : isClockedOut ? (
-          <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-100 text-gray-500 text-sm font-medium">
-            <CheckCircleIcon className="h-4 w-4 text-green-500" />
-            Done for today
-          </span>
-        ) : isClockedIn ? (
+        {!user?.employeeId ? null : isClockedIn ? (
           <button
             onClick={handleCheckOut}
             disabled={actionLoading}
@@ -751,7 +753,7 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
 
   const monthLabel = new Date(calYear, calMonth - 1).toLocaleDateString('en', { month: 'long', year: 'numeric' })
   const cells = buildCalendarGrid(calYear, calMonth, calendarDays)
-  const todayStr = now.toISOString().slice(0, 10)
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
   const visibleNotifications = dismissed ? [] : (notifications || [])
 
   function timeAgo(ts) {
@@ -921,8 +923,8 @@ export default function DashboardPage() {
     ? selectedCompany.parentCompanyId
     : selectedCompanyId
 
-  const today = new Date().toISOString().split('T')[0]
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
   const headOfficeId = user?.companyId
 
   const branchSummaryList = isSuperAdminViewingCompany

@@ -299,6 +299,17 @@ export const deleteWorkRecord = createAsyncThunk('attendance/deleteWorkRecord', 
   }
 })
 
+// ─── Attendance Activities (Individual Punches) ───────────────────────────
+
+export const fetchAttendanceActivities = createAsyncThunk('attendance/fetchActivities', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/activities', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance activities')
+  }
+})
+
 // ─── Register ──────────────────────────────────────────────────────────────
 
 export const fetchRegister = createAsyncThunk('attendance/fetchRegister', async (params, { rejectWithValue }) => {
@@ -463,6 +474,7 @@ const attendanceSlice = createSlice({
     overtimeRecords: [],
     batches: [],
     workRecords: [],
+    activities: [],
     workRecordsPagination: { page: 0, size: 20, total: 0 },
     comments: [],
     calendarDays: [],
@@ -608,6 +620,14 @@ const attendanceSlice = createSlice({
         state.workRecords = state.workRecords.filter(r => r.id !== action.payload)
       })
 
+      // Attendance Activities
+      .addCase(fetchAttendanceActivities.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchAttendanceActivities.fulfilled, (state, action) => {
+        state.loading = false
+        state.activities = action.payload
+      })
+      .addCase(fetchAttendanceActivities.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
       // Calendar
       .addCase(fetchCalendar.pending, (state) => { state.calendarLoading = true })
       .addCase(fetchCalendar.fulfilled, (state, action) => { state.calendarLoading = false; state.calendarDays = action.payload })
@@ -659,6 +679,7 @@ export const selectAllowedIPs = (state) => state.attendance.allowedIPs
 export const selectLateComeEarlyOut = (state) => state.attendance.lateComeEarlyOut
 export const selectBatches = (state) => state.attendance.batches
 export const selectWorkRecords = (state) => state.attendance.workRecords
+export const selectActivities = (state) => state.attendance.activities
 export const selectWorkRecordsPagination = (state) => state.attendance.workRecordsPagination
 export const selectComments = (state) => state.attendance.comments
 export const selectOvertimeRecords = (state) => state.attendance.overtimeRecords

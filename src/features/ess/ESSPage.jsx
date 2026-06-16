@@ -4,9 +4,9 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchMyProfile, fetchMyLeave, fetchEssLeaveTypes, applyLeave,
-  fetchMyAttendance, checkIn, checkOut, fetchMyPayslips,
+  fetchMyAttendance, fetchClockStatus, checkIn, checkOut, fetchMyPayslips,
   selectEssProfile, selectEssLeaveRequests, selectEssLeaveTypes,
-  selectEssAttendance, selectEssPayslips, selectEssLoading,
+  selectEssAttendance, selectEssClockStatus, selectEssPayslips, selectEssLoading,
 } from './essSlice'
 import Badge from '../../components/common/Badge'
 import Button from '../../components/common/Button'
@@ -131,13 +131,16 @@ function LeaveTab({ leaveRequests, leaveTypes, loading }) {
 
 function AttendanceTab({ attendance, loading }) {
   const dispatch = useDispatch()
+  const clockStatus = useSelector(selectEssClockStatus)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
-  const today = new Date().toISOString().slice(0, 10)
-  const todayRecord = attendance.find(a => a.attendanceDate === today)
-  const isClockedIn = todayRecord && todayRecord.checkIn && !todayRecord.checkOut
-  const isClockedOut = todayRecord && todayRecord.checkOut
+  useEffect(() => {
+    dispatch(fetchClockStatus())
+  }, [dispatch])
+
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
+  const isClockedIn = !!clockStatus?.online
 
   const handleFilter = () => {
     dispatch(fetchMyAttendance(from && to ? { from, to } : undefined))
@@ -147,6 +150,7 @@ function AttendanceTab({ attendance, loading }) {
     try {
       await dispatch(checkIn({})).unwrap()
       toast.success('Checked in successfully')
+      dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
     } catch (e) { toast.error(e || 'Check-in failed') }
   }
@@ -155,6 +159,7 @@ function AttendanceTab({ attendance, loading }) {
     try {
       await dispatch(checkOut()).unwrap()
       toast.success('Checked out successfully')
+      dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
     } catch (e) { toast.error(e || 'Check-out failed') }
   }
@@ -174,9 +179,7 @@ function AttendanceTab({ attendance, loading }) {
         </div>
         <Button variant="secondary" onClick={handleFilter}>Filter</Button>
         <div className="ml-auto flex items-center gap-2">
-          {isClockedOut ? (
-            <span className="text-sm text-gray-400">Checked out for today</span>
-          ) : isClockedIn ? (
+          {isClockedIn ? (
             <Button onClick={handleCheckOut}>Check Out</Button>
           ) : (
             <Button onClick={handleCheckIn}>Check In</Button>
