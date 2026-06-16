@@ -37,6 +37,15 @@ export const applyLeave = createAsyncThunk('ess/applyLeave', async (params, { re
   }
 })
 
+export const fetchClockStatus = createAsyncThunk('ess/fetchClockStatus', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/ess/clock-status')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch clock status')
+  }
+})
+
 export const fetchMyAttendance = createAsyncThunk('ess/fetchMyAttendance', async (params, { rejectWithValue }) => {
   try {
     const res = await api.get('/ess/my-attendance', { params })
@@ -91,6 +100,7 @@ const essSlice = createSlice({
     attendance: [],
     payslips: [],
     workInfo: null,
+    clockStatus: null,
     loading: false,
     error: null,
   },
@@ -140,6 +150,8 @@ const essSlice = createSlice({
       .addCase(fetchMyPayslips.rejected, rejected)
 
       .addCase(fetchMyWorkInfo.fulfilled, (state, action) => { state.workInfo = action.payload })
+
+      .addCase(fetchClockStatus.fulfilled, (state, action) => { state.clockStatus = action.payload })
   },
 })
 
@@ -149,6 +161,7 @@ export const selectEssLeaveTypes = (state) => state.ess.leaveTypes
 export const selectEssAttendance = (state) => state.ess.attendance
 export const selectEssPayslips = (state) => state.ess.payslips
 export const selectEssWorkInfo = (state) => state.ess.workInfo
+export const selectEssClockStatus = (state) => state.ess.clockStatus
 export const selectEssLoading = (state) => state.ess.loading
 
 export default essSlice.reducer
