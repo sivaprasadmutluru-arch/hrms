@@ -19,11 +19,12 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);
 
     @Query("SELECT lr FROM LeaveRequest lr WHERE lr.employee.id = :employeeId " +
-           "AND lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.status IN (com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED, " +
+           "                  com.example.demo.leave.entity.LeaveRequest.LeaveStatus.REQUESTED) " +
            "AND lr.startDate <= :endDate AND lr.endDate >= :startDate")
-    List<LeaveRequest> findApprovedOverlapping(@Param("employeeId") Long employeeId,
-                                               @Param("startDate") LocalDate startDate,
-                                               @Param("endDate") LocalDate endDate);
+    List<LeaveRequest> findActiveOverlapping(@Param("employeeId") Long employeeId,
+                                             @Param("startDate") LocalDate startDate,
+                                             @Param("endDate") LocalDate endDate);
 
     @Query("SELECT lr.employee.id, lr.leaveType.id, COALESCE(SUM(lr.requestedDays), 0) " +
            "FROM LeaveRequest lr " +

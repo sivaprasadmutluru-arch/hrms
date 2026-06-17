@@ -510,7 +510,7 @@ public class PayrollService {
         int  monthDays  = YearMonth.of(startDate.getYear(), startDate.getMonth()).lengthOfMonth();
 
         List<LeaveRequest> approvedLeaves = leaveRequestRepository
-                .findApprovedOverlapping(employeeId, startDate, endDate);
+                .findActiveOverlapping(employeeId, startDate, endDate);
 
         // Remaining leave balance — sum of active allocations for the payroll year
         List<LeaveAllocation> leaveAllocations = leaveAllocationRepository.findByEmployeeId(employeeId);

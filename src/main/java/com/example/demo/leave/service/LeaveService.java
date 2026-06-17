@@ -97,6 +97,16 @@ public class LeaveService {
 
         double days = calculateWorkingDays(startDate, endDate, companyId, leaveType);
 
+        // Reject if employee already has an active (pending or approved) request overlapping these dates
+        List<LeaveRequest> overlapping = leaveRequestRepository.findActiveOverlapping(employeeId, startDate, endDate);
+        if (!overlapping.isEmpty()) {
+            LeaveRequest clash = overlapping.get(0);
+            throw new BadRequestException(
+                    "You already have a " + clash.getStatus().name().toLowerCase() +
+                    " leave request from " + clash.getStartDate() + " to " + clash.getEndDate() +
+                    " that overlaps with the requested dates.");
+        }
+
         // Validate balance: available + carryforward + forecasted (mirrors Horilla)
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
         double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
