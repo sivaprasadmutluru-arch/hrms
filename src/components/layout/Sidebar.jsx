@@ -65,7 +65,6 @@ const ATTENDANCE_GROUP = {
     { label: 'Work Records',       to: '/attendance/work-records' },
     { label: 'Shift Allocations',  to: '/attendance/shift-allocations' },
     { label: 'Rotating Shifts',    to: '/attendance/rotating-shifts' },
-    { label: 'Rotating Work Types',to: '/attendance/rotating-work-types' },
     { label: 'Settings',           to: '/attendance/settings' },
   ],
 }

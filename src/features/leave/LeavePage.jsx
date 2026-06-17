@@ -4,11 +4,10 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchAll, create, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
-  cancelLeave, bulkAllocateLeave, annualLeaveReset, runManualAccrual,
+  cancelLeave, bulkAllocateLeave, annualLeaveReset,
   fetchLeaveRequestComments, addLeaveRequestComment, deleteLeaveRequestComment,
   fetchConditionApprovals, addConditionApproval, approveConditionStep, rejectConditionStep,
   fetchLeaveRequestFiles, uploadLeaveRequestFile, deleteLeaveRequestFile,
-  createLeaveType, updateLeaveType, deleteLeaveType,
   selectAll, selectLoading, selectPagination,
   selectLeaveRequestComments, selectConditionApprovals, selectLeaveRequestFiles,
 } from './leaveSlice'
@@ -25,7 +24,7 @@ import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
 
-const ALL_TABS = ['Requests', 'Types', 'Allocations', 'Balance']
+const ALL_TABS = ['Requests', 'Allocations', 'Balance']
 const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 
 export default function LeavePage() {
@@ -46,9 +45,6 @@ export default function LeavePage() {
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [commentText, setCommentText] = useState('')
   const [addingApproval, setAddingApproval] = useState(false)
-
-  // Leave type modal state (null = closed, {} = create, {id,...} = edit)
-  const [typeModal, setTypeModal] = useState(null)
 
   // Reject modal state
   const [rejectModal, setRejectModal] = useState({ open: false, id: null, reason: '' })
@@ -121,11 +117,6 @@ export default function LeavePage() {
     try {
       if (action === 'cancel') {
         await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20 }))
-      } else if (action === 'accrual') {
-        const result = await dispatch(runManualAccrual()).unwrap()
-        toast.success(`Accrual complete: ${result.posted} credits posted`)
-      } else if (action === 'deleteType') {
-        await dispatch(deleteLeaveType(id)).unwrap(); toast.success('Leave type deleted')
       } else if (action === 'deleteComment') {
         await dispatch(deleteLeaveRequestComment({ requestId: selectedRequest.id, commentId: id })).unwrap()
         dispatch(fetchLeaveRequestComments(selectedRequest.id))
@@ -168,74 +159,6 @@ export default function LeavePage() {
     } catch (e) { toast.error(e || 'Annual reset failed') }
   }
 
-  const openCreateType = () => setTypeModal({
-    name: '', totalDays: '', paymentType: 'PAID',
-    carryforwardType: 'NO_CARRYFORWARD', carryforwardMax: '',
-    carryforwardExpireIn: '', carryforwardExpirePeriod: 'month', carryforwardExpireDate: '',
-    leaveValidationType: 'AUTOMATIC', colorCode: '',
-    accrualEnabled: false, midYearJoinerMode: 'MANUAL',
-    negativeBalanceAllowed: false, negativeBalanceLimit: '',
-    reset: false, resetBased: 'yearly', resetMonth: '1', resetDay: '1', resetWeekend: '0',
-  })
-  const openEditType = (lt) => setTypeModal({
-    id: lt.id, name: lt.name, totalDays: String(lt.totalDays ?? ''),
-    paymentType: lt.paymentType || 'PAID',
-    carryforwardType: lt.carryforwardType || 'NO_CARRYFORWARD',
-    carryforwardMax: lt.carryforwardMax != null ? String(lt.carryforwardMax) : '',
-    carryforwardExpireIn: lt.carryforwardExpireIn != null ? String(lt.carryforwardExpireIn) : '',
-    carryforwardExpirePeriod: lt.carryforwardExpirePeriod || 'month',
-    carryforwardExpireDate: lt.carryforwardExpireDate || '',
-    leaveValidationType: lt.leaveValidationType || 'AUTOMATIC',
-    colorCode: lt.colorCode || '',
-    accrualEnabled: lt.accrualEnabled || false,
-    midYearJoinerMode: lt.midYearJoinerMode || 'MANUAL',
-    negativeBalanceAllowed: lt.negativeBalanceAllowed || false,
-    negativeBalanceLimit: lt.negativeBalanceLimit != null ? String(lt.negativeBalanceLimit) : '',
-    reset: lt.reset || false,
-    resetBased: lt.resetBased || 'yearly',
-    resetMonth: lt.resetMonth || '1',
-    resetDay: lt.resetDay || '1',
-    resetWeekend: lt.resetWeekend || '0',
-  })
-  const submitTypeModal = async () => {
-    const { id, name, totalDays, paymentType, carryforwardType, carryforwardMax,
-            carryforwardExpireIn, carryforwardExpirePeriod, carryforwardExpireDate,
-            leaveValidationType, colorCode,
-            accrualEnabled, midYearJoinerMode, negativeBalanceAllowed, negativeBalanceLimit,
-            reset, resetBased, resetMonth, resetDay, resetWeekend } = typeModal
-    if (!name.trim() || !totalDays) { toast.error('Name and days are required'); return }
-    const hasCF = carryforwardType !== 'NO_CARRYFORWARD'
-    const hasExpiry = carryforwardType === 'CARRYFORWARD_EXPIRE'
-    const payload = {
-      name, totalDays: Number(totalDays), paymentType, carryforwardType,
-      carryforwardMax: hasCF && carryforwardMax !== '' ? Number(carryforwardMax) : null,
-      carryforwardExpireIn: hasExpiry && carryforwardExpireIn !== '' ? Number(carryforwardExpireIn) : null,
-      carryforwardExpirePeriod: hasExpiry && carryforwardExpireIn !== '' ? carryforwardExpirePeriod : null,
-      carryforwardExpireDate: hasExpiry && carryforwardExpireDate ? carryforwardExpireDate : null,
-      leaveValidationType,
-      colorCode: colorCode || null, accrualEnabled, midYearJoinerMode,
-      negativeBalanceAllowed,
-      negativeBalanceLimit: negativeBalanceAllowed && negativeBalanceLimit ? Number(negativeBalanceLimit) : null,
-      reset,
-      resetBased: reset ? resetBased : null,
-      resetMonth: reset && resetBased === 'yearly' ? resetMonth : null,
-      resetDay: reset && resetBased !== 'weekly' ? resetDay : null,
-      resetWeekend: reset && resetBased === 'weekly' ? resetWeekend : null,
-    }
-    try {
-      if (id) {
-        await dispatch(updateLeaveType({ id, data: payload })).unwrap()
-        toast.success('Leave type updated')
-      } else {
-        await dispatch(createLeaveType({ ...payload, company: { id: user?.companyId } })).unwrap()
-        toast.success('Leave type created')
-      }
-      setTypeModal(null)
-    } catch (e) { toast.error(e || 'Failed') }
-  }
-
-  const handleRunAccrual = () => setConfirmModal({ open: true, action: 'accrual', id: null })
-  const handleDeleteType = (id) => setConfirmModal({ open: true, action: 'deleteType', id })
 
   const onSubmit = async (formData) => {
     try {
@@ -308,20 +231,6 @@ export default function LeavePage() {
     )},
   ]
 
-  const typeColumns = [
-    { accessorKey: 'name', header: 'Name' },
-    { accessorKey: 'totalDays', header: 'Days' },
-    { accessorKey: 'paymentType', header: 'Payment', cell: ({ getValue }) => <Badge label={getValue()} variant={getValue() === 'PAID' ? 'success' : 'default'} /> },
-    { accessorKey: 'carryforwardType', header: 'Carryforward', cell: ({ getValue }) => <span className="text-xs text-gray-600">{(getValue() || '').replace(/_/g, ' ')}</span> },
-    { accessorKey: 'leaveValidationType', header: 'Approval', cell: ({ getValue }) => <span className="text-xs text-gray-600">{(getValue() || '').replace(/_/g, ' ')}</span> },
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" onClick={() => openEditType(row.original)}>Edit</Button>
-        <Button size="sm" variant="danger" onClick={() => handleDeleteType(row.original.id)}>Delete</Button>
-      </div>
-    )},
-  ]
-
   const allocationColumns = [
     { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
     { id: 'leaveType', header: 'Type', cell: ({ row }) => row.original.leaveTypeName || '—' },
@@ -346,15 +255,6 @@ export default function LeavePage() {
         <DataTable columns={requestColumns} data={data} loading={loading} />
         <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
       </>}
-      {tab === 'Types' && (
-        <>
-          <div className="flex justify-end gap-2 mb-4">
-            <Button variant="secondary" onClick={handleRunAccrual}>Run Accrual</Button>
-            <Button onClick={openCreateType}>+ Add Type</Button>
-          </div>
-          <DataTable columns={typeColumns} data={leaveTypes} loading={loading} />
-        </>
-      )}
       {tab === 'Allocations' && (
         <>
           <div className="flex justify-end gap-2 mb-4">
@@ -460,183 +360,6 @@ export default function LeavePage() {
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" rows={3} {...register('description')} />
           </div>
         </div>
-      </Modal>
-
-      {/* Leave Type Create/Edit Modal */}
-      <Modal open={!!typeModal} onClose={() => setTypeModal(null)} title={typeModal?.id ? 'Edit Leave Type' : 'Add Leave Type'}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setTypeModal(null)}>Cancel</Button>
-            <Button onClick={submitTypeModal}>{typeModal?.id ? 'Save' : 'Create'}</Button>
-          </div>
-        }>
-        {typeModal && (
-          <div className="space-y-4">
-            <Input label="Name" value={typeModal.name}
-              onChange={e => setTypeModal(m => ({ ...m, name: e.target.value }))} />
-            <Input label="Days per year" type="number" min="1" value={typeModal.totalDays}
-              onChange={e => setTypeModal(m => ({ ...m, totalDays: e.target.value }))} />
-            <Select label="Payment type"
-              options={[{ value: 'PAID', label: 'Paid' }, { value: 'UNPAID', label: 'Unpaid' }]}
-              value={typeModal.paymentType}
-              onChange={e => setTypeModal(m => ({ ...m, paymentType: e.target.value }))} />
-            <Select label="Carryforward"
-              options={[
-                { value: 'NO_CARRYFORWARD', label: 'No carryforward' },
-                { value: 'CARRYFORWARD', label: 'Carry forward' },
-                { value: 'CARRYFORWARD_EXPIRE', label: 'Carry forward (expires)' },
-              ]}
-              value={typeModal.carryforwardType}
-              onChange={e => setTypeModal(m => ({ ...m, carryforwardType: e.target.value }))} />
-
-            {typeModal.carryforwardType !== 'NO_CARRYFORWARD' && (
-              <Input label="Max carry forward days" type="number" min="0" step="0.5" placeholder="e.g. 5"
-                value={typeModal.carryforwardMax}
-                onChange={e => setTypeModal(m => ({ ...m, carryforwardMax: e.target.value }))} />
-            )}
-
-            {typeModal.carryforwardType === 'CARRYFORWARD_EXPIRE' && (
-              <div className="space-y-3 pl-3 border-l-2 border-indigo-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiry Configuration</p>
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <Input label="Expires after" type="number" min="1" placeholder="e.g. 3"
-                      value={typeModal.carryforwardExpireIn}
-                      onChange={e => setTypeModal(m => ({ ...m, carryforwardExpireIn: e.target.value }))} />
-                  </div>
-                  <div className="flex-1">
-                    <Select label="Period"
-                      options={[
-                        { value: 'day', label: 'Day(s)' },
-                        { value: 'month', label: 'Month(s)' },
-                        { value: 'year', label: 'Year(s)' },
-                      ]}
-                      value={typeModal.carryforwardExpirePeriod}
-                      onChange={e => setTypeModal(m => ({ ...m, carryforwardExpirePeriod: e.target.value }))} />
-                  </div>
-                </div>
-                <Input label="Fixed expiry date (optional)" type="date"
-                  value={typeModal.carryforwardExpireDate}
-                  onChange={e => setTypeModal(m => ({ ...m, carryforwardExpireDate: e.target.value }))} />
-              </div>
-            )}
-
-            <Select label="Approval"
-              options={[
-                { value: 'AUTOMATIC', label: 'Automatic' },
-                { value: 'MANAGER_VALIDATION', label: 'Manager approval' },
-                { value: 'HR_VALIDATION', label: 'HR approval' },
-              ]}
-              value={typeModal.leaveValidationType}
-              onChange={e => setTypeModal(m => ({ ...m, leaveValidationType: e.target.value }))} />
-            <Input label="Color code (optional)" placeholder="#4f46e5" value={typeModal.colorCode}
-              onChange={e => setTypeModal(m => ({ ...m, colorCode: e.target.value }))} />
-
-            <div className="border-t pt-4 mt-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Accrual Settings</p>
-              <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
-                <input type="checkbox" checked={!!typeModal.accrualEnabled}
-                  onChange={e => setTypeModal(m => ({ ...m, accrualEnabled: e.target.checked }))} />
-                Enable monthly accrual (leave earned gradually, not upfront)
-              </label>
-              {typeModal.accrualEnabled && (
-                <>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Monthly rate = {typeModal.totalDays ? (Number(typeModal.totalDays) / 12).toFixed(1) : '?'} days/month
-                  </p>
-                  <Select label="Mid-year joiner mode"
-                    options={[
-                      { value: 'MANUAL', label: 'Manual (HR sets opening balance; skip joining month)' },
-                      { value: 'AUTO_PRORATA', label: 'Auto pro-rata (system calculates joining month)' },
-                    ]}
-                    value={typeModal.midYearJoinerMode}
-                    onChange={e => setTypeModal(m => ({ ...m, midYearJoinerMode: e.target.value }))} />
-                </>
-              )}
-              <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer">
-                <input type="checkbox" checked={!!typeModal.negativeBalanceAllowed}
-                  onChange={e => setTypeModal(m => ({ ...m, negativeBalanceAllowed: e.target.checked }))} />
-                Allow negative balance
-              </label>
-              {typeModal.negativeBalanceAllowed && (
-                <Input label="Max negative balance (days)" type="number" min="0" step="0.5"
-                  value={typeModal.negativeBalanceLimit}
-                  onChange={e => setTypeModal(m => ({ ...m, negativeBalanceLimit: e.target.value }))}
-                  className="mt-2" />
-              )}
-            </div>
-
-            <div className="border-t pt-4 mt-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Reset Settings</p>
-              <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
-                <input type="checkbox" checked={!!typeModal.reset}
-                  onChange={e => setTypeModal(m => ({ ...m, reset: e.target.checked }))} />
-                Enable automatic leave balance reset
-              </label>
-              {typeModal.reset && (
-                <div className="space-y-3 pl-3 border-l-2 border-orange-100">
-                  <Select label="Reset frequency"
-                    options={[
-                      { value: 'yearly', label: 'Yearly' },
-                      { value: 'monthly', label: 'Monthly' },
-                      { value: 'weekly', label: 'Weekly' },
-                    ]}
-                    value={typeModal.resetBased}
-                    onChange={e => setTypeModal(m => ({ ...m, resetBased: e.target.value }))} />
-
-                  {typeModal.resetBased === 'yearly' && (
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <Select label="Reset month"
-                          options={[
-                            { value: '1', label: 'January' }, { value: '2', label: 'February' },
-                            { value: '3', label: 'March' }, { value: '4', label: 'April' },
-                            { value: '5', label: 'May' }, { value: '6', label: 'June' },
-                            { value: '7', label: 'July' }, { value: '8', label: 'August' },
-                            { value: '9', label: 'September' }, { value: '10', label: 'October' },
-                            { value: '11', label: 'November' }, { value: '12', label: 'December' },
-                          ]}
-                          value={typeModal.resetMonth}
-                          onChange={e => setTypeModal(m => ({ ...m, resetMonth: e.target.value }))} />
-                      </div>
-                      <div className="flex-1">
-                        <Select label="Reset day"
-                          options={[
-                            ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
-                            { value: 'last day', label: 'Last day' },
-                          ]}
-                          value={typeModal.resetDay}
-                          onChange={e => setTypeModal(m => ({ ...m, resetDay: e.target.value }))} />
-                      </div>
-                    </div>
-                  )}
-
-                  {typeModal.resetBased === 'monthly' && (
-                    <Select label="Reset day of month"
-                      options={[
-                        ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
-                        { value: 'last day', label: 'Last day' },
-                      ]}
-                      value={typeModal.resetDay}
-                      onChange={e => setTypeModal(m => ({ ...m, resetDay: e.target.value }))} />
-                  )}
-
-                  {typeModal.resetBased === 'weekly' && (
-                    <Select label="Reset day of week"
-                      options={[
-                        { value: '0', label: 'Monday' }, { value: '1', label: 'Tuesday' },
-                        { value: '2', label: 'Wednesday' }, { value: '3', label: 'Thursday' },
-                        { value: '4', label: 'Friday' }, { value: '5', label: 'Saturday' },
-                        { value: '6', label: 'Sunday' },
-                      ]}
-                      value={typeModal.resetWeekend}
-                      onChange={e => setTypeModal(m => ({ ...m, resetWeekend: e.target.value }))} />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* Reject Leave Modal */}
@@ -815,19 +538,12 @@ export default function LeavePage() {
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, action: null, id: null })}
         onConfirm={onConfirmAction}
-        title={
-          confirmModal.action === 'cancel' ? 'Cancel Leave Request' :
-          confirmModal.action === 'accrual' ? 'Run Monthly Accrual' :
-          confirmModal.action === 'deleteType' ? 'Delete Leave Type' :
-          'Delete Comment'
-        }
+        title={confirmModal.action === 'cancel' ? 'Cancel Leave Request' : 'Delete Comment'}
         message={
           confirmModal.action === 'cancel' ? 'Are you sure you want to cancel this leave request?' :
-          confirmModal.action === 'accrual' ? 'Run monthly accrual for today? This credits leave to all accrual-enabled leave types.' :
-          confirmModal.action === 'deleteType' ? 'Delete this leave type? This cannot be undone.' :
           'Are you sure you want to delete this comment?'
         }
-        confirmLabel={confirmModal.action === 'cancel' ? 'Cancel Leave' : confirmModal.action === 'accrual' ? 'Run Accrual' : 'Delete'}
+        confirmLabel={confirmModal.action === 'cancel' ? 'Cancel Leave' : 'Delete'}
         loading={loading}
       />
     </div>

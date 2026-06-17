@@ -284,7 +284,6 @@ export default function App() {
           <Route path="roles/user-groups" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<UserGroupsPage />} />} />
           <Route path="attendance/shift-allocations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<ShiftAllocationsPage />} />} />
           <Route path="attendance/rotating-shifts" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RotatingShiftAssignsPage />} />} />
-          <Route path="attendance/rotating-work-types" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RotatingShiftAssignsPage />} />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
