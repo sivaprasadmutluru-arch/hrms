@@ -122,6 +122,7 @@ public class LeaveController {
 
     @PostMapping("/apply")
     @PreAuthorize("hasAuthority('leave:create')")
+    @Transactional
     @Operation(summary = "Apply for leave")
     public ResponseEntity<LeaveRequestDTO> apply(
             @AuthenticationPrincipal UserPrincipal principal,
@@ -136,13 +137,16 @@ public class LeaveController {
 
     @PostMapping("/requests/{id}/approve")
     @PreAuthorize("hasAuthority('leave:approve')")
+    @Transactional
     @Operation(summary = "Approve leave request")
-    public ResponseEntity<LeaveRequestDTO> approve(@PathVariable Long id) {
-        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.approve(id)));
+    public ResponseEntity<LeaveRequestDTO> approve(@PathVariable Long id, @AuthenticationPrincipal UserPrincipal principal) {
+        Long approverId = principal != null ? principal.getId() : null;
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.approve(id, approverId)));
     }
 
     @PostMapping("/requests/{id}/reject")
     @PreAuthorize("hasAuthority('leave:approve')")
+    @Transactional
     @Operation(summary = "Reject leave request")
     public ResponseEntity<LeaveRequestDTO> reject(@PathVariable Long id,
                                                    @RequestBody(required = false) RejectLeaveRequest body) {
@@ -152,6 +156,7 @@ public class LeaveController {
 
     @PostMapping("/requests/{id}/cancel")
     @PreAuthorize("hasAuthority('leave:create')")
+    @Transactional
     @Operation(summary = "Cancel a leave request (employee self-cancel, restores balance if approved)")
     public ResponseEntity<LeaveRequestDTO> cancel(@PathVariable Long id) {
         return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.cancel(id)));
@@ -1266,6 +1271,9 @@ public class LeaveController {
     public ResponseEntity<Map<String, Object>> runAccrual(
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate date) {
         LocalDate target = date != null ? date : LocalDate.now();
+        // Always snap to the last day of the given month so mid-month manual runs
+        // don't bypass the idempotency check and double-credit the same calendar month.
+        target = target.withDayOfMonth(target.lengthOfMonth());
         int posted = leaveAccrualService.processMonthlyAccrual(target);
         return ResponseEntity.ok(Map.of("posted", posted, "date", target.toString()));
     }
