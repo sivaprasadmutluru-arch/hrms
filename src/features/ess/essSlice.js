@@ -160,6 +160,8 @@ const essSlice = createSlice({
       .addCase(fetchMyPayslips.rejected, rejected)
 
       .addCase(fetchMyWorkInfo.fulfilled, (state, action) => { state.workInfo = action.payload })
+
+      .addCase(fetchClockStatus.fulfilled, (state, action) => { state.clockStatus = action.payload })
   },
 })
 

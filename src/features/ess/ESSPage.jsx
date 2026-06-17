@@ -4,9 +4,9 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchMyProfile, fetchMyLeave, fetchEssLeaveTypes, applyLeave,
-  fetchMyAttendance, checkIn, checkOut, fetchMyPayslips,
+  fetchMyAttendance, fetchClockStatus, checkIn, checkOut, fetchMyPayslips,
   selectEssProfile, selectEssLeaveRequests, selectEssLeaveTypes,
-  selectEssAttendance, selectEssPayslips, selectEssLoading,
+  selectEssAttendance, selectEssClockStatus, selectEssPayslips, selectEssLoading,
 } from './essSlice'
 import Badge from '../../components/common/Badge'
 import Button from '../../components/common/Button'
