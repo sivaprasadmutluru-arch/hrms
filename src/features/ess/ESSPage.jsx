@@ -4,9 +4,9 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchMyProfile, fetchMyLeave, fetchEssLeaveTypes, applyLeave,
-  fetchMyAttendance, fetchClockStatus, checkIn, checkOut, fetchMyPayslips,
+  fetchMyAttendance, checkIn, checkOut, fetchMyPayslips,
   selectEssProfile, selectEssLeaveRequests, selectEssLeaveTypes,
-  selectEssAttendance, selectEssClockStatus, selectEssPayslips, selectEssLoading,
+  selectEssAttendance, selectEssPayslips, selectEssLoading,
 } from './essSlice'
 import Badge from '../../components/common/Badge'
 import Button from '../../components/common/Button'
@@ -55,7 +55,7 @@ function ProfileTab({ profile }) {
   )
 }
 
-function LeaveTab({ leaveRequests, leaveTypes, loading }) {
+function LeaveTab({ leaveRequests, leaveTypes, leaveBalance, loading }) {
   const dispatch = useDispatch()
   const [applyOpen, setApplyOpen] = useState(false)
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -76,6 +76,37 @@ function LeaveTab({ leaveRequests, leaveTypes, loading }) {
 
   return (
     <div className="space-y-4">
+      {/* Leave Balance Summary */}
+      {leaveBalance.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Your Leave Balance</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {leaveBalance.map(b => (
+              <div key={b.id} className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <p className="text-sm font-semibold text-gray-800 mb-3">{b.leaveTypeName || '—'}</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-xl font-bold text-indigo-600">{(b.availableDays ?? 0).toFixed(1)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Available</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-amber-500">{(b.carryforwardDays ?? 0).toFixed(1)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Carry Fwd</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-emerald-600">{(b.totalLeaveDays ?? 0).toFixed(1)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Total</p>
+                  </div>
+                </div>
+                {b.usedDays > 0 && (
+                  <p className="text-xs text-gray-400 text-center mt-2">{(b.usedDays).toFixed(1)} days used this year</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end">
         <Button onClick={() => { reset(); setApplyOpen(true) }}>+ Apply Leave</Button>
       </div>
@@ -275,6 +306,7 @@ export default function ESSPage() {
   const profile = useSelector(selectEssProfile)
   const leaveRequests = useSelector(selectEssLeaveRequests)
   const leaveTypes = useSelector(selectEssLeaveTypes)
+  const leaveBalance = useSelector(selectEssLeaveBalance)
   const attendance = useSelector(selectEssAttendance)
   const payslips = useSelector(selectEssPayslips)
   const loading = useSelector(selectEssLoading)
@@ -283,6 +315,7 @@ export default function ESSPage() {
     dispatch(fetchMyProfile())
     dispatch(fetchMyLeave())
     dispatch(fetchEssLeaveTypes())
+    dispatch(fetchMyBalance())
     dispatch(fetchMyAttendance())
     dispatch(fetchMyPayslips())
   }, [dispatch])
@@ -315,7 +348,7 @@ export default function ESSPage() {
         ) : (
           <>
             {activeTab === 'Profile' && <ProfileTab profile={profile} />}
-            {activeTab === 'My Leave' && <LeaveTab leaveRequests={leaveRequests} leaveTypes={leaveTypes} loading={loading} />}
+            {activeTab === 'My Leave' && <LeaveTab leaveRequests={leaveRequests} leaveTypes={leaveTypes} leaveBalance={leaveBalance} loading={loading} />}
             {activeTab === 'My Attendance' && <AttendanceTab attendance={attendance} loading={loading} />}
             {activeTab === 'My Payslips' && <PayslipsTab payslips={payslips} />}
           </>

@@ -292,6 +292,7 @@ export default function LeavePage() {
     { accessorKey: 'endDate', header: 'End', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'requestedDays', header: 'Days', cell: ({ getValue }) => getValue() != null ? getValue() : '—' },
     { accessorKey: 'description', header: 'Reason', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
+    { id: 'approvedBy', header: 'Approved By', cell: ({ row }) => row.original.approvedByName || '—' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue()} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">

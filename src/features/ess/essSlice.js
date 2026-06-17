@@ -91,12 +91,22 @@ export const fetchMyWorkInfo = createAsyncThunk('ess/fetchMyWorkInfo', async (_,
   }
 })
 
+export const fetchMyBalance = createAsyncThunk('ess/fetchMyBalance', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/ess/my-balance')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch leave balance')
+  }
+})
+
 const essSlice = createSlice({
   name: 'ess',
   initialState: {
     profile: null,
     leaveRequests: [],
     leaveTypes: [],
+    leaveBalance: [],
     attendance: [],
     payslips: [],
     workInfo: null,
@@ -150,14 +160,13 @@ const essSlice = createSlice({
       .addCase(fetchMyPayslips.rejected, rejected)
 
       .addCase(fetchMyWorkInfo.fulfilled, (state, action) => { state.workInfo = action.payload })
-
-      .addCase(fetchClockStatus.fulfilled, (state, action) => { state.clockStatus = action.payload })
   },
 })
 
 export const selectEssProfile = (state) => state.ess.profile
 export const selectEssLeaveRequests = (state) => state.ess.leaveRequests
 export const selectEssLeaveTypes = (state) => state.ess.leaveTypes
+export const selectEssLeaveBalance = (state) => state.ess.leaveBalance
 export const selectEssAttendance = (state) => state.ess.attendance
 export const selectEssPayslips = (state) => state.ess.payslips
 export const selectEssWorkInfo = (state) => state.ess.workInfo

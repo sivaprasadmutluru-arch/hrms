@@ -400,7 +400,7 @@ export default function LeaveTypesPage() {
             {watch('accrualEnabled') && (
               <>
                 <p className="text-xs text-gray-500 mb-3">
-                  Monthly rate = {watch('totalDays') ? (Number(watch('totalDays')) / 12).toFixed(1) : '?'} days/month
+                  Monthly rate = {watch('totalDays') ? (Math.round((Number(watch('totalDays')) / 12) * 10) / 10).toFixed(1) : '?'} days/month
                 </p>
                 <Select
                   label="Mid-year joiner mode"
