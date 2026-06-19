@@ -6,6 +6,7 @@ import {
   fetchTimesheets, createTimesheet, deleteTimesheet,
   selectTimesheets, selectLoading
 } from './projectsSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -20,10 +21,23 @@ export default function TimeSheetsPage() {
   const timesheets = useSelector(selectTimesheets)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchTimesheets()) }, [dispatch])
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    reset({
+      employeeId: row.employee?.id || '',
+      taskId: row.task?.id || '',
+      date: row.date || '',
+      hours: row.hours || '',
+      description: row.description || '',
+    })
+    setModalOpen(true)
+  }
 
   const handleDelete = (id) => setConfirmModal({ open: true, id })
   const onConfirmDelete = async () => {
@@ -34,14 +48,27 @@ export default function TimeSheetsPage() {
 
   const onSubmit = async (data) => {
     try {
-      await dispatch(createTimesheet({
-        ...data,
-        hours: Number(data.hours),
-        employee: { id: Number(data.employeeId) },
-        task: data.taskId ? { id: Number(data.taskId) } : null,
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('Timesheet entry added')
+      if (editTarget) {
+        await api.put(`/projects/timesheets/${editTarget.id}`, {
+          ...data,
+          hours: Number(data.hours),
+          employee: { id: Number(data.employeeId) },
+          task: data.taskId ? { id: Number(data.taskId) } : null,
+          company: { id: user?.companyId },
+        })
+        toast.success('Timesheet entry updated')
+        setEditTarget(null)
+        dispatch(fetchTimesheets())
+      } else {
+        await dispatch(createTimesheet({
+          ...data,
+          hours: Number(data.hours),
+          employee: { id: Number(data.employeeId) },
+          task: data.taskId ? { id: Number(data.taskId) } : null,
+          company: { id: user?.companyId },
+        })).unwrap()
+        toast.success('Timesheet entry added')
+      }
       setModalOpen(false)
       reset()
     } catch (e) { toast.error(e || 'Error') }
@@ -59,14 +86,17 @@ export default function TimeSheetsPage() {
       <span className="max-w-xs truncate block">{getValue() || '—'}</span>
     )},
     { id: 'actions', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      </div>
     )},
   ]
 
   return (
     <div>
       <PageHeader title="Timesheets" subtitle="Employee time log per task"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Log Time</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Log Time</Button>} />
       <DataTable columns={columns} data={timesheets} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -77,11 +107,11 @@ export default function TimeSheetsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log Time"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Timesheet Entry' : 'Log Time'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Save</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Save'}</Button>
           </div>
         }>
         <div className="space-y-4">

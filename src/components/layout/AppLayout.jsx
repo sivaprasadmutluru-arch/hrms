@@ -5,7 +5,7 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { PageSkeleton } from '../common/Skeleton'
 import { selectIsAuthenticated, selectRoles, selectUser, fetchMe } from '../../features/auth/authSlice'
-import { fetchMyCompany } from '../../features/companies/companiesSlice'
+import { fetchMyCompany, fetchMyCompanyInfo } from '../../features/companies/companiesSlice'
 import { fetchUnreadCount } from '../../features/notifications/notificationsSlice'
 
 export default function AppLayout() {
@@ -29,12 +29,17 @@ export default function AppLayout() {
   }, [isAuthenticated])
 
   // Bootstrap current user's company so useCurrency works on any page after refresh.
-  // Skip for platform admins — they use fetchAll() to load all companies, and fetchMyCompany
-  // would overwrite state.data with a single company.
+  // Skip for platform admins — they use fetchAll() to load all companies.
+  // Employees/HR managers use /companies/mine (no role restriction).
+  // Enterprise/Branch admins use /companies/{id} (requires admin role).
   useEffect(() => {
     const isPlatformAdmin = roles.includes('PLATFORM_SUPER_ADMIN')
-    if (isAuthenticated && user?.companyId && !isPlatformAdmin) {
+    const isAdminRole = roles.some(r => ['ENTERPRISE_ADMIN', 'BRANCH_ADMIN'].includes(r))
+    if (!isAuthenticated || isPlatformAdmin) return
+    if (isAdminRole && user?.companyId) {
       dispatch(fetchMyCompany(user.companyId))
+    } else if (user?.companyId) {
+      dispatch(fetchMyCompanyInfo())
     }
   }, [isAuthenticated, user?.companyId, roles])
 

@@ -6,6 +6,7 @@ import {
   fetchFAQCategories, createFAQCategory, fetchFAQs, createFAQ, deleteFAQ,
   selectFAQCategories, selectFAQs, selectLoading
 } from './helpdeskSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -23,6 +24,7 @@ export default function FAQPage() {
   const loading = useSelector(selectLoading)
   const [tab, setTab] = useState('FAQs')
   const [faqModalOpen, setFaqModalOpen] = useState(false)
+  const [editFaqTarget, setEditFaqTarget] = useState(null)
   const [catModalOpen, setCatModalOpen] = useState(false)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const faqForm = useForm()
@@ -33,14 +35,32 @@ export default function FAQPage() {
     dispatch(fetchFAQs())
   }, [dispatch])
 
+  const openEditFaq = (faq) => {
+    setEditFaqTarget(faq)
+    faqForm.reset({
+      question: faq.question,
+      answer: faq.answer,
+      categoryId: faq.category?.id,
+    })
+    setFaqModalOpen(true)
+  }
+
   const onSubmitFaq = async (data) => {
+    const payload = {
+      ...data,
+      category: data.categoryId ? { id: Number(data.categoryId) } : null,
+      company: { id: user?.companyId },
+    }
     try {
-      await dispatch(createFAQ({
-        ...data,
-        category: data.categoryId ? { id: Number(data.categoryId) } : null,
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('FAQ created')
+      if (editFaqTarget) {
+        await api.put(`/helpdesk/faqs/${editFaqTarget.id}`, payload)
+        toast.success('FAQ updated')
+        setEditFaqTarget(null)
+        dispatch(fetchFAQs())
+      } else {
+        await dispatch(createFAQ(payload)).unwrap()
+        toast.success('FAQ created')
+      }
       setFaqModalOpen(false)
       faqForm.reset()
     } catch (e) { toast.error(e || 'Error') }
@@ -67,7 +87,10 @@ export default function FAQPage() {
     { accessorKey: 'answer', header: 'Answer', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { id: 'category', header: 'Category', cell: ({ row }) => row.original.category?.title || '—' },
     { id: 'actions', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="danger" onClick={() => handleDeleteFaq(row.original.id)}>Delete</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEditFaq(row.original)}>Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDeleteFaq(row.original.id)}>Delete</Button>
+      </div>
     )},
   ]
 
@@ -82,7 +105,7 @@ export default function FAQPage() {
         actions={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => { catForm.reset(); setCatModalOpen(true) }}>+ Category</Button>
-            <Button onClick={() => { faqForm.reset(); setFaqModalOpen(true) }}>+ FAQ</Button>
+            <Button onClick={() => { setEditFaqTarget(null); faqForm.reset(); setFaqModalOpen(true) }}>+ FAQ</Button>
           </div>
         } />
       <div className="flex gap-1 mb-4 border-b border-gray-200">
@@ -104,11 +127,11 @@ export default function FAQPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={faqModalOpen} onClose={() => setFaqModalOpen(false)} title="Add FAQ"
+      <Modal open={faqModalOpen} onClose={() => { setFaqModalOpen(false); setEditFaqTarget(null) }} title={editFaqTarget ? 'Edit FAQ' : 'Add FAQ'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setFaqModalOpen(false)}>Cancel</Button>
-            <Button onClick={faqForm.handleSubmit(onSubmitFaq)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setFaqModalOpen(false); setEditFaqTarget(null) }}>Cancel</Button>
+            <Button onClick={faqForm.handleSubmit(onSubmitFaq)}>{editFaqTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">

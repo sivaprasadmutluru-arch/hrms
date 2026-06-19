@@ -6,6 +6,7 @@ import {
   fetchInterviews, createInterview, completeInterview, deleteInterview,
   selectInterviews, selectLoading
 } from './recruitmentSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -22,10 +23,22 @@ export default function InterviewsPage() {
   const interviews = useSelector(selectInterviews)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchInterviews()) }, [dispatch])
+
+  const openEdit = (interview) => {
+    setEditTarget(interview)
+    reset({
+      candidateId: interview.candidate?.id,
+      interviewDate: interview.interviewDate,
+      interviewTime: interview.interviewTime,
+      description: interview.description,
+    })
+    setModalOpen(true)
+  }
 
   const handleComplete = async (id) => {
     try { await dispatch(completeInterview(id)).unwrap(); toast.success('Marked as completed') }
@@ -41,17 +54,30 @@ export default function InterviewsPage() {
 
   const onSubmit = async (formData) => {
     try {
-      await dispatch(createInterview({
-        candidate: { id: Number(formData.candidateId) },
-        interviewDate: formData.interviewDate,
-        interviewTime: formData.interviewTime,
-        description: formData.description,
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('Interview scheduled')
+      if (editTarget) {
+        await api.put(`/recruitment/interviews/${editTarget.id}`, {
+          candidate: { id: Number(formData.candidateId) },
+          interviewDate: formData.interviewDate,
+          interviewTime: formData.interviewTime,
+          description: formData.description,
+          company: { id: user?.companyId },
+        })
+        toast.success('Interview updated')
+        setEditTarget(null)
+        dispatch(fetchInterviews())
+      } else {
+        await dispatch(createInterview({
+          candidate: { id: Number(formData.candidateId) },
+          interviewDate: formData.interviewDate,
+          interviewTime: formData.interviewTime,
+          description: formData.description,
+          company: { id: user?.companyId },
+        })).unwrap()
+        toast.success('Interview scheduled')
+      }
       setModalOpen(false)
       reset()
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) { toast.error(e?.response?.data?.message || e || 'Error') }
   }
 
   const columns = [
@@ -66,6 +92,9 @@ export default function InterviewsPage() {
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         {!row.original.completed && (
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        )}
+        {!row.original.completed && (
           <Button size="sm" variant="success" onClick={() => handleComplete(row.original.id)}>Complete</Button>
         )}
         <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
@@ -76,7 +105,7 @@ export default function InterviewsPage() {
   return (
     <div>
       <PageHeader title="Interviews" subtitle="Schedule and manage candidate interviews"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Schedule Interview</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Schedule Interview</Button>} />
       <DataTable columns={columns} data={interviews} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -87,11 +116,11 @@ export default function InterviewsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Schedule Interview"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Interview' : 'Schedule Interview'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Schedule</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Schedule'}</Button>
           </div>
         }>
         <div className="space-y-4">

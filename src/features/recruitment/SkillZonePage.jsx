@@ -6,6 +6,7 @@ import {
   fetchSkillZones, createSkillZone, deleteSkillZone,
   selectSkillZones, selectLoading
 } from './recruitmentSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -20,6 +21,7 @@ export default function SkillZonePage() {
   const skillZones = useSelector(selectSkillZones)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -32,10 +34,23 @@ export default function SkillZonePage() {
     finally { setConfirmModal({ open: false, id: null }) }
   }
 
+  const openEdit = (zone) => {
+    setEditTarget(zone)
+    reset({ title: zone.title, description: zone.description })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (formData) => {
     try {
-      await dispatch(createSkillZone({ ...formData, company: { id: user?.companyId } })).unwrap()
-      toast.success('Skill zone created')
+      if (editTarget) {
+        await api.put(`/recruitment/skill-zones/${editTarget.id}`, { ...formData, company: { id: user?.companyId } })
+        toast.success('Skill zone updated')
+        setEditTarget(null)
+        dispatch(fetchSkillZones())
+      } else {
+        await dispatch(createSkillZone({ ...formData, company: { id: user?.companyId } })).unwrap()
+        toast.success('Skill zone created')
+      }
       setModalOpen(false)
       reset()
     } catch (e) { toast.error(e || 'Error') }
@@ -45,14 +60,17 @@ export default function SkillZonePage() {
     { accessorKey: 'title', header: 'Title' },
     { accessorKey: 'description', header: 'Description', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { id: 'actions', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      </div>
     )},
   ]
 
   return (
     <div>
       <PageHeader title="Skill Zones" subtitle="Categorize candidates by skills"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Skill Zone</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Skill Zone</Button>} />
       <DataTable columns={columns} data={skillZones} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -63,11 +81,11 @@ export default function SkillZonePage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Skill Zone"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Skill Zone' : 'Create Skill Zone'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">

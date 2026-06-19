@@ -95,6 +95,7 @@ function defaultValues(lt) {
     resetMonth: lt?.resetMonth || '1',
     resetDay: lt?.resetDay || '1',
     resetWeekend: lt?.resetWeekend || '0',
+    excludeWeekend: lt?.excludeWeekend ?? false,
   }
 }
 
@@ -155,6 +156,7 @@ export default function LeaveTypesPage() {
       resetMonth: resetEnabled && data.resetBased === 'yearly' ? data.resetMonth : null,
       resetDay: resetEnabled && data.resetBased !== 'weekly' ? data.resetDay : null,
       resetWeekend: resetEnabled && data.resetBased === 'weekly' ? data.resetWeekend : null,
+      excludeWeekend: data.excludeWeekend,
     }
     try {
       if (editTarget) {
@@ -389,6 +391,19 @@ export default function LeaveTypesPage() {
             options={STATUS_OPTIONS}
             {...register('isActive')}
           />
+
+          {/* Weekend Exclusion */}
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Weekend Policy</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" {...register('excludeWeekend')} />
+              Exclude weekends (Saturday &amp; Sunday) from leave count
+            </label>
+            <p className="text-xs text-gray-400 mt-1 ml-6">
+              When enabled, a leave spanning Mon–Fri counts as 5 days but Mon–Sun counts as 5 days (weekends skipped).
+              Disable for leave types like Sick Leave where weekends should be counted.
+            </p>
+          </div>
 
           {/* Accrual Settings */}
           <div className="border-t pt-4">

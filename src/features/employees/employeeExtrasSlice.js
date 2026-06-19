@@ -181,6 +181,11 @@ export const upsertProfileFeature = createAsyncThunk('employeeExtras/upsertProfi
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
+export const fetchMyProfileFeatures = createAsyncThunk('employeeExtras/fetchMyProfileFeatures', async (_, { rejectWithValue }) => {
+  try { const res = await api.get('/ess/profile-features'); return res.data }
+  catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
+})
+
 const employeeExtrasSlice = createSlice({
   name: 'employeeExtras',
   initialState: {
@@ -267,6 +272,7 @@ const employeeExtrasSlice = createSlice({
       .addCase(upsertEmployeeSettings.fulfilled, (state, action) => { state.employeeSettings = action.payload })
 
       .addCase(fetchProfileFeatures.fulfilled, (state, action) => { state.profileFeatures = action.payload })
+      .addCase(fetchMyProfileFeatures.fulfilled, (state, action) => { state.profileFeatures = action.payload })
       .addCase(upsertProfileFeature.fulfilled, (state, action) => {
         const idx = state.profileFeatures.findIndex(f => f.id === action.payload.id)
         if (idx !== -1) state.profileFeatures[idx] = action.payload

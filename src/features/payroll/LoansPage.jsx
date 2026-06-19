@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchLoans, createLoan, settleLoan, deleteLoan, selectLoans, selectLoading } from './payrollSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -32,6 +33,7 @@ export default function LoansPage() {
   const loans = useSelector(selectLoans)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
     defaultValues: { isFixed: true }
@@ -40,6 +42,25 @@ export default function LoansPage() {
   const isFixed = watch('isFixed')
 
   useEffect(() => { dispatch(fetchLoans()) }, [dispatch])
+
+  const openEdit = (loan) => {
+    setEditTarget(loan)
+    reset({
+      title: loan.title,
+      loanType: loan.loanType,
+      employeeId: loan.employee?.id,
+      loanAmount: loan.loanAmount,
+      providedDate: loan.providedDate,
+      installmentAmount: loan.installmentAmount,
+      installments: loan.installments,
+      installmentStartDate: loan.installmentStartDate,
+      description: loan.description,
+      isFixed: loan.isFixed !== false,
+      rate: loan.rate,
+      applyOn: loan.applyOn,
+    })
+    setModalOpen(true)
+  }
 
   const handleSettle = (id) => setConfirmModal({ open: true, id, action: 'settle' })
   const handleDelete = (id) => setConfirmModal({ open: true, id, action: 'delete' })
@@ -55,15 +76,26 @@ export default function LoansPage() {
 
   const onSubmit = async (formData) => {
     try {
-      await dispatch(createLoan({
-        ...formData,
-        employee: { id: Number(formData.employeeId) },
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('Loan created')
+      if (editTarget) {
+        await api.put(`/payroll/loans/${editTarget.id}`, {
+          ...formData,
+          employee: { id: Number(formData.employeeId) },
+          company: { id: user?.companyId },
+        })
+        toast.success('Loan updated')
+        setEditTarget(null)
+        dispatch(fetchLoans())
+      } else {
+        await dispatch(createLoan({
+          ...formData,
+          employee: { id: Number(formData.employeeId) },
+          company: { id: user?.companyId },
+        })).unwrap()
+        toast.success('Loan created')
+      }
       setModalOpen(false)
       reset()
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) { toast.error(e?.response?.data?.message || e || 'Error') }
   }
 
   const columns = [
@@ -97,23 +129,24 @@ export default function LoansPage() {
       <Badge label={getValue() ? 'Settled' : 'Active'} variant={getValue() ? 'success' : 'warning'} />
     )},
     { id: 'actions', header: '', cell: ({ row }) => !isEmp && !row.original.settled ? (
-      <>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         <Button size="sm" variant="success" onClick={() => handleSettle(row.original.id)}>Settle</Button>
         <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
-      </>
+      </div>
     ) : null },
   ]
 
   return (
     <div>
       <PageHeader title="Loan Accounts" subtitle="Employee loans, advances, and fines"
-        actions={!isEmp && <Button onClick={() => { reset({ isFixed: true }); setModalOpen(true) }}>+ New Loan</Button>} />
+        actions={!isEmp && <Button onClick={() => { setEditTarget(null); reset({ isFixed: true }); setModalOpen(true) }}>+ New Loan</Button>} />
       <DataTable columns={columns} data={loans} loading={loading} />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Loan Account"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Loan Account' : 'Create Loan Account'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">

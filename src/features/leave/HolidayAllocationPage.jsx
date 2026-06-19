@@ -11,6 +11,7 @@ import {
 } from './leaveSlice'
 import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -32,6 +33,9 @@ export default function HolidayAllocationPage() {
   const [modal, setModal] = useState(false)
   const [allocType, setAllocType] = useState('employee') // 'employee' | 'department'
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
+  const [editModal, setEditModal] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
+  const [editForm, setEditForm] = useState({})
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -57,6 +61,24 @@ export default function HolidayAllocationPage() {
     reset({})
     setAllocType('employee')
     setModal(true)
+  }
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    setEditForm({ holidayId: row.holidayId || '' })
+    setEditModal(true)
+  }
+
+  const handleEditSave = async () => {
+    try {
+      await api.put(`/leave/holiday-allocations/${editTarget.id}`, editForm)
+      toast.success('Allocation updated')
+      setEditModal(false)
+      setEditTarget(null)
+      dispatch(fetchHolidayAllocations({ companyId }))
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to update allocation')
+    }
   }
 
   const onSubmit = async (data) => {
@@ -115,7 +137,10 @@ export default function HolidayAllocationPage() {
     {
       id: 'actions', header: 'Actions',
       cell: ({ row }) => (
-        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Remove</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+          <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Remove</Button>
+        </div>
       ),
     },
   ]
@@ -206,6 +231,34 @@ export default function HolidayAllocationPage() {
             <Button type="submit">Allocate</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={editModal}
+        onClose={() => { setEditModal(false); setEditTarget(null) }}
+        title="Edit Holiday Allocation"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => { setEditModal(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleEditSave}>Save</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Holiday</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              value={editForm.holidayId || ''}
+              onChange={e => setEditForm(f => ({ ...f, holidayId: e.target.value }))}
+            >
+              <option value="">Select holiday</option>
+              {holidays.map(h => (
+                <option key={h.id} value={h.id}>{h.name} ({h.startDate})</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmModal

@@ -595,7 +595,7 @@ function getNavSections(auth) {
       items: [
         { label: 'My Profile', to: '/employees/me', icon: UsersIcon },
         ATTENDANCE_GROUP_BASIC,
-        LEAVE_GROUP,
+        LEAVE_GROUP_BASIC,
         { label: 'Payslips', to: '/payroll/payslips', icon: ReceiptPercentIcon },
         { label: 'Reimbursements', to: '/payroll/reimbursements', icon: ReceiptPercentIcon },
         { label: 'Loans', to: '/payroll/loans', icon: BanknotesIcon },

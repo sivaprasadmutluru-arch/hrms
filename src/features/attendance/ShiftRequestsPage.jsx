@@ -7,6 +7,7 @@ import {
   cancelShiftRequest, deleteShiftRequest, bulkApproveShiftRequests, bulkCancelShiftRequests,
   exportShiftRequests, selectShiftRequests, selectShiftRequestsLoading,
 } from './shiftRequestSlice'
+import api from '../../services/api'
 import { fetchShiftSchedules, selectShiftSchedules } from '../base/baseExtrasSlice'
 import { fetchAll, selectAll as selectEmployees } from '../employees/employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
@@ -37,6 +38,7 @@ export default function ShiftRequestsPage() {
 
   const [activeTab, setActiveTab] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [confirmCancel, setConfirmCancel] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -111,19 +113,47 @@ export default function ShiftRequestsPage() {
     } catch (e) { toast.error(e || 'Bulk cancel failed') }
   }
 
+  const openEdit = (req) => {
+    setEditTarget(req)
+    reset({
+      employeeId: req.employee?.id || '',
+      requestedShiftId: req.requestedShift?.id || '',
+      requestedDate: req.requestedDate || '',
+      requestedTill: req.requestedTill || '',
+      isPermanent: req.isPermanent || false,
+      description: req.description || '',
+    })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (formData) => {
     try {
-      const payload = {
-        employee: { id: isEmp ? user?.employeeId : Number(formData.employeeId) },
-        requestedShift: { id: Number(formData.requestedShiftId) },
-        requestedDate: formData.requestedDate,
-        requestedTill: formData.isPermanent ? null : formData.requestedTill || null,
-        isPermanent: !!formData.isPermanent,
-        description: formData.description || null,
-        company: { id: user?.companyId },
+      if (editTarget) {
+        await api.put(`/attendance/shift-requests/${editTarget.id}`, {
+          employee: { id: isEmp ? user?.employeeId : Number(formData.employeeId) },
+          requestedShift: { id: Number(formData.requestedShiftId) },
+          requestedDate: formData.requestedDate,
+          requestedTill: formData.isPermanent ? null : formData.requestedTill || null,
+          isPermanent: !!formData.isPermanent,
+          description: formData.description || null,
+          company: { id: user?.companyId },
+        })
+        toast.success('Shift request updated')
+        setEditTarget(null)
+        dispatch(fetchShiftRequests())
+      } else {
+        const payload = {
+          employee: { id: isEmp ? user?.employeeId : Number(formData.employeeId) },
+          requestedShift: { id: Number(formData.requestedShiftId) },
+          requestedDate: formData.requestedDate,
+          requestedTill: formData.isPermanent ? null : formData.requestedTill || null,
+          isPermanent: !!formData.isPermanent,
+          description: formData.description || null,
+          company: { id: user?.companyId },
+        }
+        await dispatch(createShiftRequest(payload)).unwrap()
+        toast.success('Shift request submitted')
       }
-      await dispatch(createShiftRequest(payload)).unwrap()
-      toast.success('Shift request submitted')
       setModalOpen(false)
       reset()
     } catch (e) { toast.error(typeof e === 'string' ? e : 'Failed to submit') }
@@ -145,7 +175,7 @@ export default function ShiftRequestsPage() {
                 Export
               </Button>
             )}
-            <Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>
+            <Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Request</Button>
           </div>
         }
       />
@@ -292,6 +322,15 @@ export default function ShiftRequestsPage() {
                               Cancel
                             </button>
                           )}
+                          {/* Edit: only pending */}
+                          {!isEmp && isPending && (
+                            <button
+                              onClick={() => openEdit(req)}
+                              className="text-xs text-indigo-600 hover:underline font-medium"
+                            >
+                              Edit
+                            </button>
+                          )}
                           {/* Delete: only non-approved */}
                           {!isEmp && req.status !== 'APPROVED' && (
                             <button
@@ -315,13 +354,13 @@ export default function ShiftRequestsPage() {
       {/* Create Request Modal */}
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Request Shift Change"
+        onClose={() => { setModalOpen(false); setEditTarget(null) }}
+        title={editTarget ? 'Edit Shift Request' : 'Request Shift Change'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
-              {isSubmitting ? 'Submitting…' : 'Submit Request'}
+              {isSubmitting ? 'Saving…' : editTarget ? 'Update' : 'Submit Request'}
             </Button>
           </div>
         }

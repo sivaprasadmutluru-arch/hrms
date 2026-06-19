@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
+import api from '../../services/api'
 import {
   fetchReimbursements, createReimbursement, approveReimbursement, rejectReimbursement,
   fetchReimbursementAttachments, addReimbursementAttachment, deleteReimbursementAttachment,
@@ -38,6 +39,7 @@ export default function ReimbursementsPage() {
   const comments = useSelector(selectReimbursementComments)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [selected, setSelected] = useState(null)
   const [commentText, setCommentText] = useState('')
@@ -49,6 +51,19 @@ export default function ReimbursementsPage() {
   const reimbursementType = watch('reimbursementType')
 
   useEffect(() => { dispatch(fetchReimbursements()) }, [dispatch])
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    reset({
+      title: row.title,
+      reimbursementType: row.reimbursementType,
+      employeeId: row.employee?.id,
+      amount: row.amount,
+      allowanceOn: row.allowanceOn,
+      description: row.description,
+    })
+    setModalOpen(true)
+  }
 
   const openDetail = (row) => {
     setSelected(row)
@@ -69,15 +84,26 @@ export default function ReimbursementsPage() {
 
   const onSubmit = async (formData) => {
     try {
-      await dispatch(createReimbursement({
-        ...formData,
-        employee: { id: Number(formData.employeeId) },
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('Reimbursement request submitted')
+      if (editTarget) {
+        await api.put(`/payroll/reimbursements/${editTarget.id}`, {
+          ...formData,
+          employee: { id: Number(formData.employeeId) },
+          company: { id: user?.companyId },
+        })
+        toast.success('Reimbursement updated')
+        setEditTarget(null)
+        dispatch(fetchReimbursements())
+      } else {
+        await dispatch(createReimbursement({
+          ...formData,
+          employee: { id: Number(formData.employeeId) },
+          company: { id: user?.companyId },
+        })).unwrap()
+        toast.success('Reimbursement request submitted')
+      }
       setModalOpen(false)
       reset()
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) { toast.error(e?.response?.data?.message || e || 'Error') }
   }
 
   const onAddAttachment = async (formData) => {
@@ -124,6 +150,9 @@ export default function ReimbursementsPage() {
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openDetail(row.original)}>Details</Button>
+        {row.original.status === 'REQUESTED' && (
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        )}
         {row.original.status === 'REQUESTED' && !isEmp && <>
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
           <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
@@ -135,15 +164,15 @@ export default function ReimbursementsPage() {
   return (
     <div>
       <PageHeader title="Reimbursements" subtitle="Employee reimbursement and encashment requests"
-        actions={<Button onClick={() => { reset(isEmp ? { employeeId: String(user?.employeeId) } : {}); setModalOpen(true) }}>+ New Request</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(isEmp ? { employeeId: String(user?.employeeId) } : {}); setModalOpen(true) }}>+ New Request</Button>} />
       <DataTable columns={columns} data={reimbursements} loading={loading} />
 
-      {/* Create Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Submit Reimbursement Request"
+      {/* Create / Edit Modal */}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Reimbursement Request' : 'Submit Reimbursement Request'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Submit</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Submit'}</Button>
           </div>
         }>
         <div className="space-y-4">

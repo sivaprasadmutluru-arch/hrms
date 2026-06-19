@@ -6,6 +6,7 @@ import {
   fetchExitReasons, createExitReason, deleteExitReason,
   selectExitReasons, selectLoading
 } from './offboardingSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -20,6 +21,7 @@ export default function ExitReasonsPage() {
   const exitReasons = useSelector(selectExitReasons)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -32,10 +34,23 @@ export default function ExitReasonsPage() {
     finally { setConfirmModal({ open: false, id: null }) }
   }
 
+  const openEdit = (reason) => {
+    setEditTarget(reason)
+    reset({ title: reason.title, description: reason.description })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (data) => {
     try {
-      await dispatch(createExitReason({ ...data, company: { id: user?.companyId } })).unwrap()
-      toast.success('Exit reason created')
+      if (editTarget) {
+        await api.put(`/offboarding/exit-reasons/${editTarget.id}`, { ...data, company: { id: user?.companyId } })
+        toast.success('Exit reason updated')
+        setEditTarget(null)
+        dispatch(fetchExitReasons())
+      } else {
+        await dispatch(createExitReason({ ...data, company: { id: user?.companyId } })).unwrap()
+        toast.success('Exit reason created')
+      }
       setModalOpen(false)
       reset()
     } catch (e) { toast.error(e || 'Error') }
@@ -47,14 +62,17 @@ export default function ExitReasonsPage() {
       <span className="max-w-xs truncate block">{getValue() || '—'}</span>
     )},
     { id: 'actions', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      </div>
     )},
   ]
 
   return (
     <div>
       <PageHeader title="Exit Reasons" subtitle="Reasons for employee exits"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ Add Reason</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Add Reason</Button>} />
       <DataTable columns={columns} data={exitReasons} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -65,11 +83,11 @@ export default function ExitReasonsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Exit Reason"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Exit Reason' : 'Add Exit Reason'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">

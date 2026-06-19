@@ -6,6 +6,7 @@ import {
   fetchMeetings, createMeeting, deleteMeeting,
   selectMeetings, selectLoading
 } from './performanceSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -20,6 +21,7 @@ export default function MeetingsPage() {
   const meetings = useSelector(selectMeetings)
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
@@ -32,16 +34,35 @@ export default function MeetingsPage() {
     finally { setConfirmModal({ open: false, id: null }) }
   }
 
+  const openEdit = (meeting) => {
+    setEditTarget(meeting)
+    reset({
+      title: meeting.title,
+      date: meeting.date,
+      managerId: meeting.manager?.id,
+      response: meeting.response,
+    })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (formData) => {
+    const payload = {
+      title: formData.title,
+      date: formData.date,
+      response: formData.response,
+      manager: formData.managerId ? { id: Number(formData.managerId) } : null,
+      company: { id: user?.companyId },
+    }
     try {
-      await dispatch(createMeeting({
-        title: formData.title,
-        date: formData.date,
-        response: formData.response,
-        manager: formData.managerId ? { id: Number(formData.managerId) } : null,
-        company: { id: user?.companyId },
-      })).unwrap()
-      toast.success('Meeting created')
+      if (editTarget) {
+        await api.put(`/performance/meetings/${editTarget.id}`, payload)
+        toast.success('Meeting updated')
+        setEditTarget(null)
+        dispatch(fetchMeetings())
+      } else {
+        await dispatch(createMeeting(payload)).unwrap()
+        toast.success('Meeting created')
+      }
       setModalOpen(false)
       reset()
     } catch (e) { toast.error(e || 'Error') }
@@ -57,14 +78,17 @@ export default function MeetingsPage() {
     { id: 'participants', header: 'Participants', cell: ({ row }) => row.original.participants?.length ?? 0 },
     { accessorKey: 'response', header: 'Response', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { id: 'actions', header: '', cell: ({ row }) => (
-      <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
+      </div>
     )},
   ]
 
   return (
     <div>
       <PageHeader title="Meetings" subtitle="Schedule and track team meetings"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Meeting</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Meeting</Button>} />
       <DataTable columns={columns} data={meetings} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -75,11 +99,11 @@ export default function MeetingsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create Meeting"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Meeting' : 'Create Meeting'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">

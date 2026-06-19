@@ -41,6 +41,7 @@ export default function AttendancePage() {
 
   const [tab, setTab] = useState('Attendance')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -142,10 +143,27 @@ export default function AttendancePage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
+  const openEdit = (rec) => {
+    setEditTarget(rec)
+    reset({
+      employeeId: rec.employeeId || rec.employee?.id,
+      attendanceDate: rec.attendanceDate,
+      checkIn: rec.checkIn,
+      checkOut: rec.checkOut,
+    })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (formData) => {
     try {
-      await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
-      toast.success('Attendance recorded')
+      if (editTarget) {
+        await api.put(`/attendance/${editTarget.id}`, { ...formData, companyId: user?.companyId })
+        toast.success('Attendance updated')
+        setEditTarget(null)
+      } else {
+        await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
+        toast.success('Attendance recorded')
+      }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 20 }))
     } catch (e) { toast.error(e || 'Error') }
@@ -163,10 +181,14 @@ export default function AttendancePage() {
       if (!isEmp && (!rec.attendanceValidated || rec.attendanceValidated === 'PENDING') && rec.checkOut) {
         return (
           <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => openEdit(rec)}>Edit</Button>
             <Button size="sm" variant="success" onClick={() => handleApprove(rec.id)}>Approve</Button>
             <Button size="sm" variant="danger" onClick={() => handleReject(rec.id)}>Reject</Button>
           </div>
         )
+      }
+      if (!isEmp) {
+        return <Button size="sm" variant="secondary" onClick={() => openEdit(rec)}>Edit</Button>
       }
       if (isEmp && !rec.isValidateRequest) {
         return <Button size="sm" variant="secondary" onClick={() => handleRequestValidation(rec.id)}>Request Validation</Button>
@@ -222,7 +244,7 @@ export default function AttendancePage() {
             {tab === 'Attendance' && (
               <>
                 <Button variant="secondary" onClick={handleExport}>Export Excel</Button>
-                <Button onClick={() => { reset({}); setModalOpen(true) }}>+ Record</Button>
+                <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
               </>
             )}
           </>
@@ -331,8 +353,8 @@ export default function AttendancePage() {
         loading={loading}
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Attendance"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Save</Button></div>}>
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Attendance' : 'Record Attendance'}
+        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Save'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
           <Input label="Date" type="date" error={errors.attendanceDate?.message} {...register('attendanceDate', { required: 'Required' })} />

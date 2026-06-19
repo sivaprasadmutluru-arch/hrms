@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, create, update, selectAll, selectLoading } from './projectsSlice'
+import { fetchAll, create, update, remove, selectAll, selectLoading } from './projectsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Card from '../../components/common/Card'
@@ -13,6 +13,7 @@ import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Spinner from '../../components/common/Spinner'
 import EmptyState from '../../components/common/EmptyState'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import { FolderIcon, CalendarIcon } from '@heroicons/react/24/outline'
 
@@ -25,12 +26,20 @@ export default function ProjectsPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, project: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 50 })) }, [dispatch])
 
   const openCreate = () => { setEditing(null); reset({}); setModalOpen(true) }
   const openEdit = (e, p) => { e.stopPropagation(); setEditing(p); reset(p); setModalOpen(true) }
+
+  const handleDelete = (e, project) => { e.stopPropagation(); setConfirmModal({ open: true, project }) }
+  const onConfirmDelete = async () => {
+    try { await dispatch(remove(confirmModal.project.id)).unwrap(); toast.success('Project deleted') }
+    catch (e) { toast.error(e || 'Failed to delete project') }
+    finally { setConfirmModal({ open: false, project: null }) }
+  }
 
   const onSubmit = async (formData) => {
     try {
@@ -63,11 +72,21 @@ export default function ProjectsPage() {
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{formatDate(project.startDate)}</span>
                 <Button size="sm" variant="ghost" onClick={(e) => openEdit(e, project)}>Edit</Button>
+                <Button size="sm" variant="danger" onClick={(e) => handleDelete(e, project)}>Delete</Button>
               </div>
             </Card>
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, project: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${confirmModal.project?.title}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Project' : 'New Project'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">

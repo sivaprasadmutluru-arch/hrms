@@ -28,6 +28,7 @@ export default function OffboardingPage() {
   const offboardingNotes = useSelector(selectOffboardingNotes)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailRecord, setDetailRecord] = useState(null)
   const [detailTab, setDetailTab] = useState('tasks')
@@ -47,6 +48,17 @@ export default function OffboardingPage() {
   }, [dispatch, detailRecord])
 
   const openDetail = (row) => { setDetailRecord(row); setDetailTab('tasks'); setDetailOpen(true) }
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    reset({
+      'employee.id': row.employee?.id,
+      noticePeriodType: row.noticePeriodType,
+      exitDate: row.exitDate,
+      reasonOfLeaving: row.reasonOfLeaving,
+    })
+    setModalOpen(true)
+  }
 
   const handleComplete = async (id) => {
     try { await api.put(`/offboarding/${id}/complete`); toast.success('Completed'); dispatch(fetchAll({ page: 0, size: 20 })) }
@@ -73,8 +85,18 @@ export default function OffboardingPage() {
   }
 
   const onSubmit = async (formData) => {
-    try { await dispatch(create(formData)).unwrap(); toast.success('Offboarding started'); setModalOpen(false); dispatch(fetchAll({ page: 0, size: 20 })) }
-    catch (e) { toast.error(e || 'Error') }
+    try {
+      if (editTarget) {
+        await api.put(`/offboarding/${editTarget.id}`, formData)
+        toast.success('Offboarding updated')
+        setEditTarget(null)
+      } else {
+        await dispatch(create(formData)).unwrap()
+        toast.success('Offboarding started')
+      }
+      setModalOpen(false)
+      dispatch(fetchAll({ page: 0, size: 20 }))
+    } catch (e) { toast.error(e || 'Error') }
   }
 
   const onTaskSubmit = async (formData) => {
@@ -96,6 +118,9 @@ export default function OffboardingPage() {
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openDetail(row.original)}>Details</Button>
         {row.original.status !== 'COMPLETED' && (
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        )}
+        {row.original.status !== 'COMPLETED' && (
           <Button size="sm" variant="success" onClick={() => handleComplete(row.original.id)}>Complete</Button>
         )}
       </div>
@@ -114,13 +139,13 @@ export default function OffboardingPage() {
   return (
     <div>
       <PageHeader title="Offboarding" subtitle="Manage employee exit process"
-        actions={<Button onClick={() => { reset({}); setModalOpen(true) }}>+ Start Offboarding</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Start Offboarding</Button>} />
       <DataTable columns={columns} data={data} loading={loading} />
       <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
 
       {/* Start Offboarding Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Start Offboarding"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Start</Button></div>}>
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Offboarding' : 'Start Offboarding'}
+        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Start'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Employee ID" error={errors.employee?.message} {...register('employee.id', { required: 'Required', valueAsNumber: true })} />
           <Select label="Notice Period" options={['IMMEDIATE', 'TWO_WEEKS', 'ONE_MONTH', 'THREE_MONTHS']} {...register('noticePeriodType')} />

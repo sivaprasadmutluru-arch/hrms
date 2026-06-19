@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, create, update, publish, unpublish, makeOrgWide, makeBranchOnly, fetchInheritedPolicies, selectAll, selectInherited, selectLoading } from './policiesSlice'
+import { fetchAll, create, update, remove, publish, unpublish, makeOrgWide, makeBranchOnly, fetchInheritedPolicies, selectAll, selectInherited, selectLoading } from './policiesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Card from '../../components/common/Card'
@@ -13,6 +13,7 @@ import Select from '../../components/common/Select'
 import { formatDate } from '../../utils/formatters'
 import { DocumentTextIcon, GlobeAltIcon } from '@heroicons/react/24/outline'
 import useAuth from '../../hooks/useAuth'
+import ConfirmModal from '../../components/common/ConfirmModal'
 
 export default function PoliciesPage() {
   const dispatch = useDispatch()
@@ -22,6 +23,7 @@ export default function PoliciesPage() {
   const loading = useSelector(selectLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, policy: null })
   const { register, handleSubmit, reset, watch } = useForm()
 
   const canManageOrgWide = isPlatformAdmin() || isEnterpriseAdmin()
@@ -62,6 +64,13 @@ export default function PoliciesPage() {
     } catch (e) { toast.error(e || 'Failed') }
   }
 
+  const handleDelete = (policy) => setConfirmModal({ open: true, policy })
+  const onConfirmDelete = async () => {
+    try { await dispatch(remove(confirmModal.policy.id)).unwrap(); toast.success('Policy deleted') }
+    catch (e) { toast.error(e || 'Failed to delete policy') }
+    finally { setConfirmModal({ open: false, policy: null }) }
+  }
+
   const handleMakeBranchOnly = async (policy) => {
     try {
       await dispatch(makeBranchOnly({ id: policy.id, companyId: policy.company?.id })).unwrap()
@@ -100,6 +109,7 @@ export default function PoliciesPage() {
                 <Button size="sm" variant={policy.published ? 'ghost' : 'primary'} onClick={() => togglePublish(policy)}>
                   {policy.published ? 'Unpublish' : 'Publish'}
                 </Button>
+                <Button size="sm" variant="danger" onClick={() => handleDelete(policy)}>Delete</Button>
                 {canManageOrgWide && (
                   policy.isOrganizationWide
                     ? <Button size="sm" variant="ghost" onClick={() => handleMakeBranchOnly(policy)}>Branch Only</Button>
@@ -140,6 +150,15 @@ export default function PoliciesPage() {
         </div>
       )}
 
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, policy: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Policy"
+        message={`Are you sure you want to delete "${confirmModal.policy?.title}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={loading}
+      />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Policy' : 'New Policy'} size="lg"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">

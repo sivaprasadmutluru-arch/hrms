@@ -28,13 +28,23 @@ export const fetchById = createAsyncThunk('companies/fetchById', async (id, { re
   }
 })
 
-// Used by enterprise admin — fetches their own company by ID and puts it in the data list
+// Used by enterprise/branch admins — fetches their own company by ID and puts it in the data list
 export const fetchMyCompany = createAsyncThunk('companies/fetchMyCompany', async (id, { rejectWithValue }) => {
   try {
     const res = await api.get(`/companies/${id}`)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch company')
+  }
+})
+
+// Used by employees/HR managers — calls /companies/mine (no role restriction)
+export const fetchMyCompanyInfo = createAsyncThunk('companies/fetchMyCompanyInfo', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/companies/mine')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch company info')
   }
 })
 
@@ -203,6 +213,13 @@ const companiesSlice = createSlice({
       .addCase(fetchMyCompany.fulfilled, (state, action) => {
         state.loading = false
         state.data = [action.payload]  // enterprise admin only has their own head office
+      })
+
+      .addCase(fetchMyCompanyInfo.fulfilled, (state, action) => {
+        // For employees/HR — merge into data without overwriting existing entries
+        const exists = state.data.find(c => c.id === action.payload.id)
+        if (!exists) state.data.push(action.payload)
+        else Object.assign(exists, action.payload)
       })
       .addCase(fetchMyCompany.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 

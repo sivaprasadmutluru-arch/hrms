@@ -3,11 +3,13 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchRequests, createRequest, updateRequest, approveRequest, rejectRequest } from './assetsSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Badge from '../../components/common/Badge'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
 const STATUS_VARIANT = {
@@ -24,6 +26,7 @@ export default function AssetRequestsPage() {
   const requests = useSelector(s => s.assets.requests)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const { register, handleSubmit, reset } = useForm()
 
   useEffect(() => {
@@ -46,6 +49,16 @@ export default function AssetRequestsPage() {
       reset()
       dispatch(fetchRequests({ companyId }))
     } catch (e) { toast.error(e || 'Failed') }
+  }
+
+  const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const onConfirmDelete = async () => {
+    try {
+      await api.delete(`/assets/requests/${confirmModal.id}`)
+      toast.success('Request deleted')
+      dispatch(fetchRequests({ companyId }))
+    } catch (e) { toast.error(e?.response?.data?.message || 'Failed to delete') }
+    finally { setConfirmModal({ open: false, id: null }) }
   }
 
   const handleApprove = async (id) => {
@@ -75,6 +88,7 @@ export default function AssetRequestsPage() {
               <Button size="sm" variant="secondary" onClick={() => openEdit(r)}>Edit</Button>
             </>
           )}
+          <Button size="sm" variant="danger" onClick={() => handleDelete(r.id)}>Delete</Button>
         </div>
       )
     }
@@ -85,6 +99,14 @@ export default function AssetRequestsPage() {
       <PageHeader title="Asset Requests" subtitle="Employee asset requests"
         actions={<Button onClick={openCreate}>New Request</Button>} />
       <DataTable columns={columns} data={requests} />
+      <ConfirmModal
+        open={confirmModal.open}
+        onClose={() => setConfirmModal({ open: false, id: null })}
+        onConfirm={onConfirmDelete}
+        title="Delete Asset Request"
+        message="Are you sure you want to delete this asset request? This cannot be undone."
+        confirmLabel="Delete"
+      />
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Request' : 'New Asset Request'}
         footer={
           <div className="flex justify-end gap-2">

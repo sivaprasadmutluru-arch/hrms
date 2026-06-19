@@ -3,14 +3,17 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, create, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
+  fetchAll, create, update, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
   cancelLeave, bulkAllocateLeave, annualLeaveReset,
   fetchLeaveRequestComments, addLeaveRequestComment, deleteLeaveRequestComment,
   fetchConditionApprovals, addConditionApproval, approveConditionStep, rejectConditionStep,
   fetchLeaveRequestFiles, uploadLeaveRequestFile, deleteLeaveRequestFile,
+  fetchLeaveBalance, updateLeaveBalance,
   selectAll, selectLoading, selectPagination,
   selectLeaveRequestComments, selectConditionApprovals, selectLeaveRequestFiles,
+  selectLeaveBalance,
 } from './leaveSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -29,18 +32,21 @@ const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 
 export default function LeavePage() {
   const dispatch = useDispatch()
-  const { user, isEmployee } = useAuth()
+  const { user, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
+  const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
   const leaveTypes = useSelector(s => s.leave.leaveTypes)
   const leaveAllocations = useSelector(s => s.leave.leaveAllocations)
+  const leaveBalance = useSelector(selectLeaveBalance)
   const comments = useSelector(selectLeaveRequestComments)
   const conditionApprovals = useSelector(selectConditionApprovals)
   const leaveRequestFiles = useSelector(selectLeaveRequestFiles)
 
   const [tab, setTab] = useState('Requests')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [commentText, setCommentText] = useState('')
@@ -54,6 +60,60 @@ export default function LeavePage() {
   const [resetModal, setResetModal] = useState({ open: false, year: String(new Date().getFullYear()) })
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, id: null })
 
+  // Balance tab edit/delete
+  const [balanceEditTarget, setBalanceEditTarget] = useState(null)
+  const [balanceEditForm, setBalanceEditForm] = useState({})
+  const [balanceSaving, setBalanceSaving] = useState(false)
+  const [balanceDeleteTarget, setBalanceDeleteTarget] = useState(null)
+  const [balanceDeleting, setBalanceDeleting] = useState(false)
+  const [balanceSearch, setBalanceSearch] = useState('')
+  const [requestSearch, setRequestSearch] = useState('')
+  const [allocationSearch, setAllocationSearch] = useState('')
+
+  const openBalanceEdit = (a) => {
+    setBalanceEditTarget(a)
+    setBalanceEditForm({
+      availableDays: a.availableDays ?? 0,
+      carryforwardDays: a.carryforwardDays ?? 0,
+      totalLeaveDays: a.totalLeaveDays ?? 0,
+    })
+  }
+
+  const handleBalanceEditSave = async () => {
+    setBalanceSaving(true)
+    try {
+      await dispatch(updateLeaveBalance({
+        id: balanceEditTarget.id,
+        data: {
+          availableDays: Number(balanceEditForm.availableDays),
+          carryforwardDays: Number(balanceEditForm.carryforwardDays),
+          totalLeaveDays: Number(balanceEditForm.totalLeaveDays),
+        },
+      })).unwrap()
+      toast.success('Leave balance updated')
+      setBalanceEditTarget(null)
+      dispatch(fetchLeaveBalance())
+    } catch (e) {
+      toast.error(e || 'Failed to update')
+    } finally {
+      setBalanceSaving(false)
+    }
+  }
+
+  const confirmBalanceDelete = async () => {
+    setBalanceDeleting(true)
+    try {
+      await api.delete(`/leave/balance/${balanceDeleteTarget.id}`)
+      toast.success('Leave balance deleted')
+      setBalanceDeleteTarget(null)
+      dispatch(fetchLeaveBalance())
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to delete')
+    } finally {
+      setBalanceDeleting(false)
+    }
+  }
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: regApproval, handleSubmit: handleApprovalSubmit, reset: resetApproval, formState: { errors: approvalErrors } } = useForm()
 
@@ -61,6 +121,7 @@ export default function LeavePage() {
     dispatch(fetchAll({ page: 0, size: 20 }))
     dispatch(fetchLeaveTypes())
     dispatch(fetchLeaveAllocations())
+    dispatch(fetchLeaveBalance())
   }, [dispatch])
 
   const openDetail = (request) => {
@@ -160,10 +221,27 @@ export default function LeavePage() {
   }
 
 
+  const openEdit = (request) => {
+    setEditTarget(request)
+    reset({
+      leaveTypeId: request.leaveTypeId || request.leaveType?.id || '',
+      startDate: request.startDate || '',
+      endDate: request.endDate || '',
+      description: request.description || '',
+    })
+    setModalOpen(true)
+  }
+
   const onSubmit = async (formData) => {
     try {
-      await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
-      toast.success('Leave applied')
+      if (editTarget) {
+        await dispatch(update({ id: editTarget.id, data: { ...formData } })).unwrap()
+        toast.success('Leave request updated')
+        setEditTarget(null)
+      } else {
+        await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
+        toast.success('Leave applied')
+      }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 20 }))
     } catch (e) { toast.error(e || 'Error') }
@@ -220,6 +298,9 @@ export default function LeavePage() {
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openDetail(row.original)}>Details</Button>
+        {row.original.status === 'REQUESTED' && (
+          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        )}
         {row.original.status === 'REQUESTED' && !isEmployee() && <>
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
           <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
@@ -242,7 +323,7 @@ export default function LeavePage() {
   return (
     <div>
       <PageHeader title="Leave Management" subtitle="Requests, types, and allocations"
-        actions={<Button onClick={() => { reset({}); setModalOpen(true) }}>+ Apply Leave</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Apply Leave</Button>} />
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {(isEmployee() ? EMPLOYEE_TABS : ALL_TABS).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -251,17 +332,56 @@ export default function LeavePage() {
           </button>
         ))}
       </div>
-      {tab === 'Requests' && <>
-        <DataTable columns={requestColumns} data={data} loading={loading} />
-        <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
-      </>}
+      {tab === 'Requests' && (() => {
+        const rq = requestSearch.toLowerCase()
+        const filteredRequests = rq
+          ? data.filter(r =>
+              (r.employeeName || '').toLowerCase().includes(rq) ||
+              (r.leaveTypeName || '').toLowerCase().includes(rq) ||
+              (r.status || '').toLowerCase().includes(rq) ||
+              (r.departmentName || '').toLowerCase().includes(rq)
+            )
+          : data
+        return <>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search by employee, type, department or status…"
+              value={requestSearch}
+              onChange={e => setRequestSearch(e.target.value)}
+              className="w-full sm:w-96 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <DataTable columns={requestColumns} data={filteredRequests} loading={loading} />
+          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
+        </>
+      })()}
       {tab === 'Allocations' && (
         <>
-          <div className="flex justify-end gap-2 mb-4">
-            <Button variant="secondary" onClick={handleBulkAllocate}>Bulk Allocate</Button>
-            <Button variant="danger" onClick={handleAnnualReset}>Annual Reset</Button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Search by employee or leave type…"
+              value={allocationSearch}
+              onChange={e => setAllocationSearch(e.target.value)}
+              className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={handleBulkAllocate}>Bulk Allocate</Button>
+              <Button variant="danger" onClick={handleAnnualReset}>Annual Reset</Button>
+            </div>
           </div>
-          <DataTable columns={allocationColumns} data={leaveAllocations} loading={loading} />
+          <DataTable
+            columns={allocationColumns}
+            data={allocationSearch
+              ? leaveAllocations.filter(a =>
+                  (a.employeeName || '').toLowerCase().includes(allocationSearch.toLowerCase()) ||
+                  (a.leaveTypeName || '').toLowerCase().includes(allocationSearch.toLowerCase())
+                )
+              : leaveAllocations
+            }
+            loading={loading}
+          />
         </>
       )}
       {tab === 'Assigned Leaves' && (() => {
@@ -305,16 +425,33 @@ export default function LeavePage() {
         )
       })()}
       {tab === 'Balance' && (() => {
-        const myAllocations = isEmployee()
-          ? leaveAllocations.filter(a => a.employeeId === user?.employeeId || a.employeeName === user?.name)
-          : leaveAllocations
+        const base = isEmployee()
+          ? leaveBalance.filter(a => a.employeeId === user?.employeeId || a.employeeName === user?.name)
+          : leaveBalance
+        const q = balanceSearch.toLowerCase()
+        const myBalance = q
+          ? base.filter(a =>
+              (a.employeeName || '').toLowerCase().includes(q) ||
+              (a.leaveTypeName || '').toLowerCase().includes(q)
+            )
+          : base
         return (
+          <div>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search by employee or leave type…"
+              value={balanceSearch}
+              onChange={e => setBalanceSearch(e.target.value)}
+              className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {myAllocations.length === 0 && (
+            {myBalance.length === 0 && (
               <p className="text-sm text-gray-400 col-span-full text-center py-8">No leave balance records found</p>
             )}
-            {myAllocations.map((a, i) => {
-              const used = (a.totalLeaveDays ?? 0) - (a.availableDays ?? 0)
+            {myBalance.map((a, i) => {
+              const used = a.usedDays ?? 0
               const pct = a.totalLeaveDays > 0 ? Math.round(((a.availableDays ?? 0) / a.totalLeaveDays) * 100) : 0
               return (
                 <div key={a.id || i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -323,7 +460,15 @@ export default function LeavePage() {
                       <p className="font-semibold text-gray-800 text-sm">{a.leaveTypeName || '—'}</p>
                       {!isEmployee() && <p className="text-xs text-gray-500">{a.employeeName || '—'}</p>}
                     </div>
-                    <span className="text-xs text-gray-400">{a.year || '—'}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">{a.assignedDate ? new Date(a.assignedDate).getFullYear() : '—'}</span>
+                      {canManage && (
+                        <>
+                          <button onClick={() => openBalanceEdit(a)} className="ml-2 text-xs text-indigo-500 hover:text-indigo-700 font-medium">Edit</button>
+                          <button onClick={() => setBalanceDeleteTarget(a)} className="text-xs text-red-400 hover:text-red-600 font-medium">Delete</button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-end justify-between mb-2">
                     <div>
@@ -345,12 +490,13 @@ export default function LeavePage() {
               )
             })}
           </div>
+          </div>
         )
       })()}
 
-      {/* Apply Leave Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Apply for Leave"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Submit</Button></div>}>
+      {/* Apply / Edit Leave Modal */}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Leave Request' : 'Apply for Leave'}
+        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Submit'}</Button></div>}>
         <div className="space-y-4">
           <Select label="Leave Type" options={leaveTypes.map(lt => ({ value: lt.id, label: lt.name }))} error={errors.leaveTypeId?.message} {...register('leaveTypeId', { required: 'Required' })} />
           <Input label="Start Date" type="date" error={errors.startDate?.message} {...register('startDate', { required: 'Required' })} />
@@ -545,6 +691,57 @@ export default function LeavePage() {
         }
         confirmLabel={confirmModal.action === 'cancel' ? 'Cancel Leave' : 'Delete'}
         loading={loading}
+      />
+
+      {/* Balance Edit Modal */}
+      <Modal
+        open={!!balanceEditTarget}
+        onClose={() => setBalanceEditTarget(null)}
+        title={`Edit Balance — ${balanceEditTarget?.employeeName || ''} / ${balanceEditTarget?.leaveTypeName || ''}`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setBalanceEditTarget(null)}>Cancel</Button>
+            <Button onClick={handleBalanceEditSave} disabled={balanceSaving}>{balanceSaving ? 'Saving…' : 'Save'}</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Available Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={balanceEditForm.availableDays}
+            onChange={e => setBalanceEditForm(f => ({ ...f, availableDays: e.target.value }))}
+          />
+          <Input
+            label="Carry Forward Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={balanceEditForm.carryforwardDays}
+            onChange={e => setBalanceEditForm(f => ({ ...f, carryforwardDays: e.target.value }))}
+          />
+          <Input
+            label="Total Leave Days"
+            type="number"
+            min="0"
+            step="0.5"
+            value={balanceEditForm.totalLeaveDays}
+            onChange={e => setBalanceEditForm(f => ({ ...f, totalLeaveDays: e.target.value }))}
+          />
+        </div>
+      </Modal>
+
+      {/* Balance Delete Confirm */}
+      <ConfirmModal
+        open={!!balanceDeleteTarget}
+        onClose={() => setBalanceDeleteTarget(null)}
+        onConfirm={confirmBalanceDelete}
+        title="Delete Leave Balance"
+        message={`Are you sure you want to delete the leave balance for ${balanceDeleteTarget?.employeeName || ''} / ${balanceDeleteTarget?.leaveTypeName || ''}? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={balanceDeleting}
       />
     </div>
   )

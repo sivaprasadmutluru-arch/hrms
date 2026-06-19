@@ -9,6 +9,7 @@ import {
   selectSubmissionStatus, selectSubmissionLoading,
 } from './documentsSlice'
 import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
+import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -36,6 +37,7 @@ export default function DocumentRequestsPage() {
   const submissionStatus = useSelector(selectSubmissionStatus)
   const submissionLoading = useSelector(selectSubmissionLoading)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([])
   const [statusModal, setStatusModal] = useState({ open: false, requestTitle: '' })
@@ -45,6 +47,18 @@ export default function DocumentRequestsPage() {
     dispatch(fetchDocumentRequests())
     dispatch(fetchEmployees({ page: 0, size: 200 }))
   }, [dispatch])
+
+  const openEdit = (row) => {
+    setEditTarget(row)
+    reset({
+      title: row.title,
+      documentFormat: row.documentFormat || 'ANY',
+      maxSizeMb: row.maxSizeMb || '',
+      description: row.description || '',
+    })
+    setSelectedEmployeeIds([])
+    setModalOpen(true)
+  }
 
   const handleViewSubmissions = (row) => {
     dispatch(fetchSubmissionStatus(row.id))
@@ -66,13 +80,23 @@ export default function DocumentRequestsPage() {
 
   const onSubmit = async (data) => {
     try {
-      const employees_payload = selectedEmployeeIds.map(id => ({ id }))
-      await dispatch(createDocumentRequest({
-        ...data,
-        company: { id: user?.companyId },
-        employees: employees_payload,
-      })).unwrap()
-      toast.success(`Document request created${employees_payload.length > 0 ? ` — ${employees_payload.length} employee(s) notified` : ''}`)
+      if (editTarget) {
+        await api.put(`/documents/requests/${editTarget.id}`, {
+          ...data,
+          company: { id: user?.companyId },
+        })
+        toast.success('Document request updated')
+        setEditTarget(null)
+        dispatch(fetchDocumentRequests())
+      } else {
+        const employees_payload = selectedEmployeeIds.map(id => ({ id }))
+        await dispatch(createDocumentRequest({
+          ...data,
+          company: { id: user?.companyId },
+          employees: employees_payload,
+        })).unwrap()
+        toast.success(`Document request created${employees_payload.length > 0 ? ` — ${employees_payload.length} employee(s) notified` : ''}`)
+      }
       setModalOpen(false)
       reset()
       setSelectedEmployeeIds([])
@@ -89,6 +113,7 @@ export default function DocumentRequestsPage() {
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => handleViewSubmissions(row.original)}>Submissions</Button>
+        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
       </div>
     )},
@@ -97,7 +122,7 @@ export default function DocumentRequestsPage() {
   return (
     <div>
       <PageHeader title="Document Requests" subtitle="Manage employee document requests"
-        actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Request</Button>} />
+        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Request</Button>} />
       <DataTable columns={columns} data={requests} loading={loading} />
       <ConfirmModal
         open={confirmModal.open}
@@ -167,11 +192,11 @@ export default function DocumentRequestsPage() {
         )}
       </Modal>
 
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setSelectedEmployeeIds([]) }} title="Create Document Request"
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null); setSelectedEmployeeIds([]) }} title={editTarget ? 'Edit Document Request' : 'Create Document Request'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => { setModalOpen(false); setSelectedEmployeeIds([]) }}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Create</Button>
+            <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null); setSelectedEmployeeIds([]) }}>Cancel</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
         <div className="space-y-4">
@@ -183,7 +208,7 @@ export default function DocumentRequestsPage() {
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               rows={3} {...register('description')} />
           </div>
-          <div>
+          {!editTarget && <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Notify Employees <span className="text-gray-400 font-normal">(select to send notifications)</span>
             </label>
@@ -208,7 +233,7 @@ export default function DocumentRequestsPage() {
             {selectedEmployeeIds.length > 0 && (
               <p className="text-xs text-indigo-600 mt-1">{selectedEmployeeIds.length} employee(s) selected</p>
             )}
-          </div>
+          </div>}
         </div>
       </Modal>
     </div>

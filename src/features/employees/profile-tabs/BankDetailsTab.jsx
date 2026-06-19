@@ -14,22 +14,25 @@ const Field = ({ label, value }) => (
   </div>
 )
 
-export default function BankDetailsTab({ employeeId, companyId }) {
+export default function BankDetailsTab({ employeeId, companyId, canEdit = true }) {
   const [details, setDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
 
   const { register, handleSubmit, reset } = useForm()
+  // canEdit prop presence distinguishes self-service (MyProfilePage) from admin (EmployeeDetailPage)
+  const isSelf = canEdit !== undefined && companyId === undefined
   const cfg = companyId ? { headers: { 'X-Company-Id': companyId } } : {}
 
   const load = () => {
-    api.get(`/employees/${employeeId}/bank-details`, cfg)
+    const url = isSelf ? '/ess/bank-details' : `/employees/${employeeId}/bank-details`
+    api.get(url, isSelf ? {} : cfg)
       .then(res => setDetails(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { if (employeeId) load() }, [employeeId, companyId])
+  useEffect(() => { if (employeeId || isSelf) load() }, [employeeId, companyId])
 
   useEffect(() => {
     if (!modalOpen || !details) return
@@ -48,8 +51,14 @@ export default function BankDetailsTab({ employeeId, companyId }) {
 
   const onSubmit = async (data) => {
     try {
-      const method = details ? 'put' : 'post'
-      const res = await api[method](`/employees/${employeeId}/bank-details`, data, cfg)
+      let res
+      if (isSelf) {
+        const method = details ? 'put' : 'post'
+        res = await api[method]('/ess/bank-details', data)
+      } else {
+        const method = details ? 'put' : 'post'
+        res = await api[method](`/employees/${employeeId}/bank-details`, data, cfg)
+      }
       setDetails(res.data)
       setModalOpen(false)
       toast.success('Bank details updated')
@@ -62,11 +71,13 @@ export default function BankDetailsTab({ employeeId, companyId }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <Button onClick={() => setModalOpen(true)}>
-          {details ? 'Edit Bank Details' : 'Add Bank Details'}
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={() => setModalOpen(true)}>
+            {details ? 'Edit Bank Details' : 'Add Bank Details'}
+          </Button>
+        </div>
+      )}
 
       {details ? (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">

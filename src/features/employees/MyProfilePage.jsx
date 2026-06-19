@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import api from '../../services/api'
@@ -17,6 +18,7 @@ import PayrollTab from './profile-tabs/PayrollTab'
 import BankDetailsTab from './profile-tabs/BankDetailsTab'
 import DocumentsTab from './profile-tabs/DocumentsTab'
 import BonusPointsTab from './profile-tabs/BonusPointsTab'
+import { fetchMyProfileFeatures, selectProfileFeatures } from './employeeExtrasSlice'
 
 const GENDERS = [
   { value: 'MALE',   label: 'Male' },
@@ -41,6 +43,9 @@ const TABS = [
 ]
 
 export default function MyProfilePage() {
+  const dispatch = useDispatch()
+  const profileFeatures = useSelector(selectProfileFeatures)
+
   const [profile, setProfile]     = useState(null)
   const [loading, setLoading]     = useState(true)
   const [activeTab, setActiveTab] = useState('about')
@@ -49,6 +54,11 @@ export default function MyProfilePage() {
   const photoInputRef = useRef(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
+
+  const canEdit = (feature) => {
+    const f = profileFeatures.find(pf => pf.featureName === feature)
+    return f ? f.isEditable : true
+  }
 
   useEffect(() => {
     api.get('/ess/me')
@@ -60,28 +70,21 @@ export default function MyProfilePage() {
   }, [])
 
   useEffect(() => {
+    if (!profile?.companyId) return
+    dispatch(fetchMyProfileFeatures())
+  }, [profile?.companyId])
+
+  useEffect(() => {
     if (!modalOpen || !profile) return
     reset({
-      firstName:                profile.firstName,
-      lastName:                 profile.lastName,
       phone:                    profile.phone,
-      gender:                   profile.gender,
-      nationality:              profile.nationality,
       dateOfBirth:              profile.dateOfBirth,
-      maritalStatus:            profile.maritalStatus,
       permanentAddress:         profile.permanentAddress,
       currentAddress:           profile.currentAddress,
       country:                  profile.country,
       state:                    profile.state,
       city:                     profile.city,
       zip:                      profile.zip,
-      countryOfBirth:           profile.countryOfBirth,
-      placeOfBirth:             profile.placeOfBirth,
-      workEmail:                profile.workEmail,
-      workPhone:                profile.workPhone,
-      qualification:            profile.qualification,
-      experience:               profile.experience,
-      children:                 profile.children,
       emergencyContactName:     profile.emergencyContactName,
       emergencyContact:         profile.emergencyContact,
       emergencyContactRelation: profile.emergencyContactRelation,
@@ -90,11 +93,8 @@ export default function MyProfilePage() {
 
   const onSubmit = async (data) => {
     try {
-      const res = await api.put(`/employees/${profile.id}`, {
+      const res = await api.put('/ess/me', {
         ...data,
-        companyId:     profile.companyId,
-        departmentId:  profile.departmentId,
-        isActive:      profile.isActive,
         gender:        data.gender        || undefined,
         maritalStatus: data.maritalStatus || undefined,
         dateOfBirth:   data.dateOfBirth   || undefined,
@@ -148,8 +148,8 @@ export default function MyProfilePage() {
           {/* Avatar with upload overlay */}
           <div className="flex flex-col items-center text-center">
             <div
-              className="relative group cursor-pointer mb-4"
-              onClick={() => photoInputRef.current?.click()}
+              className={`relative mb-4${canEdit('profile_image') ? ' group cursor-pointer' : ''}`}
+              onClick={() => canEdit('profile_image') && photoInputRef.current?.click()}
             >
               {uploading ? (
                 <div className="h-24 w-24 rounded-full bg-gray-100 flex items-center justify-center">
@@ -163,10 +163,12 @@ export default function MyProfilePage() {
                   className="!h-24 !w-24 !text-2xl"
                 />
               )}
-              <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center
-                              opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="text-white text-xs font-medium">Change</span>
-              </div>
+              {canEdit('profile_image') && (
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center
+                                opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-white text-xs font-medium">Change</span>
+                </div>
+              )}
             </div>
             <input
               ref={photoInputRef}
@@ -264,7 +266,7 @@ export default function MyProfilePage() {
             {activeTab === 'about'     && <AboutTab profile={profile} />}
             {activeTab === 'work-info' && <WorkInfoTab employeeId={profile.id} isSelf={true} />}
             {activeTab === 'payroll'   && <PayrollTab employeeId={profile.id} />}
-            {activeTab === 'bank'      && <BankDetailsTab employeeId={profile.id} />}
+            {activeTab === 'bank'      && <BankDetailsTab employeeId={profile.id} canEdit={canEdit('bank_details')} />}
             {activeTab === 'documents' && <DocumentsTab employeeId={profile.id} />}
             {activeTab === 'bonus'     && <BonusPointsTab employeeId={profile.id} />}
           </div>
@@ -284,52 +286,33 @@ export default function MyProfilePage() {
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="First Name" error={errors.firstName?.message}
-              {...register('firstName', { required: 'Required' })} />
-            <Input label="Last Name" {...register('lastName')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          {canEdit('phone') && (
             <Input label="Phone" {...register('phone')} />
-            <Input label="Nationality" {...register('nationality')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select label="Gender"
-              options={[{ value: '', label: 'Select...' }, ...GENDERS]}
-              {...register('gender')} />
-            <Select label="Marital Status"
-              options={[{ value: '', label: 'Select...' }, ...MARITAL_STATUSES]}
-              {...register('maritalStatus')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          )}
+          {canEdit('date_of_birth') && (
             <Input label="Date of Birth" type="date" {...register('dateOfBirth')} />
-            <Input label="Qualification" {...register('qualification')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Experience (years)" type="number" {...register('experience')} />
-            <Input label="Children" type="number" {...register('children')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Work Email" type="email" {...register('workEmail')} />
-            <Input label="Work Phone" {...register('workPhone')} />
-          </div>
-          <Input label="Permanent Address" {...register('permanentAddress')} />
-          <Input label="Current Address" {...register('currentAddress')} />
-          <div className="grid grid-cols-3 gap-3">
-            <Input label="Country" {...register('country')} />
-            <Input label="State" {...register('state')} />
-            <Input label="City" {...register('city')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="ZIP Code" {...register('zip')} />
-            <Input label="Country of Birth" {...register('countryOfBirth')} />
-          </div>
-          <Input label="Place of Birth" {...register('placeOfBirth')} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Emergency Contact Name" {...register('emergencyContactName')} />
-            <Input label="Emergency Contact Phone" {...register('emergencyContact')} />
-          </div>
-          <Input label="Emergency Contact Relation" {...register('emergencyContactRelation')} />
+          )}
+          {canEdit('address') && (
+            <>
+              <Input label="Permanent Address" {...register('permanentAddress')} />
+              <Input label="Current Address" {...register('currentAddress')} />
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Country" {...register('country')} />
+                <Input label="State" {...register('state')} />
+                <Input label="City" {...register('city')} />
+              </div>
+              <Input label="ZIP Code" {...register('zip')} />
+            </>
+          )}
+          {canEdit('emergency_contact') && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Emergency Contact Name" {...register('emergencyContactName')} />
+                <Input label="Emergency Contact Phone" {...register('emergencyContact')} />
+              </div>
+              <Input label="Emergency Contact Relation" {...register('emergencyContactRelation')} />
+            </>
+          )}
         </div>
       </Modal>
     </div>

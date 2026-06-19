@@ -6,6 +6,8 @@ import {
   fetchAccrualLog, selectAccrualLog,
   updateLeaveBalance, exportLeaveBalance,
 } from './leaveSlice'
+import api from '../../services/api'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import DataTable from '../../components/common/DataTable'
@@ -30,6 +32,8 @@ export default function LeaveBalancePage() {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Export filters
   const [filterEmployeeIds, setFilterEmployeeIds] = useState([])
@@ -59,6 +63,20 @@ export default function LeaveBalancePage() {
     })
   }
 
+  const confirmDelete = async () => {
+    setDeleting(true)
+    try {
+      await api.delete(`/leave/allocations/${deleteTarget.id}`)
+      toast.success('Leave balance deleted')
+      setDeleteTarget(null)
+      dispatch(fetchLeaveBalance())
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to delete leave balance')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleEditSave = async () => {
     setSaving(true)
     try {
@@ -83,6 +101,7 @@ export default function LeaveBalancePage() {
 
   const [exportModal, setExportModal] = useState(false)
   const [empSearch, setEmpSearch] = useState('')
+  const [search, setSearch] = useState('')
 
   const openExportModal = () => {
     setFilterEmployeeIds([])
@@ -135,6 +154,9 @@ export default function LeaveBalancePage() {
         {canManage && (
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         )}
+        {canManage && (
+          <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
+        )}
       </div>
     )},
   ]
@@ -151,7 +173,26 @@ export default function LeaveBalancePage() {
         }
       />
 
-      <DataTable columns={columns} data={leaveBalance} loading={loading} />
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search by employee or leave type…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+      <DataTable
+        columns={columns}
+        data={search
+          ? leaveBalance.filter(r =>
+              (r.employeeName || '').toLowerCase().includes(search.toLowerCase()) ||
+              (r.leaveTypeName || '').toLowerCase().includes(search.toLowerCase())
+            )
+          : leaveBalance
+        }
+        loading={loading}
+      />
 
       {/* Accrual Log Modal */}
       <Modal open={!!logModal} onClose={() => setLogModal(null)}
@@ -231,6 +272,17 @@ export default function LeaveBalancePage() {
           />
         </div>
       </Modal>
+
+      {/* Delete Confirm Modal */}
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Leave Balance"
+        message={`Are you sure you want to delete the leave balance for ${deleteTarget?.employeeName || ''} / ${deleteTarget?.leaveTypeName || ''}? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleting}
+      />
 
       {/* Export Modal */}
       <Modal
