@@ -5,6 +5,7 @@ import Avatar from '../common/Avatar'
 import useAuth from '../../hooks/useAuth'
 import CompanySwitcher from './CompanySwitcher'
 import BranchSwitcher from './BranchSwitcher'
+import { API_BASE_URL } from '../../config/constants'
 
 function useBreadcrumb() {
   const { pathname } = useLocation()
@@ -18,6 +19,12 @@ export default function Topbar() {
   const navigate = useNavigate()
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
   const breadcrumbs = useBreadcrumb()
+
+  const avatarSrc = user?.photoPath
+    ? (user.photoPath.startsWith('http')
+        ? user.photoPath
+        : `${API_BASE_URL.replace('/api', '')}${user.photoPath}`)
+    : null
 
   return (
     <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">

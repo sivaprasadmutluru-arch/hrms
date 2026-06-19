@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import api from '../../services/api'
 import { API_BASE_URL } from '../../config/constants'
+import { fetchMe } from '../auth/authSlice'
 import Avatar from '../../components/common/Avatar'
 import Badge from '../../components/common/Badge'
 import Button from '../../components/common/Button'
@@ -103,6 +104,8 @@ export default function MyProfilePage() {
       })
       setProfile(res.data)
       setModalOpen(false)
+      // Re-sync auth state so dashboard / topbar reflect the updated profile
+      dispatch(fetchMe())
       toast.success('Profile updated')
     } catch {
       toast.error('Failed to update profile')
@@ -115,11 +118,13 @@ export default function MyProfilePage() {
     setUploading(true)
     try {
       const form = new FormData()
-      form.append('photo', file)
-      const res = await api.post(`/employees/${profile.id}/photo`, form, {
+      form.append('file', file)
+      const res = await api.post(`/ess/me/photo`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setProfile(prev => ({ ...prev, photoPath: res.data?.photoPath ?? res.data }))
+      // Re-sync auth state so dashboard reflects the updated photo
+      dispatch(fetchMe())
       toast.success('Photo updated')
     } catch {
       toast.error('Failed to upload photo')
