@@ -63,6 +63,7 @@ public final class LeaveMapper {
                 lt.getMidYearJoinerMode(),
                 lt.getNegativeBalanceAllowed(),
                 lt.getNegativeBalanceLimit(),
+                lt.getExcludeWeekend(),
                 lt.isActive(),
                 empTypeIds,
                 empTypeNames

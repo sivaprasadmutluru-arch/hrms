@@ -26,6 +26,7 @@ public record LeaveTypeDTO(
         MidYearJoinerMode midYearJoinerMode,
         Boolean negativeBalanceAllowed,
         Double negativeBalanceLimit,
+        Boolean excludeWeekend,
         boolean isActive,
         java.util.List<Long> applicableEmployeeTypeIds,
         java.util.List<String> applicableEmployeeTypeNames

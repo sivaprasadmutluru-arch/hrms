@@ -76,6 +76,9 @@ public class LeaveType extends BaseEntity {
     @Column(name = "exclude_company_leave")
     private Boolean excludeCompanyLeave = true;
 
+    @Column(name = "exclude_weekend")
+    private Boolean excludeWeekend = true;
+
     @Column(name = "exclude_holiday")
     private Boolean excludeHoliday = true;
 

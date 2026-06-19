@@ -12,8 +12,12 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.dto.EmployeeResponse;
 import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.Employee;
+import com.example.demo.employee.entity.ProfileEditFeature;
+import com.example.demo.employee.entity.EmployeeBankDetails;
+import com.example.demo.employee.repository.EmployeeBankDetailsRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
+import com.example.demo.employee.repository.ProfileEditFeatureRepository;
 import com.example.demo.leave.dto.AvailableLeaveDTO;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
@@ -39,6 +43,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Employee Self-Service (ESS) endpoints.
@@ -68,6 +73,8 @@ public class ESSController {
     private final PayslipRepository payslipRepository;
     private final LeaveService leaveService;
     private final ContractRepository contractRepository;
+    private final ProfileEditFeatureRepository profileEditFeatureRepository;
+    private final EmployeeBankDetailsRepository bankDetailsRepository;
 
     // ── Profile ──────────────────────────────────────────────────────────────
 
@@ -78,6 +85,73 @@ public class ESSController {
         Employee emp = resolveEmployee(auth);
         Contract contract = contractRepository.findByEmployeeId(emp.getId()).stream().findFirst().orElse(null);
         return ResponseEntity.ok(EmployeeResponse.from(emp, contract));
+    }
+
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Update own employee profile (feature-gated)")
+    public ResponseEntity<EmployeeResponse> updateMe(
+            Authentication auth,
+            @RequestBody Map<String, Object> body) {
+        Employee emp = resolveEmployee(auth);
+        Long companyId = emp.getCompany().getId();
+
+        // Build feature map: featureName → isEditable
+        Map<String, Boolean> features = new HashMap<>();
+        profileEditFeatureRepository.findByCompanyId(companyId)
+                .forEach(f -> features.put(f.getFeatureName(), Boolean.TRUE.equals(f.getIsEditable())));
+
+        // Helper: check if a feature is enabled (default true if not configured)
+        java.util.function.Function<String, Boolean> allowed =
+                feat -> features.getOrDefault(feat, true);
+
+        // Feature-gated: phone
+        if (allowed.apply("phone") && body.containsKey("phone"))
+            emp.setPhone((String) body.get("phone"));
+
+        // Feature-gated: address
+        if (allowed.apply("address")) {
+            if (body.containsKey("permanentAddress"))
+                emp.setPermanentAddress((String) body.get("permanentAddress"));
+            if (body.containsKey("currentAddress"))
+                emp.setCurrentAddress((String) body.get("currentAddress"));
+            if (body.containsKey("country"))
+                emp.setCountry((String) body.get("country"));
+            if (body.containsKey("state"))
+                emp.setState((String) body.get("state"));
+            if (body.containsKey("city"))
+                emp.setCity((String) body.get("city"));
+            if (body.containsKey("zip"))
+                emp.setZip((String) body.get("zip"));
+        }
+
+        // Feature-gated: date_of_birth
+        if (allowed.apply("date_of_birth") && body.containsKey("dateOfBirth")) {
+            String dob = (String) body.get("dateOfBirth");
+            emp.setDateOfBirth(dob != null && !dob.isEmpty() ? LocalDate.parse(dob) : null);
+        }
+
+        // Feature-gated: emergency_contact
+        if (allowed.apply("emergency_contact")) {
+            if (body.containsKey("emergencyContactName"))
+                emp.setEmergencyContactName((String) body.get("emergencyContactName"));
+            if (body.containsKey("emergencyContact"))
+                emp.setEmergencyContact((String) body.get("emergencyContact"));
+            if (body.containsKey("emergencyContactRelation"))
+                emp.setEmergencyContactRelation((String) body.get("emergencyContactRelation"));
+        }
+
+        emp = employeeRepository.save(emp);
+        Contract contract = contractRepository.findByEmployeeId(emp.getId()).stream().findFirst().orElse(null);
+        return ResponseEntity.ok(EmployeeResponse.from(emp, contract));
+    }
+
+    @GetMapping("/profile-features")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get profile edit features for own company")
+    public ResponseEntity<List<ProfileEditFeature>> myProfileFeatures(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(profileEditFeatureRepository.findByCompanyId(emp.getCompany().getId()));
     }
 
     // ── Work Info ─────────────────────────────────────────────────────────────
@@ -112,9 +186,16 @@ public class ESSController {
                         res.setWorkTypeId(emp.getWorkType().getId());
                         res.setWorkTypeName(emp.getWorkType().getName());
                     }
-                    // Merge salary from active Contract if not set in WorkInformation
-                    if (res.getBasicSalary() == null && res.getHousingAllowance() == null) {
-                        contractRepository.findByEmployeeIdAndContractStatus(emp.getId(), com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE)
+                    // Merge salary from contract if not set in WorkInformation.
+                    // Mirrors admin endpoint: check all 4 fields, prefer ACTIVE over DRAFT.
+                    if (res.getBasicSalary() == null && res.getHousingAllowance() == null
+                            && res.getTransportAllowance() == null && res.getOtherAllowance() == null) {
+                        contractRepository.findByEmployeeIdAndContractStatusIn(emp.getId(),
+                                java.util.List.of(com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE,
+                                                  com.example.demo.payroll.entity.Contract.ContractStatus.DRAFT))
+                                .stream()
+                                .min(java.util.Comparator.comparingInt(c ->
+                                        c.getContractStatus() == com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE ? 0 : 1))
                                 .ifPresent(contract -> {
                                     if (contract.getWage() != null) res.setBasicSalary(contract.getWage());
                                     if (contract.getHousingAllowance() != null) res.setHousingAllowance(contract.getHousingAllowance());
@@ -321,6 +402,67 @@ public class ESSController {
     public ResponseEntity<List<LeaveType>> leaveTypes(Authentication auth) {
         Employee emp = resolveEmployee(auth);
         return ResponseEntity.ok(leaveService.getLeaveTypes());
+    }
+
+    // ── Bank Details (self-service) ───────────────────────────────────────────
+
+    @GetMapping("/bank-details")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get own bank details")
+    public ResponseEntity<EmployeeBankDetails> myBankDetails(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return bankDetailsRepository.findByEmployeeId(emp.getId())
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/bank-details")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Add own bank details (requires bank_details feature enabled)")
+    public ResponseEntity<EmployeeBankDetails> createMyBankDetails(Authentication auth,
+                                                                     @RequestBody EmployeeBankDetails bankDetails) {
+        Employee emp = resolveEmployee(auth);
+        checkFeature(emp, "bank_details");
+        bankDetails.setEmployee(emp);
+        return ResponseEntity.ok(bankDetailsRepository.save(bankDetails));
+    }
+
+    @PutMapping("/bank-details")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Update own bank details (requires bank_details feature enabled)")
+    public ResponseEntity<EmployeeBankDetails> updateMyBankDetails(Authentication auth,
+                                                                     @RequestBody EmployeeBankDetails updated) {
+        Employee emp = resolveEmployee(auth);
+        checkFeature(emp, "bank_details");
+        EmployeeBankDetails bd = bankDetailsRepository.findByEmployeeId(emp.getId())
+                .orElseGet(() -> {
+                    EmployeeBankDetails n = new EmployeeBankDetails();
+                    n.setEmployee(emp);
+                    return n;
+                });
+        bd.setBankName(updated.getBankName());
+        bd.setAccountNumber(updated.getAccountNumber());
+        bd.setBranch(updated.getBranch());
+        bd.setCountry(updated.getCountry());
+        bd.setState(updated.getState());
+        bd.setCity(updated.getCity());
+        bd.setIfscCode(updated.getIfscCode());
+        bd.setSwiftCode(updated.getSwiftCode());
+        bd.setAddress(updated.getAddress());
+        return ResponseEntity.ok(bankDetailsRepository.save(bd));
+    }
+
+    private void checkFeature(Employee emp, String featureName) {
+        profileEditFeatureRepository.findByCompanyId(emp.getCompany().getId()).stream()
+                .filter(f -> featureName.equals(f.getFeatureName()))
+                .findFirst()
+                .ifPresent(f -> {
+                    if (!Boolean.TRUE.equals(f.getIsEditable())) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                "Feature '" + featureName + "' is disabled by your administrator.");
+                    }
+                });
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

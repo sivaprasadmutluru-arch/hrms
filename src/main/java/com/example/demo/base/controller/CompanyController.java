@@ -4,6 +4,7 @@ import com.example.demo.base.dto.CompanyRequest;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.service.CompanyService;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,6 +59,20 @@ public class CompanyController {
     @Operation(summary = "Create a Head Office for a client organization (Prabha Tech only)")
     public ResponseEntity<Company> createHeadOffice(@Valid @RequestBody CompanyRequest request) {
         return ResponseEntity.ok(companyService.createHeadOffice(request));
+    }
+
+    // ---- Any authenticated user ----
+
+    @GetMapping("/mine")
+    @Operation(summary = "Get the current user's own company (available to all authenticated users)")
+    public ResponseEntity<Company> getMine() {
+        var scope = AccessScopeContext.get();
+        Long companyId = scope != null ? scope.getCompanyId() : null;
+        if (companyId == null) {
+            throw new ResourceNotFoundException("Company", -1L);
+        }
+        return ResponseEntity.ok(companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId)));
     }
 
     // ---- Head Office Admin (Enterprise Admin) endpoints ----

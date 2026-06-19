@@ -274,6 +274,7 @@ public class LeaveService {
         lt.setCarryforwardExpireDate(updated.getCarryforwardExpireDate());
         lt.setExcludeHoliday(updated.getExcludeHoliday());
         lt.setExcludeCompanyLeave(updated.getExcludeCompanyLeave());
+        lt.setExcludeWeekend(updated.getExcludeWeekend());
         lt.setRequireAttachment(updated.getRequireAttachment());
         lt.setLimitLeave(updated.getLimitLeave());
         lt.setIsEncashable(updated.getIsEncashable());
@@ -525,12 +526,17 @@ public class LeaveService {
             }
         }
 
+        boolean skipWeekends = Boolean.TRUE.equals(leaveType.getExcludeWeekend());
         long days = 0;
         LocalDate current = start;
         while (!current.isAfter(end)) {
-            if (current.getDayOfWeek() != DayOfWeek.SATURDAY
-                    && current.getDayOfWeek() != DayOfWeek.SUNDAY
-                    && !excludedDates.contains(current)) {
+            if (skipWeekends
+                    && (current.getDayOfWeek() == DayOfWeek.SATURDAY
+                        || current.getDayOfWeek() == DayOfWeek.SUNDAY)) {
+                current = current.plusDays(1);
+                continue;
+            }
+            if (!excludedDates.contains(current)) {
                 days++;
             }
             current = current.plusDays(1);

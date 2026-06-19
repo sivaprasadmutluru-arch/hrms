@@ -171,6 +171,30 @@ public class LeaveController {
         return ResponseEntity.ok(leaveService.getAllocations(employeeId, year).stream().map(LeaveMapper::toDTO).toList());
     }
 
+    @PutMapping("/allocations/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Update a leave allocation")
+    public ResponseEntity<LeaveAllocationDTO> updateAllocation(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        LeaveAllocation la = leaveAllocationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocation", id));
+        if (body.containsKey("totalLeaveDays")) la.setTotalLeaveDays(((Number) body.get("totalLeaveDays")).doubleValue());
+        if (body.containsKey("availableDays")) la.setAvailableDays(((Number) body.get("availableDays")).doubleValue());
+        if (body.containsKey("carryforwardDays")) la.setCarryforwardDays(((Number) body.get("carryforwardDays")).doubleValue());
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveAllocationRepository.save(la)));
+    }
+
+    @DeleteMapping("/allocations/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Delete a leave allocation")
+    public ResponseEntity<Map<String, String>> deleteAllocation(@PathVariable Long id) {
+        if (!leaveAllocationRepository.existsById(id)) {
+            throw new ResourceNotFoundException("LeaveAllocation", id);
+        }
+        leaveAllocationRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Leave allocation deleted"));
+    }
+
     @PostMapping("/allocate")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Allocate leave days to employee")
@@ -251,6 +275,17 @@ public class LeaveController {
         if (body.containsKey("expiredDate"))
             al.setExpiredDate(body.get("expiredDate") != null ? LocalDate.parse(body.get("expiredDate").toString()) : null);
         return ResponseEntity.ok(LeaveMapper.toDTO(availableLeaveRepository.save(al)));
+    }
+
+    @DeleteMapping("/balance/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Delete an employee's leave balance record")
+    public ResponseEntity<Map<String, String>> deleteBalance(@PathVariable Long id) {
+        if (!availableLeaveRepository.existsById(id)) {
+            throw new ResourceNotFoundException("AvailableLeave", id);
+        }
+        availableLeaveRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Leave balance deleted"));
     }
 
     @GetMapping("/balance/export")
