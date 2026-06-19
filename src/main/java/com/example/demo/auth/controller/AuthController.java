@@ -104,10 +104,15 @@ public class AuthController {
                     }).orElse(null);
                 });
 
-        // Fetch employee's firstName for display
-        String firstName = employeeRepository.findByUserId(principal.getId())
-                .map(Employee::getFirstName)
-                .orElse(null);
+        // Fetch employee's firstName and photoPath for display
+        String firstName = null;
+        String photoPath = null;
+        java.util.Optional<Employee> empOpt = employeeRepository.findByUserId(principal.getId());
+        if (empOpt.isPresent()) {
+            Employee emp = empOpt.get();
+            firstName = emp.getFirstName();
+            photoPath = emp.getPhotoPath();
+        }
 
         Map<String, Object> response = new HashMap<>();
         response.put("userId", principal.getId());
@@ -120,6 +125,7 @@ public class AuthController {
         response.put("organizationId", organizationId);
         response.put("employeeId", employeeId);
         response.put("firstName", firstName);
+        response.put("photoPath", photoPath);
         return ResponseEntity.ok(response);
     }
 

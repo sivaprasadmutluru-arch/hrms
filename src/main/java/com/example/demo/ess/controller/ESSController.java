@@ -18,6 +18,7 @@ import com.example.demo.employee.repository.EmployeeBankDetailsRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.employee.repository.ProfileEditFeatureRepository;
+import com.example.demo.employee.service.EmployeeService;
 import com.example.demo.leave.dto.AvailableLeaveDTO;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
@@ -38,7 +39,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -75,6 +78,7 @@ public class ESSController {
     private final ContractRepository contractRepository;
     private final ProfileEditFeatureRepository profileEditFeatureRepository;
     private final EmployeeBankDetailsRepository bankDetailsRepository;
+    private final EmployeeService employeeService;
 
     // ── Profile ──────────────────────────────────────────────────────────────
 
@@ -144,6 +148,19 @@ public class ESSController {
         emp = employeeRepository.save(emp);
         Contract contract = contractRepository.findByEmployeeId(emp.getId()).stream().findFirst().orElse(null);
         return ResponseEntity.ok(EmployeeResponse.from(emp, contract));
+    }
+
+    @PostMapping(value = "/me/photo", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Upload own profile photo (feature-gated: profile_image)")
+    public ResponseEntity<Map<String, String>> uploadMyPhoto(
+            Authentication auth,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        Employee emp = resolveEmployee(auth);
+        // Gate the upload behind the same "profile_image" feature flag the frontend already checks
+        checkFeature(emp, "profile_image");
+        String path = employeeService.uploadPhoto(emp.getId(), file);
+        return ResponseEntity.ok(Map.of("photoPath", path));
     }
 
     @GetMapping("/profile-features")
