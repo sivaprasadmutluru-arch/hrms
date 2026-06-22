@@ -118,6 +118,19 @@ public class Attendance extends BaseEntity {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private BatchAttendance batchAttendance;
 
+    // ─── Device / Source Tracking (ADMS Push) ─────────────────────────────
+    @Column(name = "clock_in_device_name", length = 100)
+    private String clockInDeviceName;
+
+    @Column(name = "clock_out_device_name", length = 100)
+    private String clockOutDeviceName;
+
+    @Column(name = "clock_in_source", length = 30)
+    private String clockInSource;
+
+    @Column(name = "clock_out_source", length = 30)
+    private String clockOutSource;
+
     public enum AttendanceStatus {
         PENDING, APPROVED, REJECTED
     }

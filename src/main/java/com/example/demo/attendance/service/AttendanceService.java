@@ -133,7 +133,18 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceResponse create(AttendanceRequest req) {
-        return AttendanceResponse.from(attendanceRepository.save(buildAttendance(new Attendance(), req)));
+        // Upsert: if a record already exists for this employee+date, update it instead of creating a duplicate
+        Attendance att = attendanceRepository
+                .findByEmployeeIdAndAttendanceDate(req.getEmployeeId(), req.getAttendanceDate())
+                .orElse(new Attendance());
+        att = attendanceRepository.save(buildAttendance(att, req));
+
+        // Auto-compute worked hours when checkout is present
+        if (att.getCheckOut() != null) {
+            autoComputeOnCheckout(att);
+        }
+
+        return AttendanceResponse.from(att);
     }
 
     @Transactional
@@ -223,22 +234,62 @@ public class AttendanceService {
     }
 
     private void recalculateTotalHours(Attendance att) {
+        if (att.getCheckIn() == null || att.getCheckOut() == null) {
+            att.setWorkedHour(0.0);
+            att.setAtWorkSecond(0);
+            return;
+        }
+
         List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(
                 att.getEmployee().getId(), att.getAttendanceDate());
 
         long totalSeconds = 0;
-        for (AttendanceActivity a : activities) {
-            if (a.getClockIn() != null && a.getClockOut() != null) {
-                LocalTime in = a.getClockIn();
-                LocalTime out = a.getClockOut();
-                long seconds;
-                if (out.isBefore(in)) {
-                    seconds = ChronoUnit.SECONDS.between(in, LocalTime.MAX) + 1
-                            + ChronoUnit.SECONDS.between(LocalTime.MIN, out);
-                } else {
-                    seconds = ChronoUnit.SECONDS.between(in, out);
+        boolean calculateFromActivities = false;
+
+        if (!activities.isEmpty()) {
+            LocalTime minIn = null;
+            LocalTime maxOut = null;
+            for (AttendanceActivity a : activities) {
+                if (a.getClockIn() != null) {
+                    if (minIn == null || a.getClockIn().isBefore(minIn)) minIn = a.getClockIn();
                 }
-                totalSeconds += seconds;
+                if (a.getClockOut() != null) {
+                    if (maxOut == null || a.getClockOut().isAfter(maxOut)) maxOut = a.getClockOut();
+                }
+            }
+
+            // If the Attendance checkIn/checkOut exactly match the bounds of activities,
+            // we assume it has NOT been manually overridden, so we calculate from activities (deducting breaks).
+            if (minIn != null && maxOut != null &&
+                att.getCheckIn().equals(minIn) && att.getCheckOut().equals(maxOut)) {
+                calculateFromActivities = true;
+            }
+        }
+
+        if (calculateFromActivities) {
+            for (AttendanceActivity a : activities) {
+                if (a.getClockIn() != null && a.getClockOut() != null) {
+                    LocalTime in = a.getClockIn();
+                    LocalTime out = a.getClockOut();
+                    long seconds;
+                    if (out.isBefore(in)) {
+                        seconds = ChronoUnit.SECONDS.between(in, LocalTime.MAX) + 1
+                                + ChronoUnit.SECONDS.between(LocalTime.MIN, out);
+                    } else {
+                        seconds = ChronoUnit.SECONDS.between(in, out);
+                    }
+                    totalSeconds += seconds;
+                }
+            }
+        } else {
+            // Calculate strictly from checkIn to checkOut
+            LocalTime in = att.getCheckIn();
+            LocalTime out = att.getCheckOut();
+            if (out.isBefore(in)) {
+                totalSeconds = ChronoUnit.SECONDS.between(in, LocalTime.MAX) + 1
+                        + ChronoUnit.SECONDS.between(LocalTime.MIN, out);
+            } else {
+                totalSeconds = ChronoUnit.SECONDS.between(in, out);
             }
         }
 

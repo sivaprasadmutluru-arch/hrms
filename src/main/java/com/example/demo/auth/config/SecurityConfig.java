@@ -71,6 +71,8 @@ public class SecurityConfig {
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
+                    // ZKTeco ADMS push endpoints (device cannot send JWT)
+                    "/iclock/**",
                     // Static frontend assets
                     "/", "/index.html", "/assets/**",
                     "/favicon.ico", "/favicon.svg", "/*.js", "/*.css", "/*.png"

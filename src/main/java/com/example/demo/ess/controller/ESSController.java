@@ -20,6 +20,7 @@ import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.employee.repository.ProfileEditFeatureRepository;
 import com.example.demo.employee.service.EmployeeService;
 import com.example.demo.leave.dto.AvailableLeaveDTO;
+import com.example.demo.leave.dto.LeaveRequestDTO;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
 import com.example.demo.leave.dto.LeaveMapper;
@@ -231,10 +232,12 @@ public class ESSController {
 
     @GetMapping("/my-leave")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get own leave requests")
-    public ResponseEntity<List<LeaveRequest>> myLeave(Authentication auth) {
+    @Operation(summary = "Get employee's leave requests")
+    public ResponseEntity<List<LeaveRequestDTO>> myLeave(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(leaveRequestRepository.findByEmployeeId(emp.getId()));
+        List<LeaveRequestDTO> dtos = leaveRequestRepository.findByEmployeeId(emp.getId())
+                .stream().map(LeaveMapper::toDTO).toList();
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping("/apply-leave")

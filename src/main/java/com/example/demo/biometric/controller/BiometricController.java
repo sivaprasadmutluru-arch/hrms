@@ -33,6 +33,7 @@ public class BiometricController {
     @PostMapping("/devices")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     public ResponseEntity<BiometricDevice> createDevice(@RequestBody BiometricDevice device) {
+        System.out.println("CREATING DEVICE: name=" + device.getName() + " SN=" + device.getSerialNumber());
         return ResponseEntity.ok(biometricService.createDevice(device));
     }
 

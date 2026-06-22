@@ -25,6 +25,7 @@ public class BiometricService {
     private final CosecAttendanceArgumentsRepository cosecAttendanceArgumentsRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
+    private final AdmsTenantResolver admsTenantResolver;
 
     // ---- Devices ----
 
@@ -40,14 +41,28 @@ public class BiometricService {
         if (device.getCompany() != null && device.getCompany().getId() != null) {
             device.setCompany(companyRepository.getReferenceById(device.getCompany().getId()));
         }
-        return biometricDeviceRepository.save(device);
+        if (device.getDeviceDirection() == null) {
+            device.setDeviceDirection(BiometricDevice.DeviceDirection.SYSTEM);
+        }
+        if (device.getMachineType() == null) {
+            device.setMachineType(BiometricDevice.MachineType.ZK);
+        }
+        BiometricDevice saved = biometricDeviceRepository.save(device);
+        // Invalidate resolver cache so the new SN is discoverable immediately
+        if (saved.getSerialNumber() != null) {
+            admsTenantResolver.evictCache(saved.getSerialNumber());
+        }
+        return saved;
     }
 
     public BiometricDevice updateDevice(Long id, BiometricDevice updated) {
         BiometricDevice device = biometricDeviceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("BiometricDevice", id));
+        // Capture old SN before overwriting — needed to evict the old cache entry
+        String oldSerial = device.getSerialNumber();
         device.setName(updated.getName());
         device.setMachineType(updated.getMachineType());
+        device.setSerialNumber(updated.getSerialNumber());
         device.setMachineIp(updated.getMachineIp());
         device.setPort(updated.getPort());
         device.setZkPassword(updated.getZkPassword());
@@ -70,11 +85,20 @@ public class BiometricService {
         } else {
             device.setCompany(null);
         }
-        return biometricDeviceRepository.save(device);
+        BiometricDevice saved = biometricDeviceRepository.save(device);
+        // Invalidate cache for both old and new SN so ADMS routing re-resolves
+        if (oldSerial != null) admsTenantResolver.evictCache(oldSerial);
+        if (saved.getSerialNumber() != null) admsTenantResolver.evictCache(saved.getSerialNumber());
+        return saved;
     }
 
     public void deleteDevice(Long id) {
+        BiometricDevice device = biometricDeviceRepository.findById(id).orElse(null);
         biometricDeviceRepository.deleteById(id);
+        // Invalidate resolver cache so pushes for this SN stop being routed
+        if (device != null && device.getSerialNumber() != null) {
+            admsTenantResolver.evictCache(device.getSerialNumber());
+        }
     }
 
     // ---- Biometric Employees ----

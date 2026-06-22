@@ -25,6 +25,9 @@ public class BiometricDevice extends BaseEntity {
     @Column(name = "machine_type", nullable = false)
     private MachineType machineType;
 
+    @Column(name = "serial_number", unique = true)
+    private String serialNumber;
+
     @Column(name = "machine_ip")
     private String machineIp;
 

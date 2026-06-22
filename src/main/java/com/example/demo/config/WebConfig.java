@@ -1,5 +1,6 @@
 package com.example.demo.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -21,8 +22,17 @@ import java.io.IOException;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+    @Value("${file.upload-dir:./media}")
+    private String uploadDir;
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // Serve uploaded files directly from the filesystem
+        String uploadPath = "file:" + uploadDir + (uploadDir.endsWith("/") ? "" : "/");
+        registry.addResourceHandler("/media/**")
+                .addResourceLocations(uploadPath);
+
+        // SPA mapping
         registry.addResourceHandler("/**")
                 .addResourceLocations("classpath:/static/")
                 .resourceChain(true)
@@ -33,13 +43,9 @@ public class WebConfig implements WebMvcConfigurer {
                         if (resource.exists() && resource.isReadable()) {
                             return resource;
                         }
-                        // API paths that have no file → return null so NoResourceFoundException
-                        // is thrown and GlobalExceptionHandler returns a 404 JSON response.
-                        if (resourcePath.startsWith("api")) {
+                        if (resourcePath.startsWith("api") || resourcePath.startsWith("media")) {
                             return null;
                         }
-                        // SPA fallback: all other unmatched paths load index.html so
-                        // React Router can handle client-side navigation.
                         Resource indexHtml = location.createRelative("index.html");
                         return indexHtml.exists() ? indexHtml : null;
                     }

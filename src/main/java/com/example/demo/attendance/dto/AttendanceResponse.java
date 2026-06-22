@@ -36,6 +36,12 @@ public class AttendanceResponse {
     private Boolean isValidateRequest;
     private Boolean isValidateRequestApproved;
 
+    // Device / Source tracking
+    private String clockInDeviceName;
+    private String clockOutDeviceName;
+    private String clockInSource;
+    private String clockOutSource;
+
     public static AttendanceResponse from(Attendance a) {
         AttendanceResponse r = new AttendanceResponse();
         r.setId(a.getId());
@@ -60,6 +66,10 @@ public class AttendanceResponse {
         if (a.getShift() != null) { r.setShiftId(a.getShift().getId()); r.setShiftName(a.getShift().getName()); }
         if (a.getWorkType() != null) { r.setWorkTypeId(a.getWorkType().getId()); r.setWorkTypeName(a.getWorkType().getName()); }
         if (a.getCompany() != null) r.setCompanyId(a.getCompany().getId());
+        r.setClockInDeviceName(a.getClockInDeviceName());
+        r.setClockOutDeviceName(a.getClockOutDeviceName());
+        r.setClockInSource(a.getClockInSource());
+        r.setClockOutSource(a.getClockOutSource());
         return r;
     }
 }
