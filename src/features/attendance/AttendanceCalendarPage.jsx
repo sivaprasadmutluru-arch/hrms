@@ -345,6 +345,19 @@ export default function AttendanceCalendarPage() {
                     <span className="font-semibold text-gray-800">{formatTime(selectedData.checkOutUtc, selectedData.checkOut)}</span>
                   </div>
                 )}
+                {selectedData.clockInSource && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Source</span>
+                    <span className="font-semibold text-gray-800 flex items-center gap-1">
+                      {selectedData.clockInSource === 'device' && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" />}
+                      {selectedData.clockInSource === 'mobile' && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full inline-block" />}
+                      {selectedData.clockInSource === 'manual' && <span className="w-1.5 h-1.5 bg-gray-400 rounded-full inline-block" />}
+                      {selectedData.clockInSource === 'device' 
+                        ? (selectedData.clockInDeviceName || 'Biometric Device')
+                        : selectedData.clockInSource.charAt(0).toUpperCase() + selectedData.clockInSource.slice(1)}
+                    </span>
+                  </div>
+                )}
                 {selectedData.workedHour != null && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Hours Worked</span>

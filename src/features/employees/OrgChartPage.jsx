@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { fetchOrgChart } from './employeesSlice'
 import PageHeader from '../../components/common/PageHeader'
 import useAuth from '../../hooks/useAuth'
+import { API_BASE_URL } from '../../config/constants'
 
 // ─── Colour palette (one per department, consistent within a session) ─────────
 
@@ -82,7 +83,7 @@ function EmployeeCard({ node, expanded, hasChildren, onToggle }) {
             style={{ backgroundColor: color }}
           >
             {node.photoPath
-              ? <img src={node.photoPath} alt={node.name} className="w-full h-full object-cover" />
+              ? <img src={node.photoPath.startsWith('http') ? node.photoPath : `${API_BASE_URL.replace('/api', '')}/media/${node.photoPath}`} alt={node.name} className="w-full h-full object-cover" />
               : ini}
           </div>
           <div className="min-w-0 flex-1">

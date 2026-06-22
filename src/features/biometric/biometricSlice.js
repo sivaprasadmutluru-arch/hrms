@@ -15,7 +15,10 @@ export const createDevice = createAsyncThunk('biometric/createDevice', async (da
     const res = await api.post('/biometric/devices', data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to create device')
+    const d = err.response?.data
+    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null)
+      || (typeof d === 'string' ? d : null) || 'Failed to create device'
+    return rejectWithValue(msg)
   }
 })
 
@@ -24,7 +27,10 @@ export const updateDevice = createAsyncThunk('biometric/updateDevice', async ({ 
     const res = await api.put(`/biometric/devices/${id}`, data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to update device')
+    const d = err.response?.data
+    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null)
+      || (typeof d === 'string' ? d : null) || 'Failed to update device'
+    return rejectWithValue(msg)
   }
 })
 
@@ -34,6 +40,19 @@ export const deleteDevice = createAsyncThunk('biometric/deleteDevice', async (id
     return id
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to delete device')
+  }
+})
+
+export const testDeviceConnection = createAsyncThunk('biometric/testConnection', async (id, { rejectWithValue }) => {
+  try {
+    // Best-effort connectivity probe. Endpoint may not exist on every backend build,
+    // so we gracefully treat 404 as "unavailable" rather than a hard failure.
+    const res = await api.get(`/biometric/devices/${id}/test`, { validateStatus: s => s < 500 })
+    return { id, ok: res.status < 400, detail: res.data }
+  } catch (err) {
+    const status = err.response?.status
+    if (status === 404) return { id, ok: false, unavailable: true }
+    return rejectWithValue(err.response?.data?.message || 'Connection test failed')
   }
 })
 
@@ -51,7 +70,10 @@ export const createBiometricEmployee = createAsyncThunk('biometric/createEmploye
     const res = await api.post('/biometric/employees', data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to create biometric employee')
+    const d = err.response?.data
+    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null)
+      || (typeof d === 'string' ? d : null) || 'Failed to create biometric employee'
+    return rejectWithValue(msg)
   }
 })
 
@@ -60,7 +82,10 @@ export const updateBiometricEmployee = createAsyncThunk('biometric/updateEmploye
     const res = await api.put(`/biometric/employees/${id}`, data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to update biometric employee')
+    const d = err.response?.data
+    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null)
+      || (typeof d === 'string' ? d : null) || 'Failed to update biometric employee'
+    return rejectWithValue(msg)
   }
 })
 
@@ -101,6 +126,7 @@ const biometricSlice = createSlice({
     cosecArgs: [],
     loading: false,
     error: null,
+    connectionTests: {}, // { [deviceId]: { ok, unavailable, at } }
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -116,6 +142,15 @@ const biometricSlice = createSlice({
       })
       .addCase(deleteDevice.fulfilled, (state, action) => {
         state.devices = state.devices.filter(d => d.id !== action.payload)
+      })
+
+      .addCase(testDeviceConnection.fulfilled, (state, action) => {
+        state.connectionTests[action.payload.id] = { ...action.payload, at: Date.now() }
+      })
+      .addCase(testDeviceConnection.rejected, (state, action) => {
+        // rejected carries meta.arg = the id
+        const id = action.meta?.arg
+        if (id != null) state.connectionTests[id] = { ok: false, at: Date.now() }
       })
 
       .addCase(fetchBiometricEmployees.pending, (state) => { state.loading = true; state.error = null })
@@ -145,4 +180,6 @@ export const selectBiometricEmployees = (state) => state.biometric.biometricEmpl
 export const selectCosecArgs = (state) => state.biometric.cosecArgs
 export const selectBiometricLoading = (state) => state.biometric.loading
 export const selectBiometricError = (state) => state.biometric.error
+export const selectConnectionTests = (state) => state.biometric.connectionTests
+
 export default biometricSlice.reducer

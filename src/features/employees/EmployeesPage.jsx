@@ -18,6 +18,7 @@ import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import Avatar from '../../components/common/Avatar'
 import useAuth from '../../hooks/useAuth'
+import { API_BASE_URL } from '../../config/constants'
 import { useActiveView } from '../../hooks/useViewPreferences'
 import { formatDate } from '../../utils/formatters'
 import EmployeeFormFields from './EmployeeFormFields'
@@ -74,7 +75,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, onV
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="shrink-0 relative">
-              <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `/api/files/${employee.photoPath}` : undefined} size="lg" />
+              <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${employee.photoPath}` : undefined} size="lg" />
               <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-gray-300'}`} title={isOnline ? 'Online' : 'Offline'} />
             </div>
             <div className="min-w-0">
@@ -281,7 +282,7 @@ export default function EmployeesPage() {
   const openEdit = useCallback((row) => {
     setEditing(row)
     setPhotoFile(null)
-    setPhotoPreview(row.photoPath ? `/api/files/${row.photoPath}` : null)
+    setPhotoPreview(row.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${row.photoPath}` : null)
     setModalOpen(true)
   }, [])
 
@@ -442,7 +443,7 @@ export default function EmployeesPage() {
       header: 'Employee',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <Avatar name={row.original.fullName || row.original.firstName} src={row.original.photoPath ? `/api/files/${row.original.photoPath}` : undefined} size="sm" />
+          <Avatar name={row.original.fullName || row.original.firstName} src={row.original.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${row.original.photoPath}` : undefined} size="sm" />
           <div>
             <p className="font-medium text-gray-900 text-sm">{row.original.fullName || '—'}</p>
             <p className="text-xs text-gray-500">{row.original.email || '—'}</p>

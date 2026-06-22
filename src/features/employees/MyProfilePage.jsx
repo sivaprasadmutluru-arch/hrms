@@ -137,7 +137,7 @@ export default function MyProfilePage() {
   const photoUrl = profile?.photoPath
     ? (profile.photoPath.startsWith('http')
         ? profile.photoPath
-        : `${API_BASE_URL.replace('/api', '')}${profile.photoPath}`)
+        : `${API_BASE_URL.replace('/api', '')}/media/${profile.photoPath.replace(/^\//, '')}`)
     : null
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>

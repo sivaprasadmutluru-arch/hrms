@@ -10,6 +10,7 @@ import {
   selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords, selectValidationPending
 } from './attendanceSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
+import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
 import useAuth from '../../hooks/useAuth'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -38,6 +39,7 @@ export default function AttendancePage() {
   const overtimeRecords = useSelector(selectOvertimeRecords)
   const validationPending = useSelector(selectValidationPending)
   const departments = useSelector(s => s.departments?.data || [])
+  const employees = useSelector(s => s.employees?.data || [])
 
   const [tab, setTab] = useState('Attendance')
   const [modalOpen, setModalOpen] = useState(false)
@@ -54,6 +56,7 @@ export default function AttendancePage() {
     dispatch(fetchAll({ page: 0, size: 20 }))
     dispatch(fetchLateComeEarlyOut())
     dispatch(fetchDepartments())
+    dispatch(fetchEmployees({ page: 0, size: 1000 }))
   }, [dispatch])
 
   // Re-fetch with server-side filters when any filter changes
@@ -156,12 +159,19 @@ export default function AttendancePage() {
 
   const onSubmit = async (formData) => {
     try {
+      const payload = { ...formData, companyId: companyId || user?.companyId }
+      if (!payload.checkIn) payload.checkIn = null
+      else if (payload.checkIn.length === 5) payload.checkIn += ':00'
+      
+      if (!payload.checkOut) payload.checkOut = null
+      else if (payload.checkOut.length === 5) payload.checkOut += ':00'
+
       if (editTarget) {
-        await api.put(`/attendance/${editTarget.id}`, { ...formData, companyId: user?.companyId })
+        await api.put(`/attendance/${editTarget.id}`, payload)
         toast.success('Attendance updated')
         setEditTarget(null)
       } else {
-        await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
+        await dispatch(create(payload)).unwrap()
         toast.success('Attendance recorded')
       }
       setModalOpen(false)
@@ -174,6 +184,26 @@ export default function AttendancePage() {
     { accessorKey: 'attendanceDate', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'checkIn', header: 'Check In', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'checkOut', header: 'Check Out', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'source', header: 'Source', cell: ({ row }) => {
+      const src = row.original.clockInSource
+      const deviceName = row.original.clockInDeviceName
+      if (src === 'device') return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium" title={deviceName || 'Biometric Device'}>
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+          {deviceName || 'Device'}
+        </span>
+      )
+      if (src === 'mobile') return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />Mobile
+        </span>
+      )
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 text-gray-600 rounded-full text-xs font-medium">
+          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" />Manual
+        </span>
+      )
+    }},
     { accessorKey: 'workedHour', header: 'Hours' },
     { accessorKey: 'attendanceValidated', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Pending'} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
     { id: 'actions', header: '', cell: ({ row }) => {
@@ -356,7 +386,21 @@ export default function AttendancePage() {
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Attendance' : 'Record Attendance'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Save'}</Button></div>}>
         <div className="space-y-4">
-          <Input label="Employee ID" error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+            <select 
+              {...register('employeeId', { required: 'Required' })}
+              className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${errors.employeeId ? 'border-red-500' : 'border-gray-300'}`}
+            >
+              <option value="">Select Employee</option>
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.badgeId ? `${e.badgeId} - ` : ''}{e.firstName} {e.lastName}
+                </option>
+              ))}
+            </select>
+            {errors.employeeId && <span className="text-red-500 text-xs mt-1 block">{errors.employeeId.message}</span>}
+          </div>
           <Input label="Date" type="date" error={errors.attendanceDate?.message} {...register('attendanceDate', { required: 'Required' })} />
           <Input label="Check In Time" type="time" {...register('checkIn')} />
           <Input label="Check Out Time" type="time" {...register('checkOut')} />

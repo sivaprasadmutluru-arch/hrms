@@ -23,7 +23,7 @@ export default function Topbar() {
   const avatarSrc = user?.photoPath
     ? (user.photoPath.startsWith('http')
         ? user.photoPath
-        : `${API_BASE_URL.replace('/api', '')}${user.photoPath}`)
+        : `${API_BASE_URL.replace('/api', '')}/media/${user.photoPath.replace(/^\//, '')}`)
     : null
 
   return (
