@@ -413,6 +413,10 @@ public class PayrollController {
             List<Long> companyIds = scope.hasUnrestrictedAccess()
                     ? java.util.List.of(scope.getCompanyId())
                     : scope.getAccessibleCompanyIds();
+            // Honor the topbar branch switcher (X-Filter-Company-Id) for enterprise admins
+            if (scope.getFilterCompanyId() != null && scope.canAccess(scope.getFilterCompanyId())) {
+                companyIds = java.util.List.of(scope.getFilterCompanyId());
+            }
             if (companyIds.isEmpty()) return ResponseEntity.ok(java.util.List.of());
             if (startDate != null) {
                 payslips = payslipRepository.findAllWithAssociationsByCompanyIdInAndStartDateBetween(companyIds, startDate, endDate);

@@ -404,7 +404,10 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "List leave allocation requests (company-scoped)")
     public ResponseEntity<List<LeaveAllocationRequestDTO>> listAllocationRequests() {
-        var spec = ScopeFilter.<LeaveAllocationRequest>byEmployee();
+        // LeaveAllocationRequest reaches company THROUGH employee (it has no direct company field),
+        // so we must use byEmployeeCompany() — byEmployee()/byCompany() would try root.get("company")
+        // and throw "Could not resolve attribute 'company'".
+        var spec = ScopeFilter.<LeaveAllocationRequest>byEmployeeCompany();
         List<LeaveAllocationRequest> result = spec != null
                 ? allocationRequestRepository.findAll(spec)
                 : allocationRequestRepository.findAll();

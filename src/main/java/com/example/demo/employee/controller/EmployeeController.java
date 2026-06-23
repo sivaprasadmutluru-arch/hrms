@@ -4,6 +4,7 @@ import com.example.demo.base.entity.Department;
 import com.example.demo.base.entity.JobPosition;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.DepartmentRepository;
 import com.example.demo.base.repository.JobPositionRepository;
@@ -35,6 +36,7 @@ import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellRangeAddressList;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -977,6 +979,14 @@ public class EmployeeController {
     public ResponseEntity<Map<String, Object>> dashboard(@RequestParam Long companyId) {
         // Use scope-aware spec so enterprise admins see all accessible employees (HO + branches)
         var spec = ScopeFilter.<Employee>byCompany();
+        // Narrow to the selected branch when the topbar branch switcher is active
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && scope.getFilterCompanyId() != null && scope.canAccess(scope.getFilterCompanyId())) {
+            final Long filterId = scope.getFilterCompanyId();
+            Specification<Employee> branchFilter = (root, query, cb) ->
+                    cb.equal(root.get("company").get("id"), filterId);
+            spec = spec != null ? spec.and(branchFilter) : branchFilter;
+        }
         List<Employee> all = spec != null
                 ? employeeRepository.findAll(spec)
                 : employeeRepository.findByCompanyId(companyId);

@@ -50,6 +50,8 @@ public class LeaveService {
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable) {
+        // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
+        // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<LeaveRequest> spec = ScopeFilter.byEmployeeDepartment();
         return spec != null
                 ? leaveRequestRepository.findAll(spec, pageable)

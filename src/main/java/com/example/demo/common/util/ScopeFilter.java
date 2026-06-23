@@ -42,9 +42,10 @@ public final class ScopeFilter {
         if (scope.hasUnrestrictedAccess()) {
             if (scope.getCompanyId() != null) {
                 Long companyId = scope.getCompanyId();
-                return (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId);
+                return applyBranchFilter(
+                    (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId), false);
             }
-            return null;
+            return applyBranchFilter(null, false);
         }
 
         List<Long> accessibleIds = scope.getAccessibleCompanyIds();
@@ -57,11 +58,13 @@ public final class ScopeFilter {
         // Single company (branch/dept/self scope) — use equals, not IN, for performance
         if (accessibleIds.size() == 1) {
             Long companyId = accessibleIds.get(0);
-            return (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId);
+            return applyBranchFilter(
+                (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId), false);
         }
 
         // Multiple companies (enterprise/head office scope)
-        return (root, query, cb) -> root.get("company").get("id").in(accessibleIds);
+        return applyBranchFilter(
+            (root, query, cb) -> root.get("company").get("id").in(accessibleIds), false);
     }
 
     /**
@@ -74,6 +77,35 @@ public final class ScopeFilter {
     }
 
     /**
+     * Narrows a Specification to the branch an ENTERPRISE / HEAD_OFFICE admin selected in the
+     * topbar (the X-Filter-Company-Id header, stored as filterCompanyId). This is the single
+     * point that makes the company switcher filter data across ALL transactional modules —
+     * every by*() helper below routes through here.
+     *
+     * Behaviour:
+     *   - filterCompanyId null / not applicable (self/branch/dept scope, or "All Branches") → spec unchanged
+     *   - filterCompanyId set & within the user's accessible companies → AND a company filter
+     *   - filterCompanyId set but out of scope → spec unchanged (the interceptor already drops it;
+     *     this canAccess() guard is a redundant safety net)
+     *
+     * @param spec             the scope spec to narrow (may be null)
+     * @param useEmployeePath  true → filter via employee.company.id; false → via the direct company.id
+     * @return the (possibly narrowed) specification
+     */
+    private static <T> Specification<T> applyBranchFilter(Specification<T> spec, boolean useEmployeePath) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || scope.getFilterCompanyId() == null
+                || !scope.canAccess(scope.getFilterCompanyId())) {
+            return spec;
+        }
+        final Long filterCompanyId = scope.getFilterCompanyId();
+        Specification<T> branchFilter = useEmployeePath
+                ? (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), filterCompanyId)
+                : (root, query, cb) -> cb.equal(root.get("company").get("id"), filterCompanyId);
+        return spec != null ? spec.and(branchFilter) : branchFilter;
+    }
+
+    /**
      * For entities with an "employee" → "user" → "id" path (LeaveRequest, Attendance, Payslip).
      *   SELF scope       → WHERE employee.user.id = :userId  (employee sees only their own records)
      *   All other scopes → delegate to byCompany()
@@ -81,12 +113,12 @@ public final class ScopeFilter {
     public static <T> Specification<T> byEmployee() {
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (scope == null) return null;
-        if (scope.hasUnrestrictedAccess()) return byCompany(); // delegates to company-context filter for platform admin
+        if (scope.hasUnrestrictedAccess()) return applyBranchFilter(byCompany(), false);
         if (scope.isSelfScope()) {
             Long userId = scope.getUserId();
             return (root, query, cb) -> cb.equal(root.get("employee").get("user").get("id"), userId);
         }
-        return byCompany();
+        return applyBranchFilter(byCompany(), false);
     }
 
     /**
@@ -105,23 +137,32 @@ public final class ScopeFilter {
             return (root, query, cb) -> cb.equal(root.get("employee").get("user").get("id"), userId);
         }
 
-        if (scope.hasUnrestrictedAccess()) {
-            if (scope.getCompanyId() != null) {
-                Long companyId = scope.getCompanyId();
-                return (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId);
-            }
-            return null;
+        // Branch filter uses the same employee.company.id path as the scope predicate below
+        if (scope.hasUnrestrictedAccess() && scope.getCompanyId() == null
+                && scope.getFilterCompanyId() == null) {
+            return null; // platform admin with no company/branch context → unrestricted
         }
 
-        List<Long> accessibleIds = scope.getAccessibleCompanyIds();
-        if (accessibleIds.isEmpty()) {
-            return (root, query, cb) -> cb.disjunction();
+        Specification<T> spec;
+        if (scope.hasUnrestrictedAccess()) {
+            // Platform admin with a company context
+            Long companyId = scope.getCompanyId();
+            spec = companyId != null
+                    ? (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId)
+                    : null;
+        } else {
+            List<Long> accessibleIds = scope.getAccessibleCompanyIds();
+            if (accessibleIds.isEmpty()) {
+                return (root, query, cb) -> cb.disjunction();
+            }
+            if (accessibleIds.size() == 1) {
+                Long companyId = accessibleIds.get(0);
+                spec = (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId);
+            } else {
+                spec = (root, query, cb) -> root.get("employee").get("company").get("id").in(accessibleIds);
+            }
         }
-        if (accessibleIds.size() == 1) {
-            Long companyId = accessibleIds.get(0);
-            return (root, query, cb) -> cb.equal(root.get("employee").get("company").get("id"), companyId);
-        }
-        return (root, query, cb) -> root.get("employee").get("company").get("id").in(accessibleIds);
+        return applyBranchFilter(spec, true);
     }
 
     /**
@@ -138,7 +179,7 @@ public final class ScopeFilter {
     public static <T> Specification<T> byEmployeeDepartment() {
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (scope == null) return null;
-        if (scope.hasUnrestrictedAccess()) return byCompany(); // delegates to company-context filter for platform admin
+        if (scope.hasUnrestrictedAccess()) return applyBranchFilter(byCompany(), false);
         if (scope.isSelfScope()) {
             Long userId = scope.getUserId();
             return (root, query, cb) -> cb.equal(root.get("employee").get("user").get("id"), userId);
@@ -148,7 +189,7 @@ public final class ScopeFilter {
             Long deptId = scope.getDepartmentId();
             return (root, query, cb) -> cb.equal(root.get("employee").get("department").get("id"), deptId);
         }
-        return byCompany();
+        return applyBranchFilter(byCompany(), false);
     }
 
     /**
@@ -160,12 +201,12 @@ public final class ScopeFilter {
     public static <T> Specification<T> byDepartmentOrCompany() {
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (scope == null) return null;
-        if (scope.hasUnrestrictedAccess()) return byCompany(); // delegates to company-context filter for platform admin
+        if (scope.hasUnrestrictedAccess()) return applyBranchFilter(byCompany(), false);
         if (scope.getScope() == com.example.demo.auth.entity.UserRole.AccessScope.DEPARTMENT
                 && scope.getDepartmentId() != null) {
             Long deptId = scope.getDepartmentId();
             return (root, query, cb) -> cb.equal(root.get("department").get("id"), deptId);
         }
-        return byCompany();
+        return applyBranchFilter(byCompany(), false);
     }
 }

@@ -83,16 +83,9 @@ public class AttendanceService {
      */
     @Transactional(readOnly = true)
     public Page<AttendanceResponse> getAll(Pageable pageable, String status, LocalDate from, LocalDate to, Long departmentId) {
+        // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
+        // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<Attendance> spec = ScopeFilter.byEmployeeDepartment();
-
-        // X-Filter-Company-Id header (topbar branch switcher for enterprise admin)
-        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
-        if (scope != null && scope.getFilterCompanyId() != null) {
-            final Long filterCompId = scope.getFilterCompanyId();
-            Specification<Attendance> branchFilter = (root, query, cb) ->
-                    cb.equal(root.get("company").get("id"), filterCompId);
-            spec = spec != null ? spec.and(branchFilter) : branchFilter;
-        }
 
         if (status != null && !status.isBlank()) {
             Specification<Attendance> statusSpec = (root, query, cb) ->

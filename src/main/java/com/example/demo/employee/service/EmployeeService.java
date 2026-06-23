@@ -94,18 +94,15 @@ public class EmployeeService {
         }
 
         // DEPARTMENT scope: only employees in the user's department
-        // Other scopes: company-level filter
+        // Other scopes: company-level filter.
+        // NOTE: byDepartmentOrCompany() now ALSO honors the X-Filter-Company-Id header (topbar
+        // branch switcher) centrally via ScopeFilter.applyBranchFilter. The explicit
+        // filterByCompanyId query param (in-page company dropdown) takes precedence and is
+        // applied here as Priority 1.
         Specification<Employee> spec = ScopeFilter.byDepartmentOrCompany();
 
-        // Priority 1: explicit filterByCompanyId query param (in-page dropdown)
-        // Priority 2: X-Filter-Company-Id header (topbar branch switcher)
-        // Both are validated against the user's accessible scope before being applied.
-        Long effectiveCompanyFilter = filterByCompanyId;
-        if (effectiveCompanyFilter == null && scope != null && scope.getFilterCompanyId() != null) {
-            effectiveCompanyFilter = scope.getFilterCompanyId();
-        }
-        if (effectiveCompanyFilter != null && (scope == null || scope.canAccess(effectiveCompanyFilter))) {
-            final Long compId = effectiveCompanyFilter;
+        if (filterByCompanyId != null && (scope == null || scope.canAccess(filterByCompanyId))) {
+            final Long compId = filterByCompanyId;
             Specification<Employee> companyFilter = (root, query, cb) ->
                     cb.equal(root.get("company").get("id"), compId);
             spec = spec != null ? spec.and(companyFilter) : companyFilter;
@@ -343,15 +340,30 @@ public class EmployeeService {
 
     @Transactional
     public String uploadPhoto(Long id, MultipartFile file) throws IOException {
+        // Load within this transaction so the entity is managed and the photo_path
+        // UPDATE is guaranteed to flush at commit. (The ESS controller may have loaded
+        // a stale/cached copy in a separate context, so we must not trust the caller's copy.)
         Employee emp = findEmployee(id);
+        String previousPath = emp.getPhotoPath();
+
         Company company = emp.getCompany();
         Organization org = company != null ? company.getOrganization() : null;
         String orgSlug = (org != null && org.getSlug() != null) ? org.getSlug() : "default";
-        if (emp.getPhotoPath() != null) fileUploadService.delete(emp.getPhotoPath());
+
+        // Store the NEW file BEFORE deleting the old one, so a storage failure does
+        // not leave the employee with a dangling/empty photoPath.
         String path = fileUploadService.storeOrgScoped(file, orgSlug, "employees");
+
         emp.setPhotoPath(path);
-        employeeRepository.save(emp);
-        return emp.getPhotoPath();
+        // Explicit save + flush so the photo_path UPDATE is committed even if the
+        // transaction wraps multiple operations and something later throws.
+        Employee saved = employeeRepository.saveAndFlush(emp);
+
+        // Now safe to remove the previous file.
+        if (previousPath != null && !previousPath.equals(path)) {
+            fileUploadService.delete(previousPath);
+        }
+        return saved.getPhotoPath();
     }
 
     public List<EmployeeResponse> getByDepartment(Long departmentId) {

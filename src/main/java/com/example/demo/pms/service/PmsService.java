@@ -814,25 +814,11 @@ public class PmsService {
     /**
      * Builds a Specification filtering by employee.company.id for entities that
      * are linked to company through an employee association (Objective, EmployeeFeedback, etc.).
+     * Delegates to ScopeFilter.byEmployeeCompany() which now also honors the topbar branch
+     * switcher (X-Filter-Company-Id) centrally.
      */
+    @SuppressWarnings("unchecked")
     private <T> Specification<T> byEmployeeCompany() {
-        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
-        if (scope == null) return null;
-        if (scope.hasUnrestrictedAccess()) {
-            if (scope.getCompanyId() != null) {
-                Long cId = scope.getCompanyId();
-                return (root, q, cb) -> cb.equal(root.get("employee").get("company").get("id"), cId);
-            }
-            return null;
-        }
-        java.util.List<Long> ids = scope.getAccessibleCompanyIds();
-        if (ids.isEmpty()) {
-            return (root, q, cb) -> cb.disjunction();
-        }
-        if (ids.size() == 1) {
-            Long cId = ids.get(0);
-            return (root, q, cb) -> cb.equal(root.get("employee").get("company").get("id"), cId);
-        }
-        return (root, q, cb) -> root.get("employee").get("company").get("id").in(ids);
+        return ScopeFilter.byEmployeeCompany();
     }
 }
