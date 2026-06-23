@@ -204,8 +204,8 @@ export default function RecruitmentDashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={deptData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="dept" tick={{ fontSize: 11 }} width={90} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="dept" tick={{ fontSize: 11 }} width={90} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#6366F1" radius={[0, 4, 4, 0]} name="Posts" />
               </BarChart>

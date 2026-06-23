@@ -170,8 +170,8 @@ export default function AttendanceDashboardPage() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={last7}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="present" fill="#6366F1" radius={[4, 4, 0, 0]} name="Present" />
@@ -189,8 +189,8 @@ export default function AttendanceDashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={hoursByDepartment} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} unit="h" />
-                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} />
+                <XAxis type="number" tick={{ fontSize: 11 }} unit="h" allowDecimals={false} />
+                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} allowDecimals={false} />
                 <Tooltip formatter={v => [`${v}h`, 'Total Hours']} />
                 <Bar dataKey="totalHours" fill="#10B981" radius={[0, 4, 4, 0]} name="Hours" />
               </BarChart>

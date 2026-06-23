@@ -119,8 +119,8 @@ export default function ReportsPage() {
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={headcount?.byDepartment || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                     <Tooltip />
                     <Bar dataKey="count" fill="#6366F1" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -134,8 +134,8 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={attendance?.daily || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip />
                   <Legend />
                   <Line type="monotone" dataKey="present" stroke="#6366F1" strokeWidth={2} dot={false} />
@@ -163,8 +163,8 @@ export default function ReportsPage() {
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={leave?.byStatus || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="status" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="status" tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                     <Tooltip />
                     <Bar dataKey="count" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -178,8 +178,8 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={payroll?.monthly || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip formatter={(v) => `$${v?.toLocaleString()}`} />
                   <Bar dataKey="total" fill="#10B981" radius={[4, 4, 0, 0]} />
                 </BarChart>

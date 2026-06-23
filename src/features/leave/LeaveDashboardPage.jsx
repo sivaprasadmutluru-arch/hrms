@@ -170,8 +170,8 @@ export default function LeaveDashboardPage() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="approved" fill="#10B981" radius={[4, 4, 0, 0]} name="Approved" />
@@ -225,8 +225,8 @@ export default function LeaveDashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={departmentBreakdown} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis dataKey="department" type="category" tick={{ fontSize: 10 }} width={90} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#6366F1" radius={[0, 4, 4, 0]} name="Requests" />
               </BarChart>
@@ -242,8 +242,8 @@ export default function LeaveDashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={weeklyBreakdown}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.date || ''} />
                 <Bar dataKey="onLeave" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="On Leave" />
               </BarChart>

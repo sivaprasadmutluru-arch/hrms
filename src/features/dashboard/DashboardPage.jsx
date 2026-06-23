@@ -411,8 +411,8 @@ const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branch
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={deptData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#6366F1" radius={[0, 4, 4, 0]} name="Employees" />
               </BarChart>
@@ -427,8 +427,8 @@ const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branch
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={attendanceChartData.length > 0 ? attendanceChartData : [{ day: 'No data', present: 0, absent: 0 }]}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="present" fill="#6366F1" radius={[4, 4, 0, 0]} name="Present" />
@@ -530,8 +530,8 @@ const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanc
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={deptData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Employees" />
               </BarChart>
@@ -546,8 +546,8 @@ const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanc
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={attendanceChartData.length > 0 ? attendanceChartData : [{ day: 'Mon', present: 0, absent: 0 }]}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="present" fill="#6366F1" radius={[4, 4, 0, 0]} name="Present" />
