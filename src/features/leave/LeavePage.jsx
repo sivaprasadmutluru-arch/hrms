@@ -32,7 +32,7 @@ const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 
 export default function LeavePage() {
   const dispatch = useDispatch()
-  const { user, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
+  const { user, effectiveCompanyId, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
@@ -196,7 +196,7 @@ export default function LeavePage() {
     }
     try {
       await dispatch(bulkAllocateLeave({
-        companyId: user?.companyId,
+        companyId: effectiveCompanyId,
         leaveTypeId: Number(bulkModal.leaveTypeId),
         days: Number(bulkModal.days),
         year: Number(bulkModal.year),
@@ -213,7 +213,7 @@ export default function LeavePage() {
   const submitAnnualReset = async () => {
     if (!resetModal.year) { toast.error('Year is required'); return }
     try {
-      await dispatch(annualLeaveReset({ companyId: user?.companyId, year: Number(resetModal.year) })).unwrap()
+      await dispatch(annualLeaveReset({ companyId: effectiveCompanyId, year: Number(resetModal.year) })).unwrap()
       toast.success(`Annual reset completed for ${resetModal.year}`)
       setResetModal(m => ({ ...m, open: false }))
       dispatch(fetchLeaveAllocations())
@@ -239,7 +239,7 @@ export default function LeavePage() {
         toast.success('Leave request updated')
         setEditTarget(null)
       } else {
-        await dispatch(create({ ...formData, companyId: user?.companyId })).unwrap()
+        await dispatch(create({ ...formData, companyId: effectiveCompanyId })).unwrap()
         toast.success('Leave applied')
       }
       setModalOpen(false)

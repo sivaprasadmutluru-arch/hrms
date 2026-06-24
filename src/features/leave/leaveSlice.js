@@ -146,12 +146,14 @@ export const updateLeaveBalance = createAsyncThunk('leave/updateLeaveBalance', a
   }
 })
 
-export const exportLeaveBalance = createAsyncThunk('leave/exportLeaveBalance', async ({ companyId, employeeIds, fromDate, toDate }, { rejectWithValue }) => {
+export const exportLeaveBalance = createAsyncThunk('leave/exportLeaveBalance', async ({ companyId, employeeIds, leaveTypeIds, fromDate, toDate, excludeZeroBalance }, { rejectWithValue }) => {
   try {
     const params = { companyId }
     if (employeeIds && employeeIds.length > 0) params.employeeIds = employeeIds
+    if (leaveTypeIds && leaveTypeIds.length > 0) params.leaveTypeIds = leaveTypeIds
     if (fromDate) params.fromDate = fromDate
     if (toDate) params.toDate = toDate
+    if (excludeZeroBalance) params.excludeZeroBalance = true
     const res = await api.get('/leave/balance/export', { params, responseType: 'blob' })
     const url = URL.createObjectURL(new Blob([res.data]))
     const link = document.createElement('a')
