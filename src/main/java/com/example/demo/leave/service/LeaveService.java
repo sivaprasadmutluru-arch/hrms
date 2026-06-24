@@ -109,12 +109,12 @@ public class LeaveService {
                     " that overlaps with the requested dates.");
         }
 
-        // Validate balance: available + carryforward + forecasted (mirrors Horilla)
+        // Validate balance: remaining is DERIVED (available + carryforward − used), not stored.
+        // Available Days is the constant allocation; we never read it as "what's left" anymore.
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
-        double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
-        double cfDays = resolveCarryforwardDays(balance);
+        double remaining = computeRemaining(balance, employeeId, leaveTypeId);
         double forecasted = balance.forcastedLeaves(startDate);
-        double totalBalance = availDays + cfDays + forecasted;
+        double totalBalance = remaining + forecasted;
         if (days > totalBalance) {
             // Check negative balance allowance
             boolean negAllowed = Boolean.TRUE.equals(leaveType.getNegativeBalanceAllowed());
@@ -123,11 +123,11 @@ public class LeaveService {
                 double wouldBeBalance = totalBalance - days;
                 if (wouldBeBalance < -limit) {
                     throw new BadRequestException(
-                            "Exceeds negative balance limit. Limit: -" + limit + ", Would be: " + wouldBeBalance);
+                        "Exceeds negative balance limit. Limit: -" + limit + ", Would be: " + wouldBeBalance);
                 }
             } else {
                 throw new BadRequestException(
-                        "Insufficient leave balance. Available: " + totalBalance + ", Requested: " + days);
+                    "Insufficient leave balance. Available: " + totalBalance + ", Requested: " + days);
             }
         }
 
@@ -173,12 +173,10 @@ public class LeaveService {
         AvailableLeave balance = getOrCreateAvailableLeave(
                 request.getEmployee().getId(), request.getLeaveType().getId());
 
-        double availDays = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
-        double cfDays = resolveCarryforwardDays(balance);
-        // FIX #4: include forecasted balance so leaves approved based on an upcoming reset
-        // are not rejected at the approval step (mirrors applyLeave logic)
+        // Balance check: remaining is DERIVED (available + carryforward − used), not stored.
+        double remaining = computeRemaining(balance, request.getEmployee().getId(), request.getLeaveType().getId());
         double forecasted = balance.forcastedLeaves(request.getStartDate());
-        double totalBalance = availDays + cfDays + forecasted;
+        double totalBalance = remaining + forecasted;
         if (request.getRequestedDays() > totalBalance) {
             throw new BadRequestException(
                     "Insufficient leave balance. Available: " + totalBalance
@@ -361,6 +359,69 @@ public class LeaveService {
             allocateLeave(emp.getId(), leaveTypeId, days, year, companyId);
         }
         return employees.size();
+    }
+
+    // ─── Reconciliation ──────────────────────────────────────────────────────
+
+    /**
+     * One-time reconciliation: restores available_days and carryforward_days on
+     * AvailableLeave rows from the matching ACTIVE LeaveAllocation record.
+     *
+     * Under the old deductBalance() logic, approving leave requests overwrote
+     * availableDays with the remaining balance instead of keeping the allocation
+     * constant. This method resets every corrupted row back to its true allocated
+     * amount so that "Available Days" once again equals the assigned/allocation.
+     *
+     * Only rows where the current availableDays differs from the allocation are
+     * updated (safe to re-run).
+     *
+     * @return the number of rows that were fixed
+     */
+    @Transactional
+    public int reconcileAvailableDaysFromAllocations(Long companyId) {
+        List<AvailableLeave> balances = availableLeaveRepository.findAll().stream()
+                .filter(al -> al.getEmployee() != null && al.getEmployee().getCompany() != null
+                        && al.getEmployee().getCompany().getId().equals(companyId))
+                .toList();
+
+        int fixed = 0;
+        for (AvailableLeave al : balances) {
+            Long empId = al.getEmployee().getId();
+            Long ltId  = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
+            if (ltId == null) continue;
+
+            // Find the ACTIVE allocation for this employee+type (latest year)
+            List<LeaveAllocation> allocs = leaveAllocationRepository.findByEmployeeId(empId);
+            LeaveAllocation activeAlloc = allocs.stream()
+                    .filter(a -> a.getLeaveType() != null && a.getLeaveType().getId().equals(ltId)
+                            && a.getStatus() == LeaveAllocation.AllocationStatus.ACTIVE)
+                    .max((a, b) -> Integer.compare(
+                            a.getYear() != null ? a.getYear() : 0,
+                            b.getYear() != null ? b.getYear() : 0))
+                    .orElse(null);
+
+            if (activeAlloc == null) continue;
+
+            double allocAvail = activeAlloc.getAvailableDays() != null ? activeAlloc.getAvailableDays() : 0.0;
+            double allocCf    = activeAlloc.getCarryforwardDays() != null ? activeAlloc.getCarryforwardDays() : 0.0;
+            double allocTotal  = activeAlloc.getTotalLeaveDays() != null ? activeAlloc.getTotalLeaveDays() : 0.0;
+
+            double currentAvail = al.getAvailableDays() != null ? al.getAvailableDays() : 0.0;
+            double currentTotal = al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0;
+
+            // Only patch if the allocation has diverged from the source-of-truth
+            if (Math.abs(currentAvail - allocAvail) > 0.01 || Math.abs(currentTotal - allocTotal) > 0.01) {
+                al.setAvailableDays(allocAvail);
+                al.setCarryforwardDays(allocCf);
+                al.setTotalLeaveDays(allocTotal);
+                availableLeaveRepository.save(al);
+                fixed++;
+                log.info("Reconciled: employee={} leaveType={} avail {}→{} cf 0→{} total {}→{}",
+                        empId, ltId, currentAvail, allocAvail, allocCf, currentTotal, allocTotal);
+            }
+        }
+        log.info("Reconciliation complete for company {}: {} rows fixed out of {} scanned", companyId, fixed, balances.size());
+        return fixed;
     }
 
     // ─── Annual Carry-Forward & Reset ─────────────────────────────────────────
@@ -574,24 +635,23 @@ public class LeaveService {
     }
 
     /**
-     * Deducts days from available_days first, then from carryforward_days.
-     * Tracks how much was taken from each on the request (mirrors Horilla no_approval()).
+     * Records how many days were drawn from available vs carryforward on the request (for audit).
+     *
+     * NOTE: the allocation (available_days / carryforward_days) is intentionally left UNCHANGED.
+     * "Available Days" is the allocated/assigned amount — a constant. The remaining balance is
+     * DERIVED as (totalLeaveDays − usedDays) by the /balance endpoints and the UI, never stored
+     * by overwriting the allocation. See computeRemaining().
      */
     private void deductBalance(AvailableLeave balance, double days, LeaveRequest request) {
         double avail = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
         if (days > avail) {
-            double fromCarry = days - avail;
             request.setApprovedAvailableDays(avail);
-            request.setApprovedCarryforwardDays(fromCarry);
-            balance.setAvailableDays(0.0);
-            balance.setCarryforwardDays(Math.max(0.0,
-                    (balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0) - fromCarry));
+            request.setApprovedCarryforwardDays(days - avail);
         } else {
             request.setApprovedAvailableDays(days);
             request.setApprovedCarryforwardDays(0.0);
-            balance.setAvailableDays(avail - days);
         }
-        availableLeaveRepository.save(balance);
+        // No setAvailableDays / no save — allocation stays constant; "remaining" is derived.
     }
 
     /**
@@ -617,14 +677,34 @@ public class LeaveService {
     }
 
     /**
-     * Restores balance using the exact amounts tracked on the request.
+     * No-op for the stored allocation: since deductBalance() no longer decrements the allocation,
+     * there is nothing to restore when a request is rejected/cancelled. The approved/used total
+     * drops automatically because the request's status moves out of APPROVED (so the
+     * sumApprovedDays... queries stop counting it). The per-request approved*Days audit fields
+     * remain on the request for history.
      */
     private void restoreBalance(Long employeeId, Long leaveTypeId, LeaveRequest request) {
-        AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
-        double fromAvail = request.getApprovedAvailableDays() != null ? request.getApprovedAvailableDays() : 0.0;
-        double fromCarry = request.getApprovedCarryforwardDays() != null ? request.getApprovedCarryforwardDays() : 0.0;
-        balance.setAvailableDays((balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0) + fromAvail);
-        balance.setCarryforwardDays((balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0) + fromCarry);
-        availableLeaveRepository.save(balance);
+        // Intentionally empty — allocation is constant; "remaining" is derived (Total − Used).
+    }
+
+    /**
+     * Computes the REAL remaining leave days for an employee+type using the same source of truth
+     * as the /balance endpoints: (available + carryforward) − used, where used = sum of APPROVED
+     * request days. Carryforward is capped by carryforward_max. This replaces the old pattern of
+     * reading availableDays directly as "remaining" (which coupled allocation to consumption).
+     */
+    private double computeRemaining(AvailableLeave balance, Long employeeId, Long leaveTypeId) {
+        double avail = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
+        double cf = resolveCarryforwardDays(balance);
+        double used = 0.0;
+        List<Object[]> rows = leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(employeeId);
+        for (Object[] row : rows) {
+            Long ltId = ((Number) row[0]).longValue();
+            if (leaveTypeId != null && ltId != null && ltId.equals(leaveTypeId)) {
+                used = ((Number) row[1]).doubleValue();
+                break;
+            }
+        }
+        return (avail + cf) - used;
     }
 }

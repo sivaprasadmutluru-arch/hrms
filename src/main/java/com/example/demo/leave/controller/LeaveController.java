@@ -219,6 +219,15 @@ public class LeaveController {
         return ResponseEntity.ok(Map.of("message", "Annual reset completed for year " + body.year()));
     }
 
+    @PostMapping("/balance/reconcile")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "One-time reconciliation: restore available_days from leave_allocations for rows corrupted by the old deductBalance logic")
+    public ResponseEntity<Map<String, Object>> reconcileBalance(@RequestParam Long companyId) {
+        int fixed = leaveService.reconcileAvailableDaysFromAllocations(companyId);
+        return ResponseEntity.ok(Map.of("message", "Reconciliation completed", "rowsFixed", fixed));
+    }
+
     // ─── Leave Balance (AvailableLeave) ──────────────────────────────────────
 
     @GetMapping("/balance")
@@ -295,8 +304,10 @@ public class LeaveController {
     public void exportBalance(
             @RequestParam Long companyId,
             @RequestParam(required = false) List<Long> employeeIds,
+            @RequestParam(required = false) List<Long> leaveTypeIds,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) Boolean excludeZeroBalance,
             HttpServletResponse response) throws IOException {
         var scopeSpec = ScopeFilter.<AvailableLeave>byEmployeeCompany();
 
@@ -306,6 +317,11 @@ public class LeaveController {
             org.springframework.data.jpa.domain.Specification<AvailableLeave> empSpec =
                 (root, query, cb) -> root.get("employee").get("id").in(employeeIds);
             spec = spec != null ? spec.and(empSpec) : empSpec;
+        }
+        if (leaveTypeIds != null && !leaveTypeIds.isEmpty()) {
+            org.springframework.data.jpa.domain.Specification<AvailableLeave> ltSpec =
+                (root, query, cb) -> root.get("leaveType").get("id").in(leaveTypeIds);
+            spec = spec != null ? spec.and(ltSpec) : ltSpec;
         }
         if (fromDate != null) {
             LocalDate fd = fromDate;
@@ -335,6 +351,19 @@ public class LeaveController {
                     .forEach(row -> usedDaysMap.put(row[0] + ":" + row[1], ((Number) row[2]).doubleValue()));
         }
 
+        // Stable read order: by Employee, then Leave Type — mirrors the grouped UI
+        records.sort(java.util.Comparator
+                .comparing((AvailableLeave al) -> al.getEmployee() != null
+                        && al.getEmployee().getFirstName() != null
+                        ? al.getEmployee().getFirstName() : "",
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase))
+                .thenComparing(al -> al.getLeaveType() != null
+                        && al.getLeaveType().getName() != null
+                        ? al.getLeaveType().getName() : "",
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase)));
+
+        final boolean dropZero = Boolean.TRUE.equals(excludeZeroBalance);
+
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=leave_balance.xlsx");
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
@@ -346,8 +375,13 @@ public class LeaveController {
             headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
+            // Column order matches the reference Excel sample exactly:
+            // Employee | Leave Type | Available Days | Carry Forward | Total Days (Available +CF)
+            // | Used Days | Leave Balance | Assigned Date | Reset Date | Expires
             Row header = sheet.createRow(0);
-            String[] cols = {"Employee", "Leave Type", "Available Days", "Carry Forward", "Used Days", "Total Days", "Assigned Date", "Reset Date", "Expires"};
+            String[] cols = {"Employee", "Leave Type", "Available Days", "Carry Forward",
+                    "Total Days (Available +CF)", "Used Days", "Leave Balance",
+                    "Assigned Date", "Reset Date", "Expires"};
             for (int i = 0; i < cols.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(cols[i]);
@@ -355,24 +389,31 @@ public class LeaveController {
             }
             int rowNum = 1;
             for (AvailableLeave al : records) {
-                Row row = sheet.createRow(rowNum++);
                 String empName = al.getEmployee() != null
                         ? (al.getEmployee().getFirstName() != null ? al.getEmployee().getFirstName() : "") + " "
                           + (al.getEmployee().getLastName() != null ? al.getEmployee().getLastName() : "")
                         : "";
+                empName = empName.trim();
                 Long empId = al.getEmployee() != null ? al.getEmployee().getId() : null;
                 Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
                 double usedDays = (empId != null && ltId != null)
                         ? usedDaysMap.getOrDefault(empId + ":" + ltId, 0.0) : 0.0;
-                row.createCell(0).setCellValue(empName.trim());
+                double totalDays = al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0;
+                double leaveBalance = Math.max(totalDays - usedDays, 0.0);
+
+                if (dropZero && leaveBalance <= 0.0) continue;
+
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(empName);
                 row.createCell(1).setCellValue(al.getLeaveType() != null ? al.getLeaveType().getName() : "");
                 row.createCell(2).setCellValue(al.getAvailableDays() != null ? al.getAvailableDays() : 0.0);
                 row.createCell(3).setCellValue(al.getCarryforwardDays() != null ? al.getCarryforwardDays() : 0.0);
-                row.createCell(4).setCellValue(usedDays);
-                row.createCell(5).setCellValue(al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0);
-                row.createCell(6).setCellValue(al.getAssignedDate() != null ? al.getAssignedDate().toString() : "");
-                row.createCell(7).setCellValue(al.getResetDate() != null ? al.getResetDate().toString() : "");
-                row.createCell(8).setCellValue(al.getExpiredDate() != null ? al.getExpiredDate().toString() : "");
+                row.createCell(4).setCellValue(totalDays);
+                row.createCell(5).setCellValue(usedDays);
+                row.createCell(6).setCellValue(leaveBalance);
+                row.createCell(7).setCellValue(al.getAssignedDate() != null ? al.getAssignedDate().toString() : "");
+                row.createCell(8).setCellValue(al.getResetDate() != null ? al.getResetDate().toString() : "");
+                row.createCell(9).setCellValue(al.getExpiredDate() != null ? al.getExpiredDate().toString() : "");
             }
             for (int i = 0; i < cols.length; i++) sheet.autoSizeColumn(i);
             workbook.write(response.getOutputStream());
