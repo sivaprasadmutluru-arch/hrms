@@ -1,24 +1,23 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  HomeIcon, BuildingOffice2Icon, BuildingOfficeIcon, UsersIcon,
-  ClockIcon, CalendarDaysIcon, BanknotesIcon, ArchiveBoxIcon,
-  FolderIcon, UserPlusIcon, ChartBarIcon, ArrowRightStartOnRectangleIcon,
-  ArrowLeftStartOnRectangleIcon, TicketIcon, DocumentTextIcon,
-  ShieldCheckIcon, ChartPieIcon, BellIcon, ChevronLeftIcon, ChevronRightIcon,
-  Cog6ToothIcon, ReceiptPercentIcon, ChevronDownIcon, MegaphoneIcon,
-} from '@heroicons/react/24/outline'
+  Home, Building2, Building, Users, Clock, CalendarDays,
+  Banknote, Archive, Folder, UserPlus, BarChart3,
+  LogIn, LogOut, Ticket, FileText, ShieldCheck, PieChart,
+  Bell, ChevronLeft, ChevronRight, Settings, Receipt,
+  ChevronDown, Megaphone, ScanFace, Fingerprint, MapPin,
+} from 'lucide-react'
 import { useSelector } from 'react-redux'
 import useAuth from '../../hooks/useAuth'
 import Avatar from '../common/Avatar'
-import { APP_NAME } from '../../config/constants'
+import { APP_NAME, API_BASE_URL } from '../../config/constants'
 import { selectPlatformCompanies } from '../../features/platform/platformSlice'
 
 // ─── Collapsible nav groups ────────────────────────────────────────────────────
 
 const EMPLOYEE_GROUP = {
   label: 'Employee',
-  icon: UsersIcon,
+  icon: Users,
   group: 'employee',
   children: [
     { label: 'My Profile',           to: '/employees/me' },
@@ -44,7 +43,7 @@ const ADMIN_EMPLOYEE_GROUP = {
 
 const COMPANY_GROUP = {
   label: 'Company',
-  icon: BuildingOffice2Icon,
+  icon: Building2,
   group: 'company',
   children: [
     { label: 'Settings',         to: '/companies/settings' },
@@ -55,7 +54,7 @@ const COMPANY_GROUP = {
 
 const ATTENDANCE_GROUP = {
   label: 'Attendance',
-  icon: ClockIcon,
+  icon: Clock,
   group: 'attendance',
   children: [
     { label: 'Dashboard',          to: '/attendance/dashboard' },
@@ -77,7 +76,7 @@ const ATTENDANCE_GROUP_BASIC = {
 
 const LEAVE_GROUP = {
   label: 'Leave',
-  icon: CalendarDaysIcon,
+  icon: CalendarDays,
   group: 'leave',
   children: [
     { label: 'Dashboard',       to: '/leave/dashboard' },
@@ -100,7 +99,7 @@ const LEAVE_GROUP_BASIC = {
 
 const PAYROLL_GROUP = {
   label: 'Payroll',
-  icon: BanknotesIcon,
+  icon: Banknote,
   group: 'payroll',
   children: [
     { label: 'Dashboard',          to: '/payroll/dashboard' },
@@ -123,7 +122,7 @@ const PAYROLL_GROUP = {
 // HR Manager payroll: no manual/batch processing, only settings & configuration
 const PAYROLL_GROUP_HR = {
   label: 'Payroll',
-  icon: BanknotesIcon,
+  icon: Banknote,
   group: 'payroll',
   children: [
     { label: 'Automated Payroll', to: '/payroll/automated' },
@@ -139,7 +138,7 @@ const PAYROLL_GROUP_HR = {
 
 const RECRUITMENT_GROUP = {
   label: 'Recruitment',
-  icon: UserPlusIcon,
+  icon: UserPlus,
   group: 'recruitment',
   children: [
     { label: 'Dashboard',      to: '/recruitment/dashboard' },
@@ -157,7 +156,7 @@ const RECRUITMENT_GROUP = {
 
 const OFFBOARDING_GROUP = {
   label: 'Offboarding',
-  icon: ArrowLeftStartOnRectangleIcon,
+  icon: LogOut,
   group: 'offboarding',
   children: [
     { label: 'Offboarding',  to: '/offboarding' },
@@ -170,7 +169,7 @@ const OFFBOARDING_GROUP = {
 
 const PERFORMANCE_GROUP = {
   label: 'Performance',
-  icon: ChartBarIcon,
+  icon: BarChart3,
   group: 'performance',
   children: [
     { label: 'Review Cycles',        to: '/performance/cycles' },
@@ -185,19 +184,19 @@ const PERFORMANCE_GROUP = {
 
 const BIOMETRIC_GROUP = {
   label: 'Biometric & Hardware',
-  icon: Cog6ToothIcon,
+  icon: Fingerprint,
   group: 'biometric',
   children: [
-    { label: 'Biometric Devices',   to: '/biometric/devices' },
-    { label: 'Biometric Employees', to: '/biometric/employees' },
-    { label: 'Geo Fencing',         to: '/geofencing' },
-    { label: 'Face Detection',      to: '/face-detection' },
+    { label: 'Biometric Devices',   to: '/biometric/devices',     icon: Fingerprint },
+    { label: 'Biometric Employees', to: '/biometric/employees',    icon: Users },
+    { label: 'Geo Fencing',         to: '/geofencing',             icon: MapPin },
+    { label: 'Face Detection',      to: '/face-detection',         icon: ScanFace },
   ],
 }
 
 const ORG_SETUP_GROUP = {
   label: 'Setup',
-  icon: BuildingOfficeIcon,
+  icon: Building,
   group: 'org-setup',
   children: [
     { label: 'Departments',     to: '/departments' },
@@ -210,7 +209,7 @@ const ORG_SETUP_GROUP = {
 
 const ASSETS_GROUP = {
   label: 'Assets',
-  icon: ArchiveBoxIcon,
+  icon: Archive,
   group: 'assets',
   children: [
     { label: 'All Assets',  to: '/assets' },
@@ -221,7 +220,7 @@ const ASSETS_GROUP = {
 
 const SETTINGS_GROUP = {
   label: 'Settings',
-  icon: Cog6ToothIcon,
+  icon: Settings,
   group: 'settings',
   children: [
     { label: 'General',              to: '/settings/general' },
@@ -247,19 +246,19 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Platform',
         items: [
-          { label: 'Organizations',    to: '/organizations',    icon: ShieldCheckIcon },
-          { label: 'Platform Monitor', to: '/platform/monitor', icon: ChartPieIcon },
+          { label: 'Organizations',    to: '/organizations',    icon: ShieldCheck },
+          { label: 'Platform Monitor', to: '/platform/monitor', icon: PieChart },
         ],
       },
       {
         title: 'Organization',
         items: [
-          { label: 'Companies', to: '/companies', icon: BuildingOffice2Icon },
+          { label: 'Companies', to: '/companies', icon: Building2 },
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
@@ -278,29 +277,29 @@ function getNavSections(auth) {
         title: 'Talent',
         items: [
           RECRUITMENT_GROUP,
-          { label: 'Onboarding', to: '/onboarding', icon: ArrowRightStartOnRectangleIcon },
+          { label: 'Onboarding', to: '/onboarding', icon: LogIn },
           OFFBOARDING_GROUP,
           PERFORMANCE_GROUP,
         ],
       },
       {
         title: 'Projects',
-        items: [{ label: 'Projects', to: '/projects', icon: FolderIcon }],
+        items: [{ label: 'Projects', to: '/projects', icon: Folder }],
       },
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',                        icon: TicketIcon },
-          { label: 'Dept Managers', to: '/helpdesk/department-managers',    icon: UserPlusIcon },
-          { label: 'Announcements', to: '/announcements',                   icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',                        icon: Ticket },
+          { label: 'Dept Managers', to: '/helpdesk/department-managers',    icon: UserPlus },
+          { label: 'Announcements', to: '/announcements',                   icon: Megaphone },
         ],
       },
       {
         title: 'Admin Settings',
         items: [
-          { label: 'Roles & Access', to: '/roles',             icon: Cog6ToothIcon },
-          { label: 'User Groups',    to: '/roles/user-groups', icon: UsersIcon },
-          { label: 'Audit Logs',     to: '/audit/logs',        icon: DocumentTextIcon },
+          { label: 'Roles & Access', to: '/roles',             icon: Settings },
+          { label: 'User Groups',    to: '/roles/user-groups', icon: Users },
+          { label: 'Audit Logs',     to: '/audit/logs',        icon: FileText },
           BIOMETRIC_GROUP,
         ],
       },
@@ -310,7 +309,7 @@ function getNavSections(auth) {
       },
       {
         title: 'Reports',
-        items: [{ label: 'Reports', to: '/reports', icon: ChartPieIcon }],
+        items: [{ label: 'Reports', to: '/reports', icon: PieChart }],
       },
     ]
   }
@@ -320,12 +319,12 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Organization',
         items: [
-          { label: 'Companies', to: '/companies', icon: BuildingOffice2Icon },
+          { label: 'Companies', to: '/companies', icon: Building2 },
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
           ADMIN_EMPLOYEE_GROUP,
@@ -337,34 +336,34 @@ function getNavSections(auth) {
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
-          { label: 'Assets',   to: '/assets', icon: ArchiveBoxIcon },
+          { label: 'Assets',   to: '/assets', icon: Archive },
         ],
       },
       {
         title: 'Talent',
         items: [
           RECRUITMENT_GROUP,
-          { label: 'Onboarding', to: '/onboarding', icon: ArrowRightStartOnRectangleIcon },
+          { label: 'Onboarding', to: '/onboarding', icon: LogIn },
           OFFBOARDING_GROUP,
           PERFORMANCE_GROUP,
         ],
       },
       {
         title: 'Projects',
-        items: [{ label: 'Projects', to: '/projects', icon: FolderIcon }],
+        items: [{ label: 'Projects', to: '/projects', icon: Folder }],
       },
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',       icon: TicketIcon },
-          { label: 'Announcements', to: '/announcements',  icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',       icon: Ticket },
+          { label: 'Announcements', to: '/announcements',  icon: Megaphone },
         ],
       },
       {
         title: 'Admin Settings',
         items: [
-          { label: 'Roles & Access', to: '/roles',       icon: Cog6ToothIcon },
-          { label: 'Audit Logs',     to: '/audit/logs',  icon: DocumentTextIcon },
+          { label: 'Roles & Access', to: '/roles',       icon: Settings },
+          { label: 'Audit Logs',     to: '/audit/logs',  icon: FileText },
           BIOMETRIC_GROUP,
         ],
       },
@@ -374,7 +373,7 @@ function getNavSections(auth) {
       },
       {
         title: 'Reports',
-        items: [{ label: 'Reports', to: '/reports', icon: ChartPieIcon }],
+        items: [{ label: 'Reports', to: '/reports', icon: PieChart }],
       },
     ]
   }
@@ -384,7 +383,7 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Organization',
@@ -407,27 +406,27 @@ function getNavSections(auth) {
         title: 'Talent',
         items: [
           RECRUITMENT_GROUP,
-          { label: 'Onboarding', to: '/onboarding', icon: ArrowRightStartOnRectangleIcon },
+          { label: 'Onboarding', to: '/onboarding', icon: LogIn },
           OFFBOARDING_GROUP,
           PERFORMANCE_GROUP,
         ],
       },
       {
         title: 'Projects',
-        items: [{ label: 'Projects', to: '/projects', icon: FolderIcon }],
+        items: [{ label: 'Projects', to: '/projects', icon: Folder }],
       },
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',                     icon: TicketIcon },
-          { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlusIcon },
-          { label: 'Announcements', to: '/announcements',                icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',                     icon: Ticket },
+          { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlus },
+          { label: 'Announcements', to: '/announcements',                icon: Megaphone },
         ],
       },
       {
         title: 'Admin Settings',
         items: [
-          { label: 'Audit Logs', to: '/audit/logs', icon: DocumentTextIcon },
+          { label: 'Audit Logs', to: '/audit/logs', icon: FileText },
           BIOMETRIC_GROUP,
         ],
       },
@@ -437,7 +436,7 @@ function getNavSections(auth) {
       },
       {
         title: 'Reports',
-        items: [{ label: 'Reports', to: '/reports', icon: ChartPieIcon }],
+        items: [{ label: 'Reports', to: '/reports', icon: PieChart }],
       },
     ]
   }
@@ -447,7 +446,7 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Organization',
@@ -463,14 +462,14 @@ function getNavSections(auth) {
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP_HR,
-          { label: 'Assets',  to: '/assets', icon: ArchiveBoxIcon },
+          { label: 'Assets',  to: '/assets', icon: Archive },
         ],
       },
       {
         title: 'Talent',
         items: [
           RECRUITMENT_GROUP,
-          { label: 'Onboarding', to: '/onboarding', icon: ArrowRightStartOnRectangleIcon },
+          { label: 'Onboarding', to: '/onboarding', icon: LogIn },
           OFFBOARDING_GROUP,
           PERFORMANCE_GROUP,
         ],
@@ -478,22 +477,22 @@ function getNavSections(auth) {
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',                     icon: TicketIcon },
-          { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlusIcon },
-          { label: 'Announcements', to: '/announcements',                icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',                     icon: Ticket },
+          { label: 'Dept Managers', to: '/helpdesk/department-managers', icon: UserPlus },
+          { label: 'Announcements', to: '/announcements',                icon: Megaphone },
         ],
       },
       {
         title: 'Admin',
         items: [
           BIOMETRIC_GROUP,
-          { label: 'Approval Conditions', to: '/settings/approval-conditions', icon: Cog6ToothIcon },
-          { label: 'Dynamic Fields',      to: '/settings/dynamic-fields',      icon: DocumentTextIcon },
+          { label: 'Approval Conditions', to: '/settings/approval-conditions', icon: Settings },
+          { label: 'Dynamic Fields',      to: '/settings/dynamic-fields',      icon: FileText },
         ],
       },
       {
         title: 'Reports',
-        items: [{ label: 'Reports', to: '/reports', icon: ChartPieIcon }],
+        items: [{ label: 'Reports', to: '/reports', icon: PieChart }],
       },
     ]
   }
@@ -503,7 +502,7 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Finance',
@@ -514,7 +513,7 @@ function getNavSections(auth) {
       },
       {
         title: 'Reports',
-        items: [{ label: 'Reports', to: '/reports', icon: ChartPieIcon }],
+        items: [{ label: 'Reports', to: '/reports', icon: PieChart }],
       },
     ]
   }
@@ -524,7 +523,7 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'Workforce',
@@ -539,13 +538,13 @@ function getNavSections(auth) {
       },
       {
         title: 'Projects',
-        items: [{ label: 'Projects', to: '/projects', icon: FolderIcon }],
+        items: [{ label: 'Projects', to: '/projects', icon: Folder }],
       },
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',      icon: TicketIcon },
-          { label: 'Announcements', to: '/announcements', icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',      icon: Ticket },
+          { label: 'Announcements', to: '/announcements', icon: Megaphone },
         ],
       },
     ]
@@ -556,29 +555,29 @@ function getNavSections(auth) {
     return [
       {
         title: 'Overview',
-        items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+        items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
       },
       {
         title: 'My Work',
         items: [
-          { label: 'My Profile',     to: '/employees/me',        icon: UsersIcon },
+          { label: 'My Profile',     to: '/employees/me',        icon: Users },
           ATTENDANCE_GROUP_BASIC,
           LEAVE_GROUP_BASIC,
-          { label: 'My Documents',   to: '/documents/my',        icon: DocumentTextIcon },
+          { label: 'My Documents',   to: '/documents/my',        icon: FileText },
         ],
       },
       {
         title: 'Talent',
         items: [
-          { label: 'Performance', to: '/performance/cycles', icon: ChartBarIcon },
-          { label: 'Projects',    to: '/projects',           icon: FolderIcon },
+          { label: 'Performance', to: '/performance/cycles', icon: BarChart3 },
+          { label: 'Projects',    to: '/projects',           icon: Folder },
         ],
       },
       {
         title: 'Support',
         items: [
-          { label: 'Helpdesk',      to: '/helpdesk',      icon: TicketIcon },
-          { label: 'Announcements', to: '/announcements', icon: MegaphoneIcon },
+          { label: 'Helpdesk',      to: '/helpdesk',      icon: Ticket },
+          { label: 'Announcements', to: '/announcements', icon: Megaphone },
         ],
       },
     ]
@@ -588,27 +587,27 @@ function getNavSections(auth) {
   return [
     {
       title: 'Overview',
-      items: [{ label: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
+      items: [{ label: 'Dashboard', to: '/dashboard', icon: Home }],
     },
     {
       title: 'My Work',
       items: [
-        { label: 'My Profile', to: '/employees/me', icon: UsersIcon },
+        { label: 'My Profile', to: '/employees/me', icon: Users },
         ATTENDANCE_GROUP_BASIC,
         LEAVE_GROUP_BASIC,
-        { label: 'Payslips', to: '/payroll/payslips', icon: ReceiptPercentIcon },
-        { label: 'Reimbursements', to: '/payroll/reimbursements', icon: ReceiptPercentIcon },
-        { label: 'Loans', to: '/payroll/loans', icon: BanknotesIcon },
-        { label: 'My Documents', to: '/documents/my', icon: DocumentTextIcon },
+        { label: 'Payslips', to: '/payroll/payslips', icon: Receipt },
+        { label: 'Reimbursements', to: '/payroll/reimbursements', icon: Receipt },
+        { label: 'Loans', to: '/payroll/loans', icon: Banknote },
+        { label: 'My Documents', to: '/documents/my', icon: FileText },
       ],
     },
     {
       title: 'Support',
-      items: [{ label: 'Helpdesk', to: '/helpdesk', icon: TicketIcon }],
+      items: [{ label: 'Helpdesk', to: '/helpdesk', icon: Ticket }],
     },
     {
       title: 'Account',
-      items: [{ label: 'Notifications', to: '/notifications', icon: BellIcon }],
+      items: [{ label: 'Notifications', to: '/notifications', icon: Bell }],
     },
   ]
 }
@@ -625,6 +624,14 @@ export default function Sidebar() {
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const platformCompanies = useSelector(selectPlatformCompanies)
   const companiesData = useSelector(s => s.companies.data)
+
+  // Compute profile photo URL from user.photoPath
+  const userPhotoUrl = user?.photoPath
+    ? (user.photoPath.startsWith('http')
+        ? user.photoPath
+        : `${API_BASE_URL.replace('/api', '')}/media/${user.photoPath.replace(/^\//, '')}`)
+    : null
+
   // Look up selected company in both slices (platformCompanies has logoUrl after scope fetch;
   // companiesData has logoPath from full entity fetches — use whichever is available)
   const selectedCompanyScope = selectedCompanyId
@@ -668,154 +675,261 @@ export default function Sidebar() {
     })
   }
 
+  // Check whether any child of a group is the active route
+  const isGroupActive = (item) =>
+    item.children?.some(child => location.pathname.startsWith(child.to)) ?? false
+
+  // Shared NavLink class builder — floating pill active indicator + rounded hover
+  const navItemClass = (isActive, extra = '') =>
+    [
+      'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium',
+      'transition-all duration-300 ease-out',
+      isActive
+        ? 'sidebar-active text-white'
+        : 'text-white/[0.85] hover:bg-white/[0.08] hover:text-white',
+      extra,
+    ].join(' ')
+
   return (
-    <aside className={`flex flex-col h-screen bg-[#1E1B4B] text-white transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} flex-shrink-0`}>
-      {/* Logo */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+    <>
+      {/* Scoped styles: 4px thin scrollbar + active item gradient for sidebar only */}
+      <style>{`
+        .sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.20) transparent; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(255,255,255,0.20);
+          border-radius: 9999px;
+        }
+        .sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.35); }
+        @media (prefers-reduced-motion: reduce) {
+          .sidebar-scroll { scrollbar-color: rgba(255,255,255,0.30) transparent; }
+        }
+        .sidebar-active {
+          background: linear-gradient(90deg, #6B4EFF 0%, #5B3FFF 100%);
+          box-shadow: 0 6px 18px rgba(107,78,255,0.28);
+          color: #FFFFFF;
+        }
+        .sidebar-active svg { color: #FFFFFF; }
+        .sidebar-child-active {
+          background: linear-gradient(90deg, #6B4EFF 0%, #5B3FFF 100%);
+          color: #FFFFFF;
+        }
+      `}</style>
+    <aside
+      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-white/[0.08] text-white transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        collapsed ? 'w-[72px]' : 'w-60'
+      }`}
+      style={{
+        // Premium sidebar background — subtle vertical gradient (#241E4D → #2B255A)
+        background:
+          'linear-gradient(180deg, #241E4D 0%, #2B255A 100%)',
+        backdropFilter: 'blur(20px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+      }}
+    >
+      {/* Subtle top accent glow */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-32 opacity-40"
+        style={{ background: 'radial-gradient(60% 100% at 50% 0%, rgba(107,78,255,0.18), transparent)' }}
+      />
+
+      {/* ── Logo / Brand ─────────────────────────────────────────────── */}
+      <div className={`relative flex items-center border-b border-white/[0.08] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
+        <div className={`flex items-center ${collapsed ? '' : 'gap-2.5'} min-w-0`}>
+          {displayLogoUrl ? (
+            <img
+              src={displayLogoUrl}
+              alt="Company logo"
+              className="h-8 w-8 rounded-lg object-contain flex-shrink-0 bg-white/10 p-1"
+            />
+          ) : (
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#6B4EFF] to-[#5B3FFF] shadow-lg shadow-[#6B4EFF]/30">
+              <Building2 className="h-4 w-4 text-white" strokeWidth={2.2} />
+            </div>
+          )}
+          {!collapsed && (
+            <span className="truncate text-[15px] font-semibold tracking-tight text-white">
+              {displayName}
+            </span>
+          )}
+        </div>
         {!collapsed && (
-          <div className="flex items-center gap-2 min-w-0">
-            {displayLogoUrl ? (
-              <img
-                src={displayLogoUrl}
-                alt="Company logo"
-                className="h-7 w-7 rounded object-contain flex-shrink-0 bg-white/10 p-0.5"
-              />
-            ) : (
-              <div className="h-7 w-7 rounded bg-indigo-500 flex items-center justify-center flex-shrink-0">
-                <BuildingOffice2Icon className="h-4 w-4 text-white" />
-              </div>
-            )}
-            <span className="font-bold text-lg tracking-tight text-white truncate">{displayName}</span>
-          </div>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/[0.55] transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2.2} />
+          </button>
         )}
-        {collapsed && displayLogoUrl && (
-          <img
-            src={displayLogoUrl}
-            alt="Company logo"
-            className="h-7 w-7 rounded object-contain bg-white/10 mx-auto p-0.5"
-          />
-        )}
-        <button onClick={() => setCollapsed(c => !c)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors ml-auto">
-          {collapsed ? <ChevronRightIcon className="h-4 w-4" /> : <ChevronLeftIcon className="h-4 w-4" />}
-        </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5">
-        {sections.map(section => (
-          <div key={section.title}>
-            {!collapsed && (
-              <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-wider text-white/40">
-                {section.title}
-              </p>
-            )}
-            {section.items.map(item => {
-              if (item.group) {
-                const isOpen = openGroups.has(item.group)
-                return (
-                  <div key={item.group}>
-                    <button
-                      onClick={() => !collapsed && toggleGroup(item.group)}
-                      className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors mt-0.5 text-white/70 hover:bg-white/10 hover:text-white ${isOpen ? 'bg-white/5 text-white' : ''}`}
-                    >
-                      <item.icon className="h-5 w-5 flex-shrink-0" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1 text-left">{item.label}</span>
-                          <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                        </>
-                      )}
-                    </button>
-                    {isOpen && !collapsed && (
-                      <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/10 pl-2">
-                        {item.children.map(child => (
-                          <NavLink
-                            key={child.to}
-                            to={child.to}
-                            className={({ isActive }) =>
-                              `flex items-center px-2 py-1.5 rounded-lg text-sm transition-colors ${
-                                isActive ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
-                              }`
-                            }
-                          >
-                            {child.label}
-                          </NavLink>
-                        ))}
+      {/* Collapse toggle when collapsed (floating) */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="absolute right-2 top-5 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-white/[0.55] opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+        >
+          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </button>
+      )}
+
+      {/* ── Nav (4px thin scrollbar) ─────────────────────────────────── */}
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
+        <div className="space-y-5">
+          {sections.map(section => (
+            <div key={section.title}>
+              {!collapsed && (
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/[0.45]">
+                  {section.title}
+                </p>
+              )}
+              {collapsed && (
+                <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.08]" />
+              )}
+              <div className="space-y-0.5">
+                {section.items.map(item => {
+                  if (item.group) {
+                    const isOpen = openGroups.has(item.group)
+                    const groupActive = isGroupActive(item)
+                    return (
+                      <div key={item.group}>
+                        <button
+                          onClick={() => !collapsed && toggleGroup(item.group)}
+                          title={collapsed ? item.label : undefined}
+                          className={navItemClass(groupActive, 'w-full')}
+                        >
+                          <item.icon className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${groupActive ? 'text-white' : ''}`} strokeWidth={2} />
+                          {!collapsed && (
+                            <>
+                              <span className="flex-1 text-left">{item.label}</span>
+                              <ChevronDown
+                                className={`h-4 w-4 flex-shrink-0 text-white/[0.40] transition-transform duration-300 ease-out ${isOpen ? 'rotate-180' : ''}`}
+                                strokeWidth={2.2}
+                              />
+                            </>
+                          )}
+                        </button>
+                        {/* Smooth collapsible children */}
+                        <div
+                          className={`grid transition-all duration-300 ease-out ${
+                            isOpen && !collapsed ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                          }`}
+                        >
+                          <div className="overflow-hidden">
+                            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/[0.08] pl-2">
+                              {item.children.map(child => (
+                                <NavLink
+                                  key={child.to}
+                                  to={child.to}
+                                  className={({ isActive }) =>
+                                    `flex items-center rounded-lg px-3 py-1.5 text-[13px] transition-all duration-200 ${
+                                      isActive
+                                        ? 'sidebar-child-active font-medium text-white'
+                                        : 'text-white/[0.85] hover:bg-white/[0.08] hover:text-white'
+                                    }`
+                                  }
+                                >
+                                  {child.label}
+                                </NavLink>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )
-              }
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors mt-0.5 ${
-                      isActive ? 'bg-indigo-600 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
-                    }`
+                    )
                   }
-                >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
-                </NavLink>
-              )
-            })}
-          </div>
-        ))}
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end
+                      title={collapsed ? item.label : undefined}
+                      className={({ isActive }) => navItemClass(isActive)}
+                    >
+                      <item.icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={2} />
+                      {!collapsed && <span className="truncate">{item.label}</span>}
+                    </NavLink>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Notifications — always shown */}
-        <div>
+        <div className="mt-5">
           {!collapsed && (
-            <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-wider text-white/40">Account</p>
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/[0.45]">
+              Account
+            </p>
           )}
+          {collapsed && <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.06]" />}
           <NavLink
             to="/notifications"
             end
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors ${
-                isActive ? 'bg-indigo-600 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
-              }`
-            }
+            title={collapsed ? 'Notifications' : undefined}
+            className={({ isActive }) => navItemClass(isActive)}
           >
             <div className="relative flex-shrink-0">
-              <BellIcon className="h-5 w-5" />
+              <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold">
-                  {unreadCount}
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow-sm shadow-rose-500/50">
+                  {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </div>
-            {!collapsed && <span>Notifications</span>}
-            {!collapsed && unreadCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{unreadCount}</span>
+            {!collapsed && (
+              <>
+                <span className="truncate">Notifications</span>
+                {unreadCount > 0 && (
+                  <span className="ml-auto rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">
+                    {unreadCount}
+                  </span>
+                )}
+              </>
             )}
           </NavLink>
         </div>
       </nav>
 
-      {/* User footer */}
-      <div className="border-t border-white/10 p-3">
-        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-          <Avatar name={user?.name || user?.username || 'User'} size="sm" />
+      {/* ── User footer ──────────────────────────────────────────────── */}
+      <div className="border-t border-white/[0.08] p-3">
+        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+          <Avatar name={user?.name || user?.username || 'User'} src={userPhotoUrl} size="sm" />
           {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.name || user?.username}</p>
-              <p className="text-xs text-white/50 truncate">{user?.role?.replace(/_/g, ' ')}</p>
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{user?.name || user?.username}</p>
+                <p className="truncate text-xs capitalize text-white/[0.60]">{user?.role?.replace(/_/g, ' ')}</p>
+              </div>
+              <button
+                onClick={logout}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white/[0.60] transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+                title="Logout"
+                aria-label="Logout"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={2} />
+              </button>
             </div>
           )}
-          {!collapsed && (
+          {collapsed && (
             <button
               onClick={logout}
-              className="p-1 rounded hover:bg-white/10 transition-colors"
+              className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-white/[0.60] opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
               title="Logout"
+              aria-label="Logout"
             >
-              <ArrowLeftStartOnRectangleIcon className="h-4 w-4 text-white/60" />
+              <LogOut className="h-4 w-4" strokeWidth={2} />
             </button>
           )}
         </div>
       </div>
     </aside>
+    </>
   )
 }

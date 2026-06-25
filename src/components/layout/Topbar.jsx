@@ -46,7 +46,7 @@ export default function Topbar() {
           {unreadCount > 0 && <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">{unreadCount}</span>}
         </button>
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/settings/account')}>
-          <Avatar name={user?.name || user?.username || 'User'} size="sm" />
+          <Avatar name={user?.name || user?.username || 'User'} src={avatarSrc} size="sm" />
           <span className="text-sm font-medium text-gray-700 hidden sm:block">{user?.name || user?.username}</span>
         </div>
       </div>

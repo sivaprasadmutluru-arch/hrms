@@ -13,13 +13,9 @@ import { exportReport } from '../reports/reportsSlice'
 import StatCard from '../../components/common/StatCard'
 import Badge from '../../components/common/Badge'
 import useAuth from '../../hooks/useAuth'
+import useCurrency from '../../hooks/useCurrency'
 
 const PIE_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
-
-function fmtCurrency(val, currency = 'USD') {
-  if (val == null) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(val)
-}
 
 function getMonthOptions() {
   const opts = []
@@ -38,6 +34,7 @@ export default function PayrollDashboardPage() {
   const dispatch = useDispatch()
   const { user, effectiveCompanyId } = useAuth()
   const companyId = effectiveCompanyId
+  const { format: formatCurrency } = useCurrency()
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const monthOptions = getMonthOptions()
 
@@ -167,7 +164,7 @@ export default function PayrollDashboardPage() {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">Total Net Pay</p>
-              <p className="text-2xl font-bold text-gray-900 mt-0.5">{fmtCurrency(totalNet)}</p>
+              <p className="text-2xl font-bold text-gray-900 mt-0.5">{formatCurrency(totalNet)}</p>
             </div>
           </div>
           <span className="text-sm text-gray-400">{selectedMonth}</span>
@@ -236,7 +233,7 @@ export default function PayrollDashboardPage() {
                     />
                     <span className="text-sm text-gray-700 truncate max-w-[160px]">{d.dept}</span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmtCurrency(d.total)}</span>
+                  <span className="text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(d.total)}</span>
                 </div>
               ))}
             </div>
@@ -266,7 +263,7 @@ export default function PayrollDashboardPage() {
                       {p.employeeName || (p.employee ? `${p.employee.firstName || ''} ${p.employee.lastName || ''}`.trim() : '') || '—'}
                     </td>
                     <td className="py-2.5 text-gray-700 font-semibold tabular-nums">
-                      {p.netPay != null ? fmtCurrency(p.netPay) : '—'}
+                      {p.netPay != null ? formatCurrency(p.netPay) : '—'}
                     </td>
                     <td className="py-2.5">
                       <Badge

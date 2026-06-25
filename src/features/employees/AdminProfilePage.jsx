@@ -6,6 +6,7 @@ import PageHeader from '../../components/common/PageHeader'
 import Avatar from '../../components/common/Avatar'
 import Badge from '../../components/common/Badge'
 import Spinner from '../../components/common/Spinner'
+import { API_BASE_URL } from '../../config/constants'
 
 const ROLE_VARIANTS = {
   PLATFORM_SUPER_ADMIN: 'danger',
@@ -42,6 +43,13 @@ export default function AdminProfilePage() {
 
   const displayName = user.username || user.email || 'Admin'
 
+  // Compute profile photo URL from user.photoPath
+  const photoUrl = user?.photoPath
+    ? (user.photoPath.startsWith('http')
+        ? user.photoPath
+        : `${API_BASE_URL.replace('/api', '')}/media/${user.photoPath.replace(/^\//, '')}`)
+    : null
+
   return (
     <div>
       <PageHeader
@@ -51,7 +59,7 @@ export default function AdminProfilePage() {
 
       {/* Header card */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 flex items-center gap-5">
-        <Avatar name={displayName} size="lg" />
+        <Avatar name={displayName} src={photoUrl} size="lg" />
         <div>
           <h2 className="text-xl font-semibold text-gray-900">{displayName}</h2>
           <p className="text-sm text-gray-500">{user.email}</p>

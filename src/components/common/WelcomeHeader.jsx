@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { fetchMyWorkInfo, selectEssWorkInfo } from '../../features/ess/essSlice'
 import Avatar from './Avatar'
 import useAuth from '../../hooks/useAuth'
+import { API_BASE_URL } from '../../config/constants'
 
 export default function WelcomeHeader() {
   const dispatch = useDispatch()
@@ -16,6 +17,13 @@ export default function WelcomeHeader() {
   const firstName = user?.firstName || user?.username || 'there'
   const companyName = user?.companyName
   const companyLogoUrl = user?.companyLogoUrl
+
+  // Compute profile photo URL from user.photoPath
+  const photoUrl = user?.photoPath
+    ? (user.photoPath.startsWith('http')
+        ? user.photoPath
+        : `${API_BASE_URL.replace('/api', '')}/media/${user.photoPath.replace(/^\//, '')}`)
+    : null
   const jobPosition = workInfo?.jobPositionName
   const dateStr = new Intl.DateTimeFormat('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -25,7 +33,7 @@ export default function WelcomeHeader() {
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-6 w-full">
       {/* Avatar + name */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        <Avatar name={firstName} size="lg" />
+        <Avatar name={firstName} src={photoUrl} size="lg" />
         <div className="min-w-0">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Welcome back</p>
           <h2 className="text-base font-bold text-gray-900 truncate">{firstName}</h2>
