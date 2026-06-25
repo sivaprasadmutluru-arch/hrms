@@ -13,6 +13,7 @@ import java.util.Optional;
 
 @Repository
 public interface AttendanceRepository extends JpaRepository<Attendance, Long>, JpaSpecificationExecutor<Attendance> {
+
     List<Attendance> findByCompanyId(Long companyId);
     List<Attendance> findByEmployeeId(Long employeeId);
     List<Attendance> findByEmployeeIdAndAttendanceDateBetween(Long employeeId, LocalDate from, LocalDate to);
@@ -22,35 +23,110 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
     List<Attendance> findByCompanyIdAndAttendanceDateAndCheckInIsNotNull(Long companyId, LocalDate date);
     List<Attendance> findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(Long companyId, LocalDate date);
 
-    /** Count validated attendances for an employee in a date range */
-    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED'")
-    Long countValidatedByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    // ─── Payroll: Present Days ────────────────────────────────────────────────
 
-    /** Count validated attendances for a specific shift */
-    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED' AND a.shift.id = :shiftId")
-    Long countValidatedByEmployeeAndPeriodAndShift(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate, @Param("shiftId") Long shiftId);
+    /**
+     * Count all processed attendance records for an employee in a period.
+     * REGULAR, IRREGULAR and REGULARISED all count as "present".
+     */
+    @Query("SELECT COUNT(a) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus IN ('REGULAR', 'IRREGULAR', 'REGULARISED')")
+    Long countProcessedByEmployeeAndPeriod(@Param("employeeId") Long employeeId,
+                                           @Param("startDate") LocalDate startDate,
+                                           @Param("endDate") LocalDate endDate);
 
-    /** Count validated attendances for a specific work type */
-    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED' AND a.workType.id = :workTypeId")
-    Long countValidatedByEmployeeAndPeriodAndWorkType(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate, @Param("workTypeId") Long workTypeId);
+    /** Count processed attendance for a specific shift (allowance calculation). */
+    @Query("SELECT COUNT(a) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus IN ('REGULAR', 'IRREGULAR', 'REGULARISED') " +
+           "AND a.shift.id = :shiftId")
+    Long countProcessedByEmployeeAndPeriodAndShift(@Param("employeeId") Long employeeId,
+                                                   @Param("startDate") LocalDate startDate,
+                                                   @Param("endDate") LocalDate endDate,
+                                                   @Param("shiftId") Long shiftId);
 
-    /** Sum approved overtime seconds for an employee in a date range */
-    @Query("SELECT COALESCE(SUM(a.approvedOvertimeSecond), 0) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceOvertimeApprove = true AND a.attendanceValidated = 'APPROVED'")
-    Long sumApprovedOvertimeSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    /** Count processed attendance for a specific work type (allowance calculation). */
+    @Query("SELECT COUNT(a) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus IN ('REGULAR', 'IRREGULAR', 'REGULARISED') " +
+           "AND a.workType.id = :workTypeId")
+    Long countProcessedByEmployeeAndPeriodAndWorkType(@Param("employeeId") Long employeeId,
+                                                      @Param("startDate") LocalDate startDate,
+                                                      @Param("endDate") LocalDate endDate,
+                                                      @Param("workTypeId") Long workTypeId);
 
-    /** Sum (atWorkSecond - overtimeSecond) for validated attendances — used for hourly basic pay (mirrors GCP hourly_computation) */
-    @Query("SELECT COALESCE(SUM(a.atWorkSecond - COALESCE(a.overtimeSecond, 0)), 0) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate AND a.attendanceValidated = 'APPROVED'")
-    Long sumNetWorkedSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    // ─── Payroll: Deduction Minutes ───────────────────────────────────────────
 
-    /** Find all attendance records for an employee in a given calendar month/year — used for overtime approval propagation */
-    @Query("SELECT a FROM Attendance a WHERE a.employee.id = :employeeId AND FUNCTION('YEAR', a.attendanceDate) = :year AND FUNCTION('MONTH', a.attendanceDate) = :month")
-    List<Attendance> findByEmployeeIdAndYearAndMonth(@Param("employeeId") Long employeeId, @Param("year") int year, @Param("month") int month);
+    /**
+     * Sum deduction minutes for IRREGULAR attendance only.
+     * REGULARISED records have deductionMinutes = 0, so they are naturally excluded,
+     * but the explicit filter ensures correctness even if the field was not zeroed.
+     */
+    @Query("SELECT COALESCE(SUM(a.deductionMinutes), 0) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus = 'IRREGULAR'")
+    Long sumDeductionMinutesByEmployeeAndPeriod(@Param("employeeId") Long employeeId,
+                                                @Param("startDate") LocalDate startDate,
+                                                @Param("endDate") LocalDate endDate);
 
-    /** Count all attendance records for an employee in a date range — used for present_days in payroll summary */
-    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.employee.id = :employeeId AND a.attendanceDate BETWEEN :startDate AND :endDate")
-    Long countAttendanceByEmployeeAndPeriod(@Param("employeeId") Long employeeId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    // ─── Payroll: Overtime Seconds ────────────────────────────────────────────
 
-    /** Count all attendance records for a company in a date range — used for attendance-check before payroll generation */
-    @Query("SELECT COUNT(a) FROM Attendance a WHERE a.company.id = :companyId AND a.attendanceDate BETWEEN :startDate AND :endDate")
-    Long countByCompanyAndPeriod(@Param("companyId") Long companyId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+    /**
+     * Sum overtime seconds for all processed records.
+     * OT is auto-calculated; no manual approval gate needed.
+     * Overtime is stored on the attendance record on checkout (or overridden by an approved OT request).
+     */
+    @Query("SELECT COALESCE(SUM(a.overtimeSecond), 0) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus IN ('REGULAR', 'IRREGULAR', 'REGULARISED')")
+    Long sumOvertimeSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId,
+                                               @Param("startDate") LocalDate startDate,
+                                               @Param("endDate") LocalDate endDate);
+
+    // ─── Payroll: Hourly Wage (net worked seconds excluding OT) ──────────────
+
+    /**
+     * Sum (atWorkSecond - overtimeSecond) for processed attendances.
+     * Used for hourly-wage employees: OT is billed separately.
+     */
+    @Query("SELECT COALESCE(SUM(a.atWorkSecond - COALESCE(a.overtimeSecond, 0)), 0) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate " +
+           "AND a.attendanceStatus IN ('REGULAR', 'IRREGULAR', 'REGULARISED')")
+    Long sumNetWorkedSecondsByEmployeeAndPeriod(@Param("employeeId") Long employeeId,
+                                                @Param("startDate") LocalDate startDate,
+                                                @Param("endDate") LocalDate endDate);
+
+    // ─── Utilities ────────────────────────────────────────────────────────────
+
+    /** Find all attendance records for an employee in a given month/year. */
+    @Query("SELECT a FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND FUNCTION('YEAR',  a.attendanceDate) = :year " +
+           "AND FUNCTION('MONTH', a.attendanceDate) = :month")
+    List<Attendance> findByEmployeeIdAndYearAndMonth(@Param("employeeId") Long employeeId,
+                                                     @Param("year") int year,
+                                                     @Param("month") int month);
+
+    /** Raw count of all attendance records for an employee in a period (for present-days summary). */
+    @Query("SELECT COUNT(a) FROM Attendance a " +
+           "WHERE a.employee.id = :employeeId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate")
+    Long countAttendanceByEmployeeAndPeriod(@Param("employeeId") Long employeeId,
+                                            @Param("startDate") LocalDate startDate,
+                                            @Param("endDate") LocalDate endDate);
+
+    /** Count attendance records for a company in a period (payroll pre-check). */
+    @Query("SELECT COUNT(a) FROM Attendance a " +
+           "WHERE a.company.id = :companyId " +
+           "AND a.attendanceDate BETWEEN :startDate AND :endDate")
+    Long countByCompanyAndPeriod(@Param("companyId") Long companyId,
+                                 @Param("startDate") LocalDate startDate,
+                                 @Param("endDate") LocalDate endDate);
 }

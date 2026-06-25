@@ -42,4 +42,11 @@ public class AttendanceLateComeEarlyOut extends BaseEntity {
 
     @Column(name = "early_out_second")
     private Integer earlyOutSecond;
+
+    /**
+     * Set to true when the linked attendance is regularised.
+     * Payroll queries exclude records where this is true.
+     */
+    @Column(name = "is_regularised")
+    private Boolean isRegularised = false;
 }

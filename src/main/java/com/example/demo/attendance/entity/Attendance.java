@@ -17,13 +17,31 @@ import java.time.LocalTime;
 
 @Entity
 @Table(name = "attendances", indexes = {
-        @Index(name = "idx_attendance_emp_date", columnList = "employee_id, attendance_date"),
+        @Index(name = "idx_attendance_emp_date",    columnList = "employee_id, attendance_date"),
         @Index(name = "idx_attendance_company_date", columnList = "company_id, attendance_date"),
-        @Index(name = "idx_attendance_validated_date", columnList = "attendance_validated, attendance_date")
+        @Index(name = "idx_attendance_status_date", columnList = "attendance_status, attendance_date")
 })
 @Getter
 @Setter
 public class Attendance extends BaseEntity {
+
+    // ─── Enums ────────────────────────────────────────────────────────────────
+
+    /** Quality of the attendance record — set automatically on checkout. */
+    public enum AttendanceQualityStatus {
+        REGULAR,      // on time, sufficient hours — no deduction
+        IRREGULAR,    // late / early-out / short hours — deduction applies
+        REGULARISED   // was IRREGULAR, regularisation request fully approved
+    }
+
+    /** Quick flag for UI filtering — does this record have an active regularisation request? */
+    public enum RegularisationStatus {
+        NONE,         // no request
+        HAS_PENDING,  // request submitted, pending approval
+        REGULARISED   // request fully approved
+    }
+
+    // ─── Core Fields ──────────────────────────────────────────────────────────
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
@@ -59,12 +77,37 @@ public class Attendance extends BaseEntity {
     @Column(name = "attendance_overtime")
     private Double attendanceOvertime;
 
-    @Column(name = "attendance_overtime_approve")
-    private Boolean attendanceOvertimeApprove = false;
+    @Column(name = "at_work_second")
+    private Integer atWorkSecond;
+
+    @Column(name = "overtime_second")
+    private Integer overtimeSecond;
+
+    /** Overtime in whole minutes — derived from overtimeSecond, stored for convenience. */
+    @Column(name = "overtime_minutes")
+    private Integer overtimeMinutes = 0;
+
+    // ─── Auto-Evaluated Status ────────────────────────────────────────────────
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "attendance_validated")
-    private AttendanceStatus attendanceValidated = AttendanceStatus.PENDING;
+    @Column(name = "attendance_status", length = 20)
+    private AttendanceQualityStatus attendanceStatus = AttendanceQualityStatus.REGULAR;
+
+    /** Total violation minutes (late + early-out + shortage). Zero for REGULAR / REGULARISED. */
+    @Column(name = "deduction_minutes")
+    private Integer deductionMinutes = 0;
+
+    /** Salary deduction amount — computed during payroll, stored here for preview. */
+    @Column(name = "deduction_amount")
+    private Double deductionAmount = 0.0;
+
+    // ─── Regularisation Quick-Flag ────────────────────────────────────────────
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "regularisation_status", length = 20)
+    private RegularisationStatus regularisationStatus = RegularisationStatus.NONE;
+
+    // ─── Relations ────────────────────────────────────────────────────────────
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift_id")
@@ -78,36 +121,6 @@ public class Attendance extends BaseEntity {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    @Column(name = "is_validate_request")
-    private Boolean isValidateRequest = false;
-
-    @Column(name = "is_validate_request_approved")
-    private Boolean isValidateRequestApproved = false;
-
-    @Column(name = "at_work_second")
-    private Integer atWorkSecond;
-
-    @Column(name = "overtime_second")
-    private Integer overtimeSecond;
-
-    @Column(name = "approved_overtime_second")
-    private Integer approvedOvertimeSecond;
-
-    @Column(name = "is_bulk_request")
-    private boolean isBulkRequest = false;
-
-    @Column(name = "request_description", columnDefinition = "TEXT")
-    private String requestDescription;
-
-    @Column(name = "request_type", length = 20)
-    private String requestType;
-
-    @Column(name = "is_holiday")
-    private boolean isHoliday = false;
-
-    @Column(name = "requested_data", columnDefinition = "TEXT")
-    private String requestedData;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shift_day_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
@@ -118,7 +131,16 @@ public class Attendance extends BaseEntity {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private BatchAttendance batchAttendance;
 
-    // ─── Device / Source Tracking (ADMS Push) ─────────────────────────────
+    // ─── Misc ─────────────────────────────────────────────────────────────────
+
+    @Column(name = "is_holiday")
+    private boolean isHoliday = false;
+
+    @Column(name = "requested_data", columnDefinition = "TEXT")
+    private String requestedData;
+
+    // ─── Device / Source Tracking (ADMS Push) ────────────────────────────────
+
     @Column(name = "clock_in_device_name", length = 100)
     private String clockInDeviceName;
 
@@ -130,8 +152,4 @@ public class Attendance extends BaseEntity {
 
     @Column(name = "clock_out_source", length = 30)
     private String clockOutSource;
-
-    public enum AttendanceStatus {
-        PENDING, APPROVED, REJECTED
-    }
 }

@@ -30,10 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.demo.auth.security.UserPrincipal;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -101,42 +97,8 @@ public class AttendanceController {
         return ResponseEntity.ok(attendanceService.update(id, request));
     }
 
-    @PostMapping("/{id}/request-validation")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Employee requests validation/regularization of their attendance record")
-    @Transactional
-    public ResponseEntity<AttendanceResponse> requestValidation(@PathVariable Long id) {
-        Attendance att = attendanceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Attendance", id));
-        // Ownership check: employee can only request validation for their own record
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean hasApproveAuthority = auth.getAuthorities().stream()
-                .anyMatch(a -> "attendance:approve".equals(a.getAuthority()));
-        if (!hasApproveAuthority && auth.getPrincipal() instanceof UserPrincipal principal) {
-            boolean isOwner = employeeRepository.findByUserId(principal.getId())
-                    .map(emp -> emp.getId().equals(att.getEmployee() != null ? att.getEmployee().getId() : null))
-                    .orElse(false);
-            if (!isOwner) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-        }
-        att.setIsValidateRequest(true);
-        att.setIsValidateRequestApproved(false);
-        return ResponseEntity.ok(AttendanceResponse.from(attendanceRepository.save(att)));
-    }
-
-    @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "Approve attendance validation request")
-    public ResponseEntity<AttendanceResponse> approve(@PathVariable Long id) {
-        return ResponseEntity.ok(attendanceService.approve(id));
-    }
-
-    @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('attendance:approve')")
-    public ResponseEntity<AttendanceResponse> reject(@PathVariable Long id) {
-        return ResponseEntity.ok(attendanceService.reject(id));
-    }
+    // Attendance approval/rejection is now automatic.
+    // Regularisation requests are handled via /api/attendance/regularisation endpoints.
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('attendance:delete')")
@@ -184,19 +146,8 @@ public class AttendanceController {
         return ResponseEntity.ok(attendanceService.computeMonthlyOvertime(employeeId, companyId, month, year));
     }
 
-    @PostMapping("/overtime/{id}/approve")
-    @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "Approve an overtime record")
-    public ResponseEntity<AttendanceOverTime> approveOvertime(@PathVariable Long id) {
-        return ResponseEntity.ok(attendanceService.approveOvertime(id));
-    }
-
-    @PostMapping("/overtime/{id}/reject")
-    @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "Reject an overtime record")
-    public ResponseEntity<AttendanceOverTime> rejectOvertime(@PathVariable Long id) {
-        return ResponseEntity.ok(attendanceService.rejectOvertime(id));
-    }
+    // OT approve/reject removed — OT is auto-calculated on checkout.
+    // Employees can request OT correction via /api/attendance/regularisation (OVERTIME_REQUEST type).
 
     // ─── Attendance Request Comments ──────────────────────────────────────────
 
@@ -316,15 +267,6 @@ public class AttendanceController {
         return ResponseEntity.ok(Map.of("imported", count));
     }
 
-    // ─── Bulk Approve Overtime ────────────────────────────────────────────────
-
-    @PostMapping("/overtime/bulk-approve")
-    @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "Bulk approve overtime records")
-    public ResponseEntity<Map<String, Object>> bulkApproveOvertime(@RequestBody List<Long> ids) {
-        int count = attendanceService.bulkApproveOvertime(ids);
-        return ResponseEntity.ok(Map.of("approved", count));
-    }
 
     // ─── Attendance Register ──────────────────────────────────────────────────
 
@@ -375,18 +317,5 @@ public class AttendanceController {
         return ResponseEntity.ok(attendanceService.getDashboard(companyId, date, departmentId));
     }
 
-    // ─── Validation Pending ───────────────────────────────────────────────────
-
-    @GetMapping("/validation-pending")
-    @PreAuthorize("hasAuthority('attendance:view')")
-    @Transactional(readOnly = true)
-    @Operation(summary = "List attendance records where employee has requested validation (pending approval)")
-    public ResponseEntity<List<AttendanceResponse>> getValidationPending(@RequestParam Long companyId) {
-        List<AttendanceResponse> pending = attendanceRepository.findByCompanyId(companyId).stream()
-                .filter(a -> Boolean.TRUE.equals(a.getIsValidateRequest())
-                        && !Boolean.TRUE.equals(a.getIsValidateRequestApproved()))
-                .map(AttendanceResponse::from)
-                .collect(java.util.stream.Collectors.toList());
-        return ResponseEntity.ok(pending);
-    }
 }
+
