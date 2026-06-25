@@ -4,6 +4,7 @@ import com.example.demo.base.repository.*;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeBankDetailsRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -72,6 +73,7 @@ public class PayrollController {
     private final PayrollScheduler payrollScheduler;
     private final PayslipImportService payslipImportService;
     private final EmployeeBankDetailsRepository employeeBankDetailsRepository;
+    private final FileUploadService fileUploadService;
     private final com.example.demo.attendance.repository.AttendanceRepository attendanceRepository;
     private final com.example.demo.attendance.repository.AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
 
@@ -1571,7 +1573,7 @@ public class PayrollController {
         hRight.setPadding(0);
         if (logoPath != null && !logoPath.isBlank()) {
             try {
-                java.nio.file.Path lp = java.nio.file.Paths.get(logoPath);
+                java.nio.file.Path lp = fileUploadService.resolve(logoPath);
                 if (java.nio.file.Files.exists(lp)) {
                     com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(lp.toAbsolutePath().toString());
                     logo.scaleToFit(90f, 45f);
