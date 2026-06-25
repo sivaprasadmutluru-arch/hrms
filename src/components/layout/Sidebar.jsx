@@ -62,6 +62,7 @@ const ATTENDANCE_GROUP = {
     { label: 'Calendar',           to: '/attendance/calendar' },
     { label: 'Register',           to: '/attendance/register' },
     { label: 'Work Records',       to: '/attendance/work-records' },
+    { label: 'Regularisation',     to: '/attendance/regularisation' },
     { label: 'Shift Allocations',  to: '/attendance/shift-allocations' },
     { label: 'Rotating Shifts',    to: '/attendance/rotating-shifts' },
     { label: 'Settings',           to: '/attendance/settings' },
@@ -71,7 +72,9 @@ const ATTENDANCE_GROUP = {
 // For roles that don't have Work Records access
 const ATTENDANCE_GROUP_BASIC = {
   ...ATTENDANCE_GROUP,
-  children: ATTENDANCE_GROUP.children.slice(0, 2),
+  children: ATTENDANCE_GROUP.children.filter(c =>
+    ['Dashboard', 'Attendance', 'Calendar'].includes(c.label)
+  ),
 }
 
 const LEAVE_GROUP = {

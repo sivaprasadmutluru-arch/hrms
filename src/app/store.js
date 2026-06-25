@@ -28,6 +28,7 @@ import employeesReducer from '../features/employees/employeesSlice'
 import employeeExtrasReducer from '../features/employees/employeeExtrasSlice'
 import shiftRequestsReducer from '../features/attendance/shiftRequestSlice'
 import workTypeRequestsReducer from '../features/attendance/workTypeRequestSlice'
+import regularisationReducer from '../features/attendance/regularisationSlice'
 import documentsReducer from '../features/documents/documentsSlice'
 import auditReducer from '../features/audit/auditSlice'
 import announcementsReducer from '../features/announcements/announcementsSlice'
@@ -75,6 +76,7 @@ export const store = configureStore({
     employeeExtras: employeeExtrasReducer,
     shiftRequests: shiftRequestsReducer,
     workTypeRequests: workTypeRequestsReducer,
+    regularisation: regularisationReducer,
     documents: documentsReducer,
     audit: auditReducer,
     announcements: announcementsReducer,

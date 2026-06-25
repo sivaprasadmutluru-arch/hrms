@@ -84,6 +84,7 @@ const ApprovalConditionsPage  = lazy(() => import('./features/companies/Approval
 const TimeSheetsPage          = lazy(() => import('./features/projects/TimeSheetsPage'))
 const WorkRecordsPage         = lazy(() => import('./features/attendance/WorkRecordsPage'))
 const AttendanceCalendarPage  = lazy(() => import('./features/attendance/AttendanceCalendarPage'))
+const AttendanceRegularisationPage = lazy(() => import('./features/attendance/AttendanceRegularisationPage'))
 const AttendanceRegisterPage  = lazy(() => import('./features/attendance/AttendanceRegisterPage'))
 const PayrollSettingsPage     = lazy(() => import('./features/payroll/PayrollSettingsPage'))
 const EmployeeSettingsPage    = lazy(() => import('./features/employees/EmployeeSettingsPage'))
@@ -216,6 +217,7 @@ export default function App() {
           {/* Accessible to all authenticated users */}
           <Route path="attendance/dashboard"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE']} element={<AttendanceDashboardPage />} />} />
           <Route path="attendance"                  element={<AttendancePage />} />
+          <Route path="attendance/regularisation"  element={<AttendanceRegularisationPage />} />
           <Route path="attendance/calendar"         element={<AttendanceCalendarPage />} />
           <Route path="attendance/register"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceRegisterPage />} />} />
           <Route path="attendance/settings"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AttendanceSettingsPage />} />} />

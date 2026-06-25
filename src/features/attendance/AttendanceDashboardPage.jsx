@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -9,30 +10,37 @@ import {
   UserMinusIcon, ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import {
-  fetchAttendanceDashboard, fetchNotIn, fetchOvertime,
+  fetchAttendanceDashboard, fetchNotIn,
   fetchAll as fetchAttendance,
 } from './attendanceSlice'
+import { fetchPendingCounts, selectPendingCounts } from './regularisationSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Badge from '../../components/common/Badge'
-import Spinner from '../../components/common/Spinner'
 import Avatar from '../../components/common/Avatar'
 import useAuth from '../../hooks/useAuth'
 
+const QUALITY_COLORS = {
+  REGULAR:     'success',
+  IRREGULAR:   'warning',
+  REGULARISED: 'accent',
+}
+
 export default function AttendanceDashboardPage() {
   const dispatch = useDispatch()
-  const { user, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, effectiveCompanyId } = useAuth()
+  const navigate = useNavigate()
+  const { isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, effectiveCompanyId } = useAuth()
   const companyId = effectiveCompanyId
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [departmentId, setDepartmentId] = useState('')
 
   const dashboard = useSelector(s => s.attendance.dashboard)
   const notIn = useSelector(s => s.attendance.notIn || [])
-  const overtime = useSelector(s => s.attendance.overtimeRecords || [])
   const allAttendance = useSelector(s => s.attendance.data || [])
   const loading = useSelector(s => s.attendance.loading)
   const departments = useSelector(s => s.departments?.data || [])
+  const pendingCounts = useSelector(selectPendingCounts)
 
   const isManager = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
@@ -51,8 +59,8 @@ export default function AttendanceDashboardPage() {
 
   useEffect(() => {
     if (companyId && isManager) {
-      dispatch(fetchOvertime(companyId))
       dispatch(fetchAttendance({ companyId, page: 0, size: 30 }))
+      dispatch(fetchPendingCounts(companyId))
     }
   }, [dispatch, companyId, isManager])
 
@@ -61,6 +69,7 @@ export default function AttendanceDashboardPage() {
   const late = dashboard?.lateEmployees ?? dashboard?.lateCount ?? 0
   const absent = total > 0 ? Math.max(0, total - clockedIn) : (dashboard?.absentCount ?? dashboard?.absentToday ?? 0)
   const onTime = Math.max(0, clockedIn - late)
+  const irregularToday = dashboard?.irregularToday ?? 0
 
   const pctPresent = total > 0 ? Math.round((clockedIn / total) * 100) : 0
   const pctOnTime = clockedIn > 0 ? Math.round((onTime / clockedIn) * 100) : 0
@@ -75,13 +84,12 @@ export default function AttendanceDashboardPage() {
     const records = allAttendance.filter(a => a.attendanceDate === key)
     last7.push({
       day: dayLabel,
-      present: records.filter(a => a.attendanceValidated !== 'REJECTED').length,
-      late: records.filter(a => a.late).length,
+      present: records.filter(a => a.attendanceStatus !== 'IRREGULAR').length,
+      irregular: records.filter(a => a.attendanceStatus === 'IRREGULAR').length,
     })
   }
 
   const hoursByDepartment = dashboard?.hoursByDepartment || []
-  const pendingOvertime = overtime.filter(o => o.status === 'PENDING' || !o.status)
 
   const statCards = [
     {
@@ -174,13 +182,12 @@ export default function AttendanceDashboardPage() {
               <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="present" fill="#6366F1" radius={[4, 4, 0, 0]} name="Present" />
-              <Bar dataKey="late" fill="#F59E0B" radius={[4, 4, 0, 0]} name="Late" />
+              <Bar dataKey="present" fill="#6366F1" radius={[4, 4, 0, 0]} name="Regular" />
+              <Bar dataKey="irregular" fill="#F59E0B" radius={[4, 4, 0, 0]} name="Irregular" />
             </BarChart>
           </ResponsiveContainer>
         </Card>
 
-        {/* Hours by department chart */}
         <Card>
           <h3 className="text-sm font-semibold text-gray-700 mb-4">
             Hours Worked by Department — Last 7 Days
@@ -203,7 +210,7 @@ export default function AttendanceDashboardPage() {
         </Card>
       </div>
 
-      {/* Not checked in + overtime approvals */}
+      {/* Not checked in + pending regularisations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card>
           <div className="flex items-center justify-between mb-4">
@@ -217,7 +224,7 @@ export default function AttendanceDashboardPage() {
             </button>
           </div>
           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-            {(notIn.length > 0 ? notIn : []).map((emp, i) => (
+            {notIn.map((emp, i) => (
               <div key={emp.id || i} className="flex items-center gap-3 text-sm">
                 <Avatar name={emp.name || emp.firstName || 'E'} size="sm" />
                 <div className="flex-1 min-w-0">
@@ -233,34 +240,57 @@ export default function AttendanceDashboardPage() {
           </div>
         </Card>
 
-        {/* Overtime approvals — managers only */}
+        {/* Pending regularisations — managers only */}
         {isManager && (
           <Card>
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Overtime to Approve
-              {pendingOvertime.length > 0 && (
-                <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                  {pendingOvertime.length}
-                </span>
-              )}
-            </h3>
-            <div className="space-y-3 max-h-[240px] overflow-y-auto">
-              {pendingOvertime.slice(0, 8).map(ot => (
-                <div key={ot.id} className="flex items-center justify-between text-sm border-b border-gray-50 pb-2 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={ot.employeeName || 'E'} size="sm" />
-                    <div>
-                      <p className="font-medium text-gray-800">{ot.employeeName || '—'}</p>
-                      <p className="text-xs text-gray-400">{ot.attendanceDate || '—'} · {ot.overtimeHour || '—'} hrs</p>
-                    </div>
-                  </div>
-                  <Badge label="Pending" variant="warning" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Pending Regularisations
+                {(pendingCounts.pendingManager > 0 || pendingCounts.pendingHR > 0) && (
+                  <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {pendingCounts.pendingManager + pendingCounts.pendingHR}
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => companyId && dispatch(fetchPendingCounts(companyId))}
+                className="p-1 rounded hover:bg-gray-100 transition-colors"
+                title="Refresh"
+              >
+                <ArrowPathIcon className="h-4 w-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Awaiting Your Approval</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Requests pending manager review</p>
                 </div>
-              ))}
-              {pendingOvertime.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-8">No overtime pending approval</p>
+                <span className="text-2xl font-bold text-yellow-600">{pendingCounts.pendingManager}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Awaiting HR Verification</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Manager approved, pending HR</p>
+                </div>
+                <span className="text-2xl font-bold text-indigo-600">{pendingCounts.pendingHR}</span>
+              </div>
+              {irregularToday > 0 && (
+                <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Irregular Today</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Records marked IRREGULAR</p>
+                  </div>
+                  <span className="text-2xl font-bold text-red-600">{irregularToday}</span>
+                </div>
               )}
             </div>
+            <button
+              onClick={() => navigate('/attendance/regularisation')}
+              className="mt-3 w-full text-xs text-indigo-600 hover:underline text-center"
+            >
+              View all regularisation requests →
+            </button>
           </Card>
         )}
       </div>
@@ -287,8 +317,8 @@ export default function AttendanceDashboardPage() {
                     <td className="py-2 text-gray-500">{a.checkIn || '—'}</td>
                     <td className="py-2">
                       <Badge
-                        label={a.attendanceValidated || 'PENDING'}
-                        variant={a.attendanceValidated === 'APPROVED' ? 'success' : a.attendanceValidated === 'REJECTED' ? 'danger' : 'warning'}
+                        label={a.attendanceStatus || 'REGULAR'}
+                        variant={QUALITY_COLORS[a.attendanceStatus] || 'success'}
                       />
                     </td>
                   </tr>

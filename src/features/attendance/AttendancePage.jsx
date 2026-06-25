@@ -3,12 +3,12 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, create, approve, reject,
+  fetchAll, create,
   fetchLateComeEarlyOut, deleteLateComeEarlyOut,
-  fetchOvertime, approveOvertime, rejectOvertime,
-  requestValidation, fetchValidationPending,
-  selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords, selectValidationPending
+  fetchOvertime,
+  selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords,
 } from './attendanceSlice'
+import { submitRequest } from './regularisationSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
 import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
 import useAuth from '../../hooks/useAuth'
@@ -21,11 +21,33 @@ import Input from '../../components/common/Input'
 import Pagination from '../../components/common/Pagination'
 import SearchInput from '../../components/common/SearchInput'
 import { formatDate } from '../../utils/formatters'
-import { STATUS_COLORS } from '../../config/constants'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import api from '../../services/api'
 
-const TABS = ['Attendance', 'Late / Early Out', 'Overtime', 'Validation Requests']
+const REQUEST_TYPES = [
+  { value: 'LATE_ARRIVAL',             label: 'Late Arrival' },
+  { value: 'MISSING_PUNCH',            label: 'Missing Punch' },
+  { value: 'WORKING_HOURS_CORRECTION', label: 'Working Hours Correction' },
+  { value: 'OVERTIME_REQUEST',         label: 'Overtime Request' },
+  { value: 'WRONG_STATUS',             label: 'Wrong Status' },
+  { value: 'HALF_TO_FULL_DAY',         label: 'Half Day → Full Day' },
+  { value: 'WORK_FROM_HOME',           label: 'Work From Home' },
+  { value: 'OFFICIAL_DUTY',            label: 'Official Duty' },
+]
+
+const TABS = ['Attendance', 'Late / Early Out', 'Overtime']
+
+const QUALITY_COLORS = {
+  REGULAR:      'success',
+  IRREGULAR:    'warning',
+  REGULARISED:  'accent',
+}
+
+const REG_STATUS_COLORS = {
+  HAS_PENDING:  'warning',
+  REGULARISED:  'success',
+  NONE:         'default',
+}
 
 export default function AttendancePage() {
   const dispatch = useDispatch()
@@ -37,7 +59,6 @@ export default function AttendancePage() {
   const pagination = useSelector(selectPagination)
   const lateComeEarlyOut = useSelector(selectLateComeEarlyOut)
   const overtimeRecords = useSelector(selectOvertimeRecords)
-  const validationPending = useSelector(selectValidationPending)
   const departments = useSelector(s => s.departments?.data || [])
   const employees = useSelector(s => s.employees?.data || [])
 
@@ -50,16 +71,20 @@ export default function AttendancePage() {
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterDept, setFilterDept] = useState('')
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
+  const [regModal, setRegModal] = useState({ open: false, record: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register: regRegister, handleSubmit: regHandleSubmit, watch: regWatch, reset: regReset, formState: { errors: regErrors } } = useForm()
+  const selectedRegType = regWatch('requestType')
 
   useEffect(() => {
     dispatch(fetchAll({ page: 0, size: 20 }))
     dispatch(fetchLateComeEarlyOut())
-    dispatch(fetchDepartments())
-    dispatch(fetchEmployees({ page: 0, size: 1000 }))
-  }, [dispatch])
+    if (!isEmp) {
+      dispatch(fetchDepartments())
+      dispatch(fetchEmployees({ page: 0, size: 1000 }))
+    }
+  }, [dispatch, isEmp])
 
-  // Re-fetch with server-side filters when any filter changes
   useEffect(() => {
     const params = { page: 0, size: 20 }
     if (filterStatus) params.status = filterStatus
@@ -69,7 +94,6 @@ export default function AttendancePage() {
     dispatch(fetchAll(params))
   }, [dispatch, filterStatus, filterDateFrom, filterDateTo, filterDept])
 
-  // Client-side search on loaded records (name search only)
   const filteredData = useMemo(() => {
     if (!search) return data
     const q = search.toLowerCase()
@@ -98,25 +122,7 @@ export default function AttendancePage() {
     if (tab === 'Overtime' && companyId) {
       dispatch(fetchOvertime(companyId))
     }
-    if (tab === 'Validation Requests' && companyId) {
-      dispatch(fetchValidationPending(companyId))
-    }
   }, [tab, dispatch, companyId])
-
-  const handleApprove = async (id) => {
-    try {
-      await dispatch(approve(id)).unwrap()
-      if (companyId) dispatch(fetchValidationPending(companyId))
-      toast.success('Approved')
-    } catch { toast.error('Failed') }
-  }
-  const handleReject = async (id) => {
-    try {
-      await dispatch(reject(id)).unwrap()
-      if (companyId) dispatch(fetchValidationPending(companyId))
-      toast.success('Rejected')
-    } catch { toast.error('Failed') }
-  }
 
   const handleDeleteLate = (id) => {
     setConfirmModal({ open: true, id, action: 'deleteLate' })
@@ -127,22 +133,6 @@ export default function AttendancePage() {
       if (action === 'deleteLate') await dispatch(deleteLateComeEarlyOut(id)).unwrap()
       toast.success('Deleted')
       setConfirmModal({ open: false, id: null, action: null })
-    } catch (e) { toast.error(e || 'Failed') }
-  }
-
-  const handleApproveOvertime = async (id) => {
-    try { await dispatch(approveOvertime(id)).unwrap(); toast.success('Overtime approved') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
-  const handleRejectOvertime = async (id) => {
-    try { await dispatch(rejectOvertime(id)).unwrap(); toast.success('Overtime rejected') }
-    catch (e) { toast.error(e || 'Failed') }
-  }
-
-  const handleRequestValidation = async (id) => {
-    try {
-      await dispatch(requestValidation(id)).unwrap()
-      toast.success('Validation request submitted')
     } catch (e) { toast.error(e || 'Failed') }
   }
 
@@ -162,7 +152,6 @@ export default function AttendancePage() {
       const payload = { ...formData, companyId: companyId || user?.companyId }
       if (!payload.checkIn) payload.checkIn = null
       else if (payload.checkIn.length === 5) payload.checkIn += ':00'
-      
       if (!payload.checkOut) payload.checkOut = null
       else if (payload.checkOut.length === 5) payload.checkOut += ':00'
 
@@ -205,26 +194,41 @@ export default function AttendancePage() {
       )
     }},
     { accessorKey: 'workedHour', header: 'Hours' },
-    { accessorKey: 'attendanceValidated', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Pending'} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => {
+    { id: 'ot', header: 'OT', cell: ({ row }) => {
+      const ot = row.original.attendanceOvertime
+      if (!ot || ot === 0) return <span className="text-gray-300 text-xs">—</span>
+      const h = Math.floor(ot)
+      const m = Math.round((ot - h) * 60)
+      const label = h > 0 ? `${h}h ${m > 0 ? m + 'm' : ''}`.trim() : `${m}m`
+      return <span className="text-indigo-600 font-medium text-sm">{label}</span>
+    }},
+    { id: 'status', header: 'Status', cell: ({ row }) => {
+      const qs = row.original.attendanceStatus || 'REGULAR'
+      return <Badge label={qs} variant={QUALITY_COLORS[qs] || 'default'} />
+    }},
+    { id: 'regularisation', header: 'Regularisation', cell: ({ row }) => {
       const rec = row.original
-      if (!isEmp && (!rec.attendanceValidated || rec.attendanceValidated === 'PENDING') && rec.checkOut) {
+      const rs = rec.regularisationStatus
+      const as_ = rec.attendanceStatus
+
+      if (rs === 'REGULARISED' || as_ === 'REGULARISED') {
+        return <Badge label="Regularised" variant="success" />
+      }
+      if (rs === 'HAS_PENDING') {
+        return <Badge label="Pending" variant="warning" />
+      }
+      if (isEmp && as_ === 'IRREGULAR' && (!rs || rs === 'NONE')) {
         return (
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => openEdit(rec)}>Edit</Button>
-            <Button size="sm" variant="success" onClick={() => handleApprove(rec.id)}>Approve</Button>
-            <Button size="sm" variant="danger" onClick={() => handleReject(rec.id)}>Reject</Button>
-          </div>
+          <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec }) }}>
+            Request
+          </Button>
         )
       }
+      return <span className="text-gray-300 text-xs">—</span>
+    }},
+    { id: 'actions', header: '', cell: ({ row }) => {
       if (!isEmp) {
-        return <Button size="sm" variant="secondary" onClick={() => openEdit(rec)}>Edit</Button>
-      }
-      if (isEmp && !rec.isValidateRequest) {
-        return <Button size="sm" variant="secondary" onClick={() => handleRequestValidation(rec.id)}>Request Validation</Button>
-      }
-      if (isEmp && rec.isValidateRequest && !rec.isValidateRequestApproved) {
-        return <span className="text-xs text-yellow-600 font-medium">Validation Pending</span>
+        return <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
       }
       return null
     }},
@@ -236,6 +240,11 @@ export default function AttendancePage() {
       return emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || '—' : '—'
     }},
     { id: 'date', header: 'Attendance Date', cell: ({ row }) => formatDate(row.original.attendance?.attendanceDate) },
+    { id: 'regularised', header: 'Regularised', cell: ({ row }) => (
+      row.original.isRegularised
+        ? <Badge label="Yes" variant="success" />
+        : <Badge label="No" variant="default" />
+    )},
     { accessorKey: 'type', header: 'Type', cell: ({ getValue }) => {
       const v = getValue()
       return <Badge label={v === 'LATE_COME' ? 'Late Come' : 'Early Out'} variant={v === 'LATE_COME' ? 'warning' : 'accent'} />
@@ -252,17 +261,8 @@ export default function AttendancePage() {
     }},
     { accessorKey: 'month', header: 'Month' },
     { accessorKey: 'year', header: 'Year' },
-    { accessorKey: 'overtimeHours', header: 'Overtime Hrs', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
-    { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => {
-      const v = getValue()
-      return <Badge label={v || 'PENDING'} variant={v === 'APPROVED' ? 'success' : v === 'REJECTED' ? 'danger' : 'default'} />
-    }},
-    { id: 'actions', header: '', cell: ({ row }) => row.original.status === 'PENDING' && !isEmp ? (
-      <div className="flex gap-2">
-        <Button size="sm" variant="success" onClick={() => handleApproveOvertime(row.original.id)}>Approve</Button>
-        <Button size="sm" variant="danger" onClick={() => handleRejectOvertime(row.original.id)}>Reject</Button>
-      </div>
-    ) : null },
+    { accessorKey: 'overtimeHours', header: 'OT Hours', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
+    { id: 'status', header: 'Status', cell: () => <Badge label="Auto-Calculated" variant="success" /> },
   ]
 
   return (
@@ -271,7 +271,7 @@ export default function AttendancePage() {
         actions={
           <>
             <SearchInput onSearch={setSearch} className="w-48" />
-            {tab === 'Attendance' && (
+            {tab === 'Attendance' && !isEmp && (
               <>
                 <Button variant="secondary" onClick={handleExport}>Export Excel</Button>
                 <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
@@ -281,8 +281,8 @@ export default function AttendancePage() {
         }
       />
 
-      {/* Filters row */}
-      {tab === 'Attendance' && (
+      {/* Filters */}
+      {tab === 'Attendance' && !isEmp && (
         <div className="flex flex-wrap gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 font-medium">Status:</label>
@@ -292,9 +292,9 @@ export default function AttendancePage() {
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
             >
               <option value="">All</option>
-              <option value="PENDING">Pending</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
+              <option value="REGULAR">Regular</option>
+              <option value="IRREGULAR">Irregular</option>
+              <option value="REGULARISED">Regularised</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -353,26 +353,6 @@ export default function AttendancePage() {
         <DataTable columns={overtimeColumns} data={overtimeRecords} loading={loading} />
       )}
 
-      {tab === 'Validation Requests' && (
-        <DataTable
-          columns={[
-            { accessorKey: 'employeeName', header: 'Employee' },
-            { accessorKey: 'attendanceDate', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
-            { accessorKey: 'checkIn', header: 'Check In', cell: ({ getValue }) => getValue() || '—' },
-            { accessorKey: 'checkOut', header: 'Check Out', cell: ({ getValue }) => getValue() || '—' },
-            { accessorKey: 'workedHour', header: 'Hours' },
-            { id: 'actions', header: '', cell: ({ row }) => !isEmp ? (
-              <div className="flex gap-2">
-                <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
-                <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
-              </div>
-            ) : null },
-          ]}
-          data={validationPending}
-          loading={loading}
-        />
-      )}
-
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null, action: null })}
@@ -388,7 +368,7 @@ export default function AttendancePage() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
-            <select 
+            <select
               {...register('employeeId', { required: 'Required' })}
               className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${errors.employeeId ? 'border-red-500' : 'border-gray-300'}`}
             >
@@ -404,6 +384,80 @@ export default function AttendancePage() {
           <Input label="Date" type="date" error={errors.attendanceDate?.message} {...register('attendanceDate', { required: 'Required' })} />
           <Input label="Check In Time" type="time" {...register('checkIn')} />
           <Input label="Check Out Time" type="time" {...register('checkOut')} />
+        </div>
+      </Modal>
+
+      {/* Regularisation Request Modal (employee inline) */}
+      <Modal
+        open={regModal.open}
+        onClose={() => { setRegModal({ open: false, record: null }); regReset() }}
+        title="Request Regularisation"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { setRegModal({ open: false, record: null }); regReset() }}>Cancel</Button>
+            <Button onClick={regHandleSubmit(async (data) => {
+              try {
+                await dispatch(submitRequest(data)).unwrap()
+                toast.success('Regularisation request submitted')
+                setRegModal({ open: false, record: null })
+                regReset()
+                dispatch(fetchAll({ page: 0, size: 20 }))
+              } catch (e) { toast.error(e || 'Failed to submit') }
+            })} loading={loading}>Submit</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {regModal.record && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 text-sm text-yellow-800">
+              <span className="font-medium">{formatDate(regModal.record.attendanceDate)}</span>
+              {' — '}Check in: {regModal.record.checkIn || '—'} / Check out: {regModal.record.checkOut || '—'}
+            </div>
+          )}
+          <input type="hidden" {...regRegister('attendanceId')} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Request Type</label>
+            <select
+              {...regRegister('requestType', { required: 'Select a request type' })}
+              className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${regErrors.requestType ? 'border-red-500' : 'border-gray-300'}`}
+            >
+              <option value="">Select type</option>
+              {REQUEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {regErrors.requestType && <span className="text-red-500 text-xs mt-1 block">{regErrors.requestType.message}</span>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+            <textarea
+              {...regRegister('reason', { required: 'Reason is required' })}
+              rows={3}
+              className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${regErrors.reason ? 'border-red-500' : 'border-gray-300'}`}
+              placeholder="Explain the reason for this request..."
+            />
+            {regErrors.reason && <span className="text-red-500 text-xs mt-1 block">{regErrors.reason.message}</span>}
+          </div>
+          {['MISSING_PUNCH', 'WORKING_HOURS_CORRECTION'].includes(selectedRegType) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check In</label>
+                <input type="datetime-local" {...regRegister('requestedCheckIn')}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check Out</label>
+                <input type="datetime-local" {...regRegister('requestedCheckOut')}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              </div>
+            </div>
+          )}
+          {selectedRegType === 'OVERTIME_REQUEST' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Requested Overtime Hours</label>
+              <input type="number" step="0.5" min="0" {...regRegister('requestedOvertimeHours')}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="e.g. 2.5" />
+            </div>
+          )}
         </div>
       </Modal>
     </div>

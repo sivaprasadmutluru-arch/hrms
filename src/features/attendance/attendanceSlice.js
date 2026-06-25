@@ -46,24 +46,6 @@ export const remove = createAsyncThunk('attendance/remove', async (id, { rejectW
   }
 })
 
-export const approve = createAsyncThunk('attendance/approve', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/${id}/approve`)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to approve attendance record')
-  }
-})
-
-export const reject = createAsyncThunk('attendance/reject', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/${id}/reject`)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to reject attendance record')
-  }
-})
-
 export const fetchGraceTimes = createAsyncThunk('attendance/fetchGraceTimes', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/attendance/grace-times')
@@ -396,15 +378,6 @@ export const fetchToday = createAsyncThunk('attendance/fetchToday', async (param
   }
 })
 
-export const bulkApproveOvertime = createAsyncThunk('attendance/bulkApproveOvertime', async (ids, { rejectWithValue }) => {
-  try {
-    const res = await api.post('/attendance/overtime/bulk-approve', ids)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to bulk approve overtime')
-  }
-})
-
 export const fetchAttendanceDashboard = createAsyncThunk('attendance/fetchDashboard', async (params, { rejectWithValue }) => {
   try {
     const res = await api.get('/attendance/dashboard', { params })
@@ -425,41 +398,6 @@ export const fetchOvertime = createAsyncThunk('attendance/fetchOvertime', async 
   }
 })
 
-export const approveOvertime = createAsyncThunk('attendance/approveOvertime', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/overtime/${id}/approve`)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to approve overtime')
-  }
-})
-
-export const rejectOvertime = createAsyncThunk('attendance/rejectOvertime', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/overtime/${id}/reject`)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to reject overtime')
-  }
-})
-
-export const requestValidation = createAsyncThunk('attendance/requestValidation', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/${id}/request-validation`)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to submit validation request')
-  }
-})
-
-export const fetchValidationPending = createAsyncThunk('attendance/fetchValidationPending', async (companyId, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/attendance/validation-pending', { params: { companyId } })
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to fetch validation pending records')
-  }
-})
 
 const attendanceSlice = createSlice({
   name: 'attendance',
@@ -488,7 +426,6 @@ const attendanceSlice = createSlice({
     notOut: [],
     today: [],
     dashboard: null,
-    validationPending: [],
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -528,24 +465,6 @@ const attendanceSlice = createSlice({
         state.data = state.data.filter((item) => item.id !== action.payload)
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
-
-      .addCase(approve.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(approve.fulfilled, (state, action) => {
-        state.loading = false
-        const idx = state.data.findIndex((item) => item.id === action.payload.id)
-        if (idx !== -1) state.data[idx] = action.payload
-        if (state.selected?.id === action.payload.id) state.selected = action.payload
-      })
-      .addCase(approve.rejected, (state, action) => { state.loading = false; state.error = action.payload })
-
-      .addCase(reject.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(reject.fulfilled, (state, action) => {
-        state.loading = false
-        const idx = state.data.findIndex((item) => item.id === action.payload.id)
-        if (idx !== -1) state.data[idx] = action.payload
-        if (state.selected?.id === action.payload.id) state.selected = action.payload
-      })
-      .addCase(reject.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(fetchGraceTimes.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchGraceTimes.fulfilled, (state, action) => { state.loading = false; state.graceTimes = action.payload.content || action.payload })
@@ -646,25 +565,12 @@ const attendanceSlice = createSlice({
 
       // Overtime
       .addCase(fetchOvertime.fulfilled, (state, action) => { state.overtimeRecords = action.payload })
-      .addCase(approveOvertime.fulfilled, (state, action) => {
-        const idx = state.overtimeRecords.findIndex(r => r.id === action.payload.id)
-        if (idx !== -1) state.overtimeRecords[idx] = action.payload
-      })
-      .addCase(rejectOvertime.fulfilled, (state, action) => {
-        const idx = state.overtimeRecords.findIndex(r => r.id === action.payload.id)
-        if (idx !== -1) state.overtimeRecords[idx] = action.payload
-      })
 
       // Clock In / Clock Out / Not-In / Not-Out / Today / Dashboard
       .addCase(fetchNotIn.fulfilled, (state, action) => { state.notIn = action.payload })
       .addCase(fetchNotOut.fulfilled, (state, action) => { state.notOut = action.payload })
       .addCase(fetchToday.fulfilled, (state, action) => { state.today = action.payload })
       .addCase(fetchAttendanceDashboard.fulfilled, (state, action) => { state.dashboard = action.payload })
-      .addCase(fetchValidationPending.fulfilled, (state, action) => { state.validationPending = action.payload })
-      .addCase(requestValidation.fulfilled, (state, action) => {
-        const idx = state.data.findIndex(r => r.id === action.payload.id)
-        if (idx !== -1) state.data[idx] = action.payload
-      })
   },
 })
 
@@ -687,5 +593,4 @@ export const selectCalendarDays = (state) => state.attendance.calendarDays
 export const selectCalendarLoading = (state) => state.attendance.calendarLoading
 export const selectRegister = (state) => state.attendance.register
 export const selectRegisterLoading = (state) => state.attendance.registerLoading
-export const selectValidationPending = (state) => state.attendance.validationPending
 export default attendanceSlice.reducer
