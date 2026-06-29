@@ -10,6 +10,15 @@ export const fetchAll = createAsyncThunk('attendance/fetchAll', async (params, {
   }
 })
 
+export const fetchFullView = createAsyncThunk('attendance/fetchFullView', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/full-view', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance records')
+  }
+})
+
 export const fetchById = createAsyncThunk('attendance/fetchById', async (id, { rejectWithValue }) => {
   try {
     const res = await api.get(`/attendance/${id}`)
@@ -441,6 +450,18 @@ const attendanceSlice = createSlice({
         }
       })
       .addCase(fetchAll.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(fetchFullView.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchFullView.fulfilled, (state, action) => {
+        state.loading = false
+        state.data = action.payload.content || action.payload
+        if (action.payload.totalElements !== undefined) {
+          state.pagination.total = action.payload.totalElements
+          state.pagination.page = action.payload.number ?? state.pagination.page
+          state.pagination.size = action.payload.size ?? state.pagination.size
+        }
+      })
+      .addCase(fetchFullView.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(fetchById.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchById.fulfilled, (state, action) => { state.loading = false; state.selected = action.payload })

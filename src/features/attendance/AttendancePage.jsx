@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, create,
+  fetchAll, fetchFullView, create,
   fetchLateComeEarlyOut, deleteLateComeEarlyOut,
   fetchOvertime,
   selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords,
@@ -41,6 +41,9 @@ const QUALITY_COLORS = {
   REGULAR:      'success',
   IRREGULAR:    'warning',
   REGULARISED:  'accent',
+  ABSENT:       'danger',
+  ON_LEAVE:     'info',
+  HOLIDAY:      'default',
 }
 
 const REG_STATUS_COLORS = {
@@ -66,18 +69,26 @@ export default function AttendancePage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [search, setSearch] = useState('')
+  const today = new Date().toISOString().split('T')[0]
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState(today)
+  const [filterDateTo, setFilterDateTo] = useState(today)
   const [filterDept, setFilterDept] = useState('')
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
+  const [exportModal, setExportModal] = useState(false)
+  const [exportMode, setExportMode] = useState('all')
+  const [exportSingleId, setExportSingleId] = useState('')
+  const [exportMultiIds, setExportMultiIds] = useState(new Set())
+  const [exportSearch, setExportSearch] = useState('')
+  const [exportDateFrom, setExportDateFrom] = useState('')
+  const [exportDateTo, setExportDateTo] = useState('')
+  const [exporting, setExporting] = useState(false)
   const [regModal, setRegModal] = useState({ open: false, record: null })
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: regRegister, handleSubmit: regHandleSubmit, watch: regWatch, reset: regReset, formState: { errors: regErrors } } = useForm()
   const selectedRegType = regWatch('requestType')
 
   useEffect(() => {
-    dispatch(fetchAll({ page: 0, size: 20 }))
     dispatch(fetchLateComeEarlyOut())
     if (!isEmp) {
       dispatch(fetchDepartments())
@@ -86,13 +97,22 @@ export default function AttendancePage() {
   }, [dispatch, isEmp])
 
   useEffect(() => {
-    const params = { page: 0, size: 20 }
-    if (filterStatus) params.status = filterStatus
-    if (filterDateFrom) params.from = filterDateFrom
-    if (filterDateTo) params.to = filterDateTo
-    if (filterDept) params.departmentId = filterDept
-    dispatch(fetchAll(params))
-  }, [dispatch, filterStatus, filterDateFrom, filterDateTo, filterDept])
+    if (!companyId) return
+    if (isEmp) {
+      const params = { page: 0, size: 20, sort: 'attendanceDate,desc' }
+      if (filterStatus) params.status = filterStatus
+      if (filterDateFrom) params.from = filterDateFrom
+      if (filterDateTo) params.to = filterDateTo
+      dispatch(fetchAll(params))
+    } else {
+      const params = { companyId, page: 0, size: 20 }
+      if (filterStatus) params.status = filterStatus
+      if (filterDateFrom) params.from = filterDateFrom
+      if (filterDateTo) params.to = filterDateTo
+      if (filterDept) params.departmentId = filterDept
+      dispatch(fetchFullView(params))
+    }
+  }, [dispatch, companyId, isEmp, filterStatus, filterDateFrom, filterDateTo, filterDept])
 
   const filteredData = useMemo(() => {
     if (!search) return data
@@ -102,8 +122,17 @@ export default function AttendancePage() {
 
   const handleExport = async () => {
     if (!companyId) return
+    setExporting(true)
     try {
-      const res = await api.get(`/attendance/export?companyId=${companyId}`, {
+      const params = new URLSearchParams({ companyId })
+      if (exportMode === 'single' && exportSingleId) {
+        params.append('employeeIds', exportSingleId)
+      } else if (exportMode === 'multiple' && exportMultiIds.size > 0) {
+        exportMultiIds.forEach(id => params.append('employeeIds', id))
+      }
+      if (exportDateFrom) params.append('from', exportDateFrom)
+      if (exportDateTo) params.append('to', exportDateTo)
+      const res = await api.get(`/attendance/export?${params}`, {
         responseType: 'blob',
         headers: { 'X-Company-Id': companyId },
       })
@@ -113,10 +142,35 @@ export default function AttendancePage() {
       a.download = 'attendance.xlsx'
       a.click()
       URL.revokeObjectURL(url)
+      setExportModal(false)
+      setExportMode('all')
+      setExportSingleId('')
+      setExportMultiIds(new Set())
+      setExportSearch('')
+      setExportDateFrom('')
+      setExportDateTo('')
     } catch {
       toast.error('Export failed')
+    } finally {
+      setExporting(false)
     }
   }
+
+  const toggleExportEmployee = (id) => {
+    setExportMultiIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const filteredExportEmployees = useMemo(() => {
+    if (!exportSearch) return employees
+    const q = exportSearch.toLowerCase()
+    return employees.filter(e =>
+      `${e.firstName} ${e.lastName || ''} ${e.employeeCode || ''}`.toLowerCase().includes(q)
+    )
+  }, [employees, exportSearch])
 
   useEffect(() => {
     if (tab === 'Overtime' && companyId) {
@@ -133,7 +187,7 @@ export default function AttendancePage() {
       if (action === 'deleteLate') await dispatch(deleteLateComeEarlyOut(id)).unwrap()
       toast.success('Deleted')
       setConfirmModal({ open: false, id: null, action: null })
-    } catch (e) { toast.error(e || 'Failed') }
+    } catch (e) { toast.error(typeof e === 'string' ? e : e?.message || 'Failed') }
   }
 
   const openEdit = (rec) => {
@@ -164,8 +218,8 @@ export default function AttendancePage() {
         toast.success('Attendance recorded')
       }
       setModalOpen(false)
-      dispatch(fetchAll({ page: 0, size: 20 }))
-    } catch (e) { toast.error(e || 'Error') }
+      dispatch(fetchAll({ page: 0, size: 20, sort: 'attendanceDate,desc' }))
+    } catch (e) { toast.error(typeof e === 'string' ? e : e?.message || 'Error') }
   }
 
   const attendanceColumns = [
@@ -193,7 +247,13 @@ export default function AttendancePage() {
         </span>
       )
     }},
-    { accessorKey: 'workedHour', header: 'Hours' },
+    { accessorKey: 'workedHour', header: 'Hours', cell: ({ getValue }) => {
+      const v = getValue()
+      if (!v && v !== 0) return '—'
+      const h = Math.floor(v)
+      const m = Math.round((v - h) * 60)
+      return m > 0 ? `${h}h ${m}m` : `${h}h`
+    }},
     { id: 'ot', header: 'OT', cell: ({ row }) => {
       const ot = row.original.attendanceOvertime
       if (!ot || ot === 0) return <span className="text-gray-300 text-xs">—</span>
@@ -203,8 +263,10 @@ export default function AttendancePage() {
       return <span className="text-indigo-600 font-medium text-sm">{label}</span>
     }},
     { id: 'status', header: 'Status', cell: ({ row }) => {
-      const qs = row.original.attendanceStatus || 'REGULAR'
-      return <Badge label={qs} variant={QUALITY_COLORS[qs] || 'default'} />
+      const qs = row.original.displayStatus || row.original.attendanceStatus || 'REGULAR'
+      const labels = { REGULAR: 'Regular', IRREGULAR: 'Irregular', REGULARISED: 'Regularised', ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday' }
+      const label = qs === 'ON_LEAVE' && row.original.leaveTypeName ? row.original.leaveTypeName : (labels[qs] || qs)
+      return <Badge label={label} variant={QUALITY_COLORS[qs] || 'default'} />
     }},
     { id: 'regularisation', header: 'Regularisation', cell: ({ row }) => {
       const rec = row.original
@@ -228,7 +290,19 @@ export default function AttendancePage() {
     }},
     { id: 'actions', header: '', cell: ({ row }) => {
       if (!isEmp) {
-        return <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        if (row.original.id) {
+          return <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+        }
+        const ds = row.original.displayStatus
+        if (ds === 'ABSENT') {
+          return (
+            <Button size="sm" variant="secondary" onClick={() => {
+              setEditTarget(null)
+              reset({ employeeId: row.original.employeeId, attendanceDate: row.original.attendanceDate })
+              setModalOpen(true)
+            }}>+ Record</Button>
+          )
+        }
       }
       return null
     }},
@@ -273,7 +347,7 @@ export default function AttendancePage() {
             <SearchInput onSearch={setSearch} className="w-48" />
             {tab === 'Attendance' && !isEmp && (
               <>
-                <Button variant="secondary" onClick={handleExport}>Export Excel</Button>
+                <Button variant="secondary" onClick={() => setExportModal(true)}>Export Excel</Button>
                 <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
               </>
             )}
@@ -295,6 +369,9 @@ export default function AttendancePage() {
               <option value="REGULAR">Regular</option>
               <option value="IRREGULAR">Irregular</option>
               <option value="REGULARISED">Regularised</option>
+              <option value="ABSENT">Absent</option>
+              <option value="ON_LEAVE">On Leave</option>
+              <option value="HOLIDAY">Holiday</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -304,7 +381,7 @@ export default function AttendancePage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 font-medium">To:</label>
-            <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+            <input type="date" value={filterDateTo} max={today} onChange={e => setFilterDateTo(e.target.value)}
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
           </div>
           <div className="flex items-center gap-2">
@@ -320,7 +397,7 @@ export default function AttendancePage() {
           </div>
           {(filterStatus || filterDateFrom || filterDateTo || filterDept) && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterDept('') }}
+              onClick={() => { setFilterStatus(''); setFilterDateFrom(today); setFilterDateTo(today); setFilterDept('') }}
               className="text-xs text-indigo-600 hover:underline ml-1"
             >
               Clear filters
@@ -341,7 +418,18 @@ export default function AttendancePage() {
       {tab === 'Attendance' && (
         <>
           <DataTable columns={attendanceColumns} data={filteredData} loading={loading} />
-          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
+          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => {
+  if (isEmp) {
+    dispatch(fetchAll({ page: p, size: 20, sort: 'attendanceDate,desc' }))
+  } else {
+    const params = { companyId, page: p, size: 20 }
+    if (filterStatus) params.status = filterStatus
+    if (filterDateFrom) params.from = filterDateFrom
+    if (filterDateTo) params.to = filterDateTo
+    if (filterDept) params.departmentId = filterDept
+    dispatch(fetchFullView(params))
+  }
+}} />
         </>
       )}
 
@@ -401,8 +489,8 @@ export default function AttendancePage() {
                 toast.success('Regularisation request submitted')
                 setRegModal({ open: false, record: null })
                 regReset()
-                dispatch(fetchAll({ page: 0, size: 20 }))
-              } catch (e) { toast.error(e || 'Failed to submit') }
+                dispatch(fetchAll({ page: 0, size: 20, sort: 'attendanceDate,desc' }))
+              } catch (e) { toast.error(typeof e === 'string' ? e : e?.message || 'Failed to submit') }
             })} loading={loading}>Submit</Button>
           </div>
         }
@@ -457,6 +545,150 @@ export default function AttendancePage() {
                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="e.g. 2.5" />
             </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Export Modal */}
+      <Modal
+        open={exportModal}
+        onClose={() => { setExportModal(false); setExportMode('all'); setExportSingleId(''); setExportMultiIds(new Set()); setExportSearch(''); setExportDateFrom(''); setExportDateTo('') }}
+        title="Export Attendance"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { setExportModal(false); setExportMode('all'); setExportSingleId(''); setExportMultiIds(new Set()); setExportSearch(''); setExportDateFrom(''); setExportDateTo('') }}>Cancel</Button>
+            <Button
+              onClick={handleExport}
+              loading={exporting}
+              disabled={
+                exporting ||
+                (exportMode === 'single' && !exportSingleId) ||
+                (exportMode === 'multiple' && exportMultiIds.size === 0)
+              }
+            >
+              {exporting ? 'Exporting...' : 'Export Excel'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {/* Mode selector */}
+          <div className="flex gap-2">
+            {[
+              { value: 'all', label: 'All Employees' },
+              { value: 'single', label: 'Single Employee' },
+              { value: 'multiple', label: 'Multiple Employees' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => { setExportMode(opt.value); setExportSingleId(''); setExportMultiIds(new Set()); setExportSearch('') }}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                  exportMode === opt.value
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date range */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
+              <input
+                type="date"
+                value={exportDateFrom}
+                onChange={e => setExportDateFrom(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
+              <input
+                type="date"
+                value={exportDateTo}
+                onChange={e => setExportDateTo(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Single employee */}
+          {exportMode === 'single' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Select Employee</label>
+              <select
+                value={exportSingleId}
+                onChange={e => setExportSingleId(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">— choose employee —</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.firstName} {e.lastName || ''}{e.employeeCode ? ` (${e.employeeCode})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Multiple employees */}
+          {exportMode === 'multiple' && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-500">Select Employees</label>
+                {exportMultiIds.size > 0 && (
+                  <span className="text-xs text-indigo-600 font-medium">{exportMultiIds.size} selected</span>
+                )}
+              </div>
+              <input
+                type="text"
+                placeholder="Search employees..."
+                value={exportSearch}
+                onChange={e => setExportSearch(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm mb-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-100">
+                {filteredExportEmployees.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">No employees found</p>
+                ) : (
+                  filteredExportEmployees.map(e => (
+                    <label key={e.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={exportMultiIds.has(e.id)}
+                        onChange={() => toggleExportEmployee(e.id)}
+                        className="accent-indigo-600"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {e.firstName} {e.lastName || ''}
+                        {e.employeeCode && <span className="text-gray-400 ml-1">({e.employeeCode})</span>}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => setExportMultiIds(new Set(filteredExportEmployees.map(e => e.id)))}
+                  className="text-xs text-indigo-600 hover:underline"
+                >
+                  Select all
+                </button>
+                {exportMultiIds.size > 0 && (
+                  <button onClick={() => setExportMultiIds(new Set())} className="text-xs text-gray-400 hover:underline">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {exportMode === 'all' && (
+            <p className="text-sm text-gray-500">All attendance records for this company will be exported.</p>
           )}
         </div>
       </Modal>

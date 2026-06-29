@@ -5,7 +5,7 @@ import {
   Banknote, Archive, Folder, UserPlus, BarChart3,
   LogIn, LogOut, Ticket, FileText, ShieldCheck, PieChart,
   Bell, ChevronLeft, ChevronRight, Settings, Receipt,
-  ChevronDown, Megaphone, ScanFace, Fingerprint, MapPin,
+  ChevronDown, Megaphone, ScanFace, Fingerprint, MapPinHouse,
 } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import useAuth from '../../hooks/useAuth'
@@ -192,7 +192,7 @@ const BIOMETRIC_GROUP = {
   children: [
     { label: 'Biometric Devices',   to: '/biometric/devices',     icon: Fingerprint },
     { label: 'Biometric Employees', to: '/biometric/employees',    icon: Users },
-    { label: 'Geo Fencing',         to: '/geofencing',             icon: MapPin },
+    { label: 'Geo Fencing',         to: '/geofencing',             icon: MapPinHouse },
     { label: 'Face Detection',      to: '/face-detection',         icon: ScanFace },
   ],
 }
