@@ -228,24 +228,24 @@ public class PayrollService {
             case "basic_pay"   -> basicPay * rate / 100.0;
             case "gross_pay"   -> grossPay * rate / 100.0;
             case "attendance"  -> {
-                long count = attendanceRepository.countValidatedByEmployeeAndPeriod(
+                long count = attendanceRepository.countProcessedByEmployeeAndPeriod(
                         employee.getId(), startDate, endDate);
                 yield count * perAttendance;
             }
             case "shift_id"    -> {
                 if (shiftId == null) yield 0.0;
-                long count = attendanceRepository.countValidatedByEmployeeAndPeriodAndShift(
+                long count = attendanceRepository.countProcessedByEmployeeAndPeriodAndShift(
                         employee.getId(), startDate, endDate, shiftId);
                 yield count * shiftPerAttendance;
             }
             case "work_type_id" -> {
                 if (workTypeId == null) yield 0.0;
-                long count = attendanceRepository.countValidatedByEmployeeAndPeriodAndWorkType(
+                long count = attendanceRepository.countProcessedByEmployeeAndPeriodAndWorkType(
                         employee.getId(), startDate, endDate, workTypeId);
                 yield count * workTypePerAttendance;
             }
             case "overtime"    -> {
-                long totalOvertimeSec = attendanceRepository.sumApprovedOvertimeSecondsByEmployeeAndPeriod(
+                long totalOvertimeSec = attendanceRepository.sumOvertimeSecondsByEmployeeAndPeriod(
                         employee.getId(), startDate, endDate);
                 yield (totalOvertimeSec / 3600.0) * amountPerOneHr;
             }
@@ -319,15 +319,15 @@ public class PayrollService {
     private boolean hasRelevantAttendance(Employee employee, Allowance a, LocalDate startDate, LocalDate endDate) {
         String basedOn = a.getBasedOn();
         if ("attendance".equals(basedOn)) {
-            return attendanceRepository.countValidatedByEmployeeAndPeriod(employee.getId(), startDate, endDate) > 0;
+            return attendanceRepository.countProcessedByEmployeeAndPeriod(employee.getId(), startDate, endDate) > 0;
         } else if ("shift_id".equals(basedOn) && a.getShift() != null) {
-            return attendanceRepository.countValidatedByEmployeeAndPeriodAndShift(
+            return attendanceRepository.countProcessedByEmployeeAndPeriodAndShift(
                     employee.getId(), startDate, endDate, a.getShift().getId()) > 0;
         } else if ("work_type_id".equals(basedOn) && a.getWorkType() != null) {
-            return attendanceRepository.countValidatedByEmployeeAndPeriodAndWorkType(
+            return attendanceRepository.countProcessedByEmployeeAndPeriodAndWorkType(
                     employee.getId(), startDate, endDate, a.getWorkType().getId()) > 0;
         } else if ("overtime".equals(basedOn)) {
-            return attendanceRepository.sumApprovedOvertimeSecondsByEmployeeAndPeriod(
+            return attendanceRepository.sumOvertimeSecondsByEmployeeAndPeriod(
                     employee.getId(), startDate, endDate) > 0;
         } else if ("late_come".equals(basedOn)) {
             return lateComeEarlyOutRepository.countLateComesForEmployee(
@@ -567,13 +567,20 @@ public class PayrollService {
         long presentDays   = attendanceRepository.countAttendanceByEmployeeAndPeriod(employeeId, startDate, endDate);
         long lateComing    = lateComeEarlyOutRepository.countLateComesForEmployee(employeeId, startDate, endDate);
         long earlyLeaving  = lateComeEarlyOutRepository.countEarlyOutsForEmployee(employeeId, startDate, endDate);
-        long approvedOtSec = attendanceRepository.sumApprovedOvertimeSecondsByEmployeeAndPeriod(employeeId, startDate, endDate);
-        double overtimeHours = round2(approvedOtSec / 3600.0);
+        long totalOtSec    = attendanceRepository.sumOvertimeSecondsByEmployeeAndPeriod(employeeId, startDate, endDate);
+        double overtimeHours = round2(totalOtSec / 3600.0);
         long absentDays    = Math.max(0L, (long) workingDaysInPeriod - presentDays - Math.round(paidLeaveDays));
 
-        // Late-coming deduction: configurable fraction of a day's pay per late instance
-        double dailyRateForLate = workingDaysInPeriod > 0 ? basicPay / workingDaysInPeriod : 0.0;
-        double lateDeduction    = lateComing > 0 ? round2(lateComing * dailyRateForLate * lateDeductionRate) : 0.0;
+        // Minute-based attendance deduction: deductionMinutes (late + short-hours) × per-minute salary
+        long totalDeductionMinutes = attendanceRepository.sumDeductionMinutesByEmployeeAndPeriod(employeeId, startDate, endDate);
+        double perMinuteSalary = (workingDaysInMonth > 0 && contractWage > 0)
+                ? contractWage / (workingDaysInMonth * 8 * 60.0)
+                : 0.0;
+        double attendanceDeduction = round2(totalDeductionMinutes * perMinuteSalary);
+
+        // Overtime earnings: overtimeHours × hourly rate × 1.5
+        double hourlyRate = workingDaysInMonth > 0 ? contractWage / (workingDaysInMonth * 8.0) : 0.0;
+        double overtimeEarnings = round2(overtimeHours * hourlyRate * 1.5);
 
         // ── 2. Basic-pay compensation deductions ─────────────────────────────
         // GCP update_compensation_deduction: only specific_employees, not conditional/active
@@ -640,7 +647,7 @@ public class PayrollService {
         }
 
         // ── 4. Gross Pay ──────────────────────────────────────────────────────
-        double grossPay = round2(basicPay + totalDynamicAllowance + housingAllowance + transportAllowance + otherAllowance);
+        double grossPay = round2(basicPay + totalDynamicAllowance + housingAllowance + transportAllowance + otherAllowance + overtimeEarnings);
 
         // ── 4b. Gross-pay compensation deductions ────────────────────────────
         List<Map<String, Object>> grossPayDeductionLines = new ArrayList<>();
@@ -786,7 +793,7 @@ public class PayrollService {
 
         // ── 12. Final Net Pay ─────────────────────────────────────────────────
         double totalDeductions = round2(lossOfPay + totalPretax + totalTax + federalTax
-                + totalPostTax + totalNetDeductions + totalLoanDeduction + lateDeduction);
+                + totalPostTax + totalNetDeductions + totalLoanDeduction + attendanceDeduction);
         double netPay = round2(grossPay - totalDeductions + totalReimbursement);
 
         // ── 13. Build GCP-exact pay_head_data JSON ────────────────────────────
@@ -811,11 +818,13 @@ public class PayrollService {
         payHeadData.put("present_days",            presentDays);
         payHeadData.put("absent_days",             absentDays);
         payHeadData.put("paid_leave_days",         round2(paidLeaveDays));
-        payHeadData.put("late_coming_days",        lateComing);
-        payHeadData.put("early_leaving_days",      earlyLeaving);
-        payHeadData.put("overtime_hours",          overtimeHours);
-        payHeadData.put("leave_balance",           round2(totalLeaveBalance));
-        payHeadData.put("late_deduction",          lateDeduction);
+        payHeadData.put("late_coming_days",          lateComing);
+        payHeadData.put("early_leaving_days",        earlyLeaving);
+        payHeadData.put("overtime_hours",            overtimeHours);
+        payHeadData.put("overtime_earnings",         round2(overtimeEarnings));
+        payHeadData.put("leave_balance",             round2(totalLeaveBalance));
+        payHeadData.put("attendance_deduction_minutes", totalDeductionMinutes);
+        payHeadData.put("attendance_deduction",      round2(attendanceDeduction));
         payHeadData.put("basic_pay_deductions",    basicPayDeductionLines);
         payHeadData.put("gross_pay_deductions",    grossPayDeductionLines);
         payHeadData.put("pretax_deductions",       pretaxDeductionLines);

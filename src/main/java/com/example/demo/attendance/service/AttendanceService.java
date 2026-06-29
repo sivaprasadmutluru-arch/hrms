@@ -115,6 +115,80 @@ public class AttendanceService {
     }
 
     @Transactional(readOnly = true)
+    public Page<AttendanceResponse> getFullView(Long companyId, LocalDate from, LocalDate to,
+                                                Long departmentId, String statusFilter, Pageable pageable) {
+        LocalDate today = LocalDate.now();
+        LocalDate start = from != null ? from : today;
+        LocalDate end   = to   != null ? (to.isAfter(today) ? today : to) : today;
+
+        // All active employees (dept-filtered if provided)
+        List<Employee> employees = departmentId != null
+                ? employeeRepository.findByCompanyIdAndDepartmentIdAndIsActiveTrue(companyId, departmentId)
+                : employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+
+        // Attendance records keyed by "employeeId_date"
+        List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end);
+        Map<String, Attendance> attMap = new HashMap<>();
+        for (Attendance a : attendances) {
+            if (a.getEmployee() != null) {
+                attMap.put(a.getEmployee().getId() + "_" + a.getAttendanceDate(), a);
+            }
+        }
+
+        // Approved leaves keyed by employeeId -> list
+        List<LeaveRequest> leaves = leaveRequestRepository.findApprovedByCompanyAndDateRange(companyId, start, end);
+        Map<Long, List<LeaveRequest>> leaveMap = leaves.stream()
+                .collect(Collectors.groupingBy(lr -> lr.getEmployee().getId()));
+
+        // Holiday date set
+        List<Holiday> holidays = holidayRepository.findByCompanyIdAndDateRange(companyId, start, end);
+        Set<LocalDate> holidayDates = new HashSet<>();
+        for (Holiday h : holidays) {
+            LocalDate d = h.getStartDate();
+            while (!d.isAfter(h.getEndDate())) {
+                holidayDates.add(d);
+                d = d.plusDays(1);
+            }
+        }
+
+        // Build all rows: iterate dates desc, then employees
+        List<AttendanceResponse> rows = new ArrayList<>();
+        LocalDate cursor = end;
+        while (!cursor.isBefore(start)) {
+            for (Employee emp : employees) {
+                String key = emp.getId() + "_" + cursor;
+                AttendanceResponse row;
+                if (attMap.containsKey(key)) {
+                    row = AttendanceResponse.from(attMap.get(key));
+                } else {
+                    LocalDate finalCursor = cursor;
+                    LeaveRequest matchedLeave = leaveMap.getOrDefault(emp.getId(), List.of()).stream()
+                            .filter(lr -> !finalCursor.isBefore(lr.getStartDate()) && !finalCursor.isAfter(lr.getEndDate()))
+                            .findFirst().orElse(null);
+                    String ds = matchedLeave != null ? "ON_LEAVE" : holidayDates.contains(cursor) ? "HOLIDAY" : "ABSENT";
+                    String leaveTypeName = matchedLeave != null && matchedLeave.getLeaveType() != null
+                            ? matchedLeave.getLeaveType().getName() : null;
+                    row = AttendanceResponse.fromVirtual(emp, cursor, ds, leaveTypeName);
+                }
+                String ds = row.getDisplayStatus() != null ? row.getDisplayStatus() : "REGULAR";
+                if (statusFilter == null || statusFilter.isBlank() || statusFilter.equalsIgnoreCase(ds)) {
+                    rows.add(row);
+                }
+            }
+            cursor = cursor.minusDays(1);
+        }
+
+        // Manual pagination
+        int total = rows.size();
+        int pageNum  = pageable.getPageNumber();
+        int pageSize = pageable.getPageSize();
+        int fromIdx  = pageNum * pageSize;
+        int toIdx    = Math.min(fromIdx + pageSize, total);
+        List<AttendanceResponse> content = fromIdx < total ? rows.subList(fromIdx, toIdx) : List.of();
+        return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
+    }
+
+    @Transactional(readOnly = true)
     public AttendanceResponse getById(Long id) {
         return AttendanceResponse.from(find(id));
     }
@@ -1029,8 +1103,54 @@ public class AttendanceService {
     // ─── Excel Export / Import ────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public void exportToExcel(Long companyId, HttpServletResponse response) throws IOException {
-        List<Attendance> records = attendanceRepository.findByCompanyId(companyId);
+    public void exportToExcel(Long companyId, List<Long> employeeIds, LocalDate from, LocalDate to, HttpServletResponse response) throws IOException {
+        // Build full-view rows (same logic as getFullView) so export mirrors the web
+        LocalDate today = LocalDate.now();
+        LocalDate start = from != null ? from : today;
+        LocalDate end   = to != null ? (to.isAfter(today) ? today : to) : today;
+
+        List<Employee> employees;
+        if (employeeIds != null && !employeeIds.isEmpty()) {
+            employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId).stream()
+                    .filter(e -> employeeIds.contains(e.getId())).collect(Collectors.toList());
+        } else {
+            employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        }
+
+        Map<String, Attendance> attMap = new HashMap<>();
+        attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end)
+                .forEach(a -> { if (a.getEmployee() != null) attMap.put(a.getEmployee().getId() + "_" + a.getAttendanceDate(), a); });
+
+        Map<Long, List<LeaveRequest>> leaveMap = leaveRequestRepository
+                .findApprovedByCompanyAndDateRange(companyId, start, end).stream()
+                .collect(Collectors.groupingBy(lr -> lr.getEmployee().getId()));
+
+        Set<LocalDate> holidayDates = new HashSet<>();
+        holidayRepository.findByCompanyIdAndDateRange(companyId, start, end)
+                .forEach(h -> { LocalDate d = h.getStartDate(); while (!d.isAfter(h.getEndDate())) { holidayDates.add(d); d = d.plusDays(1); } });
+
+        // Build rows date-desc
+        List<AttendanceResponse> rows = new ArrayList<>();
+        LocalDate cursor = end;
+        while (!cursor.isBefore(start)) {
+            for (Employee emp : employees) {
+                String key = emp.getId() + "_" + cursor;
+                AttendanceResponse row;
+                if (attMap.containsKey(key)) {
+                    row = AttendanceResponse.from(attMap.get(key));
+                } else {
+                    LocalDate fc = cursor;
+                    LeaveRequest ml = leaveMap.getOrDefault(emp.getId(), List.of()).stream()
+                            .filter(lr -> !fc.isBefore(lr.getStartDate()) && !fc.isAfter(lr.getEndDate())).findFirst().orElse(null);
+                    String ds = ml != null ? "ON_LEAVE" : holidayDates.contains(cursor) ? "HOLIDAY" : "ABSENT";
+                    String ltn = ml != null && ml.getLeaveType() != null ? ml.getLeaveType().getName() : null;
+                    row = AttendanceResponse.fromVirtual(emp, cursor, ds, ltn);
+                }
+                rows.add(row);
+            }
+            cursor = cursor.minusDays(1);
+        }
+
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=attendance.xlsx");
 
@@ -1038,18 +1158,19 @@ public class AttendanceService {
             Sheet sheet = wb.createSheet("Attendance");
             sheet.setDefaultRowHeightInPoints(20);
 
-            // ── Styles ──────────────────────────────────────────────────
-            XSSFCellStyle titleStyle    = xlTitleStyle(wb, "1E1B4B");
-            XSSFCellStyle headerStyle   = xlHeaderStyle(wb, "6366F1");
-            XSSFCellStyle evenStyle     = xlBodyStyle(wb, "EEF2FF"); // light indigo tint
-            XSSFCellStyle oddStyle      = xlBodyStyle(wb, "FFFFFF");
+            XSSFCellStyle titleStyle       = xlTitleStyle(wb, "1E1B4B");
+            XSSFCellStyle headerStyle      = xlHeaderStyle(wb, "6366F1");
+            XSSFCellStyle evenStyle        = xlBodyStyle(wb, "EEF2FF");
+            XSSFCellStyle oddStyle         = xlBodyStyle(wb, "FFFFFF");
             XSSFCellStyle regularStyle     = xlBadgeStyle(wb, "10B981");
             XSSFCellStyle irregularStyle   = xlBadgeStyle(wb, "EF4444");
             XSSFCellStyle regularisedStyle = xlBadgeStyle(wb, "6366F1");
+            XSSFCellStyle absentStyle      = xlBadgeStyle(wb, "F87171");
+            XSSFCellStyle leaveStyle       = xlBadgeStyle(wb, "818CF8");
+            XSSFCellStyle holidayStyle     = xlBadgeStyle(wb, "9CA3AF");
 
-            String[] columns = {"Employee Name", "Date", "Check-In", "Check-Out", "Worked Hours", "Status"};
+            String[] columns = {"Employee Name", "Date", "Check-In", "Check-Out", "Worked Hours", "OT Hours", "Status"};
 
-            // Title row
             Row titleRow = sheet.createRow(0);
             titleRow.setHeightInPoints(30);
             Cell titleCell = titleRow.createCell(0);
@@ -1058,7 +1179,6 @@ public class AttendanceService {
             sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, columns.length - 1));
             for (int i = 1; i < columns.length; i++) titleRow.createCell(i).setCellStyle(titleStyle);
 
-            // Header row
             Row headerRow = sheet.createRow(1);
             headerRow.setHeightInPoints(22);
             for (int i = 0; i < columns.length; i++) {
@@ -1067,37 +1187,63 @@ public class AttendanceService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Data rows
             int rowNum = 2;
-            for (Attendance a : records) {
+            for (AttendanceResponse r : rows) {
                 Row row = sheet.createRow(rowNum);
                 row.setHeightInPoints(18);
                 XSSFCellStyle base = rowNum % 2 == 0 ? evenStyle : oddStyle;
 
-                xlCell(row, 0, a.getEmployee() != null
-                        ? a.getEmployee().getFirstName() + " " + (a.getEmployee().getLastName() != null ? a.getEmployee().getLastName() : "")
-                        : "", base);
-                xlCell(row, 1, a.getAttendanceDate() != null ? a.getAttendanceDate().toString() : "", base);
-                xlCell(row, 2, a.getCheckIn()  != null ? a.getCheckIn().toString()  : "", base);
-                xlCell(row, 3, a.getCheckOut() != null ? a.getCheckOut().toString() : "", base);
+                xlCell(row, 0, r.getEmployeeName() != null ? r.getEmployeeName() : "", base);
+                xlCell(row, 1, r.getAttendanceDate() != null ? r.getAttendanceDate().toString() : "", base);
+                xlCell(row, 2, r.getCheckIn()  != null ? r.getCheckIn().toString()  : "", base);
+                xlCell(row, 3, r.getCheckOut() != null ? r.getCheckOut().toString() : "", base);
 
-                Cell hoursCell = row.createCell(4);
-                hoursCell.setCellValue(a.getWorkedHour() != null ? a.getWorkedHour() : 0.0);
-                hoursCell.setCellStyle(base);
+                // Worked hours as "Xh Ym"
+                Double wh = r.getWorkedHour();
+                String hoursLabel = "";
+                if (wh != null && wh > 0) {
+                    int h = (int) Math.floor(wh);
+                    int m = (int) Math.round((wh - h) * 60);
+                    hoursLabel = m > 0 ? h + "h " + m + "m" : h + "h";
+                }
+                xlCell(row, 4, hoursLabel, base);
 
-                String status = a.getAttendanceStatus() != null ? a.getAttendanceStatus().name() : "REGULAR";
-                Cell statusCell = row.createCell(5);
-                statusCell.setCellValue(status);
-                statusCell.setCellStyle(switch (status) {
-                    case "REGULAR"      -> regularStyle;
-                    case "REGULARISED"  -> regularisedStyle;
-                    default             -> irregularStyle;
-                });
+                // OT hours as "Xh Ym"
+                Double ot = r.getAttendanceOvertime();
+                String otLabel = "";
+                if (ot != null && ot > 0) {
+                    int h = (int) Math.floor(ot);
+                    int m = (int) Math.round((ot - h) * 60);
+                    otLabel = m > 0 ? h + "h " + m + "m" : h + "h";
+                }
+                xlCell(row, 5, otLabel, base);
+
+                // Status label — use displayStatus, show leave type name for ON_LEAVE
+                String ds = r.getDisplayStatus() != null ? r.getDisplayStatus() : "REGULAR";
+                String statusLabel = switch (ds) {
+                    case "ON_LEAVE"    -> r.getLeaveTypeName() != null ? r.getLeaveTypeName() : "On Leave";
+                    case "ABSENT"      -> "Absent";
+                    case "HOLIDAY"     -> "Holiday";
+                    case "REGULAR"     -> "Regular";
+                    case "IRREGULAR"   -> "Irregular";
+                    case "REGULARISED" -> "Regularised";
+                    default            -> ds;
+                };
+                XSSFCellStyle statusStyle = switch (ds) {
+                    case "REGULAR"     -> regularStyle;
+                    case "REGULARISED" -> regularisedStyle;
+                    case "IRREGULAR"   -> irregularStyle;
+                    case "ABSENT"      -> absentStyle;
+                    case "ON_LEAVE"    -> leaveStyle;
+                    default            -> holidayStyle;
+                };
+                Cell statusCell = row.createCell(6);
+                statusCell.setCellValue(statusLabel);
+                statusCell.setCellStyle(statusStyle);
                 rowNum++;
             }
 
-            // Column widths (in 1/256 char units)
-            int[] widths = {6500, 3500, 3000, 3000, 3500, 3500};
+            int[] widths = {6500, 3500, 3000, 3000, 3500, 3000, 4000};
             for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i]);
 
             sheet.createFreezePane(0, 2);

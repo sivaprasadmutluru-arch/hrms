@@ -134,7 +134,7 @@ public class Attendance extends BaseEntity {
     // ─── Misc ─────────────────────────────────────────────────────────────────
 
     @Column(name = "is_holiday")
-    private boolean isHoliday = false;
+    private Boolean isHoliday = false;
 
     @Column(name = "requested_data", columnDefinition = "TEXT")
     private String requestedData;

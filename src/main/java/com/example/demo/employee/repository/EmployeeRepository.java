@@ -12,6 +12,7 @@ import java.util.Optional;
 public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSpecificationExecutor<Employee> {
     List<Employee> findByCompanyId(Long companyId);
     List<Employee> findByCompanyIdAndIsActiveTrue(Long companyId);
+    List<Employee> findByCompanyIdAndDepartmentIdAndIsActiveTrue(Long companyId, Long departmentId);
     long countByCompanyId(Long companyId);
     long countByCompanyIdAndIsActiveTrue(Long companyId);
     Optional<Employee> findByEmail(String email);

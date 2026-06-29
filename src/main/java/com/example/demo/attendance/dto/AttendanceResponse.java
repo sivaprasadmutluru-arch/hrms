@@ -1,6 +1,7 @@
 package com.example.demo.attendance.dto;
 
 import com.example.demo.attendance.entity.Attendance;
+import com.example.demo.employee.entity.Employee;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -48,6 +49,10 @@ public class AttendanceResponse {
     private String clockInSource;
     private String clockOutSource;
 
+    // Full-view only: REGULAR | IRREGULAR | REGULARISED | ABSENT | ON_LEAVE | HOLIDAY
+    private String displayStatus;
+    private String leaveTypeName;
+
     public static AttendanceResponse from(Attendance a) {
         AttendanceResponse r = new AttendanceResponse();
         r.setId(a.getId());
@@ -83,6 +88,19 @@ public class AttendanceResponse {
         r.setClockOutDeviceName(a.getClockOutDeviceName());
         r.setClockInSource(a.getClockInSource());
         r.setClockOutSource(a.getClockOutSource());
+        r.setDisplayStatus(a.getAttendanceStatus() != null ? a.getAttendanceStatus().name() : "REGULAR");
+        return r;
+    }
+
+    public static AttendanceResponse fromVirtual(Employee emp, java.time.LocalDate date, String displayStatus, String leaveTypeName) {
+        AttendanceResponse r = new AttendanceResponse();
+        r.setEmployeeId(emp.getId());
+        r.setEmployeeName(emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : ""));
+        r.setEmployeeBadgeId(emp.getBadgeId());
+        r.setAttendanceDate(date);
+        r.setDisplayStatus(displayStatus);
+        r.setLeaveTypeName(leaveTypeName);
+        if (emp.getCompany() != null) r.setCompanyId(emp.getCompany().getId());
         return r;
     }
 }

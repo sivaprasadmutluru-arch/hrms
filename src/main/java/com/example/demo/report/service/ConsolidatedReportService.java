@@ -103,10 +103,11 @@ public class ConsolidatedReportService {
                 .toList();
 
         long approved = filtered.stream()
-                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceStatus.APPROVED.equals(a.getAttendanceValidated()))
+                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.REGULAR == a.getAttendanceStatus()
+                          || com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.REGULARISED == a.getAttendanceStatus())
                 .count();
         long pending = filtered.stream()
-                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceStatus.PENDING.equals(a.getAttendanceValidated()))
+                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.IRREGULAR == a.getAttendanceStatus())
                 .count();
 
         // Build daily presence/absence chart data
@@ -288,8 +289,8 @@ public class ConsolidatedReportService {
                 ? attendanceRepository.findAll(attSpec)
                 : attendanceRepository.findAll();
         long pendingAttendance = allAtt.stream()
-                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceStatus.PENDING
-                        .equals(a.getAttendanceValidated()))
+                .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.IRREGULAR
+                        == a.getAttendanceStatus())
                 .count();
 
         // Draft payslips
@@ -344,7 +345,7 @@ public class ConsolidatedReportService {
                             ? a.getEmployee().getFirstName() + " " + a.getEmployee().getLastName() : "");
                     row.put("Check In", a.getCheckIn());
                     row.put("Check Out", a.getCheckOut());
-                    row.put("Status", a.getAttendanceValidated());
+                    row.put("Status", a.getAttendanceStatus() != null ? a.getAttendanceStatus().name() : "REGULAR");
                     return row;
                 })
                 .toList();

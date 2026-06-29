@@ -158,7 +158,7 @@ public class AdmsService {
                     newAtt.setEmployee(employee);
                     newAtt.setCompany(employee.getCompany());
                     newAtt.setAttendanceDate(punchDate);
-                    newAtt.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+                    // attendanceStatus defaults to REGULAR; evaluated on checkout
                     // Set shift if employee has one assigned
                     ShiftSchedule shift = employee.getShift();
                     if (shift != null) {
@@ -215,7 +215,7 @@ public class AdmsService {
                     newAtt.setEmployee(employee);
                     newAtt.setCompany(employee.getCompany());
                     newAtt.setAttendanceDate(punchDate);
-                    newAtt.setAttendanceValidated(Attendance.AttendanceStatus.PENDING);
+                    // attendanceStatus defaults to REGULAR; evaluated on checkout
                     ShiftSchedule shift = employee.getShift();
                     if (shift != null) {
                         newAtt.setShift(shift);

@@ -356,11 +356,11 @@ public class ESSController {
     @GetMapping("/my-validation-requests")
     @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
-    @Operation(summary = "Get own attendance validation requests and their approval status")
+    @Operation(summary = "Get own IRREGULAR attendance records (eligible for regularisation)")
     public ResponseEntity<List<AttendanceResponse>> myValidationRequests(Authentication auth) {
         Employee emp = resolveEmployee(auth);
         List<AttendanceResponse> records = attendanceRepository.findByEmployeeId(emp.getId()).stream()
-                .filter(a -> Boolean.TRUE.equals(a.getIsValidateRequest()))
+                .filter(a -> a.getAttendanceStatus() == com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.IRREGULAR)
                 .map(AttendanceResponse::from)
                 .toList();
         return ResponseEntity.ok(records);
@@ -378,9 +378,10 @@ public class ESSController {
         if (!att.getEmployee().getId().equals(emp.getId())) {
             return ResponseEntity.status(403).build();
         }
-        att.setIsValidateRequest(true);
-        att.setIsValidateRequestApproved(false);
-        return ResponseEntity.ok(AttendanceResponse.from(attendanceRepository.save(att)));
+        // Validation request is now a regularisation request — employee should use
+        // POST /api/attendance/regularisation. This endpoint is kept for backwards
+        // compatibility but no longer flips removed fields.
+        return ResponseEntity.ok(AttendanceResponse.from(att));
     }
 
     // ── Payslips ──────────────────────────────────────────────────────────────

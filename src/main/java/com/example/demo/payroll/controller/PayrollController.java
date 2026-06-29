@@ -1075,20 +1075,19 @@ public class PayrollController {
                             if (totalH > 0) att.setAtWorkSecond((int) Math.round(totalH * 3600));
                         } catch (Exception ignored) {}
                     }
-                    att.setAttendanceValidated(
+                    att.setAttendanceStatus(
                             (statusStr != null && statusStr.trim().equalsIgnoreCase("Present"))
-                                    ? com.example.demo.attendance.entity.Attendance.AttendanceStatus.APPROVED
-                                    : com.example.demo.attendance.entity.Attendance.AttendanceStatus.PENDING);
+                                    ? com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.REGULAR
+                                    : com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.IRREGULAR);
 
-                    // Column 8: Overtime Hours — store on attendance record
+                    // Column 8: Overtime Hours — store on attendance record (auto-calculated, no approval needed)
                     if (otHrsStr != null && !otHrsStr.isBlank()) {
                         try {
                             double otH = Double.parseDouble(otHrsStr.trim());
                             if (otH > 0) {
                                 int otSec = (int) Math.round(otH * 3600);
                                 att.setOvertimeSecond(otSec);
-                                att.setApprovedOvertimeSecond(otSec);
-                                att.setAttendanceOvertimeApprove(true);
+                                att.setOvertimeMinutes((int) Math.round(otH * 60));
                             }
                         } catch (Exception ignored) {}
                     }

@@ -15,6 +15,8 @@ import java.util.Optional;
 public interface AttendanceRepository extends JpaRepository<Attendance, Long>, JpaSpecificationExecutor<Attendance> {
 
     List<Attendance> findByCompanyId(Long companyId);
+    List<Attendance> findByCompanyIdAndEmployeeIdIn(Long companyId, List<Long> employeeIds);
+    List<Attendance> findByCompanyIdAndEmployeeIdInAndAttendanceDateBetween(Long companyId, List<Long> employeeIds, LocalDate from, LocalDate to);
     List<Attendance> findByEmployeeId(Long employeeId);
     List<Attendance> findByEmployeeIdAndAttendanceDateBetween(Long employeeId, LocalDate from, LocalDate to);
     Optional<Attendance> findByEmployeeIdAndAttendanceDate(Long employeeId, LocalDate date);

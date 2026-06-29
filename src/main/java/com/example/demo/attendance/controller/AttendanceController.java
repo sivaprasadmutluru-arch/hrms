@@ -63,6 +63,19 @@ public class AttendanceController {
         return ResponseEntity.ok(attendanceService.getAll(pageable, status, from, to, departmentId));
     }
 
+    @GetMapping("/full-view")
+    @PreAuthorize("hasAuthority('attendance:view')")
+    @Operation(summary = "Full attendance view: all employees with PRESENT/ABSENT/ON_LEAVE/HOLIDAY status")
+    public ResponseEntity<Page<AttendanceResponse>> fullView(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(attendanceService.getFullView(companyId, from, to, departmentId, status, pageable));
+    }
+
     @GetMapping("/calendar")
     @PreAuthorize("hasAuthority('attendance:view')")
     @Operation(summary = "Get per-day attendance calendar for a given month")
@@ -253,8 +266,13 @@ public class AttendanceController {
     @GetMapping("/export")
     @PreAuthorize("hasAuthority('attendance:view')")
     @Operation(summary = "Export attendance records to Excel")
-    public void exportToExcel(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
-        attendanceService.exportToExcel(companyId, response);
+    public void exportToExcel(
+            @RequestParam Long companyId,
+            @RequestParam(required = false) List<Long> employeeIds,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            HttpServletResponse response) throws IOException {
+        attendanceService.exportToExcel(companyId, employeeIds, from, to, response);
     }
 
     @PostMapping("/import")
