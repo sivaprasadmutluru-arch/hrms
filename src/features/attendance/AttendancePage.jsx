@@ -44,6 +44,7 @@ const QUALITY_COLORS = {
   ABSENT:       'danger',
   ON_LEAVE:     'info',
   HOLIDAY:      'default',
+  WEEK_OFF:     'default',
 }
 
 const REG_STATUS_COLORS = {
@@ -71,8 +72,8 @@ export default function AttendancePage() {
   const [search, setSearch] = useState('')
   const today = new Date().toISOString().split('T')[0]
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState(today)
-  const [filterDateTo, setFilterDateTo] = useState(today)
+  const [filterDateFrom, setFilterDateFrom] = useState(isEmp ? '' : today)
+  const [filterDateTo, setFilterDateTo] = useState(isEmp ? '' : today)
   const [filterDept, setFilterDept] = useState('')
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [exportModal, setExportModal] = useState(false)
@@ -99,11 +100,11 @@ export default function AttendancePage() {
   useEffect(() => {
     if (!companyId) return
     if (isEmp) {
-      const params = { page: 0, size: 20, sort: 'attendanceDate,desc' }
+      const params = { page: 0, size: 20, isEmp: true }
       if (filterStatus) params.status = filterStatus
       if (filterDateFrom) params.from = filterDateFrom
       if (filterDateTo) params.to = filterDateTo
-      dispatch(fetchAll(params))
+      dispatch(fetchFullView(params))
     } else {
       const params = { companyId, page: 0, size: 20 }
       if (filterStatus) params.status = filterStatus
@@ -121,27 +122,38 @@ export default function AttendancePage() {
   }, [data, search])
 
   const handleExport = async () => {
-    if (!companyId) return
+    if (!isEmp && !companyId) return
     setExporting(true)
     try {
-      const params = new URLSearchParams({ companyId })
-      if (exportMode === 'single' && exportSingleId) {
-        params.append('employeeIds', exportSingleId)
-      } else if (exportMode === 'multiple' && exportMultiIds.size > 0) {
-        exportMultiIds.forEach(id => params.append('employeeIds', id))
+      let url, headers = {}
+      if (isEmp) {
+        // Employee-facing export via ESS endpoint
+        const params = new URLSearchParams()
+        if (exportDateFrom) params.append('from', exportDateFrom)
+        if (exportDateTo) params.append('to', exportDateTo)
+        url = `/ess/my-attendance/export?${params}`
+      } else {
+        const params = new URLSearchParams({ companyId })
+        if (exportMode === 'single' && exportSingleId) {
+          params.append('employeeIds', exportSingleId)
+        } else if (exportMode === 'multiple' && exportMultiIds.size > 0) {
+          exportMultiIds.forEach(id => params.append('employeeIds', id))
+        }
+        if (exportDateFrom) params.append('from', exportDateFrom)
+        if (exportDateTo) params.append('to', exportDateTo)
+        url = `/attendance/export?${params}`
+        headers = { 'X-Company-Id': companyId }
       }
-      if (exportDateFrom) params.append('from', exportDateFrom)
-      if (exportDateTo) params.append('to', exportDateTo)
-      const res = await api.get(`/attendance/export?${params}`, {
+      const res = await api.get(url, {
         responseType: 'blob',
-        headers: { 'X-Company-Id': companyId },
+        headers,
       })
-      const url = URL.createObjectURL(new Blob([res.data]))
+      const blobUrl = URL.createObjectURL(new Blob([res.data]))
       const a = document.createElement('a')
-      a.href = url
+      a.href = blobUrl
       a.download = 'attendance.xlsx'
       a.click()
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(blobUrl)
       setExportModal(false)
       setExportMode('all')
       setExportSingleId('')
@@ -264,7 +276,7 @@ export default function AttendancePage() {
     }},
     { id: 'status', header: 'Status', cell: ({ row }) => {
       const qs = row.original.displayStatus || row.original.attendanceStatus || 'REGULAR'
-      const labels = { REGULAR: 'Regular', IRREGULAR: 'Irregular', REGULARISED: 'Regularised', ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday' }
+      const labels = { REGULAR: 'Regular', IRREGULAR: 'Irregular', REGULARISED: 'Regularised', ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEK_OFF: 'Week Off' }
       const label = qs === 'ON_LEAVE' && row.original.leaveTypeName ? row.original.leaveTypeName : (labels[qs] || qs)
       return <Badge label={label} variant={QUALITY_COLORS[qs] || 'default'} />
     }},
@@ -345,10 +357,12 @@ export default function AttendancePage() {
         actions={
           <>
             <SearchInput onSearch={setSearch} className="w-48" />
-            {tab === 'Attendance' && !isEmp && (
+            {tab === 'Attendance' && (
               <>
                 <Button variant="secondary" onClick={() => setExportModal(true)}>Export Excel</Button>
-                <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
+                {!isEmp && (
+                  <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
+                )}
               </>
             )}
           </>
@@ -356,24 +370,27 @@ export default function AttendancePage() {
       />
 
       {/* Filters */}
-      {tab === 'Attendance' && !isEmp && (
+      {tab === 'Attendance' && (
         <div className="flex flex-wrap gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 font-medium">Status:</label>
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              <option value="">All</option>
-              <option value="REGULAR">Regular</option>
-              <option value="IRREGULAR">Irregular</option>
-              <option value="REGULARISED">Regularised</option>
-              <option value="ABSENT">Absent</option>
-              <option value="ON_LEAVE">On Leave</option>
-              <option value="HOLIDAY">Holiday</option>
-            </select>
-          </div>
+          {!isEmp && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">Status:</label>
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">All</option>
+                <option value="REGULAR">Regular</option>
+                <option value="IRREGULAR">Irregular</option>
+                <option value="REGULARISED">Regularised</option>
+                <option value="ABSENT">Absent</option>
+                <option value="ON_LEAVE">On Leave</option>
+                <option value="HOLIDAY">Holiday</option>
+                <option value="WEEK_OFF">Week Off</option>
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 font-medium">From:</label>
             <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
@@ -384,20 +401,22 @@ export default function AttendancePage() {
             <input type="date" value={filterDateTo} max={today} onChange={e => setFilterDateTo(e.target.value)}
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 font-medium">Department:</label>
-            <select
-              value={filterDept}
-              onChange={e => setFilterDept(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              <option value="">All</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
+          {!isEmp && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">Department:</label>
+              <select
+                value={filterDept}
+                onChange={e => setFilterDept(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">All</option>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+          )}
           {(filterStatus || filterDateFrom || filterDateTo || filterDept) && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterDateFrom(today); setFilterDateTo(today); setFilterDept('') }}
+              onClick={() => { setFilterStatus(''); setFilterDateFrom(isEmp ? '' : today); setFilterDateTo(isEmp ? '' : today); setFilterDept('') }}
               className="text-xs text-indigo-600 hover:underline ml-1"
             >
               Clear filters
@@ -563,8 +582,8 @@ export default function AttendancePage() {
               loading={exporting}
               disabled={
                 exporting ||
-                (exportMode === 'single' && !exportSingleId) ||
-                (exportMode === 'multiple' && exportMultiIds.size === 0)
+                (!isEmp && exportMode === 'single' && !exportSingleId) ||
+                (!isEmp && exportMode === 'multiple' && exportMultiIds.size === 0)
               }
             >
               {exporting ? 'Exporting...' : 'Export Excel'}
@@ -573,26 +592,28 @@ export default function AttendancePage() {
         }
       >
         <div className="space-y-4">
-          {/* Mode selector */}
-          <div className="flex gap-2">
-            {[
-              { value: 'all', label: 'All Employees' },
-              { value: 'single', label: 'Single Employee' },
-              { value: 'multiple', label: 'Multiple Employees' },
-            ].map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => { setExportMode(opt.value); setExportSingleId(''); setExportMultiIds(new Set()); setExportSearch('') }}
-                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
-                  exportMode === opt.value
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {/* Mode selector - only for admin */}
+          {!isEmp && (
+            <div className="flex gap-2">
+              {[
+                { value: 'all', label: 'All Employees' },
+                { value: 'single', label: 'Single Employee' },
+                { value: 'multiple', label: 'Multiple Employees' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => { setExportMode(opt.value); setExportSingleId(''); setExportMultiIds(new Set()); setExportSearch('') }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                    exportMode === opt.value
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Date range */}
           <div className="grid grid-cols-2 gap-3">
@@ -616,8 +637,8 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Single employee */}
-          {exportMode === 'single' && (
+          {/* Single employee - admin only */}
+          {!isEmp && exportMode === 'single' && (
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Select Employee</label>
               <select
@@ -635,8 +656,8 @@ export default function AttendancePage() {
             </div>
           )}
 
-          {/* Multiple employees */}
-          {exportMode === 'multiple' && (
+          {/* Multiple employees - admin only */}
+          {!isEmp && exportMode === 'multiple' && (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-gray-500">Select Employees</label>
@@ -687,7 +708,10 @@ export default function AttendancePage() {
             </div>
           )}
 
-          {exportMode === 'all' && (
+          {isEmp && (
+            <p className="text-sm text-gray-500">Your attendance records will be exported.</p>
+          )}
+          {!isEmp && exportMode === 'all' && (
             <p className="text-sm text-gray-500">All attendance records for this company will be exported.</p>
           )}
         </div>

@@ -12,7 +12,11 @@ export const fetchAll = createAsyncThunk('attendance/fetchAll', async (params, {
 
 export const fetchFullView = createAsyncThunk('attendance/fetchFullView', async (params, { rejectWithValue }) => {
   try {
-    const res = await api.get('/attendance/full-view', { params })
+    const isEmp = params.isEmp;
+    const reqParams = { ...params };
+    delete reqParams.isEmp;
+    const url = isEmp ? '/ess/my-attendance/full-view' : '/attendance/full-view';
+    const res = await api.get(url, { params: reqParams })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch attendance records')
