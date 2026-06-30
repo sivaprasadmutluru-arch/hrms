@@ -1,5 +1,6 @@
 package com.example.demo.ess.controller;
 
+import org.springframework.data.domain.Page;
 import com.example.demo.attendance.dto.AttendanceRequest;
 import com.example.demo.attendance.dto.AttendanceResponse;
 import com.example.demo.attendance.entity.Attendance;
@@ -351,6 +352,37 @@ public class ESSController {
         } else {
             return ResponseEntity.badRequest().body("No attendance record found for today.");
         }
+    }
+
+    @GetMapping("/my-attendance/export")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Export own attendance records to Excel")
+    public void exportMyAttendance(
+            Authentication auth,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        Employee emp = resolveEmployee(auth);
+        attendanceService.exportToExcel(
+                emp.getCompany().getId(),
+                List.of(emp.getId()),
+                from, to, response);
+    }
+
+    @GetMapping("/my-attendance/full-view")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get own attendance records (full view with virtual rows)")
+    public ResponseEntity<Page<AttendanceResponse>> myAttendanceFullView(
+            Authentication auth,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status,
+            @org.springframework.data.web.PageableDefault(size = 20) org.springframework.data.domain.Pageable pageable) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(attendanceService.getFullView(
+                emp.getCompany().getId(), from, to, null, emp.getId(), status, pageable));
     }
 
     @GetMapping("/my-validation-requests")

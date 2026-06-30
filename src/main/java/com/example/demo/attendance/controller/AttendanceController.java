@@ -73,7 +73,7 @@ public class AttendanceController {
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) String status,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(attendanceService.getFullView(companyId, from, to, departmentId, status, pageable));
+        return ResponseEntity.ok(attendanceService.getFullView(companyId, from, to, departmentId, null, status, pageable));
     }
 
     @GetMapping("/calendar")

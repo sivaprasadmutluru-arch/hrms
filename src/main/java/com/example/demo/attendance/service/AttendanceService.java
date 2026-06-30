@@ -116,15 +116,20 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public Page<AttendanceResponse> getFullView(Long companyId, LocalDate from, LocalDate to,
-                                                Long departmentId, String statusFilter, Pageable pageable) {
+                                                Long departmentId, Long employeeId, String statusFilter, Pageable pageable) {
         LocalDate today = LocalDate.now();
         LocalDate start = from != null ? from : today;
         LocalDate end   = to   != null ? (to.isAfter(today) ? today : to) : today;
 
-        // All active employees (dept-filtered if provided)
-        List<Employee> employees = departmentId != null
-                ? employeeRepository.findByCompanyIdAndDepartmentIdAndIsActiveTrue(companyId, departmentId)
-                : employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        // All active employees (filtered by dept or single employee if provided)
+        List<Employee> employees;
+        if (employeeId != null) {
+            employees = employeeRepository.findById(employeeId).map(List::of).orElse(List.of());
+        } else if (departmentId != null) {
+            employees = employeeRepository.findByCompanyIdAndDepartmentIdAndIsActiveTrue(companyId, departmentId);
+        } else {
+            employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        }
 
         // Attendance records keyed by "employeeId_date"
         List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end);
@@ -165,7 +170,11 @@ public class AttendanceService {
                     LeaveRequest matchedLeave = leaveMap.getOrDefault(emp.getId(), List.of()).stream()
                             .filter(lr -> !finalCursor.isBefore(lr.getStartDate()) && !finalCursor.isAfter(lr.getEndDate()))
                             .findFirst().orElse(null);
-                    String ds = matchedLeave != null ? "ON_LEAVE" : holidayDates.contains(cursor) ? "HOLIDAY" : "ABSENT";
+                    boolean isWeekend = cursor.getDayOfWeek().getValue() >= 6; // 6=SAT, 7=SUN
+                    String ds = matchedLeave != null ? "ON_LEAVE"
+                              : holidayDates.contains(cursor) ? "HOLIDAY"
+                              : isWeekend ? "WEEK_OFF"
+                              : "ABSENT";
                     String leaveTypeName = matchedLeave != null && matchedLeave.getLeaveType() != null
                             ? matchedLeave.getLeaveType().getName() : null;
                     row = AttendanceResponse.fromVirtual(emp, cursor, ds, leaveTypeName);
@@ -1142,7 +1151,11 @@ public class AttendanceService {
                     LocalDate fc = cursor;
                     LeaveRequest ml = leaveMap.getOrDefault(emp.getId(), List.of()).stream()
                             .filter(lr -> !fc.isBefore(lr.getStartDate()) && !fc.isAfter(lr.getEndDate())).findFirst().orElse(null);
-                    String ds = ml != null ? "ON_LEAVE" : holidayDates.contains(cursor) ? "HOLIDAY" : "ABSENT";
+                    boolean isWeekend = cursor.getDayOfWeek().getValue() >= 6; // 6=SAT, 7=SUN
+                    String ds = ml != null ? "ON_LEAVE"
+                              : holidayDates.contains(cursor) ? "HOLIDAY"
+                              : isWeekend ? "WEEK_OFF"
+                              : "ABSENT";
                     String ltn = ml != null && ml.getLeaveType() != null ? ml.getLeaveType().getName() : null;
                     row = AttendanceResponse.fromVirtual(emp, cursor, ds, ltn);
                 }
@@ -1165,6 +1178,7 @@ public class AttendanceService {
             XSSFCellStyle regularStyle     = xlBadgeStyle(wb, "10B981");
             XSSFCellStyle irregularStyle   = xlBadgeStyle(wb, "EF4444");
             XSSFCellStyle regularisedStyle = xlBadgeStyle(wb, "6366F1");
+            XSSFCellStyle weekOffStyle     = xlBadgeStyle(wb, "6B7280");
             XSSFCellStyle absentStyle      = xlBadgeStyle(wb, "F87171");
             XSSFCellStyle leaveStyle       = xlBadgeStyle(wb, "818CF8");
             XSSFCellStyle holidayStyle     = xlBadgeStyle(wb, "9CA3AF");
@@ -1224,6 +1238,7 @@ public class AttendanceService {
                     case "ON_LEAVE"    -> r.getLeaveTypeName() != null ? r.getLeaveTypeName() : "On Leave";
                     case "ABSENT"      -> "Absent";
                     case "HOLIDAY"     -> "Holiday";
+                    case "WEEK_OFF"    -> "Week Off";
                     case "REGULAR"     -> "Regular";
                     case "IRREGULAR"   -> "Irregular";
                     case "REGULARISED" -> "Regularised";
@@ -1235,6 +1250,7 @@ public class AttendanceService {
                     case "IRREGULAR"   -> irregularStyle;
                     case "ABSENT"      -> absentStyle;
                     case "ON_LEAVE"    -> leaveStyle;
+                    case "WEEK_OFF"    -> weekOffStyle;
                     default            -> holidayStyle;
                 };
                 Cell statusCell = row.createCell(6);
