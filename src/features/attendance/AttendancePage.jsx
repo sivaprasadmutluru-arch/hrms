@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
+import { MapPinIcon } from '@heroicons/react/24/outline'
 import {
   fetchAll, fetchFullView, create,
   fetchLateComeEarlyOut, deleteLateComeEarlyOut,
-  fetchOvertime,
-  selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords,
+  fetchOvertime, fetchAttendanceActivities,
+  selectAll, selectLoading, selectPagination, selectLateComeEarlyOut, selectOvertimeRecords, selectActivities,
 } from './attendanceSlice'
 import { submitRequest } from './regularisationSlice'
 import { fetchAll as fetchDepartments } from '../departments/departmentsSlice'
@@ -20,22 +22,38 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Pagination from '../../components/common/Pagination'
 import SearchInput from '../../components/common/SearchInput'
-import { formatDate } from '../../utils/formatters'
+import { formatAttendanceTime, formatDate } from '../../utils/formatters'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import api from '../../services/api'
 
 const REQUEST_TYPES = [
-  { value: 'LATE_ARRIVAL',             label: 'Late Arrival' },
-  { value: 'MISSING_PUNCH',            label: 'Missing Punch' },
-  { value: 'WORKING_HOURS_CORRECTION', label: 'Working Hours Correction' },
-  { value: 'OVERTIME_REQUEST',         label: 'Overtime Request' },
-  { value: 'WRONG_STATUS',             label: 'Wrong Status' },
-  { value: 'HALF_TO_FULL_DAY',         label: 'Half Day → Full Day' },
-  { value: 'WORK_FROM_HOME',           label: 'Work From Home' },
-  { value: 'OFFICIAL_DUTY',            label: 'Official Duty' },
+  { value: 'LATE_ARRIVAL',             label: 'Late Arrival', description: 'Use when you checked in after the shift start time.' },
+  { value: 'MISSING_PUNCH',            label: 'Missing Punch', description: 'Use when check-in or check-out is missing.' },
+  { value: 'WORKING_HOURS_CORRECTION', label: 'Working Hours Correction', description: 'Use for early checkout or incorrect worked hours.' },
+  { value: 'OVERTIME_REQUEST',         label: 'Overtime Request', description: 'Use only for extra hours worked beyond the shift.' },
+  { value: 'WRONG_STATUS',             label: 'Wrong Status', description: 'Use when your punches are correct but the status is wrong.' },
+  { value: 'HALF_TO_FULL_DAY',         label: 'Half Day → Full Day', description: 'Use to request a half-day record be counted as full day.' },
+  { value: 'WORK_FROM_HOME',           label: 'Work From Home', description: 'Use when the work was completed remotely.' },
+  { value: 'OFFICIAL_DUTY',            label: 'Official Duty', description: 'Use for approved field work or client visits.' },
 ]
 
-const TABS = ['Attendance', 'Late / Early Out', 'Overtime']
+const TABS = ['Attendance', 'Punches', 'Late / Early Out', 'Overtime']
+
+function LocationLink({ latitude, longitude, address }) {
+  if (latitude == null || longitude == null) return <span className="text-gray-300 text-xs">—</span>
+  return (
+    <a
+      href={`https://maps.google.com/?q=${latitude},${longitude}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex max-w-64 items-start gap-1 text-xs text-indigo-600 hover:underline"
+      title={address || `${latitude}, ${longitude}`}
+    >
+      <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span className="line-clamp-2">{address || `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`}</span>
+    </a>
+  )
+}
 
 const QUALITY_COLORS = {
   REGULAR:      'success',
@@ -55,6 +73,7 @@ const REG_STATUS_COLORS = {
 
 export default function AttendancePage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { user, isEmployee, effectiveCompanyId } = useAuth()
   const companyId = effectiveCompanyId
   const isEmp = isEmployee()
@@ -63,6 +82,8 @@ export default function AttendancePage() {
   const pagination = useSelector(selectPagination)
   const lateComeEarlyOut = useSelector(selectLateComeEarlyOut)
   const overtimeRecords = useSelector(selectOvertimeRecords)
+  const activitiesState = useSelector(selectActivities)
+  const activities = activitiesState?.content || activitiesState || []
   const departments = useSelector(s => s.departments?.data || [])
   const employees = useSelector(s => s.employees?.data || [])
 
@@ -88,6 +109,7 @@ export default function AttendancePage() {
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: regRegister, handleSubmit: regHandleSubmit, watch: regWatch, reset: regReset, formState: { errors: regErrors } } = useForm()
   const selectedRegType = regWatch('requestType')
+  const selectedRegTypeInfo = REQUEST_TYPES.find(t => t.value === selectedRegType)
 
   useEffect(() => {
     dispatch(fetchLateComeEarlyOut())
@@ -190,6 +212,14 @@ export default function AttendancePage() {
     }
   }, [tab, dispatch, companyId])
 
+  useEffect(() => {
+    if (tab !== 'Punches') return
+    const params = { page: 0, size: 100, sort: 'attendanceDate,desc' }
+    if (filterDateFrom) params.from = filterDateFrom
+    if (filterDateTo) params.to = filterDateTo
+    dispatch(fetchAttendanceActivities(params))
+  }, [tab, dispatch, filterDateFrom, filterDateTo])
+
   const handleDeleteLate = (id) => {
     setConfirmModal({ open: true, id, action: 'deleteLate' })
   }
@@ -236,12 +266,13 @@ export default function AttendancePage() {
 
   const attendanceColumns = [
     { accessorKey: 'employeeName', header: 'Employee' },
+    { accessorKey: 'companyName', header: 'Branch', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'attendanceDate', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
-    { accessorKey: 'checkIn', header: 'Check In', cell: ({ getValue }) => getValue() || '—' },
-    { accessorKey: 'checkOut', header: 'Check Out', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'checkIn', header: 'Check In', cell: ({ row }) => formatAttendanceTime(row.original.checkIn, row.original.checkInUtc) },
+    { id: 'checkOut', header: 'Check Out', cell: ({ row }) => formatAttendanceTime(row.original.checkOut, row.original.checkOutUtc) },
     { id: 'source', header: 'Source', cell: ({ row }) => {
-      const src = row.original.clockInSource
-      const deviceName = row.original.clockInDeviceName
+      const src = row.original.clockOutSource || row.original.clockInSource
+      const deviceName = row.original.clockOutDeviceName || row.original.clockInDeviceName
       if (src === 'device') return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium" title={deviceName || 'Biometric Device'}>
           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
@@ -253,12 +284,24 @@ export default function AttendancePage() {
           <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />Mobile
         </span>
       )
-      return (
+      if (src === 'web') return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+          <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />Web
+        </span>
+      )
+      if (src === 'manual') return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 text-gray-600 rounded-full text-xs font-medium">
           <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" />Manual
         </span>
       )
+      return <span className="text-gray-300 text-xs">—</span>
     }},
+    { id: 'checkInLocation', header: 'Check In Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.checkInLatitude} longitude={row.original.checkInLongitude} address={row.original.checkInAddress} />
+    )},
+    { id: 'checkOutLocation', header: 'Check Out Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.checkOutLatitude} longitude={row.original.checkOutLongitude} address={row.original.checkOutAddress} />
+    )},
     { accessorKey: 'workedHour', header: 'Hours', cell: ({ getValue }) => {
       const v = getValue()
       if (!v && v !== 0) return '—'
@@ -289,14 +332,25 @@ export default function AttendancePage() {
         return <Badge label="Regularised" variant="success" />
       }
       if (rs === 'HAS_PENDING') {
-        return <Badge label="Pending" variant="warning" />
-      }
-      if (isEmp && as_ === 'IRREGULAR' && (!rs || rs === 'NONE')) {
+        if (isEmp) return <Badge label="Pending" variant="warning" />
         return (
-          <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec }) }}>
-            Request
-          </Button>
+          <button
+            className="text-xs font-medium text-amber-700 underline hover:text-amber-900"
+            onClick={() => navigate('/attendance/regularisation')}
+          >
+            Pending Approval
+          </button>
         )
+      }
+      if (as_ === 'IRREGULAR' && (!rs || rs === 'NONE')) {
+        if (isEmp) {
+          return (
+            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec }) }}>
+              Request
+            </Button>
+          )
+        }
+        return <span className="text-gray-400 text-xs italic">Awaiting Request</span>
       }
       return <span className="text-gray-300 text-xs">—</span>
     }},
@@ -349,6 +403,22 @@ export default function AttendancePage() {
     { accessorKey: 'year', header: 'Year' },
     { accessorKey: 'overtimeHours', header: 'OT Hours', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
     { id: 'status', header: 'Status', cell: () => <Badge label="Auto-Calculated" variant="success" /> },
+  ]
+
+  const activityColumns = [
+    { id: 'employee', header: 'Employee', cell: ({ row }) => {
+      const emp = row.original.employee
+      return emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || '—' : '—'
+    }},
+    { accessorKey: 'attendanceDate', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
+    { accessorKey: 'clockIn', header: 'Clock In', cell: ({ getValue }) => formatAttendanceTime(getValue()) },
+    { id: 'clockInLocation', header: 'Clock In Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.clockInLatitude} longitude={row.original.clockInLongitude} address={row.original.clockInAddress} />
+    )},
+    { accessorKey: 'clockOut', header: 'Clock Out', cell: ({ getValue }) => formatAttendanceTime(getValue()) },
+    { id: 'clockOutLocation', header: 'Clock Out Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.clockOutLatitude} longitude={row.original.clockOutLongitude} address={row.original.clockOutAddress} />
+    )},
   ]
 
   return (
@@ -456,6 +526,10 @@ export default function AttendancePage() {
         <DataTable columns={lateColumns} data={lateComeEarlyOut} loading={loading} />
       )}
 
+      {tab === 'Punches' && (
+        <DataTable columns={activityColumns} data={activities} loading={loading} />
+      )}
+
       {tab === 'Overtime' && (
         <DataTable columns={overtimeColumns} data={overtimeRecords} loading={loading} />
       )}
@@ -516,9 +590,18 @@ export default function AttendancePage() {
       >
         <div className="space-y-4">
           {regModal.record && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 text-sm text-yellow-800">
-              <span className="font-medium">{formatDate(regModal.record.attendanceDate)}</span>
-              {' — '}Check in: {regModal.record.checkIn || '—'} / Check out: {regModal.record.checkOut || '—'}
+            <div className="space-y-2">
+              <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 text-sm text-yellow-800">
+                <span className="font-medium">{formatDate(regModal.record.attendanceDate)}</span>
+                {' — '}Check in: {formatAttendanceTime(regModal.record.checkIn, regModal.record.checkInUtc)} / Check out: {formatAttendanceTime(regModal.record.checkOut, regModal.record.checkOutUtc)}
+              </div>
+              {regModal.record.checkOut && regModal.record.minimumHour > 0
+                && regModal.record.workedHour < regModal.record.minimumHour && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded px-3 py-2 text-sm text-indigo-800">
+                  <span className="font-semibold">Recommended: Working Hours Correction.</span>
+                  {' '}Your recorded hours are below the assigned shift hours. Choose Overtime only if you actually worked beyond the shift.
+                </div>
+              )}
             </div>
           )}
           <input type="hidden" {...regRegister('attendanceId')} />
@@ -529,9 +612,13 @@ export default function AttendancePage() {
               className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${regErrors.requestType ? 'border-red-500' : 'border-gray-300'}`}
             >
               <option value="">Select type</option>
-              {REQUEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {REQUEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label} — {t.description}</option>)}
             </select>
             {regErrors.requestType && <span className="text-red-500 text-xs mt-1 block">{regErrors.requestType.message}</span>}
+            {selectedRegTypeInfo && <p className="text-xs text-gray-500 mt-1">{selectedRegTypeInfo.description}</p>}
+            {selectedRegType === 'OVERTIME_REQUEST' && regModal.record?.attendanceStatus === 'IRREGULAR' && (
+              <p className="text-xs text-amber-700 mt-1 font-medium">Overtime approval will not correct late arrival, early checkout, or short hours.</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
@@ -547,12 +634,12 @@ export default function AttendancePage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check In</label>
-                <input type="datetime-local" {...regRegister('requestedCheckIn')}
+                <input type="time" {...regRegister('requestedCheckIn')}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check Out</label>
-                <input type="datetime-local" {...regRegister('requestedCheckOut')}
+                <input type="time" {...regRegister('requestedCheckOut')}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
             </div>

@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
+import { LogOut } from 'lucide-react'
 import api from '../../services/api'
 import { API_BASE_URL } from '../../config/constants'
 import { fetchMe } from '../auth/authSlice'
+import useAuth from '../../hooks/useAuth'
 import Avatar from '../../components/common/Avatar'
 import Badge from '../../components/common/Badge'
 import Button from '../../components/common/Button'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Modal from '../../components/common/Modal'
+import ConfirmModal from '../../components/common/ConfirmModal'
 import Spinner from '../../components/common/Spinner'
 import { formatStatus } from '../../utils/formatters'
 import AboutTab from './profile-tabs/AboutTab'
@@ -45,6 +48,7 @@ const TABS = [
 
 export default function MyProfilePage() {
   const dispatch = useDispatch()
+  const { logout } = useAuth()
   const profileFeatures = useSelector(selectProfileFeatures)
 
   const [profile, setProfile]     = useState(null)
@@ -52,6 +56,7 @@ export default function MyProfilePage() {
   const [activeTab, setActiveTab] = useState('about')
   const [modalOpen, setModalOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const photoInputRef = useRef(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -242,6 +247,10 @@ export default function MyProfilePage() {
           <Button className="w-full" onClick={() => setModalOpen(true)}>
             Edit Profile
           </Button>
+          <Button variant="secondary" className="w-full mt-2" onClick={() => setLogoutConfirmOpen(true)}>
+            <LogOut className="h-4 w-4 mr-1.5" strokeWidth={2} />
+            Logout
+          </Button>
         </div>
       </div>
 
@@ -320,6 +329,15 @@ export default function MyProfilePage() {
           )}
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={logoutConfirmOpen}
+        onClose={() => setLogoutConfirmOpen(false)}
+        onConfirm={logout}
+        title="Log out?"
+        message="Do you want to log out?"
+        confirmLabel="Log out"
+      />
     </div>
   )
 }

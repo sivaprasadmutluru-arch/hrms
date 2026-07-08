@@ -7,6 +7,7 @@ import { PageSkeleton } from '../common/Skeleton'
 import { selectIsAuthenticated, selectRoles, selectUser, fetchMe } from '../../features/auth/authSlice'
 import { fetchMyCompany, fetchMyCompanyInfo } from '../../features/companies/companiesSlice'
 import { fetchUnreadCount } from '../../features/notifications/notificationsSlice'
+import UnresolvedRegularisationReminder from '../../features/attendance/UnresolvedRegularisationReminder'
 
 export default function AppLayout() {
   const dispatch = useDispatch()
@@ -55,6 +56,7 @@ export default function AppLayout() {
           </Suspense>
         </main>
       </div>
+      {roles.includes('EMPLOYEE') && <UnresolvedRegularisationReminder />}
     </div>
   )
 }

@@ -30,12 +30,14 @@ export default function CompanySwitcher() {
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const scopeValidating = useSelector(selectScopeValidating)
   const [search, setSearch] = useState('')
+  const [selectedLogoLoadError, setSelectedLogoLoadError] = useState(false)
 
   useEffect(() => {
     dispatch(fetchAllCompaniesForScope())
   }, [dispatch])
 
   const selectedCompany = companies.find(c => String(c.id) === String(selectedCompanyId))
+  useEffect(() => { setSelectedLogoLoadError(false) }, [selectedCompany?.logoUrl])
 
   // Group + filter the list for the dropdown panel
   const { headOffices, branches } = useMemo(() => {
@@ -85,8 +87,8 @@ export default function CompanySwitcher() {
           >
             {scopeValidating
               ? <svg className="h-4 w-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-              : (selectedCompany?.logoUrl
-                  ? <img src={selectedCompany.logoUrl} alt="" className="h-4 w-4 rounded object-cover" />
+              : (selectedCompany?.logoUrl && !selectedLogoLoadError
+                  ? <img src={selectedCompany.logoUrl} alt="" className="h-4 w-4 rounded object-cover" onError={() => setSelectedLogoLoadError(true)} />
                   : <BuildingOffice2Icon className="h-4 w-4 text-gray-500" />)
             }
             <span className="max-w-[8.5rem] truncate">
@@ -175,6 +177,7 @@ function Group({ label }) {
 
 function CompanyRow({ company, selected, onSelect }) {
   const meta = TYPE_META[company.type] || TYPE_META.UNKNOWN
+  const [logoLoadError, setLogoLoadError] = useState(false)
   return (
     <MenuItem>
       {({ active, close }) => (
@@ -182,8 +185,8 @@ function CompanyRow({ company, selected, onSelect }) {
           onClick={() => onSelect(company.id, close)}
           className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${active ? 'bg-indigo-50' : ''} ${selected ? 'text-indigo-700 font-medium' : 'text-gray-700'}`}
         >
-          {company.logoUrl
-            ? <img src={company.logoUrl} alt="" className="h-7 w-7 rounded-md object-cover flex-shrink-0" />
+          {company.logoUrl && !logoLoadError
+            ? <img src={company.logoUrl} alt="" className="h-7 w-7 rounded-md object-cover flex-shrink-0" onError={() => setLogoLoadError(true)} />
             : <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-100 text-gray-500 font-semibold text-xs flex-shrink-0">{initials(company.name)}</span>
           }
           <span className="flex-1 min-w-0 text-left">

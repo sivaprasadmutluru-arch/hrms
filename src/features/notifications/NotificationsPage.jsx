@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { fetchAll, markRead, markAllRead, deleteNotification, deleteAllNotifications, selectAll, selectLoading } from './notificationsSlice'
 import api from '../../services/api'
 import PageHeader from '../../components/common/PageHeader'
@@ -13,8 +14,17 @@ import { BellIcon, CheckIcon, TrashIcon, XMarkIcon, PencilIcon } from '@heroicon
 import toast from 'react-hot-toast'
 import ConfirmModal from '../../components/common/ConfirmModal'
 
+// Maps a notification's relatedEntity to the page it should open when clicked.
+const RELATED_ENTITY_ROUTES = {
+  REGULARISATION_REQUEST: () => '/attendance/regularisation',
+  DocumentRequest:        () => '/documents/my',
+  DisciplinaryAction:     () => '/disciplinary-actions',
+  HrPolicy:               () => '/policies',
+}
+
 export default function NotificationsPage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const notifications = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const [confirmModal, setConfirmModal] = useState({ open: false })
@@ -56,6 +66,12 @@ export default function NotificationsPage() {
     finally { setConfirmModal({ open: false }) }
   }
 
+  const handleOpen = (n) => {
+    if (!n.isRead) handleMarkRead(n.id)
+    const resolveRoute = RELATED_ENTITY_ROUTES[n.relatedEntity]
+    if (resolveRoute) navigate(resolveRoute(n))
+  }
+
   if (loading) return <Spinner className="py-16" />
 
   return (
@@ -75,35 +91,42 @@ export default function NotificationsPage() {
         <EmptyState title="No notifications" description="You're all caught up!" />
       ) : (
         <div className="space-y-2">
-          {notifications.map(n => (
-            <Card key={n.id} className={`transition-colors ${!n.isRead ? 'border-l-4 border-l-indigo-500' : ''}`}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${!n.isRead ? 'bg-indigo-100' : 'bg-gray-100'}`}>
-                    <BellIcon className={`h-4 w-4 ${!n.isRead ? 'text-indigo-600' : 'text-gray-400'}`} />
+          {notifications.map(n => {
+            const clickable = !!RELATED_ENTITY_ROUTES[n.relatedEntity]
+            return (
+              <Card
+                key={n.id}
+                onClick={clickable ? () => handleOpen(n) : undefined}
+                className={`transition-colors ${!n.isRead ? 'border-l-4 border-l-indigo-500' : ''} ${clickable ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${!n.isRead ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                      <BellIcon className={`h-4 w-4 ${!n.isRead ? 'text-indigo-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <p className={`text-sm ${!n.isRead ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{n.title}</p>
+                      {n.message && <p className="text-sm text-gray-500 mt-0.5">{n.message}</p>}
+                      <p className="text-xs text-gray-400 mt-1">{formatDateTime(n.createdAt)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className={`text-sm ${!n.isRead ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{n.title || n.message}</p>
-                    {n.body && <p className="text-sm text-gray-500 mt-0.5">{n.body}</p>}
-                    <p className="text-xs text-gray-400 mt-1">{formatDateTime(n.createdAt)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {!n.isRead && (
-                    <button onClick={() => handleMarkRead(n.id)} className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
-                      Mark read
+                  <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    {!n.isRead && (
+                      <button onClick={() => handleMarkRead(n.id)} className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                        Mark read
+                      </button>
+                    )}
+                    <button onClick={() => openEdit(n)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500 transition-colors" title="Edit">
+                      <PencilIcon className="h-4 w-4" />
                     </button>
-                  )}
-                  <button onClick={() => openEdit(n)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500 transition-colors" title="Edit">
-                    <PencilIcon className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => handleDelete(n.id)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
+                    <button onClick={() => handleDelete(n.id)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors">
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       )}
       <Modal

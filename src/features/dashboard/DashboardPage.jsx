@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import toast from 'react-hot-toast'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -27,7 +28,8 @@ import { fetchEmployeeDashboard } from '../employees/employeesSlice'
 import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, selectCalendarDays, selectCalendarLoading } from '../attendance/attendanceSlice'
 import { fetchMyAttendance, fetchClockStatus, checkIn, checkOut, selectEssAttendance, selectEssClockStatus, fetchMyWorkInfo, selectEssWorkInfo } from '../ess/essSlice'
 import { fetchAll as fetchNotifications, markAllRead as markAllNotificationsRead, selectAll as selectNotifications } from '../notifications/notificationsSlice'
-import { formatDate } from '../../utils/formatters'
+import { formatAttendanceTime, formatDate } from '../../utils/formatters'
+import { getCurrentCoords } from '../../utils/geolocation'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
 
@@ -136,18 +138,30 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
   const handleCheckIn = async () => {
     setActionLoading(true)
-    await dispatch(checkIn({}))
-    await dispatch(fetchClockStatus())
-    dispatch(fetchMyAttendance())
-    setActionLoading(false)
+    try {
+      const coords = await getCurrentCoords()
+      await dispatch(checkIn(coords)).unwrap()
+      await dispatch(fetchClockStatus())
+      dispatch(fetchMyAttendance())
+    } catch (message) {
+      toast.error(message || 'Check-in failed')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   const handleCheckOut = async () => {
     setActionLoading(true)
-    await dispatch(checkOut())
-    await dispatch(fetchClockStatus())
-    dispatch(fetchMyAttendance())
-    setActionLoading(false)
+    try {
+      const coords = await getCurrentCoords()
+      await dispatch(checkOut(coords)).unwrap()
+      await dispatch(fetchClockStatus())
+      dispatch(fetchMyAttendance())
+    } catch (message) {
+      toast.error(message || 'Check-out failed')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   return (
@@ -168,18 +182,14 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">First In</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">
-                {myRecord.checkInUtc
-                  ? new Date(myRecord.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
-                  : (myRecord.checkIn ? String(myRecord.checkIn).substring(0, 5) : '—')}
+                {formatAttendanceTime(myRecord.checkIn, myRecord.checkInUtc)}
               </p>
             </div>
             {myRecord.checkOut && (
               <div>
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Last Out</p>
                 <p className="text-sm font-semibold text-gray-900 mt-0.5">
-                  {myRecord.checkOutUtc
-                    ? new Date(myRecord.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
-                    : (myRecord.checkOut ? String(myRecord.checkOut).substring(0, 5) : '—')}
+                  {formatAttendanceTime(myRecord.checkOut, myRecord.checkOutUtc)}
                 </p>
               </div>
             )}
@@ -668,60 +678,6 @@ function DeptManagerDashboard({ leave, headcount }) {
   )
 }
 
-// ─── Welcome banner — employees only ─────────────────────────────────────────
-function WelcomeBanner({ user, today, workInfo }) {
-  const now = new Date()
-  const dayName = now.toLocaleDateString('en', { weekday: 'long' })
-  const dateStr = `${String(now.getDate()).padStart(2, '0')} ${now.toLocaleDateString('en', { month: 'short' })} ${now.getFullYear()}`
-  const myRecord = user?.employeeId ? (today || []).find(r => r.employeeId === user.employeeId) : null
-  const attendanceStatus = myRecord?.checkIn ? 'PRESENT' : null
-  const checkIn = myRecord?.checkIn || null
-  // Prefer shift from today's attendance record; fall back to employee's assigned shift from work info
-  const shiftName = myRecord?.shiftName || workInfo?.shiftName || null
-  const shiftStart = null
-  const shiftEnd = null
-
-  return (
-    <div className="flex flex-col xl:flex-row gap-6 mb-6">
-      <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center gap-5">
-        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-          <UsersIcon className="w-8 h-8 text-gray-400" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-indigo-700">Welcome, {user?.firstName || user?.name?.split(' ')[0] || user?.username?.split('@')[0] || 'there'}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{dayName} &bull; {dateStr}</p>
-          <p className="text-sm text-gray-400 mt-0.5">Reporting Manager – {user?.reportingManager || 'None'}</p>
-        </div>
-      </div>
-      <div className="xl:w-80 bg-indigo-600 rounded-2xl p-5 text-white flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-indigo-200">Attendance Status</span>
-          <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-            attendanceStatus === 'PRESENT' ? 'bg-green-400 text-white' :
-            attendanceStatus === 'ABSENT'  ? 'bg-red-400 text-white' :
-            'bg-white/20 text-white'
-          }`}>
-            {attendanceStatus || 'Absent'}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-indigo-300">Clock In</p>
-            <p className="text-lg font-bold mt-0.5">{checkIn || '--:--'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-indigo-300">Shift</p>
-            <p className="text-sm font-bold mt-0.5">{shiftName || '—'}</p>
-            {shiftStart && shiftEnd && (
-              <p className="text-xs text-indigo-300 mt-0.5">{shiftStart} – {shiftEnd}</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Personal attendance section — shown for ALL roles ────────────────────────
 function PersonalAttendanceSection({ attendanceDashboard }) {
   const dispatch = useDispatch()
@@ -902,8 +858,6 @@ export default function DashboardPage() {
   const branchesSummary = useSelector(selectBranchesSummary)
   const employeeDashboard = useSelector(s => s.employees.employeeDashboard)
   const attendanceDashboard = useSelector(s => s.attendance.dashboard)
-  const todayAttendance = useSelector(s => s.attendance.today)
-  const myWorkInfo = useSelector(selectEssWorkInfo)
 
   const isSuperAdmin = isPlatformAdmin()
   const isEntAdmin = isEnterpriseAdmin()
@@ -911,7 +865,9 @@ export default function DashboardPage() {
   const isHR = isHRManager()
   const isAcc = isAccountant()
   const isDeptMgr = isDeptManager()
-  const isEmployee = !isSuperAdmin && !isEntAdmin && !isBranchMgr && !isHR && !isAcc && !isDeptMgr
+  // Reports/employee-dashboard/attendance-dashboard endpoints require admin/manager
+  // authority — plain employees 403 on them, so gate the fetches accordingly.
+  const isManagerTier = isSuperAdmin || isEntAdmin || isBranchMgr || isHR || isAcc || isDeptMgr
 
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const isSuperAdminViewingCompany = isSuperAdmin && !!selectedCompanyId
@@ -934,18 +890,20 @@ export default function DashboardPage() {
   useEffect(() => {
     dispatch(fetchLeave({ page: 0, size: 10 }))
     dispatch(fetchTickets({ page: 0, size: 10 }))
-    dispatch(fetchHeadcountReport({}))
-    dispatch(fetchAttendanceReport({ from: weekAgo, to: today }))
-    if (effectiveCompanyId) {
+    if (isManagerTier) {
+      dispatch(fetchHeadcountReport({}))
+      dispatch(fetchAttendanceReport({ from: weekAgo, to: today }))
+    }
+    if (effectiveCompanyId && isManagerTier) {
       dispatch(fetchEmployeeDashboard({ companyId: effectiveCompanyId }))
       dispatch(fetchAttendanceDashboard({ companyId: effectiveCompanyId, date: today }))
       dispatch(fetchToday({ companyId: effectiveCompanyId }))
-      if (user?.employeeId) dispatch(fetchMyWorkInfo())
     }
+    if (user?.employeeId) dispatch(fetchMyWorkInfo())
     if (isSuperAdmin && !selectedCompanyId) dispatch(fetchOrganizations({ page: 0, size: 100 }))
     if (isSuperAdminViewingCompany) dispatch(fetchBranchesSummary(effectiveHeadOfficeId))
     if (isEntAdmin && headOfficeId) dispatch(fetchBranchesSummary(headOfficeId))
-  }, [dispatch, isSuperAdmin, isEntAdmin, effectiveCompanyId, selectedCompanyId, effectiveHeadOfficeId])
+  }, [dispatch, isSuperAdmin, isEntAdmin, isManagerTier, effectiveCompanyId, selectedCompanyId, effectiveHeadOfficeId, user?.employeeId])
 
   const subtitle = isSuperAdminViewingCompany
     ? 'Company admin view — head office & branches'
@@ -971,9 +929,6 @@ export default function DashboardPage() {
         <div className="flex-1 flex"><WelcomeHeader /></div>
         <div className="flex"><CheckInOutWidget user={user} /></div>
       </div>
-
-      {/* Employee-only: welcome banner + today's attendance status */}
-      {isEmployee && <WelcomeBanner user={user} today={todayAttendance} workInfo={myWorkInfo} />}
 
       {/* Personal attendance calendar + quick actions + notifications — all roles */}
       <PersonalAttendanceSection attendanceDashboard={attendanceDashboard} />

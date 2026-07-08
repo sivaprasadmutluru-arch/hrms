@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchMyWorkInfo, selectEssWorkInfo } from '../../features/ess/essSlice'
 import Avatar from './Avatar'
@@ -17,6 +17,9 @@ export default function WelcomeHeader() {
   const firstName = user?.firstName || user?.username || 'there'
   const companyName = user?.companyName
   const companyLogoUrl = user?.companyLogoUrl
+  const [logoLoadError, setLogoLoadError] = useState(false)
+
+  useEffect(() => { setLogoLoadError(false) }, [companyLogoUrl])
 
   // Compute profile photo URL from user.photoPath
   const photoUrl = user?.photoPath
@@ -52,8 +55,13 @@ export default function WelcomeHeader() {
         <p className="text-sm font-semibold text-gray-800 mt-0.5">{dateStr}</p>
         {companyName && (
           <div className="flex items-center justify-end gap-1.5 mt-1">
-            {companyLogoUrl && (
-              <img src={companyLogoUrl} alt="logo" className="h-3.5 w-3.5 rounded object-contain" />
+            {companyLogoUrl && !logoLoadError && (
+              <img
+                src={companyLogoUrl}
+                alt="logo"
+                className="h-3.5 w-3.5 rounded object-contain"
+                onError={() => setLogoLoadError(true)}
+              />
             )}
             <p className="text-xs text-gray-400">{companyName}</p>
           </div>

@@ -21,65 +21,43 @@ export const submitRequest = createAsyncThunk('regularisation/submit', async (da
   }
 })
 
-// ─── Manager ──────────────────────────────────────────────────────────────────
-
-export const fetchPendingManager = createAsyncThunk('regularisation/fetchPendingManager', async (_, { rejectWithValue }) => {
+export const fetchUnresolvedRegularisations = createAsyncThunk('regularisation/fetchUnresolved', async (_, { rejectWithValue }) => {
   try {
-    const res = await api.get('/attendance/regularisation/pending-manager')
+    const res = await api.get('/attendance/regularisation/unresolved')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch unresolved attendance')
+  }
+})
+
+// ─── Admin / HR Manager ─────────────────────────────────────────────────────────
+
+export const fetchPendingApproval = createAsyncThunk('regularisation/fetchPendingApproval', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/attendance/regularisation/pending-approval', { params: { companyId } })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch pending requests')
   }
 })
 
-export const approveByManager = createAsyncThunk('regularisation/approveByManager', async ({ id, remarks }, { rejectWithValue }) => {
+export const approveRequest = createAsyncThunk('regularisation/approve', async ({ id, remarks }, { rejectWithValue }) => {
   try {
-    const res = await api.post(`/attendance/regularisation/${id}/approve-manager`, { remarks })
+    const res = await api.post(`/attendance/regularisation/${id}/approve`, { remarks })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to approve')
   }
 })
 
-export const rejectByManager = createAsyncThunk('regularisation/rejectByManager', async ({ id, remarks }, { rejectWithValue }) => {
+export const rejectRequest = createAsyncThunk('regularisation/reject', async ({ id, remarks }, { rejectWithValue }) => {
   try {
-    const res = await api.post(`/attendance/regularisation/${id}/reject-manager`, { remarks })
+    const res = await api.post(`/attendance/regularisation/${id}/reject`, { remarks })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to reject')
   }
 })
-
-// ─── HR ───────────────────────────────────────────────────────────────────────
-
-export const fetchPendingHR = createAsyncThunk('regularisation/fetchPendingHR', async (companyId, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/attendance/regularisation/pending-hr', { params: { companyId } })
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to fetch HR pending requests')
-  }
-})
-
-export const approveByHR = createAsyncThunk('regularisation/approveByHR', async ({ id, remarks }, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/regularisation/${id}/approve-hr`, { remarks })
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to approve')
-  }
-})
-
-export const rejectByHR = createAsyncThunk('regularisation/rejectByHR', async ({ id, remarks }, { rejectWithValue }) => {
-  try {
-    const res = await api.post(`/attendance/regularisation/${id}/reject-hr`, { remarks })
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to reject')
-  }
-})
-
-// ─── HR / Admin ───────────────────────────────────────────────────────────────
 
 export const fetchAllForCompany = createAsyncThunk('regularisation/fetchAll', async (companyId, { rejectWithValue }) => {
   try {
@@ -106,10 +84,10 @@ const regularisationSlice = createSlice({
   name: 'regularisation',
   initialState: {
     myRequests: [],
-    pendingManager: [],
-    pendingHR: [],
+    pendingApproval: [],
     allRequests: [],
-    pendingCounts: { pendingManager: 0, pendingHR: 0 },
+    unresolved: [],
+    pendingCounts: { pendingApproval: 0 },
     loading: false,
     error: null,
   },
@@ -126,50 +104,33 @@ const regularisationSlice = createSlice({
       .addCase(submitRequest.fulfilled, (state, action) => {
         state.loading = false
         state.myRequests.unshift(action.payload)
+        state.unresolved = state.unresolved.filter(u => u.attendanceId !== action.payload.attendanceId)
       })
       .addCase(submitRequest.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
-      // Pending manager
-      .addCase(fetchPendingManager.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(fetchPendingManager.fulfilled, (state, action) => { state.loading = false; state.pendingManager = action.payload })
-      .addCase(fetchPendingManager.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      // Unresolved (reminder)
+      .addCase(fetchUnresolvedRegularisations.fulfilled, (state, action) => { state.unresolved = action.payload })
 
-      .addCase(approveByManager.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(approveByManager.fulfilled, (state, action) => {
+      // Pending approval
+      .addCase(fetchPendingApproval.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchPendingApproval.fulfilled, (state, action) => { state.loading = false; state.pendingApproval = action.payload })
+      .addCase(fetchPendingApproval.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(approveRequest.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(approveRequest.fulfilled, (state, action) => {
         state.loading = false
-        state.pendingManager = state.pendingManager.filter(r => r.id !== action.payload.id)
-        if (state.pendingCounts.pendingManager > 0) state.pendingCounts.pendingManager--
+        state.pendingApproval = state.pendingApproval.filter(r => r.id !== action.payload.id)
+        if (state.pendingCounts.pendingApproval > 0) state.pendingCounts.pendingApproval--
       })
-      .addCase(approveByManager.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(approveRequest.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
-      .addCase(rejectByManager.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(rejectByManager.fulfilled, (state, action) => {
+      .addCase(rejectRequest.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(rejectRequest.fulfilled, (state, action) => {
         state.loading = false
-        state.pendingManager = state.pendingManager.filter(r => r.id !== action.payload.id)
-        if (state.pendingCounts.pendingManager > 0) state.pendingCounts.pendingManager--
+        state.pendingApproval = state.pendingApproval.filter(r => r.id !== action.payload.id)
+        if (state.pendingCounts.pendingApproval > 0) state.pendingCounts.pendingApproval--
       })
-      .addCase(rejectByManager.rejected, (state, action) => { state.loading = false; state.error = action.payload })
-
-      // Pending HR
-      .addCase(fetchPendingHR.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(fetchPendingHR.fulfilled, (state, action) => { state.loading = false; state.pendingHR = action.payload })
-      .addCase(fetchPendingHR.rejected, (state, action) => { state.loading = false; state.error = action.payload })
-
-      .addCase(approveByHR.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(approveByHR.fulfilled, (state, action) => {
-        state.loading = false
-        state.pendingHR = state.pendingHR.filter(r => r.id !== action.payload.id)
-        if (state.pendingCounts.pendingHR > 0) state.pendingCounts.pendingHR--
-      })
-      .addCase(approveByHR.rejected, (state, action) => { state.loading = false; state.error = action.payload })
-
-      .addCase(rejectByHR.pending, (state) => { state.loading = true; state.error = null })
-      .addCase(rejectByHR.fulfilled, (state, action) => {
-        state.loading = false
-        state.pendingHR = state.pendingHR.filter(r => r.id !== action.payload.id)
-        if (state.pendingCounts.pendingHR > 0) state.pendingCounts.pendingHR--
-      })
-      .addCase(rejectByHR.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(rejectRequest.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       // All company requests
       .addCase(fetchAllForCompany.pending, (state) => { state.loading = true; state.error = null })
@@ -182,9 +143,9 @@ const regularisationSlice = createSlice({
 })
 
 export const selectMyRequests = (state) => state.regularisation.myRequests
-export const selectPendingManager = (state) => state.regularisation.pendingManager
-export const selectPendingHR = (state) => state.regularisation.pendingHR
+export const selectPendingApproval = (state) => state.regularisation.pendingApproval
 export const selectAllRequests = (state) => state.regularisation.allRequests
+export const selectUnresolved = (state) => state.regularisation.unresolved
 export const selectPendingCounts = (state) => state.regularisation.pendingCounts
 export const selectRegLoading = (state) => state.regularisation.loading
 export default regularisationSlice.reducer

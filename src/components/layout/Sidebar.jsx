@@ -10,6 +10,7 @@ import {
 import { useSelector } from 'react-redux'
 import useAuth from '../../hooks/useAuth'
 import Avatar from '../common/Avatar'
+import ConfirmModal from '../common/ConfirmModal'
 import { APP_NAME, API_BASE_URL } from '../../config/constants'
 import { selectPlatformCompanies } from '../../features/platform/platformSlice'
 
@@ -264,12 +265,12 @@ function getNavSections(auth) {
           { label: 'Companies', to: '/companies', icon: Building2 },
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
-          ADMIN_EMPLOYEE_GROUP,
         ],
       },
       {
         title: 'Workforce',
         items: [
+          ADMIN_EMPLOYEE_GROUP,
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
@@ -330,12 +331,12 @@ function getNavSections(auth) {
           { label: 'Companies', to: '/companies', icon: Building2 },
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
-          ADMIN_EMPLOYEE_GROUP,
         ],
       },
       {
         title: 'Workforce',
         items: [
+          ADMIN_EMPLOYEE_GROUP,
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
@@ -393,12 +394,12 @@ function getNavSections(auth) {
         items: [
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
-          ADMIN_EMPLOYEE_GROUP,
         ],
       },
       {
         title: 'Workforce',
         items: [
+          ADMIN_EMPLOYEE_GROUP,
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP,
@@ -456,12 +457,12 @@ function getNavSections(auth) {
         items: [
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
-          ADMIN_EMPLOYEE_GROUP,
         ],
       },
       {
         title: 'Workforce',
         items: [
+          ADMIN_EMPLOYEE_GROUP,
           ATTENDANCE_GROUP,
           LEAVE_GROUP,
           PAYROLL_GROUP_HR,
@@ -619,6 +620,7 @@ function getNavSections(auth) {
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [openGroups, setOpenGroups] = useState(new Set())
   const location = useLocation()
   const auth = useAuth()
@@ -650,6 +652,9 @@ export default function Sidebar() {
     ? (selectedCompanyScope?.logoUrl
         || (selectedCompanyFull?.logoPath ? `/api/files/${selectedCompanyFull.logoPath}` : null))
     : (user?.companyLogoUrl || null)
+
+  const [logoLoadError, setLogoLoadError] = useState(false)
+  useEffect(() => { setLogoLoadError(false) }, [displayLogoUrl])
 
   const sections = getNavSections(auth)
 
@@ -740,11 +745,12 @@ export default function Sidebar() {
       {/* ── Logo / Brand ─────────────────────────────────────────────── */}
       <div className={`relative flex items-center border-b border-white/[0.08] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
         <div className={`flex items-center ${collapsed ? '' : 'gap-2.5'} min-w-0`}>
-          {displayLogoUrl ? (
+          {displayLogoUrl && !logoLoadError ? (
             <img
               src={displayLogoUrl}
               alt="Company logo"
               className="h-8 w-8 rounded-lg object-contain flex-shrink-0 bg-white/10 p-1"
+              onError={() => setLogoLoadError(true)}
             />
           ) : (
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#6B4EFF] to-[#5B3FFF] shadow-lg shadow-[#6B4EFF]/30">
@@ -829,6 +835,7 @@ export default function Sidebar() {
                                 <NavLink
                                   key={child.to}
                                   to={child.to}
+                                  end
                                   className={({ isActive }) =>
                                     `flex items-center rounded-lg px-3 py-1.5 text-[13px] transition-all duration-200 ${
                                       isActive
@@ -911,7 +918,7 @@ export default function Sidebar() {
                 <p className="truncate text-xs capitalize text-white/[0.60]">{user?.role?.replace(/_/g, ' ')}</p>
               </div>
               <button
-                onClick={logout}
+                onClick={() => setLogoutConfirmOpen(true)}
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white/[0.60] transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
                 title="Logout"
                 aria-label="Logout"
@@ -922,7 +929,7 @@ export default function Sidebar() {
           )}
           {collapsed && (
             <button
-              onClick={logout}
+              onClick={() => setLogoutConfirmOpen(true)}
               className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-white/[0.60] opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
               title="Logout"
               aria-label="Logout"
@@ -933,6 +940,14 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+      <ConfirmModal
+        open={logoutConfirmOpen}
+        onClose={() => setLogoutConfirmOpen(false)}
+        onConfirm={logout}
+        title="Log out?"
+        message="Do you want to log out?"
+        confirmLabel="Log out"
+      />
     </>
   )
 }

@@ -35,6 +35,7 @@ export default function GeoFencingPage() {
         longitude: config.longitude,
         radiusInMeters: config.radiusInMeters,
         start: config.start,
+        enforceGeofence: config.enforceGeofence,
       })
     }
   }, [config, reset])
@@ -47,6 +48,7 @@ export default function GeoFencingPage() {
         longitude: parseFloat(data.longitude),
         radiusInMeters: parseInt(data.radiusInMeters),
         start: data.start === true || data.start === 'true',
+        enforceGeofence: data.enforceGeofence === true || data.enforceGeofence === 'true',
         company: { id: user?.companyId },
       })).unwrap()
       toast.success('Geofencing configuration saved')
@@ -89,6 +91,16 @@ export default function GeoFencingPage() {
               <input type="checkbox" {...register('start')} className="rounded" />
               Enable Geofencing
             </label>
+            <label className="flex items-start gap-2 text-sm font-medium text-gray-700">
+              <input type="checkbox" {...register('enforceGeofence')} className="rounded mt-0.5" />
+              <span>
+                Block clock-in/out outside the fence
+                <span className="block text-xs font-normal text-gray-400 mt-0.5">
+                  When on, employees clocking in/out from the web without location access, or from
+                  outside the radius above, will be rejected. Admin-entered attendance is never blocked.
+                </span>
+              </span>
+            </label>
             <div className="flex gap-3">
               <Button onClick={handleSubmit(onSubmit)} disabled={loading}>Save Configuration</Button>
               {config && (
@@ -102,6 +114,7 @@ export default function GeoFencingPage() {
               <p><span className="font-medium">Status:</span> {config.start ? 'Active' : 'Inactive'}</p>
               <p><span className="font-medium">Location:</span> {config.latitude}, {config.longitude}</p>
               <p><span className="font-medium">Radius:</span> {config.radiusInMeters}m</p>
+              <p><span className="font-medium">Enforcement:</span> {config.enforceGeofence ? 'Blocking' : 'Flag only'}</p>
             </div>
           )}
         </div>

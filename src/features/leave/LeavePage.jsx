@@ -26,6 +26,11 @@ import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
+import {
+  fetchAll as fetchEmployees,
+  fetchAllGlobal as fetchEmployeesGlobal,
+  selectAll as selectEmployees,
+} from '../employees/employeesSlice'
 
 const ALL_TABS = ['Requests', 'Allocations', 'Balance']
 const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
@@ -33,7 +38,8 @@ const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 export default function LeavePage() {
   const dispatch = useDispatch()
   const { user, effectiveCompanyId, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
-  const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const platformAdmin = isPlatformAdmin()
+  const canManage = platformAdmin || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -43,6 +49,7 @@ export default function LeavePage() {
   const comments = useSelector(selectLeaveRequestComments)
   const conditionApprovals = useSelector(selectConditionApprovals)
   const leaveRequestFiles = useSelector(selectLeaveRequestFiles)
+  const employees = useSelector(selectEmployees)
 
   const [tab, setTab] = useState('Requests')
   const [modalOpen, setModalOpen] = useState(false)
@@ -69,6 +76,7 @@ export default function LeavePage() {
   const [balanceSearch, setBalanceSearch] = useState('')
   const [requestSearch, setRequestSearch] = useState('')
   const [allocationSearch, setAllocationSearch] = useState('')
+  const [employeeSearch, setEmployeeSearch] = useState('')
 
   const openBalanceEdit = (a) => {
     setBalanceEditTarget(a)
@@ -114,7 +122,11 @@ export default function LeavePage() {
     }
   }
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
+    defaultValues: { applyFor: 'self' },
+  })
+  const applyFor = watch('applyFor')
+  const selectedEmployeeId = watch('employeeId')
   const { register: regApproval, handleSubmit: handleApprovalSubmit, reset: resetApproval, formState: { errors: approvalErrors } } = useForm()
 
   useEffect(() => {
@@ -123,6 +135,15 @@ export default function LeavePage() {
     dispatch(fetchLeaveAllocations())
     dispatch(fetchLeaveBalance())
   }, [dispatch])
+
+  useEffect(() => {
+    if (!canManage) return
+    if (platformAdmin && !effectiveCompanyId) {
+      dispatch(fetchEmployeesGlobal({ page: 0, size: 500 }))
+    } else {
+      dispatch(fetchEmployees({ companyId: effectiveCompanyId, page: 0, size: 500 }))
+    }
+  }, [dispatch, canManage, effectiveCompanyId, platformAdmin])
 
   const openDetail = (request) => {
     setSelectedRequest(request)
@@ -239,8 +260,18 @@ export default function LeavePage() {
         toast.success('Leave request updated')
         setEditTarget(null)
       } else {
-        await dispatch(create({ ...formData, companyId: effectiveCompanyId })).unwrap()
-        toast.success('Leave applied')
+        const payload = {
+          leaveTypeId: formData.leaveTypeId,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          description: formData.description,
+          companyId: effectiveCompanyId,
+        }
+        if (canManage && formData.applyFor === 'employee') {
+          payload.employeeId = Number(formData.employeeId)
+        }
+        await dispatch(create(payload)).unwrap()
+        toast.success(formData.applyFor === 'employee' ? 'Leave applied for employee' : 'Leave applied')
       }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 20 }))
@@ -320,10 +351,32 @@ export default function LeavePage() {
     { accessorKey: 'year', header: 'Year' },
   ]
 
+  const filteredEmployees = employees.filter(employee => {
+    const query = employeeSearch.trim().toLowerCase()
+    if (!query) return true
+    return [
+      employee.fullName,
+      `${employee.firstName || ''} ${employee.lastName || ''}`,
+      employee.badgeId,
+      employee.workEmail,
+      employee.email,
+    ].some(value => String(value || '').toLowerCase().includes(query))
+  })
+
+  const employeeLabel = employee => {
+    const name = employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || `Employee #${employee.id}`
+    return employee.badgeId ? `${name} (${employee.badgeId})` : name
+  }
+
   return (
     <div>
       <PageHeader title="Leave Management" subtitle="Requests, types, and allocations"
-        actions={<Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Apply Leave</Button>} />
+        actions={<Button onClick={() => {
+          setEditTarget(null)
+          setEmployeeSearch('')
+          reset({ applyFor: 'self', employeeId: '', leaveTypeId: '', startDate: '', endDate: '', description: '' })
+          setModalOpen(true)
+        }}>+ Apply Leave</Button>} />
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {(isEmployee() ? EMPLOYEE_TABS : ALL_TABS).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -498,6 +551,62 @@ export default function LeavePage() {
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Leave Request' : 'Apply for Leave'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Submit'}</Button></div>}>
         <div className="space-y-4">
+          {!editTarget && canManage && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Apply leave for</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${applyFor !== 'employee' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'}`}>
+                    <input type="radio" value="self" {...register('applyFor')} />
+                    <span className="text-sm">Me</span>
+                  </label>
+                  <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${applyFor === 'employee' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'}`}>
+                    <input type="radio" value="employee" {...register('applyFor')} />
+                    <span className="text-sm">Another employee</span>
+                  </label>
+                </div>
+              </div>
+              {applyFor === 'employee' && (
+                <div className="space-y-2">
+                  <Input
+                    label="Search employee"
+                    placeholder="Search by name, employee ID, or email"
+                    value={employeeSearch}
+                    onChange={event => {
+                      setEmployeeSearch(event.target.value)
+                      setValue('employeeId', '', { shouldValidate: false })
+                    }}
+                    error={errors.employeeId?.message}
+                  />
+                  <input type="hidden" {...register('employeeId', {
+                    validate: value => applyFor !== 'employee' || Boolean(value) || 'Search and select an employee',
+                  })} />
+                  {employeeSearch.trim() && !selectedEmployeeId && (
+                    <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+                      {filteredEmployees.length > 0 ? filteredEmployees.slice(0, 10).map(employee => (
+                        <button
+                          type="button"
+                          key={employee.id}
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 border-b border-gray-100 last:border-b-0"
+                          onClick={() => {
+                            setEmployeeSearch(employeeLabel(employee))
+                            setValue('employeeId', String(employee.id), { shouldValidate: true })
+                          }}
+                        >
+                          <span className="font-medium text-gray-800">{employeeLabel(employee)}</span>
+                          {(employee.workEmail || employee.email) && (
+                            <span className="block text-xs text-gray-500">{employee.workEmail || employee.email}</span>
+                          )}
+                        </button>
+                      )) : (
+                        <p className="px-3 py-3 text-sm text-gray-500">No employees found</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <Select label="Leave Type" options={leaveTypes.map(lt => ({ value: lt.id, label: lt.name }))} error={errors.leaveTypeId?.message} {...register('leaveTypeId', { required: 'Required' })} />
           <Input label="Start Date" type="date" error={errors.startDate?.message} {...register('startDate', { required: 'Required' })} />
           <Input label="End Date" type="date" error={errors.endDate?.message} {...register('endDate', { required: 'Required' })} />

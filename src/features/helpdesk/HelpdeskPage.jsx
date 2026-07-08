@@ -15,10 +15,12 @@ import Pagination from '../../components/common/Pagination'
 import SearchInput from '../../components/common/SearchInput'
 import { formatDate } from '../../utils/formatters'
 import { STATUS_COLORS, TICKET_PRIORITIES } from '../../config/constants'
+import useAuth from '../../hooks/useAuth'
 
 export default function HelpdeskPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -28,14 +30,17 @@ export default function HelpdeskPage() {
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 20 })) }, [dispatch])
 
   const onSubmit = async (formData) => {
-    try { await dispatch(create(formData)).unwrap(); toast.success('Ticket created'); setModalOpen(false); dispatch(fetchAll({ page: 0, size: 20 })) }
-    catch (e) { toast.error(e || 'Error') }
+    try {
+      await dispatch(create({ ...formData, company: { id: user?.companyId } })).unwrap()
+      toast.success('Ticket created')
+      setModalOpen(false)
+      dispatch(fetchAll({ page: 0, size: 20 }))
+    } catch (e) { toast.error(e || 'Error') }
   }
 
   const columns = [
-    { accessorKey: 'ticketNumber', header: '#', cell: ({ getValue }) => <span className="font-mono text-xs text-gray-500">{getValue()}</span> },
-    { accessorKey: 'subject', header: 'Subject', cell: ({ getValue }) => <span className="font-medium">{getValue()}</span> },
-    { accessorKey: 'category', header: 'Category' },
+    { accessorKey: 'id', header: '#', cell: ({ getValue }) => <span className="font-mono text-xs text-gray-500">#{getValue()}</span> },
+    { accessorKey: 'title', header: 'Subject', cell: ({ getValue }) => <span className="font-medium">{getValue()}</span> },
     { accessorKey: 'priority', header: 'Priority', cell: ({ getValue }) => <Badge label={getValue() || 'MEDIUM'} variant={getValue() === 'HIGH' || getValue() === 'URGENT' ? 'danger' : 'warning'} /> },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Open'} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'warning'} /> },
     { accessorKey: 'createdAt', header: 'Created', cell: ({ getValue }) => formatDate(getValue()) },
@@ -52,10 +57,7 @@ export default function HelpdeskPage() {
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Submit</Button></div>}>
         <div className="space-y-4">
           <Input label="Subject" error={errors.subject?.message} {...register('subject', { required: 'Required' })} />
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Priority" options={TICKET_PRIORITIES} {...register('priority')} />
-            <Select label="Category" options={['IT', 'HR', 'PAYROLL', 'FACILITIES', 'OTHER']} {...register('category')} />
-          </div>
+          <Select label="Priority" options={TICKET_PRIORITIES} {...register('priority')} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" rows={4} {...register('description')} />

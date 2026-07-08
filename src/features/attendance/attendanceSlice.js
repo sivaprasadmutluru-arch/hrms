@@ -568,7 +568,7 @@ const attendanceSlice = createSlice({
       .addCase(fetchAttendanceActivities.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchAttendanceActivities.fulfilled, (state, action) => {
         state.loading = false
-        state.activities = action.payload
+        state.activities = action.payload.content || action.payload
       })
       .addCase(fetchAttendanceActivities.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 

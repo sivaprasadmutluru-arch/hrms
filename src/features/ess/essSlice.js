@@ -64,9 +64,9 @@ export const checkIn = createAsyncThunk('ess/checkIn', async (data, { rejectWith
   }
 })
 
-export const checkOut = createAsyncThunk('ess/checkOut', async (_, { rejectWithValue }) => {
+export const checkOut = createAsyncThunk('ess/checkOut', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/ess/check-out')
+    const res = await api.post('/ess/check-out', data || {})
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Check-out failed')
@@ -160,6 +160,10 @@ const essSlice = createSlice({
       .addCase(fetchMyPayslips.rejected, rejected)
 
       .addCase(fetchMyWorkInfo.fulfilled, (state, action) => { state.workInfo = action.payload })
+      // 404 means no work-info record exists yet — clear any stale value from a
+      // previous fetch/session instead of leaving misleading data on screen
+      // (e.g. an old "General Shift" name after the shift was actually unassigned).
+      .addCase(fetchMyWorkInfo.rejected, (state) => { state.workInfo = null })
 
       .addCase(fetchClockStatus.fulfilled, (state, action) => { state.clockStatus = action.payload })
   },

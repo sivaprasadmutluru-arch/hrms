@@ -80,7 +80,9 @@ export default function MyDocumentsPage() {
       setModalOpen(false)
       reset()
       setRespondingTo(null)
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) {
+      toast.error(typeof e === 'string' ? e : (e?.response?.data?.message || e?.message || 'Failed to submit document'))
+    }
   }
 
   const columns = [

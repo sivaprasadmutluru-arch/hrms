@@ -4,10 +4,9 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   fetchMyRequests, submitRequest,
-  fetchPendingManager, approveByManager, rejectByManager,
-  fetchPendingHR, approveByHR, rejectByHR,
+  fetchPendingApproval, approveRequest, rejectRequest,
   fetchAllForCompany,
-  selectMyRequests, selectPendingManager, selectPendingHR, selectAllRequests, selectRegLoading,
+  selectMyRequests, selectPendingApproval, selectAllRequests, selectRegLoading,
 } from './regularisationSlice'
 import { fetchAll as fetchAttendance, selectAll as selectAttendance } from './attendanceSlice'
 import useAuth from '../../hooks/useAuth'
@@ -30,40 +29,56 @@ const REQUEST_TYPES = [
 ]
 
 const STATUS_COLORS = {
-  PENDING_MANAGER:       'warning',
-  APPROVED_BY_MANAGER:   'accent',
-  PENDING_HR:            'warning',
-  APPROVED:              'success',
-  REJECTED:              'danger',
+  PENDING:  'warning',
+  APPROVED: 'success',
+  REJECTED: 'danger',
 }
 
 const STATUS_LABELS = {
-  PENDING_MANAGER:       'Pending Manager',
-  APPROVED_BY_MANAGER:   'Manager Approved',
-  PENDING_HR:            'Pending HR',
-  APPROVED:              'Approved',
-  REJECTED:              'Rejected',
+  PENDING:  'Pending Approval',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
 }
 
-function RemarksModal({ open, onClose, onConfirm, title, loading }) {
+function RemarksModal({ open, onClose, onConfirm, title, loading, required = false }) {
   const [remarks, setRemarks] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setRemarks('')
+      setError('')
+    }
+  }, [open])
+
+  const confirm = () => {
+    if (required && !remarks.trim()) {
+      setError('Rejection reason is required')
+      return
+    }
+    onConfirm(remarks.trim())
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={title}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => { onConfirm(remarks); setRemarks('') }} loading={loading}>Confirm</Button>
+          <Button onClick={confirm} loading={loading}>Confirm</Button>
         </div>
       }>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (optional)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Remarks {required ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal">(optional)</span>}
+        </label>
         <textarea
           value={remarks}
-          onChange={e => setRemarks(e.target.value)}
+          onChange={e => { setRemarks(e.target.value); setError('') }}
           rows={3}
-          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="Enter remarks..."
+          className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${error ? 'border-red-500' : 'border-gray-300'}`}
+          placeholder={required ? 'Enter the rejection reason...' : 'Enter remarks...'}
         />
+        {error && <span className="text-red-500 text-xs mt-1 block">{error}</span>}
       </div>
     </Modal>
   )
@@ -71,23 +86,23 @@ function RemarksModal({ open, onClose, onConfirm, title, loading }) {
 
 export default function AttendanceRegularisationPage() {
   const dispatch = useDispatch()
-  const { isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, effectiveCompanyId } = useAuth()
+  const {
+    isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin,
+    effectiveCompanyId,
+  } = useAuth()
   const companyId = effectiveCompanyId
   const isEmp = isEmployee()
-  const isManager = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const canApprove = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
   const loading = useSelector(selectRegLoading)
   const myRequests = useSelector(selectMyRequests)
-  const pendingManager = useSelector(selectPendingManager)
-  const pendingHR = useSelector(selectPendingHR)
+  const pendingApproval = useSelector(selectPendingApproval)
   const allRequests = useSelector(selectAllRequests)
   const attendanceRecords = useSelector(selectAttendance)
 
   // Tabs visible to the current user
   const tabs = [
     'My Requests',
-    ...(isManager ? ['Pending My Approval'] : []),
-    ...(isManager ? ['Pending HR'] : []),
-    ...(isManager ? ['All Requests'] : []),
+    ...(canApprove ? ['Pending Approval', 'All Requests'] : []),
   ]
   const [tab, setTab] = useState('My Requests')
   const [submitOpen, setSubmitOpen] = useState(false)
@@ -107,8 +122,7 @@ export default function AttendanceRegularisationPage() {
   }, [dispatch])
 
   useEffect(() => {
-    if (tab === 'Pending My Approval') dispatch(fetchPendingManager())
-    if (tab === 'Pending HR' && companyId) dispatch(fetchPendingHR(companyId))
+    if (tab === 'Pending Approval' && companyId) dispatch(fetchPendingApproval(companyId))
     if (tab === 'All Requests' && companyId) dispatch(fetchAllForCompany(companyId))
   }, [tab, dispatch, companyId])
 
@@ -129,11 +143,13 @@ export default function AttendanceRegularisationPage() {
 
   const onConfirmRemarks = async (remarks) => {
     const { id, action } = remarksModal
+    if (action === 'reject' && !remarks.trim()) {
+      toast.error('Rejection reason is required')
+      return
+    }
     try {
-      if (action === 'approve-manager') await dispatch(approveByManager({ id, remarks })).unwrap()
-      else if (action === 'reject-manager') await dispatch(rejectByManager({ id, remarks })).unwrap()
-      else if (action === 'approve-hr') await dispatch(approveByHR({ id, remarks })).unwrap()
-      else if (action === 'reject-hr') await dispatch(rejectByHR({ id, remarks })).unwrap()
+      if (action === 'approve') await dispatch(approveRequest({ id, remarks })).unwrap()
+      else if (action === 'reject') await dispatch(rejectRequest({ id, remarks })).unwrap()
       toast.success('Done')
       setRemarksModal({ open: false, id: null, action: null })
     } catch (e) { toast.error(e || 'Failed') }
@@ -155,25 +171,12 @@ export default function AttendanceRegularisationPage() {
     }},
   ]
 
-  const managerActionColumns = [
+  const approvalActionColumns = [
     ...baseColumns,
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
-        <Button size="sm" variant="success" onClick={() => handleAction(row.original.id, 'approve-manager')}>Approve</Button>
-        <Button size="sm" variant="danger" onClick={() => handleAction(row.original.id, 'reject-manager')}>Reject</Button>
-      </div>
-    )},
-  ]
-
-  const hrActionColumns = [
-    ...baseColumns,
-    { id: 'managerRemarks', header: 'Manager Remarks', cell: ({ row }) => (
-      <span className="text-xs text-gray-500">{row.original.managerRemarks || '—'}</span>
-    )},
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="success" onClick={() => handleAction(row.original.id, 'approve-hr')}>Approve</Button>
-        <Button size="sm" variant="danger" onClick={() => handleAction(row.original.id, 'reject-hr')}>Reject</Button>
+        <Button size="sm" variant="success" onClick={() => handleAction(row.original.id, 'approve')}>Approve</Button>
+        <Button size="sm" variant="danger" onClick={() => handleAction(row.original.id, 'reject')}>Reject</Button>
       </div>
     )},
   ]
@@ -219,11 +222,8 @@ export default function AttendanceRegularisationPage() {
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             {t}
-            {t === 'Pending My Approval' && pendingManager.length > 0 && (
-              <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingManager.length}</span>
-            )}
-            {t === 'Pending HR' && pendingHR.length > 0 && (
-              <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingHR.length}</span>
+            {t === 'Pending Approval' && pendingApproval.length > 0 && (
+              <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingApproval.length}</span>
             )}
           </button>
         ))}
@@ -245,12 +245,8 @@ export default function AttendanceRegularisationPage() {
         </>
       )}
 
-      {tab === 'Pending My Approval' && (
-        <DataTable columns={managerActionColumns} data={pendingManager} loading={loading} />
-      )}
-
-      {tab === 'Pending HR' && (
-        <DataTable columns={hrActionColumns} data={pendingHR} loading={loading} />
+      {tab === 'Pending Approval' && (
+        <DataTable columns={approvalActionColumns} data={pendingApproval} loading={loading} />
       )}
 
       {tab === 'All Requests' && (
@@ -323,7 +319,7 @@ export default function AttendanceRegularisationPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check In</label>
                 <input
-                  type="datetime-local"
+                  type="time"
                   {...register('requestedCheckIn')}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
@@ -331,7 +327,7 @@ export default function AttendanceRegularisationPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check Out</label>
                 <input
-                  type="datetime-local"
+                  type="time"
                   {...register('requestedCheckOut')}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
@@ -376,6 +372,7 @@ export default function AttendanceRegularisationPage() {
           remarksModal.action?.includes('approve') ? 'Approve Request' : 'Reject Request'
         }
         loading={loading}
+        required={remarksModal.action?.includes('reject')}
       />
     </div>
   )

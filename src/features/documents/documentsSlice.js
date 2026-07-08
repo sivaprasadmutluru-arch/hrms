@@ -48,7 +48,8 @@ export const fetchMyDocuments = createAsyncThunk('documents/fetchMine', async (_
 
 export const createDocument = createAsyncThunk('documents/create', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/documents', data)
+    const { requestConfig, ...document } = data
+    const res = await api.post('/documents', document, requestConfig)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to submit document')

@@ -246,9 +246,9 @@ export default function AttendanceDashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">
                 Pending Regularisations
-                {(pendingCounts.pendingManager > 0 || pendingCounts.pendingHR > 0) && (
+                {pendingCounts.pendingApproval > 0 && (
                   <span className="ml-2 bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                    {pendingCounts.pendingManager + pendingCounts.pendingHR}
+                    {pendingCounts.pendingApproval}
                   </span>
                 )}
               </h3>
@@ -263,17 +263,10 @@ export default function AttendanceDashboardPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-100">
                 <div>
-                  <p className="text-sm font-medium text-gray-800">Awaiting Your Approval</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Requests pending manager review</p>
+                  <p className="text-sm font-medium text-gray-800">Pending Approval</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Requests awaiting admin/HR review</p>
                 </div>
-                <span className="text-2xl font-bold text-yellow-600">{pendingCounts.pendingManager}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                <div>
-                  <p className="text-sm font-medium text-gray-800">Awaiting HR Verification</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Manager approved, pending HR</p>
-                </div>
-                <span className="text-2xl font-bold text-indigo-600">{pendingCounts.pendingHR}</span>
+                <span className="text-2xl font-bold text-yellow-600">{pendingCounts.pendingApproval}</span>
               </div>
               {irregularToday > 0 && (
                 <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">

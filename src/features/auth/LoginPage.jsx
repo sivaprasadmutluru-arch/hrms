@@ -22,7 +22,7 @@ export default function LoginPage() {
     } else if (result.payload === 'ORGANIZATION_SUSPENDED') {
       navigate('/suspended', { replace: true })
     } else {
-      toast.error(result.payload || 'Login failed')
+      toast.error(result.payload || 'Login failed', { duration: 6000 })
     }
   }
 

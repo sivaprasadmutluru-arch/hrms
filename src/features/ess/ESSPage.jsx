@@ -14,10 +14,28 @@ import Modal from '../../components/common/Modal'
 import PdfPreviewModal from '../../components/common/PdfPreviewModal'
 import Select from '../../components/common/Select'
 import Input from '../../components/common/Input'
-import { formatDate } from '../../utils/formatters'
+import { formatAttendanceTime, formatDate } from '../../utils/formatters'
+import { getCurrentCoords } from '../../utils/geolocation'
 import useCurrency from '../../hooks/useCurrency'
+import { MapPinIcon } from '@heroicons/react/24/outline'
 
 const TABS = ['Profile', 'My Leave', 'My Attendance', 'My Payslips']
+
+function LocationLink({ latitude, longitude, address }) {
+  if (latitude == null || longitude == null) return <span className="text-gray-300 text-xs">—</span>
+  return (
+    <a
+      href={`https://maps.google.com/?q=${latitude},${longitude}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex max-w-56 items-start gap-1 text-xs text-indigo-600 hover:underline"
+      title={address || `${latitude}, ${longitude}`}
+    >
+      <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span className="line-clamp-2">{address || `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`}</span>
+    </a>
+  )
+}
 
 const STATUS_COLORS = {
   approved: 'success', rejected: 'danger', pending: 'warning',
@@ -179,7 +197,8 @@ function AttendanceTab({ attendance, loading }) {
 
   const handleCheckIn = async () => {
     try {
-      await dispatch(checkIn({})).unwrap()
+      const coords = await getCurrentCoords()
+      await dispatch(checkIn(coords)).unwrap()
       toast.success('Checked in successfully')
       dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
@@ -188,7 +207,8 @@ function AttendanceTab({ attendance, loading }) {
 
   const handleCheckOut = async () => {
     try {
-      await dispatch(checkOut()).unwrap()
+      const coords = await getCurrentCoords()
+      await dispatch(checkOut(coords)).unwrap()
       toast.success('Checked out successfully')
       dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
@@ -222,29 +242,37 @@ function AttendanceTab({ attendance, loading }) {
         <table className="min-w-full divide-y divide-gray-100">
           <thead className="bg-gray-50">
             <tr>
-              {['Date', 'Check In', 'Check Out', 'Hours Worked', 'Status'].map(h => (
+              {['Date', 'Check In', 'Check In Location', 'Check Out', 'Check Out Location', 'Hours Worked', 'Status'].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {attendance.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No attendance records found</td></tr>
-            ) : attendance.map(a => (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">No attendance records found</td></tr>
+            ) : attendance.map(a => {
+              return (
               <tr key={a.id} className="hover:bg-gray-50/50">
                 <td className="px-4 py-3 text-sm text-gray-700">{formatDate(a.attendanceDate)}</td>
                 <td className="px-4 py-3 text-sm text-gray-700">
-                  {a.checkInUtc ? new Date(a.checkInUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) : (a.checkIn || '—')}
+                  {formatAttendanceTime(a.checkIn, a.checkInUtc)}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <LocationLink latitude={a.checkInLatitude} longitude={a.checkInLongitude} address={a.checkInAddress} />
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">
-                  {a.checkOutUtc ? new Date(a.checkOutUtc).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) : (a.checkOut || '—')}
+                  {formatAttendanceTime(a.checkOut, a.checkOutUtc)}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <LocationLink latitude={a.checkOutLatitude} longitude={a.checkOutLongitude} address={a.checkOutAddress} />
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">{a.workedHour != null ? `${Number(a.workedHour).toFixed(1)}h` : '—'}</td>
                 <td className="px-4 py-3">
                   <Badge label={a.attendanceValidated ? 'Validated' : 'Pending'} variant={a.attendanceValidated ? 'success' : 'warning'} />
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
