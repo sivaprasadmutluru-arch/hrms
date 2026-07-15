@@ -51,6 +51,16 @@ export const remove = createAsyncThunk('employees/remove', async (id, { rejectWi
   }
 })
 
+// PLATFORM_SUPER_ADMIN only — irreversible, deletes the employee and all dependent records.
+export const hardDelete = createAsyncThunk('employees/hardDelete', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/employees/${id}/permanent`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to permanently delete employee')
+  }
+})
+
 export const uploadPhoto = createAsyncThunk('employees/uploadPhoto', async ({ id, file }, { rejectWithValue }) => {
   try {
     const formData = new FormData()
@@ -234,6 +244,13 @@ const employeesSlice = createSlice({
         state.data = state.data.filter(e => e.id !== action.payload)
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(hardDelete.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(hardDelete.fulfilled, (state, action) => {
+        state.loading = false
+        state.data = state.data.filter(e => e.id !== action.payload)
+      })
+      .addCase(hardDelete.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(uploadPhoto.pending, (state) => { state.loading = true; state.error = null })
       .addCase(uploadPhoto.fulfilled, (state, action) => {

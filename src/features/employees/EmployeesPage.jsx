@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
@@ -62,7 +62,7 @@ const StatCard = memo(function StatCard({ label, value, icon, color }) {
   )
 })
 
-const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, onView, onEdit, onDelete, isOnline }) {
+const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canHardDelete, onView, onEdit, onDelete, onHardDelete, isOnline }) {
   return (
     <div
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
@@ -172,6 +172,17 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, onV
             </button>
           </div>
         )}
+        {canHardDelete && (
+          <div className="pt-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onHardDelete(employee) }}
+              className="w-full py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors"
+              title="Permanently delete — cannot be undone"
+            >
+              Delete Permanently
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -206,6 +217,7 @@ export default function EmployeesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [hardDeleteTarget, setHardDeleteTarget] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [search, setSearch] = useState('')
@@ -395,6 +407,15 @@ export default function EmployeesPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
+  const handleHardDelete = async () => {
+    try {
+      await dispatch(hardDelete(hardDeleteTarget.id)).unwrap()
+      toast.success('Employee permanently deleted')
+      setHardDeleteTarget(null)
+      load(0)
+    } catch (e) { toast.error(e || 'Error') }
+  }
+
   const onlineSet = new Set(onlineEmployeeIds)
 
   const filtered = employees.filter(e => {
@@ -487,6 +508,11 @@ export default function EmployeesPage() {
               <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
               <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Remove</Button>
             </>
+          )}
+          {isPlatformAdmin() && (
+            <Button size="sm" variant="danger" onClick={() => setHardDeleteTarget(row.original)} title="Permanently delete — cannot be undone">
+              Delete Permanently
+            </Button>
           )}
         </div>
       ),
@@ -701,10 +727,12 @@ export default function EmployeesPage() {
               employee={emp}
               role={roleByEmail[emp.email]}
               canManage={canManage}
+              canHardDelete={isPlatformAdmin()}
               isOnline={onlineSet.has(emp.id)}
               onView={(e) => navigate(`/employees/${e.id}${e.companyId ? `?companyId=${e.companyId}` : ''}`)}
               onEdit={openEdit}
               onDelete={setDeleteTarget}
+              onHardDelete={setHardDeleteTarget}
             />
           ))}
         </div>
@@ -761,6 +789,15 @@ export default function EmployeesPage() {
         title="Remove Employee"
         message={`Remove "${deleteTarget?.fullName}"? This will deactivate their account.`}
         confirmLabel="Remove"
+      />
+
+      <ConfirmModal
+        open={!!hardDeleteTarget}
+        onClose={() => setHardDeleteTarget(null)}
+        onConfirm={handleHardDelete}
+        title="Delete Employee Permanently"
+        message={`Permanently delete "${hardDeleteTarget?.fullName}"? This removes the employee and ALL related records (attendance, payroll, leave, documents, etc.) forever. This cannot be undone.`}
+        confirmLabel="Delete Permanently"
       />
 
       {showBulkUpdate && (

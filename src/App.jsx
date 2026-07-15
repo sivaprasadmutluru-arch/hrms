@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import AppLayout from './components/layout/AppLayout'
@@ -132,11 +132,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/suspended" element={<SuspendedPage />} />
-        <Route path="/" element={<AppLayout />}>
+      <Suspense fallback={<div className="min-h-screen bg-white" />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/suspended" element={<SuspendedPage />} />
+          <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="forbidden" element={<ForbiddenPage />} />
@@ -286,9 +287,10 @@ export default function App() {
           <Route path="roles/user-groups" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<UserGroupsPage />} />} />
           <Route path="attendance/shift-allocations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<ShiftAllocationsPage />} />} />
           <Route path="attendance/rotating-shifts" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<RotatingShiftAssignsPage />} />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+          </Route>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

@@ -15,8 +15,8 @@ import PdfPreviewModal from '../../components/common/PdfPreviewModal'
 import Select from '../../components/common/Select'
 import Input from '../../components/common/Input'
 import { formatAttendanceTime, formatDate } from '../../utils/formatters'
-import { getCurrentCoords } from '../../utils/geolocation'
 import useCurrency from '../../hooks/useCurrency'
+import { useLocationPermission } from '../../hooks/useLocationPermission'
 import { MapPinIcon } from '@heroicons/react/24/outline'
 
 const TABS = ['Profile', 'My Leave', 'My Attendance', 'My Payslips']
@@ -183,6 +183,7 @@ function AttendanceTab({ attendance, loading }) {
   const clockStatus = useSelector(selectEssClockStatus)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const { requestCoords, LocationModal } = useLocationPermission()
 
   useEffect(() => {
     dispatch(fetchClockStatus())
@@ -197,7 +198,7 @@ function AttendanceTab({ attendance, loading }) {
 
   const handleCheckIn = async () => {
     try {
-      const coords = await getCurrentCoords()
+      const coords = await requestCoords()
       await dispatch(checkIn(coords)).unwrap()
       toast.success('Checked in successfully')
       dispatch(fetchClockStatus())
@@ -207,7 +208,7 @@ function AttendanceTab({ attendance, loading }) {
 
   const handleCheckOut = async () => {
     try {
-      const coords = await getCurrentCoords()
+      const coords = await requestCoords()
       await dispatch(checkOut(coords)).unwrap()
       toast.success('Checked out successfully')
       dispatch(fetchClockStatus())
@@ -217,6 +218,7 @@ function AttendanceTab({ attendance, loading }) {
 
   return (
     <div className="space-y-4">
+      <LocationModal />
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">From</label>

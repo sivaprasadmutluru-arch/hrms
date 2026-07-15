@@ -327,12 +327,17 @@ export default function AttendancePage() {
       const rec = row.original
       const rs = rec.regularisationStatus
       const as_ = rec.attendanceStatus
+      // HR/Admin roles are gated out of self-filing below (they use Edit instead) — but an
+      // HR/Admin is very often also an employee with their own attendance, so let them file a
+      // request on their own row the same way a plain employee would.
+      const isOwnRecord = user?.employeeId != null && rec.employeeId === user.employeeId
+      const canRequest = isEmp || isOwnRecord
 
       if (rs === 'REGULARISED' || as_ === 'REGULARISED') {
         return <Badge label="Regularised" variant="success" />
       }
       if (rs === 'HAS_PENDING') {
-        if (isEmp) return <Badge label="Pending" variant="warning" />
+        if (canRequest) return <Badge label="Pending" variant="warning" />
         return (
           <button
             className="text-xs font-medium text-amber-700 underline hover:text-amber-900"
@@ -343,9 +348,22 @@ export default function AttendancePage() {
         )
       }
       if (as_ === 'IRREGULAR' && (!rs || rs === 'NONE')) {
-        if (isEmp) {
+        if (canRequest) {
           return (
-            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec }) }}>
+            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec, noAttendance: false }) }}>
+              Request
+            </Button>
+          )
+        }
+        return <span className="text-gray-400 text-xs italic">Awaiting Request</span>
+      }
+      // No attendance row yet (Absent / On Leave / Holiday / Week Off) — employee can claim they
+      // were actually present that day.
+      const ds = rec.displayStatus
+      if (!rec.id && ['ABSENT', 'ON_LEAVE', 'HOLIDAY', 'WEEK_OFF'].includes(ds) && (!rs || rs === 'NONE')) {
+        if (canRequest) {
+          return (
+            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceDate: rec.attendanceDate }); setRegModal({ open: true, record: rec, noAttendance: true }) }}>
               Request
             </Button>
           )
@@ -578,7 +596,10 @@ export default function AttendancePage() {
             <Button variant="secondary" onClick={() => { setRegModal({ open: false, record: null }); regReset() }}>Cancel</Button>
             <Button onClick={regHandleSubmit(async (data) => {
               try {
-                await dispatch(submitRequest(data)).unwrap()
+                const payload = { ...data }
+                if (regModal.noAttendance) delete payload.attendanceId
+                else delete payload.attendanceDate
+                await dispatch(submitRequest(payload)).unwrap()
                 toast.success('Regularisation request submitted')
                 setRegModal({ open: false, record: null })
                 regReset()
@@ -593,9 +614,15 @@ export default function AttendancePage() {
             <div className="space-y-2">
               <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 text-sm text-yellow-800">
                 <span className="font-medium">{formatDate(regModal.record.attendanceDate)}</span>
-                {' — '}Check in: {formatAttendanceTime(regModal.record.checkIn, regModal.record.checkInUtc)} / Check out: {formatAttendanceTime(regModal.record.checkOut, regModal.record.checkOutUtc)}
+                {regModal.noAttendance ? (
+                  <>{' — '}Currently marked <span className="font-medium">{{
+                    ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEK_OFF: 'Week Off',
+                  }[regModal.record.displayStatus] || regModal.record.displayStatus}</span>. No attendance record exists for this day yet.</>
+                ) : (
+                  <>{' — '}Check in: {formatAttendanceTime(regModal.record.checkIn, regModal.record.checkInUtc)} / Check out: {formatAttendanceTime(regModal.record.checkOut, regModal.record.checkOutUtc)}</>
+                )}
               </div>
-              {regModal.record.checkOut && regModal.record.minimumHour > 0
+              {!regModal.noAttendance && regModal.record.checkOut && regModal.record.minimumHour > 0
                 && regModal.record.workedHour < regModal.record.minimumHour && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded px-3 py-2 text-sm text-indigo-800">
                   <span className="font-semibold">Recommended: Working Hours Correction.</span>
@@ -605,6 +632,7 @@ export default function AttendancePage() {
             </div>
           )}
           <input type="hidden" {...regRegister('attendanceId')} />
+          <input type="hidden" {...regRegister('attendanceDate')} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Request Type</label>
             <select
@@ -612,7 +640,10 @@ export default function AttendancePage() {
               className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${regErrors.requestType ? 'border-red-500' : 'border-gray-300'}`}
             >
               <option value="">Select type</option>
-              {REQUEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label} — {t.description}</option>)}
+              {(regModal.noAttendance
+                ? REQUEST_TYPES.filter(t => ['MISSING_PUNCH', 'WORK_FROM_HOME', 'OFFICIAL_DUTY'].includes(t.value))
+                : REQUEST_TYPES
+              ).map(t => <option key={t.value} value={t.value}>{t.label} — {t.description}</option>)}
             </select>
             {regErrors.requestType && <span className="text-red-500 text-xs mt-1 block">{regErrors.requestType.message}</span>}
             {selectedRegTypeInfo && <p className="text-xs text-gray-500 mt-1">{selectedRegTypeInfo.description}</p>}
@@ -630,12 +661,15 @@ export default function AttendancePage() {
             />
             {regErrors.reason && <span className="text-red-500 text-xs mt-1 block">{regErrors.reason.message}</span>}
           </div>
-          {['MISSING_PUNCH', 'WORKING_HOURS_CORRECTION'].includes(selectedRegType) && (
+          {(regModal.noAttendance || ['MISSING_PUNCH', 'WORKING_HOURS_CORRECTION'].includes(selectedRegType)) && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check In</label>
-                <input type="time" {...regRegister('requestedCheckIn')}
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Requested Check In{regModal.noAttendance && <span className="text-red-500"> *</span>}
+                </label>
+                <input type="time" {...regRegister('requestedCheckIn', { required: regModal.noAttendance ? 'Check-in time is required' : false })}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                {regErrors.requestedCheckIn && <span className="text-red-500 text-xs mt-1 block">{regErrors.requestedCheckIn.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Requested Check Out</label>

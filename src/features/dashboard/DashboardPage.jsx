@@ -29,9 +29,9 @@ import { fetchAttendanceDashboard, fetchNotIn, fetchCalendar, fetchToday, select
 import { fetchMyAttendance, fetchClockStatus, checkIn, checkOut, selectEssAttendance, selectEssClockStatus, fetchMyWorkInfo, selectEssWorkInfo } from '../ess/essSlice'
 import { fetchAll as fetchNotifications, markAllRead as markAllNotificationsRead, selectAll as selectNotifications } from '../notifications/notificationsSlice'
 import { formatAttendanceTime, formatDate } from '../../utils/formatters'
-import { getCurrentCoords } from '../../utils/geolocation'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
+import { useLocationPermission } from '../../hooks/useLocationPermission'
 
 // ─── Attendance calendar helpers (used inline on dashboard) ───────────────────
 const CAL_DAY_TYPE = {
@@ -91,6 +91,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
   const workInfo = useSelector(selectEssWorkInfo)
   const [actionLoading, setActionLoading] = useState(false)
   const [elapsed, setElapsed] = useState('')
+  const { requestCoords, LocationModal } = useLocationPermission()
 
   useEffect(() => {
     function computeElapsed() {
@@ -139,7 +140,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
   const handleCheckIn = async () => {
     setActionLoading(true)
     try {
-      const coords = await getCurrentCoords()
+      const coords = await requestCoords()
       await dispatch(checkIn(coords)).unwrap()
       await dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
@@ -153,7 +154,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
   const handleCheckOut = async () => {
     setActionLoading(true)
     try {
-      const coords = await getCurrentCoords()
+      const coords = await requestCoords()
       await dispatch(checkOut(coords)).unwrap()
       await dispatch(fetchClockStatus())
       dispatch(fetchMyAttendance())
@@ -166,6 +167,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-6 w-full">
+      <LocationModal />
       {/* Clock — isolated in its own component so the 1s tick only re-renders this tiny node */}
       <div className="flex-shrink-0">
         <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Current Time</p>
