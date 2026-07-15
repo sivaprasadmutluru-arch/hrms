@@ -20,10 +20,12 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
 import com.example.demo.base.repository.WorkTypeRepository;
 import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.leave.entity.Holiday;
 import com.example.demo.leave.entity.HolidayAllocation;
 import com.example.demo.leave.entity.LeaveRequest;
@@ -62,6 +64,7 @@ public class AttendanceService {
 
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
+    private final EmployeeWorkInformationRepository employeeWorkInformationRepository;
     private final CompanyRepository companyRepository;
     private final ShiftScheduleRepository shiftScheduleRepository;
     private final WorkTypeRepository workTypeRepository;
@@ -75,6 +78,9 @@ public class AttendanceService {
     private final AttendanceValidationConditionRepository validationConditionRepository;
 
     private final AttendanceActivityRepository attendanceActivityRepository;
+    private final AttendanceRegularisationRequestRepository regularisationRequestRepository;
+    private final com.example.demo.geofencing.service.GeoFencingService geoFencingService;
+    private final AttendanceAddressResolver attendanceAddressResolver;
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -156,6 +162,13 @@ public class AttendanceService {
             }
         }
 
+        // Dates with a pending "no attendance yet" regularisation request (Absent/Leave/Holiday/WeekOff rows)
+        List<Long> employeeIds = employees.stream().map(Employee::getId).collect(Collectors.toList());
+        Set<String> pendingNoAttendanceKeys = employeeIds.isEmpty() ? Set.of() :
+                regularisationRequestRepository.findPendingNoAttendanceRequests(employeeIds, start, end).stream()
+                        .map(r -> r.getEmployee().getId() + "_" + r.getRequestDate())
+                        .collect(Collectors.toSet());
+
         // Build all rows: iterate dates desc, then employees
         List<AttendanceResponse> rows = new ArrayList<>();
         LocalDate cursor = end;
@@ -178,6 +191,9 @@ public class AttendanceService {
                     String leaveTypeName = matchedLeave != null && matchedLeave.getLeaveType() != null
                             ? matchedLeave.getLeaveType().getName() : null;
                     row = AttendanceResponse.fromVirtual(emp, cursor, ds, leaveTypeName);
+                    if (pendingNoAttendanceKeys.contains(key)) {
+                        row.setRegularisationStatus("HAS_PENDING");
+                    }
                 }
                 String ds = row.getDisplayStatus() != null ? row.getDisplayStatus() : "REGULAR";
                 if (statusFilter == null || statusFilter.isBlank() || statusFilter.equalsIgnoreCase(ds)) {
@@ -376,7 +392,13 @@ public class AttendanceService {
     @Transactional
     public void applyRegularisationApproval(AttendanceRegularisationRequest request) {
         Attendance att = request.getAttendance();
-        if (att == null) return;
+        if (att == null) {
+            // No attendance row existed yet (day was Absent / On Leave / Holiday / Week Off) —
+            // approving means the employee was actually present, so create the record now.
+            if (request.getRequestDate() == null) return;
+            att = createAttendanceForRegularisation(request.getEmployee(), request.getCompany(), request.getRequestDate());
+            request.setAttendance(att);
+        }
 
         switch (request.getRequestType()) {
             case LATE_ARRIVAL, WRONG_STATUS, HALF_TO_FULL_DAY -> {
@@ -400,17 +422,44 @@ public class AttendanceService {
                     att.setOvertimeSecond((int)(approvedOt * 3600));
                     att.setOvertimeMinutes((int)(approvedOt * 60));
                 }
+                // Overtime approval changes only OT. It must not hide a separate
+                // late/early-out irregularity or prevent a correction request.
+                att.setRegularisationStatus(
+                        att.getAttendanceStatus() == Attendance.AttendanceQualityStatus.REGULARISED
+                                ? Attendance.RegularisationStatus.REGULARISED
+                                : Attendance.RegularisationStatus.NONE);
+                attendanceRepository.save(att);
+                return;
             }
             case WORK_FROM_HOME, OFFICIAL_DUTY -> {
+                if (request.getRequestedCheckIn()  != null) att.setCheckIn(request.getRequestedCheckIn());
+                if (request.getRequestedCheckOut() != null) att.setCheckOut(request.getRequestedCheckOut());
                 att.setAttendanceStatus(Attendance.AttendanceQualityStatus.REGULAR);
                 att.setDeductionMinutes(0);
                 att.setDeductionAmount(0.0);
                 lateComeEarlyOutRepository.markAllAsRegularisedByAttendanceId(att.getId());
+                if (att.getCheckOut() != null) {
+                    recalculateTotalHours(att);
+                    computeOvertimeFields(att, att.getWorkedHour() != null ? att.getWorkedHour() : 0.0);
+                }
             }
         }
 
         att.setRegularisationStatus(Attendance.RegularisationStatus.REGULARISED);
         attendanceRepository.save(att);
+    }
+
+    /** Creates the Attendance row backing a just-approved no-attendance regularisation request
+     *  (a day previously shown as Absent / On Leave / Holiday / Week Off). */
+    private Attendance createAttendanceForRegularisation(Employee employee, Company company, LocalDate date) {
+        Attendance att = attendanceRepository.findByEmployeeIdAndAttendanceDate(employee.getId(), date)
+                .orElseGet(Attendance::new);
+        att.setEmployee(employee);
+        att.setCompany(company);
+        att.setAttendanceDate(date);
+        ShiftSchedule assignedShift = resolveAssignedShift(employee);
+        if (assignedShift != null) applyShift(att, assignedShift);
+        return attendanceRepository.save(att);
     }
 
     private void recalculateTotalHours(Attendance att) {
@@ -481,7 +530,7 @@ public class AttendanceService {
     /**
      * Auto-generate or update a WorkRecord from a completed attendance.
      * Classification: FDP (>= minHours), HDP (>= half minHours), or proportional HDP.
-     * minimumWorkingHour on ShiftSchedule is stored in minutes (e.g. 480 = 8h).
+     * Supports current shift values stored as hours and legacy values stored as minutes or seconds.
      */
     private void generatePunchWorkRecord(AttendanceActivity activity, Attendance summary) {
         if (activity.getClockIn() == null || activity.getClockOut() == null) return;
@@ -532,10 +581,10 @@ public class AttendanceService {
 
         ShiftSchedule shift = att.getShift();
         if (shift != null && shift.getMinimumWorkingHour() != null) {
-            int minMinutes = shift.getMinimumWorkingHour(); // stored in minutes
-            minHourSeconds = minMinutes * 60;
+            double minHours = normalizeMinimumWorkingHours(shift.getMinimumWorkingHour());
+            int minMinutes = (int) Math.round(minHours * 60.0);
+            minHourSeconds = (int) Math.round(minHours * 3600.0);
             minHourStr = String.format("%02d:%02d", minMinutes / 60, minMinutes % 60);
-            double minHours = minMinutes / 60.0;
 
             if (workedHours >= minHours) {
                 type = WorkRecord.WorkRecordType.FDP;
@@ -575,6 +624,14 @@ public class AttendanceService {
         wr.setIsAttendanceRecord(true);
         wr.setLastUpdate(java.time.LocalDateTime.now(DUBAI_ZONE));
         workRecordRepository.save(wr);
+    }
+
+    /** Current UI stores hours; older installations stored minutes, and some stored seconds. */
+    private static double normalizeMinimumWorkingHours(Integer configuredValue) {
+        if (configuredValue == null || configuredValue <= 0) return 0.0;
+        if (configuredValue <= 24) return configuredValue.doubleValue();
+        if (configuredValue <= 24 * 60) return configuredValue / 60.0;
+        return configuredValue / 3600.0;
     }
 
     // Manual approve/reject removed — attendance status is set automatically on checkout.
@@ -901,11 +958,16 @@ public class AttendanceService {
     // ─── Clock In / Out ───────────────────────────────────────────────────────
 
     @Transactional
-    public AttendanceResponse clockIn(Long employeeId, Long companyId) {
+    public AttendanceResponse clockIn(Long employeeId, Long companyId, Double latitude, Double longitude,
+                                       Double accuracyMeters, String source) {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        ShiftSchedule assignedShift = resolveAssignedShift(employee);
+        if (assignedShift == null) {
+            throw new BadRequestException("No shift assigned. Please contact your administrator before checking in.");
+        }
 
         LocalDate today = LocalDate.now(DUBAI_ZONE);
 
@@ -917,15 +979,15 @@ public class AttendanceService {
                     newAtt.setCompany(company);
                     newAtt.setAttendanceDate(today);
                     newAtt.setAttendanceStatus(Attendance.AttendanceQualityStatus.REGULAR);
-                    ShiftSchedule shift = employee.getShift();
-                    if (shift != null) {
-                        newAtt.setShift(shift);
-                        if (shift.getMinimumWorkingHour() != null) {
-                            newAtt.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
-                        }
-                    }
+                    applyShift(newAtt, assignedShift);
                     return attendanceRepository.save(newAtt);
                 });
+
+        // Repair an existing same-day row that was created before shift validation was enforced.
+        if (att.getShift() == null) {
+            applyShift(att, assignedShift);
+            att = attendanceRepository.save(att);
+        }
 
         // 2. Check if there's already an open activity (clocked in but not out)
         List<AttendanceActivity> activities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(employeeId, today);
@@ -942,15 +1004,31 @@ public class AttendanceService {
         activity.setClockIn(LocalTime.now(DUBAI_ZONE));
         activity.setClockInDate(today);
         activity.setInDatetime(java.time.LocalDateTime.now(DUBAI_ZONE));
+        activity.setClockInLatitude(latitude);
+        activity.setClockInLongitude(longitude);
+        activity.setClockInAccuracyMeters(accuracyMeters);
+        checkGeofenceAndEnforce(companyId, latitude, longitude, source, true).ifPresent(result -> {
+            activity.setClockInWithinGeofence((Boolean) result.get("withinFence"));
+            activity.setClockInDistanceMeters((Double) result.get("distance"));
+        });
         attendanceActivityRepository.save(activity);
 
-        // 4. Update first check-in of the day if not set
-        if (att.getCheckIn() == null) {
+        // 4. Preserve the first-in time, but mirror the latest punch location in the daily summary.
+        // Every activity also keeps its own coordinates/address for the complete punch history.
+        boolean firstCheckInOfDay = att.getCheckIn() == null;
+        if (firstCheckInOfDay) {
             att.setCheckIn(activity.getClockIn());
             att.setCheckInDate(today);
             att.setCheckInUtc(Instant.now());
-            attendanceRepository.save(att);
         }
+        att.setCheckInLatitude(latitude);
+        att.setCheckInLongitude(longitude);
+        att.setCheckInWithinGeofence(activity.getClockInWithinGeofence());
+        att.setCheckInAccuracyMeters(accuracyMeters);
+        if (source != null) att.setClockInSource(source);
+        attendanceRepository.save(att);
+        scheduleAddressResolution(att.getId(), activity.getId(), latitude, longitude, true,
+                true);
 
         AttendanceResponse res = AttendanceResponse.from(att);
         if (activity.getInDatetime() != null) {
@@ -960,8 +1038,16 @@ public class AttendanceService {
     }
 
     @Transactional
-    public AttendanceResponse clockOut(Long attendanceId) {
+    public AttendanceResponse clockOut(Long attendanceId, Double latitude, Double longitude,
+                                        Double accuracyMeters, String source) {
         Attendance att = find(attendanceId);
+        if (att.getShift() == null) {
+            ShiftSchedule assignedShift = resolveAssignedShift(att.getEmployee());
+            if (assignedShift == null) {
+                throw new BadRequestException("No shift assigned. Please contact your administrator before checking out.");
+            }
+            applyShift(att, assignedShift);
+        }
         LocalDate today = att.getAttendanceDate();
         Long employeeId = att.getEmployee().getId();
 
@@ -972,10 +1058,21 @@ public class AttendanceService {
                 .findFirst()
                 .orElse(null);
 
+        Boolean withinGeofence = null;
         if (openActivity != null) {
             openActivity.setClockOut(LocalTime.now(DUBAI_ZONE));
             openActivity.setClockOutDate(today);
             openActivity.setOutDatetime(java.time.LocalDateTime.now(DUBAI_ZONE));
+            openActivity.setClockOutLatitude(latitude);
+            openActivity.setClockOutLongitude(longitude);
+            openActivity.setClockOutAccuracyMeters(accuracyMeters);
+            Long companyId = att.getCompany() != null ? att.getCompany().getId() : null;
+            var geoResult = checkGeofenceAndEnforce(companyId, latitude, longitude, source, false);
+            if (geoResult.isPresent()) {
+                withinGeofence = (Boolean) geoResult.get().get("withinFence");
+                openActivity.setClockOutWithinGeofence(withinGeofence);
+                openActivity.setClockOutDistanceMeters((Double) geoResult.get().get("distance"));
+            }
             attendanceActivityRepository.save(openActivity);
 
             // Create a WorkRecord for this specific punch
@@ -986,11 +1083,90 @@ public class AttendanceService {
         att.setCheckOut(LocalTime.now(DUBAI_ZONE));
         att.setCheckOutDate(today);
         att.setCheckOutUtc(Instant.now());
+        att.setCheckOutLatitude(latitude);
+        att.setCheckOutLongitude(longitude);
+        att.setCheckOutWithinGeofence(withinGeofence);
+        att.setCheckOutAccuracyMeters(accuracyMeters);
+        if (source != null) att.setClockOutSource(source);
 
         attendanceRepository.save(att);
         autoComputeOnCheckout(att);
+        scheduleAddressResolution(att.getId(), openActivity != null ? openActivity.getId() : null,
+                latitude, longitude, false, true);
 
         return AttendanceResponse.from(att);
+    }
+
+    /**
+     * Tags the punch with geofence status and, when the company has enforcement turned on, blocks
+     * self-service (non-"manual") punches that are outside the fence or missing GPS entirely.
+     * Admin-manual entries are always exempt since the admin isn't physically on-site.
+     */
+    private Optional<Map<String, Object>> checkGeofenceAndEnforce(Long companyId, Double latitude, Double longitude,
+                                                                    String source, boolean isCheckIn) {
+        boolean locationRequired = source != null && !"manual".equals(source) && !"device".equals(source);
+        if (locationRequired && (latitude == null || longitude == null)) {
+            String action = isCheckIn ? "in" : "out";
+            throw new BadRequestException("Location access is required to clock " + action
+                    + ". Enable location permission and try again.");
+        }
+        if (latitude != null && (latitude < -90 || latitude > 90)
+                || longitude != null && (longitude < -180 || longitude > 180)) {
+            throw new BadRequestException("Invalid location coordinates.");
+        }
+        Optional<Map<String, Object>> result = geoFencingService.evaluateLocation(companyId, latitude, longitude);
+        result.ifPresent(r -> {
+            boolean enforce = Boolean.TRUE.equals(r.get("enforceGeofence"));
+            if (!enforce || "manual".equals(source)) return;
+            Boolean withinFence = (Boolean) r.get("withinFence");
+            String action = isCheckIn ? "in" : "out";
+            if (withinFence == null) {
+                throw new BadRequestException("Location access is required to clock " + action + ". Please enable location and try again.");
+            }
+            if (!withinFence) {
+                Double distance = (Double) r.get("distance");
+                throw new BadRequestException("You're " + Math.round(distance) + "m from the office — outside the allowed range to clock " + action + ".");
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Reverse geocoding is a slow external call — deferred until the enclosing transaction commits,
+     * since the async resolver runs on its own thread/connection and would otherwise race against
+     * this method's still-uncommitted writes.
+     */
+    private void scheduleAddressResolution(Long attendanceId, Long activityId, Double latitude, Double longitude,
+                                           boolean isClockIn, boolean updateAttendanceSummary) {
+        if (latitude == null || longitude == null) return;
+        String tenantSchema = com.example.demo.common.tenant.TenantContext.getTenant();
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        if (isClockIn) {
+                            attendanceAddressResolver.resolveClockInAddress(attendanceId, activityId, tenantSchema,
+                                    latitude, longitude, updateAttendanceSummary);
+                        } else {
+                            attendanceAddressResolver.resolveClockOutAddress(attendanceId, activityId, tenantSchema,
+                                    latitude, longitude, updateAttendanceSummary);
+                        }
+                    }
+                });
+    }
+
+    private ShiftSchedule resolveAssignedShift(Employee employee) {
+        if (employee.getShift() != null) return employee.getShift();
+        return employeeWorkInformationRepository.findByEmployeeId(employee.getId())
+                .map(workInfo -> workInfo.getShift())
+                .orElse(null);
+    }
+
+    private void applyShift(Attendance attendance, ShiftSchedule shift) {
+        attendance.setShift(shift);
+        if (shift.getMinimumWorkingHour() != null) {
+            attendance.setMinimumHour(normalizeMinimumWorkingHours(shift.getMinimumWorkingHour()));
+        }
     }
 
     // ─── Not Clocked In / Out ─────────────────────────────────────────────────
@@ -1183,7 +1359,10 @@ public class AttendanceService {
             XSSFCellStyle leaveStyle       = xlBadgeStyle(wb, "818CF8");
             XSSFCellStyle holidayStyle     = xlBadgeStyle(wb, "9CA3AF");
 
-            String[] columns = {"Employee Name", "Date", "Check-In", "Check-Out", "Worked Hours", "OT Hours", "Status"};
+            String[] columns = {
+                    "Employee ID", "Employee Name", "Branch", "Date", "In Time", "In Lat", "In Long", "In Address",
+                    "Out Time", "Out Lat", "Out Long", "Out Address", "Worked Hours", "OT Hours", "Status", "Source", "Device"
+            };
 
             Row titleRow = sheet.createRow(0);
             titleRow.setHeightInPoints(30);
@@ -1207,10 +1386,18 @@ public class AttendanceService {
                 row.setHeightInPoints(18);
                 XSSFCellStyle base = rowNum % 2 == 0 ? evenStyle : oddStyle;
 
-                xlCell(row, 0, r.getEmployeeName() != null ? r.getEmployeeName() : "", base);
-                xlCell(row, 1, r.getAttendanceDate() != null ? r.getAttendanceDate().toString() : "", base);
-                xlCell(row, 2, r.getCheckIn()  != null ? r.getCheckIn().toString()  : "", base);
-                xlCell(row, 3, r.getCheckOut() != null ? r.getCheckOut().toString() : "", base);
+                xlCell(row, 0, r.getEmployeeBadgeId() != null ? r.getEmployeeBadgeId() : "", base);
+                xlCell(row, 1, r.getEmployeeName() != null ? r.getEmployeeName() : "", base);
+                xlCell(row, 2, r.getCompanyName() != null ? r.getCompanyName() : "", base);
+                xlCell(row, 3, r.getAttendanceDate() != null ? r.getAttendanceDate().toString() : "", base);
+                xlCell(row, 4, r.getCheckIn()  != null ? r.getCheckIn().toString()  : "", base);
+                xlCell(row, 5, r.getCheckInLatitude()  != null ? r.getCheckInLatitude().toString()  : "", base);
+                xlCell(row, 6, r.getCheckInLongitude() != null ? r.getCheckInLongitude().toString() : "", base);
+                xlCell(row, 7, r.getCheckInAddress() != null ? r.getCheckInAddress() : "", base);
+                xlCell(row, 8, r.getCheckOut() != null ? r.getCheckOut().toString() : "", base);
+                xlCell(row, 9, r.getCheckOutLatitude()  != null ? r.getCheckOutLatitude().toString()  : "", base);
+                xlCell(row, 10, r.getCheckOutLongitude() != null ? r.getCheckOutLongitude().toString() : "", base);
+                xlCell(row, 11, r.getCheckOutAddress() != null ? r.getCheckOutAddress() : "", base);
 
                 // Worked hours as "Xh Ym"
                 Double wh = r.getWorkedHour();
@@ -1220,7 +1407,7 @@ public class AttendanceService {
                     int m = (int) Math.round((wh - h) * 60);
                     hoursLabel = m > 0 ? h + "h " + m + "m" : h + "h";
                 }
-                xlCell(row, 4, hoursLabel, base);
+                xlCell(row, 12, hoursLabel, base);
 
                 // OT hours as "Xh Ym"
                 Double ot = r.getAttendanceOvertime();
@@ -1230,7 +1417,7 @@ public class AttendanceService {
                     int m = (int) Math.round((ot - h) * 60);
                     otLabel = m > 0 ? h + "h " + m + "m" : h + "h";
                 }
-                xlCell(row, 5, otLabel, base);
+                xlCell(row, 13, otLabel, base);
 
                 // Status label — use displayStatus, show leave type name for ON_LEAVE
                 String ds = r.getDisplayStatus() != null ? r.getDisplayStatus() : "REGULAR";
@@ -1253,13 +1440,22 @@ public class AttendanceService {
                     case "WEEK_OFF"    -> weekOffStyle;
                     default            -> holidayStyle;
                 };
-                Cell statusCell = row.createCell(6);
+                Cell statusCell = row.createCell(14);
                 statusCell.setCellValue(statusLabel);
                 statusCell.setCellStyle(statusStyle);
+
+                // Source — prefer the checkout source (latest known), fall back to check-in source
+                String source = r.getClockOutSource() != null ? r.getClockOutSource() : r.getClockInSource();
+                xlCell(row, 15, source != null ? source : "", base);
+
+                // Device — prefer the checkout device, fall back to check-in device
+                String device = r.getClockOutDeviceName() != null ? r.getClockOutDeviceName() : r.getClockInDeviceName();
+                xlCell(row, 16, device != null ? device : "", base);
+
                 rowNum++;
             }
 
-            int[] widths = {6500, 3500, 3000, 3000, 3500, 3000, 4000};
+            int[] widths = {3500, 6500, 4500, 3000, 3000, 3200, 3200, 6500, 3000, 3200, 3200, 6500, 3500, 3000, 4000, 3200, 4000};
             for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i]);
 
             sheet.createFreezePane(0, 2);

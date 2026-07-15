@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -32,12 +33,13 @@ public class GeoFencingService {
     }
 
     public GeoFencing create(Double latitude, Double longitude, Integer radiusInMeters,
-                             boolean start, Long companyId) {
+                             boolean start, boolean enforceGeofence, Long companyId) {
         GeoFencing gf = new GeoFencing();
         gf.setLatitude(latitude);
         gf.setLongitude(longitude);
         gf.setRadiusInMeters(radiusInMeters);
         gf.setStart(start);
+        gf.setEnforceGeofence(enforceGeofence);
         if (companyId != null) {
             gf.setCompany(companyRepository.getReferenceById(companyId));
         }
@@ -45,13 +47,14 @@ public class GeoFencingService {
     }
 
     public GeoFencing update(Long id, Double latitude, Double longitude, Integer radiusInMeters,
-                             boolean start, Long companyId) {
+                             boolean start, boolean enforceGeofence, Long companyId) {
         GeoFencing gf = geoFencingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("GeoFencing", id));
         gf.setLatitude(latitude);
         gf.setLongitude(longitude);
         gf.setRadiusInMeters(radiusInMeters);
         gf.setStart(start);
+        gf.setEnforceGeofence(enforceGeofence);
         if (companyId != null) {
             gf.setCompany(companyRepository.getReferenceById(companyId));
         }
@@ -70,6 +73,36 @@ public class GeoFencingService {
         double distance = haversineDistance(gf.getLatitude(), gf.getLongitude(), latitude, longitude);
         boolean withinFence = distance <= gf.getRadiusInMeters();
         return Map.of("withinFence", withinFence, "distance", distance);
+    }
+
+    /**
+     * Non-throwing variant for use during clock-in/clock-out: returns empty when the company has no
+     * active geofence configured. Unlike {@link #checkLocationIfConfigured}, this still returns a
+     * result when latitude/longitude are null (withinFence/distance come back null in that case) so
+     * the caller can enforce "location required" separately from "outside the fence".
+     *
+     * Result keys: "withinFence" (Boolean, null if no coordinates given), "distance" (Double, same),
+     * "enforceGeofence" (boolean, whether out-of-fence punches should be blocked for this company).
+     */
+    @Transactional(readOnly = true)
+    public Optional<Map<String, Object>> evaluateLocation(Long companyId, Double latitude, Double longitude) {
+        if (companyId == null) return Optional.empty();
+        return geoFencingRepository.findByCompanyId(companyId)
+                .filter(GeoFencing::isStart)
+                .filter(gf -> gf.getLatitude() != null && gf.getLongitude() != null && gf.getRadiusInMeters() != null)
+                .map(gf -> {
+                    Map<String, Object> result = new java.util.HashMap<>();
+                    result.put("enforceGeofence", gf.isEnforceGeofence());
+                    if (latitude == null || longitude == null) {
+                        result.put("withinFence", null);
+                        result.put("distance", null);
+                    } else {
+                        double distance = haversineDistance(gf.getLatitude(), gf.getLongitude(), latitude, longitude);
+                        result.put("withinFence", distance <= gf.getRadiusInMeters());
+                        result.put("distance", distance);
+                    }
+                    return result;
+                });
     }
 
     private double haversineDistance(double lat1, double lon1, double lat2, double lon2) {

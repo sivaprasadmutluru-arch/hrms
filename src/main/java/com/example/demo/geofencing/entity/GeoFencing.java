@@ -27,4 +27,8 @@ public class GeoFencing extends BaseEntity {
 
     @Column(name = "start")
     private boolean start = false;
+
+    /** When true, self-service clock-in/out outside this fence (or with no location at all) is blocked. */
+    @Column(name = "enforce_geofence")
+    private boolean enforceGeofence = false;
 }

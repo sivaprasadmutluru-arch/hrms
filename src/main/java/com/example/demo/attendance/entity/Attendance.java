@@ -152,4 +152,36 @@ public class Attendance extends BaseEntity {
 
     @Column(name = "clock_out_source", length = 30)
     private String clockOutSource;
+
+    // ─── Geolocation (mirrors latest check-in / latest check-out of the day) ─
+
+    @Column(name = "check_in_latitude")
+    private Double checkInLatitude;
+
+    @Column(name = "check_in_longitude")
+    private Double checkInLongitude;
+
+    @Column(name = "check_in_within_geofence")
+    private Boolean checkInWithinGeofence;
+
+    @Column(name = "check_out_latitude")
+    private Double checkOutLatitude;
+
+    @Column(name = "check_out_longitude")
+    private Double checkOutLongitude;
+
+    @Column(name = "check_out_within_geofence")
+    private Boolean checkOutWithinGeofence;
+
+    @Column(name = "check_in_accuracy_meters")
+    private Double checkInAccuracyMeters;
+
+    @Column(name = "check_out_accuracy_meters")
+    private Double checkOutAccuracyMeters;
+
+    @Column(name = "check_in_address", length = 500)
+    private String checkInAddress;
+
+    @Column(name = "check_out_address", length = 500)
+    private String checkOutAddress;
 }

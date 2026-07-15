@@ -36,7 +36,7 @@ public class GeoFencingController {
     public ResponseEntity<GeoFencing> create(@RequestBody GeoFencingRequest request) {
         return ResponseEntity.ok(geoFencingService.create(
                 request.getLatitude(), request.getLongitude(),
-                request.getRadiusInMeters(), request.isStart(), request.getCompanyId()));
+                request.getRadiusInMeters(), request.isStart(), request.isEnforceGeofence(), request.getCompanyId()));
     }
 
     @PutMapping("/{id}")
@@ -44,7 +44,7 @@ public class GeoFencingController {
     public ResponseEntity<GeoFencing> update(@PathVariable Long id, @RequestBody GeoFencingRequest request) {
         return ResponseEntity.ok(geoFencingService.update(id,
                 request.getLatitude(), request.getLongitude(),
-                request.getRadiusInMeters(), request.isStart(), request.getCompanyId()));
+                request.getRadiusInMeters(), request.isStart(), request.isEnforceGeofence(), request.getCompanyId()));
     }
 
     @DeleteMapping("/{id}")
@@ -69,6 +69,7 @@ public class GeoFencingController {
         private Double longitude;
         private Integer radiusInMeters;
         private boolean start;
+        private boolean enforceGeofence;
 
         public Long getCompanyId() { return companyId; }
         public void setCompanyId(Long companyId) { this.companyId = companyId; }
@@ -80,6 +81,8 @@ public class GeoFencingController {
         public void setRadiusInMeters(Integer radiusInMeters) { this.radiusInMeters = radiusInMeters; }
         public boolean isStart() { return start; }
         public void setStart(boolean start) { this.start = start; }
+        public boolean isEnforceGeofence() { return enforceGeofence; }
+        public void setEnforceGeofence(boolean enforceGeofence) { this.enforceGeofence = enforceGeofence; }
     }
 
     public static class LocationCheckRequest {

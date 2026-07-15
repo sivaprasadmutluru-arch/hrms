@@ -15,6 +15,8 @@ import com.example.demo.leave.entity.*;
 import com.example.demo.leave.repository.*;
 import com.example.demo.leave.service.LeaveAccrualService;
 import com.example.demo.leave.service.LeaveService;
+import com.example.demo.notification.entity.Notification;
+import com.example.demo.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +84,7 @@ public class LeaveController {
     private final CompanyLeaveRepository companyLeaveRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final LeaveAllocationRepository leaveAllocationRepository;
+    private final NotificationService notificationService;
 
     @GetMapping("/requests")
     @PreAuthorize("hasAuthority('leave:view')")
@@ -127,12 +131,40 @@ public class LeaveController {
     public ResponseEntity<LeaveRequestDTO> apply(
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestBody ApplyLeaveRequest body) {
-        Long resolvedEmployeeId = body.employeeId() != null ? body.employeeId()
-                : employeeRepository.findByUserId(principal.getId())
-                        .map(e -> e.getId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Employee record not found for current user"));
+        Employee currentEmployee = employeeRepository.findByUserId(principal.getId()).orElse(null);
+        boolean applyingForAnotherEmployee = body.employeeId() != null
+                && (currentEmployee == null || !body.employeeId().equals(currentEmployee.getId()));
+
+        if (applyingForAnotherEmployee) {
+            boolean canApplyForOthers = principal.getAuthorities().stream()
+                    .map(authority -> authority.getAuthority())
+                    .anyMatch(authority -> authority.equals("leave:approve")
+                            || authority.equals("ROLE_PLATFORM_SUPER_ADMIN")
+                            || authority.equals("ROLE_ENTERPRISE_ADMIN")
+                            || authority.equals("ROLE_BRANCH_ADMIN")
+                            || authority.equals("ROLE_HR_MANAGER"));
+            if (!canApplyForOthers) {
+                throw new AccessDeniedException("You are not allowed to apply for leave on behalf of another employee");
+            }
+        }
+
+        Employee targetEmployee = applyingForAnotherEmployee
+                ? employeeRepository.findById(body.employeeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Employee", body.employeeId()))
+                : currentEmployee;
+        if (targetEmployee == null) {
+            throw new ResourceNotFoundException("Employee record not found for current user");
+        }
+
+        Long targetCompanyId = targetEmployee.getCompany().getId();
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || !scope.canAccess(targetCompanyId)) {
+            throw new AccessDeniedException("You cannot apply leave for an employee outside your company access scope");
+        }
+
         return ResponseEntity.ok(LeaveMapper.toDTO(
-                leaveService.applyLeave(resolvedEmployeeId, body.leaveTypeId(), body.startDate(), body.endDate(), body.description(), body.companyId())));
+                leaveService.applyLeave(targetEmployee.getId(), body.leaveTypeId(), body.startDate(), body.endDate(),
+                        body.description(), targetCompanyId)));
     }
 
     @PostMapping("/requests/{id}/approve")
@@ -932,7 +964,8 @@ public class LeaveController {
                     ha.setHoliday(holiday);
                     ha.setEmployee(emp);
                     ha.setCompany(companyRepository.getReferenceById(companyId));
-                    holidayAllocationRepository.save(ha);
+                    ha = holidayAllocationRepository.save(ha);
+                    sendHolidayAssignedNotification(emp, holiday, ha);
                     created++;
                 } else {
                     skipped++;
@@ -950,7 +983,10 @@ public class LeaveController {
                 ha.setHoliday(holiday);
                 ha.setDepartment(dept);
                 ha.setCompany(companyRepository.getReferenceById(companyId));
-                holidayAllocationRepository.save(ha);
+                ha = holidayAllocationRepository.save(ha);
+                for (Employee emp : employeeRepository.findByCompanyIdAndDepartmentIdAndIsActiveTrue(companyId, deptId)) {
+                    sendHolidayAssignedNotification(emp, holiday, ha);
+                }
                 created++;
             } else {
                 skipped++;
@@ -965,7 +1001,8 @@ public class LeaveController {
                     ha.setHoliday(holiday);
                     ha.setEmployee(employeeRepository.getReferenceById(empId));
                     ha.setCompany(companyRepository.getReferenceById(companyId));
-                    holidayAllocationRepository.save(ha);
+                    ha = holidayAllocationRepository.save(ha);
+                    sendHolidayAssignedNotification(ha.getEmployee(), holiday, ha);
                     created++;
                 } else {
                     skipped++;
@@ -974,6 +1011,20 @@ public class LeaveController {
         }
 
         return ResponseEntity.ok(Map.of("created", created, "skipped", skipped));
+    }
+
+    private void sendHolidayAssignedNotification(Employee employee, Holiday holiday, HolidayAllocation allocation) {
+        if (employee == null || employee.getUser() == null) return;
+        notificationService.send(
+                employee.getUser().getId(),
+                "Holiday Assigned",
+                "You have been assigned the holiday '" + holiday.getName() + "' from "
+                        + holiday.getStartDate() + " to " + holiday.getEndDate() + ".",
+                Notification.NotificationType.GENERAL,
+                "HolidayAllocation",
+                allocation.getId(),
+                allocation.getCompany()
+        );
     }
 
     @DeleteMapping("/holiday-allocations/{id}")

@@ -186,12 +186,24 @@ public class ShiftAllocationController {
         ShiftAllocationRequest req = allocationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ShiftAllocationRequest", id));
         req.setStatus(ShiftAllocationRequest.AllocationStatus.APPROVED);
-        // Apply the allocated shift to the employee's work information
+        // Apply the allocated shift to the employee's work information. Employees without
+        // a work-information row (e.g. created outside the standard onboarding flow) would
+        // otherwise silently keep no shift — fall back to setting it directly on Employee,
+        // matching AttendanceService.resolveAssignedShift()'s own two-tier lookup.
         if (req.getAllocatedShift() != null) {
-            workInfoRepository.findByEmployeeId(req.getEmployee().getId()).ifPresent(workInfo -> {
-                workInfo.setShift(req.getAllocatedShift());
-                workInfoRepository.save(workInfo);
-            });
+            boolean appliedToWorkInfo = workInfoRepository.findByEmployeeId(req.getEmployee().getId())
+                    .map(workInfo -> {
+                        workInfo.setShift(req.getAllocatedShift());
+                        workInfoRepository.save(workInfo);
+                        return true;
+                    })
+                    .orElse(false);
+            if (!appliedToWorkInfo) {
+                Employee employee = employeeRepository.findById(req.getEmployee().getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Employee", req.getEmployee().getId()));
+                employee.setShift(req.getAllocatedShift());
+                employeeRepository.save(employee);
+            }
         }
         return ResponseEntity.ok(allocationRepository.save(req));
     }

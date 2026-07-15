@@ -131,8 +131,13 @@ public class Employee extends BaseEntity {
     @JoinColumn(name = "shift_id")
     private ShiftSchedule shift;
 
+    // Breaks unbounded recursion when serializing raw Employee entities: without this,
+    // a manager's own reportingManager (and so on) gets serialized too, which throws
+    // "Direct self-reference leading to cycle" for any circular reporting chain
+    // (e.g. A reports to B, B reports to A — real data in this system has such a loop).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reporting_manager_id")
+    @JsonIgnoreProperties({"reportingManager", "hibernateLazyInitializer", "handler"})
     private Employee reportingManager;
 
     @OneToOne(fetch = FetchType.LAZY)

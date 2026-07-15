@@ -55,4 +55,42 @@ public class AttendanceActivity extends BaseEntity {
     public enum ClockType {
         MANUAL, AUTO
     }
+
+    // ─── Geolocation (captured from client at punch time) ────────────────────
+
+    @Column(name = "clock_in_latitude")
+    private Double clockInLatitude;
+
+    @Column(name = "clock_in_longitude")
+    private Double clockInLongitude;
+
+    @Column(name = "clock_in_within_geofence")
+    private Boolean clockInWithinGeofence;
+
+    @Column(name = "clock_in_distance_meters")
+    private Double clockInDistanceMeters;
+
+    @Column(name = "clock_out_latitude")
+    private Double clockOutLatitude;
+
+    @Column(name = "clock_out_longitude")
+    private Double clockOutLongitude;
+
+    @Column(name = "clock_out_within_geofence")
+    private Boolean clockOutWithinGeofence;
+
+    @Column(name = "clock_out_distance_meters")
+    private Double clockOutDistanceMeters;
+
+    @Column(name = "clock_in_accuracy_meters")
+    private Double clockInAccuracyMeters;
+
+    @Column(name = "clock_out_accuracy_meters")
+    private Double clockOutAccuracyMeters;
+
+    @Column(name = "clock_in_address", length = 500)
+    private String clockInAddress;
+
+    @Column(name = "clock_out_address", length = 500)
+    private String clockOutAddress;
 }

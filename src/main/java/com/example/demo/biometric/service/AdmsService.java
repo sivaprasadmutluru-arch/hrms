@@ -5,6 +5,7 @@ import com.example.demo.attendance.entity.AttendanceActivity;
 import com.example.demo.attendance.repository.AttendanceActivityRepository;
 import com.example.demo.attendance.repository.AttendanceRepository;
 import com.example.demo.attendance.service.AttendanceService;
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.biometric.entity.BiometricDevice;
 import com.example.demo.biometric.entity.BiometricEmployee;
@@ -77,12 +78,14 @@ public class AdmsService {
         int processed = 0;
         for (PunchRecord rec : records) {
             try {
-                BiometricEmployee mapping = bioMap.get(rec.userId);
+                BiometricEmployee mapping = resolveEmployeeMapping(device, rec.userId, bioMap);
                 if (mapping == null) {
-                    log.debug("ADMS: no mapping for user_id='{}' on device '{}' (SN={})",
+                    log.debug("ADMS: no same-organization mapping for user_id='{}' on device '{}' (SN={})",
                             rec.userId, device.getName(), serialNumber);
                     continue;
                 }
+                // Reuse a successful cross-branch resolution for the remaining records in this push.
+                bioMap.putIfAbsent(rec.userId, mapping);
 
                 Employee employee = mapping.getEmployee();
                 if (employee == null) {
@@ -120,6 +123,54 @@ public class AdmsService {
 
         log.info("ADMS push from device '{}' (SN={}): {} records received, {} processed",
                 device.getName(), serialNumber, records.size(), processed);
+    }
+
+    /**
+     * Resolve a device user to an employee. Device-specific mappings remain authoritative. When an
+     * employee uses a biometric terminal in another branch, fall back to an active mapping with the
+     * same user ID only inside the device's organization. This deliberately never crosses tenant/
+     * organization boundaries and rejects ambiguous IDs instead of recording attendance for the
+     * wrong employee.
+     */
+    private BiometricEmployee resolveEmployeeMapping(BiometricDevice device, String userId,
+                                                       Map<String, BiometricEmployee> deviceMappings) {
+        BiometricEmployee direct = deviceMappings.get(userId);
+        if (direct != null) return direct;
+
+        List<BiometricEmployee> candidates = mappingRepo.findByUserIdAndIsActiveTrue(userId).stream()
+                .filter(mapping -> mapping.getEmployee() != null)
+                .filter(mapping -> mapping.getEmployee().isActive())
+                .filter(mapping -> isSameOrganization(device.getCompany(), mapping.getEmployee().getCompany()))
+                .toList();
+
+        Map<Long, BiometricEmployee> byEmployee = new LinkedHashMap<>();
+        for (BiometricEmployee candidate : candidates) {
+            byEmployee.putIfAbsent(candidate.getEmployee().getId(), candidate);
+        }
+        if (byEmployee.size() == 1) {
+            BiometricEmployee resolved = byEmployee.values().iterator().next();
+            log.info("ADMS: cross-branch mapping resolved for user_id='{}' on device '{}' to employee {}",
+                    userId, device.getName(), resolved.getEmployee().getId());
+            return resolved;
+        }
+        if (byEmployee.size() > 1) {
+            log.warn("ADMS: ambiguous user_id='{}' on device '{}': {} employees in the same organization; punch skipped",
+                    userId, device.getName(), byEmployee.size());
+        }
+        return null;
+    }
+
+    private boolean isSameOrganization(Company deviceCompany, Company employeeCompany) {
+        if (deviceCompany == null || employeeCompany == null) return false;
+
+        if (deviceCompany.getOrganization() != null && employeeCompany.getOrganization() != null) {
+            return Objects.equals(deviceCompany.getOrganization().getId(), employeeCompany.getOrganization().getId());
+        }
+
+        // Compatibility for legacy company rows without organization_id: compare their HO roots.
+        Long deviceRootId = deviceCompany.isHeadOffice() ? deviceCompany.getId() : deviceCompany.getParentCompanyId();
+        Long employeeRootId = employeeCompany.isHeadOffice() ? employeeCompany.getId() : employeeCompany.getParentCompanyId();
+        return deviceRootId != null && Objects.equals(deviceRootId, employeeRootId);
     }
 
     /**
@@ -164,7 +215,7 @@ public class AdmsService {
                     if (shift != null) {
                         newAtt.setShift(shift);
                         if (shift.getMinimumWorkingHour() != null) {
-                            newAtt.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
+                            newAtt.setMinimumHour(normalizeMinimumWorkingHours(shift.getMinimumWorkingHour()));
                         }
                     }
                     return attendanceRepository.save(newAtt);
@@ -220,7 +271,7 @@ public class AdmsService {
                     if (shift != null) {
                         newAtt.setShift(shift);
                         if (shift.getMinimumWorkingHour() != null) {
-                            newAtt.setMinimumHour(shift.getMinimumWorkingHour() / 60.0);
+                            newAtt.setMinimumHour(normalizeMinimumWorkingHours(shift.getMinimumWorkingHour()));
                         }
                     }
                     return attendanceRepository.save(newAtt);
@@ -286,6 +337,14 @@ public class AdmsService {
         if (direction == BiometricDevice.DeviceDirection.OUT) return "out";
         // ALTERNATE or SYSTEM: even codes = in, odd codes = out
         return CLOCK_IN_CODES.contains(status) ? "in" : "out";
+    }
+
+    /** Current UI stores hours; older installations stored minutes, and some stored seconds. */
+    private static double normalizeMinimumWorkingHours(Integer configuredValue) {
+        if (configuredValue == null || configuredValue <= 0) return 0.0;
+        if (configuredValue <= 24) return configuredValue.doubleValue();
+        if (configuredValue <= 24 * 60) return configuredValue / 60.0;
+        return configuredValue / 3600.0;
     }
 
     /**

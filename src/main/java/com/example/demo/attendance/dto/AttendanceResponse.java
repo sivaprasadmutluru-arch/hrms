@@ -42,12 +42,25 @@ public class AttendanceResponse {
     private Long workTypeId;
     private String workTypeName;
     private Long companyId;
+    private String companyName;
 
     // Device / Source tracking
     private String clockInDeviceName;
     private String clockOutDeviceName;
     private String clockInSource;
     private String clockOutSource;
+
+    // Geolocation captured at punch time
+    private Double checkInLatitude;
+    private Double checkInLongitude;
+    private Boolean checkInWithinGeofence;
+    private Double checkOutLatitude;
+    private Double checkOutLongitude;
+    private Boolean checkOutWithinGeofence;
+    private Double checkInAccuracyMeters;
+    private Double checkOutAccuracyMeters;
+    private String checkInAddress;
+    private String checkOutAddress;
 
     // Full-view only: REGULAR | IRREGULAR | REGULARISED | ABSENT | ON_LEAVE | HOLIDAY
     private String displayStatus;
@@ -83,11 +96,24 @@ public class AttendanceResponse {
             r.setWorkTypeId(a.getWorkType().getId());
             r.setWorkTypeName(a.getWorkType().getName());
         }
-        if (a.getCompany() != null) r.setCompanyId(a.getCompany().getId());
+        if (a.getCompany() != null) {
+            r.setCompanyId(a.getCompany().getId());
+            r.setCompanyName(a.getCompany().getName());
+        }
         r.setClockInDeviceName(a.getClockInDeviceName());
         r.setClockOutDeviceName(a.getClockOutDeviceName());
         r.setClockInSource(a.getClockInSource());
         r.setClockOutSource(a.getClockOutSource());
+        r.setCheckInLatitude(a.getCheckInLatitude());
+        r.setCheckInLongitude(a.getCheckInLongitude());
+        r.setCheckInWithinGeofence(a.getCheckInWithinGeofence());
+        r.setCheckOutLatitude(a.getCheckOutLatitude());
+        r.setCheckOutLongitude(a.getCheckOutLongitude());
+        r.setCheckOutWithinGeofence(a.getCheckOutWithinGeofence());
+        r.setCheckInAccuracyMeters(a.getCheckInAccuracyMeters());
+        r.setCheckOutAccuracyMeters(a.getCheckOutAccuracyMeters());
+        r.setCheckInAddress(a.getCheckInAddress());
+        r.setCheckOutAddress(a.getCheckOutAddress());
         r.setDisplayStatus(a.getAttendanceStatus() != null ? a.getAttendanceStatus().name() : "REGULAR");
         return r;
     }
@@ -100,7 +126,10 @@ public class AttendanceResponse {
         r.setAttendanceDate(date);
         r.setDisplayStatus(displayStatus);
         r.setLeaveTypeName(leaveTypeName);
-        if (emp.getCompany() != null) r.setCompanyId(emp.getCompany().getId());
+        if (emp.getCompany() != null) {
+            r.setCompanyId(emp.getCompany().getId());
+            r.setCompanyName(emp.getCompany().getName());
+        }
         return r;
     }
 }

@@ -3,6 +3,7 @@ package com.example.demo.attendance.controller;
 import com.example.demo.attendance.dto.RegularisationApprovalRequest;
 import com.example.demo.attendance.dto.RegularisationRequestDto;
 import com.example.demo.attendance.dto.RegularisationSubmitRequest;
+import com.example.demo.attendance.dto.UnresolvedIrregularAttendanceDto;
 import com.example.demo.attendance.service.AttendanceRegularisationService;
 import com.example.demo.auth.security.UserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,62 +43,40 @@ public class AttendanceRegularisationController {
         return ResponseEntity.ok(regularisationService.getMyRequests(getCurrentUserId()));
     }
 
-    // ─── Manager ─────────────────────────────────────────────────────────────
-
-    @GetMapping("/pending-manager")
+    @GetMapping("/unresolved")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "List regularisation requests pending the current manager's approval")
-    public ResponseEntity<List<RegularisationRequestDto>> pendingForManager() {
-        return ResponseEntity.ok(regularisationService.getPendingForManager(getCurrentUserId()));
+    @Operation(summary = "List the current employee's unresolved IRREGULAR attendance (last 30 days) with no submitted request")
+    public ResponseEntity<List<UnresolvedIrregularAttendanceDto>> unresolved() {
+        return ResponseEntity.ok(regularisationService.getUnresolvedForEmployee(getCurrentUserId()));
     }
 
-    @PostMapping("/{id}/approve-manager")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Manager approves a regularisation request")
-    public ResponseEntity<RegularisationRequestDto> approveByManager(
-            @PathVariable Long id,
-            @RequestBody(required = false) RegularisationApprovalRequest body) {
-        String remarks = body != null ? body.getRemarks() : null;
-        return ResponseEntity.ok(regularisationService.approveByManager(id, remarks, getCurrentUserId()));
-    }
+    // ─── Admin / HR Manager ────────────────────────────────────────────────────
 
-    @PostMapping("/{id}/reject-manager")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Manager rejects a regularisation request")
-    public ResponseEntity<RegularisationRequestDto> rejectByManager(
-            @PathVariable Long id,
-            @RequestBody(required = false) RegularisationApprovalRequest body) {
-        String remarks = body != null ? body.getRemarks() : null;
-        return ResponseEntity.ok(regularisationService.rejectByManager(id, remarks, getCurrentUserId()));
-    }
-
-    // ─── HR ──────────────────────────────────────────────────────────────────
-
-    @GetMapping("/pending-hr")
+    @GetMapping("/pending-approval")
     @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "List regularisation requests pending HR verification")
-    public ResponseEntity<List<RegularisationRequestDto>> pendingForHR(@RequestParam Long companyId) {
-        return ResponseEntity.ok(regularisationService.getPendingForHR(companyId));
+    @Operation(summary = "List regularisation requests pending approval")
+    public ResponseEntity<List<RegularisationRequestDto>> pendingApproval(@RequestParam Long companyId) {
+        return ResponseEntity.ok(regularisationService.getPendingApproval(companyId));
     }
 
-    @PostMapping("/{id}/approve-hr")
+    @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "HR approves a regularisation request (final approval)")
-    public ResponseEntity<RegularisationRequestDto> approveByHR(
+    @Operation(summary = "Admin/HR manager approves a regularisation request")
+    public ResponseEntity<RegularisationRequestDto> approve(
             @PathVariable Long id,
             @RequestBody(required = false) RegularisationApprovalRequest body) {
         String remarks = body != null ? body.getRemarks() : null;
-        return ResponseEntity.ok(regularisationService.approveByHR(id, remarks, getCurrentUserId()));
+        return ResponseEntity.ok(regularisationService.approve(id, remarks, getCurrentUserId()));
     }
 
-    @PostMapping("/{id}/reject-hr")
+    @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority('attendance:approve')")
-    @Operation(summary = "HR rejects a regularisation request")
-    public ResponseEntity<RegularisationRequestDto> rejectByHR(
+    @Operation(summary = "Admin/HR manager rejects a regularisation request")
+    public ResponseEntity<RegularisationRequestDto> reject(
             @PathVariable Long id,
             @RequestBody(required = false) RegularisationApprovalRequest body) {
         String remarks = body != null ? body.getRemarks() : null;
-        return ResponseEntity.ok(regularisationService.rejectByHR(id, remarks, getCurrentUserId()));
+        return ResponseEntity.ok(regularisationService.reject(id, remarks, getCurrentUserId()));
     }
 
     // ─── HR / Admin: Full List ────────────────────────────────────────────────
@@ -120,12 +99,10 @@ public class AttendanceRegularisationController {
 
     @GetMapping("/pending-counts")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get pending count badges for the current user (manager + HR views)")
+    @Operation(summary = "Get pending approval count badge for the current user")
     public ResponseEntity<Map<String, Long>> pendingCounts(@RequestParam(required = false) Long companyId) {
-        Long userId = getCurrentUserId();
-        long pendingManager = regularisationService.countPendingForManager(userId);
-        long pendingHR = companyId != null ? regularisationService.countPendingForHR(companyId) : 0;
-        return ResponseEntity.ok(Map.of("pendingManager", pendingManager, "pendingHR", pendingHR));
+        long pendingApproval = companyId != null ? regularisationService.countPendingApproval(companyId) : 0;
+        return ResponseEntity.ok(Map.of("pendingApproval", pendingApproval));
     }
 
     // ─── Helper ──────────────────────────────────────────────────────────────

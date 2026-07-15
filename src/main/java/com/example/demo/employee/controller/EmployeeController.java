@@ -137,6 +137,13 @@ public class EmployeeController {
         return ResponseEntity.ok(Map.of("message", "Employee deactivated"));
     }
 
+    @DeleteMapping("/{id}/permanent")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete employee and all dependent records (irreversible)")
+    public ResponseEntity<Map<String, Object>> hardDelete(@PathVariable Long id) {
+        return ResponseEntity.ok(employeeService.hardDelete(id));
+    }
+
     @PostMapping("/{id}/photo")
     @PreAuthorize("hasAuthority('employee:edit')")
     @Operation(summary = "Upload employee photo")

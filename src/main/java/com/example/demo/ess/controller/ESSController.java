@@ -181,52 +181,55 @@ public class ESSController {
     @Operation(summary = "Get own work information")
     public ResponseEntity<WorkInfoResponse> myWorkInfo(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return workInfoRepository.findByEmployeeId(emp.getId())
-                .map(wi -> {
-                    WorkInfoResponse res = WorkInfoResponse.from(wi);
-                    // Fall back to Employee-level fields when WorkInformation fields are not set
-                    if (res.getShiftId() == null && emp.getShift() != null) {
-                        res.setShiftId(emp.getShift().getId());
-                        res.setShiftName(emp.getShift().getName());
-                    }
-                    if (res.getDepartmentId() == null && emp.getDepartment() != null) {
-                        res.setDepartmentId(emp.getDepartment().getId());
-                        res.setDepartmentName(emp.getDepartment().getName());
-                    }
-                    if (res.getJobPositionId() == null && emp.getJobPosition() != null) {
-                        res.setJobPositionId(emp.getJobPosition().getId());
-                        res.setJobPositionName(emp.getJobPosition().getName());
-                    }
-                    if (res.getJobRoleId() == null && emp.getJobRole() != null) {
-                        res.setJobRoleId(emp.getJobRole().getId());
-                        res.setJobRoleName(emp.getJobRole().getName());
-                    }
-                    if (res.getWorkTypeId() == null && emp.getWorkType() != null) {
-                        res.setWorkTypeId(emp.getWorkType().getId());
-                        res.setWorkTypeName(emp.getWorkType().getName());
-                    }
-                    // Merge salary from contract if not set in WorkInformation.
-                    // Mirrors admin endpoint: check all 4 fields, prefer ACTIVE over DRAFT.
-                    if (res.getBasicSalary() == null && res.getHousingAllowance() == null
-                            && res.getTransportAllowance() == null && res.getOtherAllowance() == null) {
-                        contractRepository.findByEmployeeIdAndContractStatusIn(emp.getId(),
-                                java.util.List.of(com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE,
-                                                  com.example.demo.payroll.entity.Contract.ContractStatus.DRAFT))
-                                .stream()
-                                .min(java.util.Comparator.comparingInt(c ->
-                                        c.getContractStatus() == com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE ? 0 : 1))
-                                .ifPresent(contract -> {
-                                    if (contract.getWage() != null) res.setBasicSalary(contract.getWage());
-                                    if (contract.getHousingAllowance() != null) res.setHousingAllowance(contract.getHousingAllowance());
-                                    if (contract.getTransportAllowance() != null) res.setTransportAllowance(contract.getTransportAllowance());
-                                    if (contract.getOtherAllowance() != null) res.setOtherAllowance(contract.getOtherAllowance());
-                                    if (contract.getTotalSalary() != null) res.setTotalSalary(contract.getTotalSalary());
-                                    if (contract.getEndDate() != null && res.getContractEndDate() == null) res.setContractEndDate(contract.getEndDate());
-                                });
-                    }
-                    return ResponseEntity.ok(res);
-                })
-                .orElse(ResponseEntity.notFound().build());
+        // Employees without an EmployeeWorkInformation row (e.g. onboarded outside the
+        // standard flow) used to 404 here even when Employee-level fields (like shift,
+        // set via shift allocation approval) were populated. Build an empty response to
+        // merge fallbacks into instead of bailing out.
+        WorkInfoResponse res = workInfoRepository.findByEmployeeId(emp.getId())
+                .map(WorkInfoResponse::from)
+                .orElseGet(WorkInfoResponse::new);
+
+        // Fall back to Employee-level fields when WorkInformation fields are not set
+        if (res.getShiftId() == null && emp.getShift() != null) {
+            res.setShiftId(emp.getShift().getId());
+            res.setShiftName(emp.getShift().getName());
+        }
+        if (res.getDepartmentId() == null && emp.getDepartment() != null) {
+            res.setDepartmentId(emp.getDepartment().getId());
+            res.setDepartmentName(emp.getDepartment().getName());
+        }
+        if (res.getJobPositionId() == null && emp.getJobPosition() != null) {
+            res.setJobPositionId(emp.getJobPosition().getId());
+            res.setJobPositionName(emp.getJobPosition().getName());
+        }
+        if (res.getJobRoleId() == null && emp.getJobRole() != null) {
+            res.setJobRoleId(emp.getJobRole().getId());
+            res.setJobRoleName(emp.getJobRole().getName());
+        }
+        if (res.getWorkTypeId() == null && emp.getWorkType() != null) {
+            res.setWorkTypeId(emp.getWorkType().getId());
+            res.setWorkTypeName(emp.getWorkType().getName());
+        }
+        // Merge salary from contract if not set in WorkInformation.
+        // Mirrors admin endpoint: check all 4 fields, prefer ACTIVE over DRAFT.
+        if (res.getBasicSalary() == null && res.getHousingAllowance() == null
+                && res.getTransportAllowance() == null && res.getOtherAllowance() == null) {
+            contractRepository.findByEmployeeIdAndContractStatusIn(emp.getId(),
+                    java.util.List.of(com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE,
+                                      com.example.demo.payroll.entity.Contract.ContractStatus.DRAFT))
+                    .stream()
+                    .min(java.util.Comparator.comparingInt(c ->
+                            c.getContractStatus() == com.example.demo.payroll.entity.Contract.ContractStatus.ACTIVE ? 0 : 1))
+                    .ifPresent(contract -> {
+                        if (contract.getWage() != null) res.setBasicSalary(contract.getWage());
+                        if (contract.getHousingAllowance() != null) res.setHousingAllowance(contract.getHousingAllowance());
+                        if (contract.getTransportAllowance() != null) res.setTransportAllowance(contract.getTransportAllowance());
+                        if (contract.getOtherAllowance() != null) res.setOtherAllowance(contract.getOtherAllowance());
+                        if (contract.getTotalSalary() != null) res.setTotalSalary(contract.getTotalSalary());
+                        if (contract.getEndDate() != null && res.getContractEndDate() == null) res.setContractEndDate(contract.getEndDate());
+                    });
+        }
+        return ResponseEntity.ok(res);
     }
 
     // ── Leave ─────────────────────────────────────────────────────────────────
@@ -334,24 +337,40 @@ public class ESSController {
 
     @PostMapping("/check-in")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Self check-in for today")
-    public ResponseEntity<AttendanceResponse> checkIn(Authentication auth) {
+    @Operation(summary = "Self check-in for today, optionally with the device's GPS coordinates")
+    public ResponseEntity<AttendanceResponse> checkIn(
+            Authentication auth,
+            @RequestBody(required = false) Map<String, Object> body) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(attendanceService.clockIn(emp.getId(), emp.getCompany().getId()));
+        Double latitude = toDouble(body, "latitude");
+        Double longitude = toDouble(body, "longitude");
+        Double accuracy = toDouble(body, "accuracy");
+        return ResponseEntity.ok(attendanceService.clockIn(emp.getId(), emp.getCompany().getId(), latitude, longitude, accuracy, "web"));
     }
 
     @PostMapping("/check-out")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Self check-out for today")
-    public ResponseEntity<?> checkOut(Authentication auth) {
+    @Operation(summary = "Self check-out for today, optionally with the device's GPS coordinates")
+    public ResponseEntity<?> checkOut(
+            Authentication auth,
+            @RequestBody(required = false) Map<String, Object> body) {
         Employee emp = resolveEmployee(auth);
         LocalDate today = LocalDate.now(DUBAI_ZONE);
         java.util.Optional<Attendance> opt = attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today);
         if (opt.isPresent()) {
-            return ResponseEntity.ok(attendanceService.clockOut(opt.get().getId()));
+            Double latitude = toDouble(body, "latitude");
+            Double longitude = toDouble(body, "longitude");
+            Double accuracy = toDouble(body, "accuracy");
+            return ResponseEntity.ok(attendanceService.clockOut(opt.get().getId(), latitude, longitude, accuracy, "web"));
         } else {
             return ResponseEntity.badRequest().body("No attendance record found for today.");
         }
+    }
+
+    private Double toDouble(Map<String, Object> body, String key) {
+        if (body == null) return null;
+        Object value = body.get(key);
+        return value instanceof Number number ? number.doubleValue() : null;
     }
 
     @GetMapping("/my-attendance/export")

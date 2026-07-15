@@ -24,6 +24,8 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.repository.ContractRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +71,9 @@ public class EmployeeService {
     private final ContractRepository contractRepository;
     private final FileUploadService fileUploadService;
     private final EmployeeWorkInformationRepository workInfoRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /**
      * Lists employees visible to the current user based on their access scope.
@@ -211,9 +216,12 @@ public class EmployeeService {
             });
             emp.setUser(user);
 
-            // Assign role: use selected role, or default to EMPLOYEE+SELF for new users
-            Role.RoleName roleName = req.getRole() != null ? req.getRole() : (isNewUser[0] ? Role.RoleName.EMPLOYEE : null);
-            UserRole.AccessScope scope = req.getAccessScope() != null ? req.getAccessScope() : (isNewUser[0] ? UserRole.AccessScope.SELF : null);
+            // Assign role: use selected role, or default to EMPLOYEE+SELF.
+            // Defaults regardless of isNewUser — a pre-existing user account linked to a new
+            // Employee record still needs a role in this company, otherwise they end up with
+            // zero access and no indication why (see: sivaprasadmutluru@gmail.com incident).
+            Role.RoleName roleName = req.getRole() != null ? req.getRole() : Role.RoleName.EMPLOYEE;
+            UserRole.AccessScope scope = req.getAccessScope() != null ? req.getAccessScope() : UserRole.AccessScope.SELF;
             log.info("[create] isNewUser={} roleName={} scope={} userId={} companyId={}", isNewUser[0], roleName, scope, user.getId(), req.getCompanyId());
             if (roleName != null && scope != null && !userRoleService.hasRole(user.getId(), req.getCompanyId(), roleName)) {
                 log.info("[create] assigning role={} to userId={}", roleName, user.getId());
@@ -336,6 +344,61 @@ public class EmployeeService {
         Employee emp = findEmployee(id);
         emp.setActive(false);
         employeeRepository.save(emp);
+    }
+
+    /**
+     * Permanently deletes an employee and every row in the current tenant schema that
+     * references it, by discovering foreign keys at runtime rather than hardcoding table
+     * names — the employees table is referenced by ~100 tables (attendance, payroll,
+     * leave, tickets, etc.) and that list changes as features are added.
+     *
+     * PLATFORM_SUPER_ADMIN only, irreversible. Intended for cleaning up broken/junk records
+     * (e.g. duplicate stubs from bugs), not routine offboarding — use delete() for that.
+     */
+    @Transactional
+    public Map<String, Object> hardDelete(Long id) {
+        findEmployee(id); // 404s if it doesn't exist in the current tenant schema
+
+        // Self-referencing FK (reporting_manager_id) isn't caught by the generic loop below
+        // since it points from employees back to employees — null it out rather than deleting
+        // whoever reports to this person.
+        entityManager.createNativeQuery(
+                "UPDATE employees SET reporting_manager_id = NULL WHERE reporting_manager_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> referencingTables = entityManager.createNativeQuery(
+                "SELECT tc.table_name, kcu.column_name " +
+                "FROM information_schema.table_constraints tc " +
+                "JOIN information_schema.key_column_usage kcu " +
+                "  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema " +
+                "JOIN information_schema.constraint_column_usage ccu " +
+                "  ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema " +
+                "WHERE tc.constraint_type = 'FOREIGN KEY' " +
+                "  AND ccu.table_name = 'employees' AND ccu.table_schema = current_schema() " +
+                "  AND tc.table_schema = current_schema() AND tc.table_name <> 'employees'")
+                .getResultList();
+
+        Map<String, Object> clearedCounts = new LinkedHashMap<>();
+        for (Object[] row : referencingTables) {
+            String tableName = (String) row[0];
+            String columnName = (String) row[1];
+            int cleared = entityManager.createNativeQuery(
+                    "DELETE FROM \"" + tableName + "\" WHERE \"" + columnName + "\" = :id")
+                    .setParameter("id", id)
+                    .executeUpdate();
+            if (cleared > 0) {
+                clearedCounts.merge(tableName, cleared, (a, b) -> (Integer) a + (Integer) b);
+            }
+        }
+
+        entityManager.createNativeQuery("DELETE FROM employees WHERE id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+
+        log.warn("[hardDelete] Permanently deleted employee id={} — cleared dependent rows: {}", id, clearedCounts);
+        return Map.of("message", "Employee permanently deleted", "clearedDependents", clearedCounts);
     }
 
     @Transactional

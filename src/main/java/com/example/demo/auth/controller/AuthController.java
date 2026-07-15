@@ -4,7 +4,6 @@ import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.LoginResponse;
 import com.example.demo.auth.dto.PasswordResetRequest;
 import com.example.demo.auth.entity.UserRole;
-import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.repository.CompanyRepository;
@@ -21,10 +20,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -34,7 +33,6 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserRoleRepository userRoleRepository;
-    private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
 
@@ -86,33 +84,15 @@ public class AuthController {
                         .orElse(null)
                 : null;
 
-        // Auto-create an employee profile for admin users who don't have one yet
-        Long employeeId = employeeRepository.findByUserId(principal.getId())
-                .map(Employee::getId)
-                .orElseGet(() -> {
-                    if (companyId == null) return null;
-                    return companyRepository.findById(companyId).map(company -> {
-                        return userRepository.findById(principal.getId()).map(user -> {
-                            Employee emp = new Employee();
-                            emp.setFirstName(principal.getUsername());
-                            emp.setWorkEmail(principal.getEmail() != null ? principal.getEmail() : principal.getUsername());
-                            emp.setCompany(company);
-                            emp.setUser(user);
-                            emp.setDateJoining(LocalDate.now());
-                            return employeeRepository.save(emp).getId();
-                        }).orElse(null);
-                    }).orElse(null);
-                });
-
-        // Fetch employee's firstName and photoPath for display
-        String firstName = null;
-        String photoPath = null;
-        java.util.Optional<Employee> empOpt = employeeRepository.findByUserId(principal.getId());
-        if (empOpt.isPresent()) {
-            Employee emp = empOpt.get();
-            firstName = emp.getFirstName();
-            photoPath = emp.getPhotoPath();
-        }
+        // Report the employee profile linked to this user in the current tenant schema, if any.
+        // Does NOT auto-create one: employeeRepository is schema-scoped to whichever company is
+        // currently active, so a user with a real profile in a different company (e.g. a platform
+        // admin viewing another client org) would otherwise look "profile-less" here and get a
+        // second, broken placeholder record silently created in the wrong schema.
+        Optional<Employee> empOpt = employeeRepository.findByUserId(principal.getId());
+        Long employeeId = empOpt.map(Employee::getId).orElse(null);
+        String firstName = empOpt.map(Employee::getFirstName).orElse(null);
+        String photoPath = empOpt.map(Employee::getPhotoPath).orElse(null);
 
         Map<String, Object> response = new HashMap<>();
         response.put("userId", principal.getId());

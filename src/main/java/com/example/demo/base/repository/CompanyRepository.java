@@ -68,6 +68,12 @@ public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpec
     @Query("SELECT c.organization.status FROM Company c WHERE c.id = :companyId")
     Optional<Organization.OrgStatus> findOrgStatusByCompanyId(@Param("companyId") Long companyId);
 
+    // Get organization slug for a given company — avoids lazy-loading Company.organization
+    // outside a transaction (spring.jpa.open-in-view=false means the session closes as
+    // soon as a plain findById() call returns).
+    @Query("SELECT c.organization.slug FROM Company c WHERE c.id = :companyId")
+    Optional<String> findOrganizationSlugByCompanyId(@Param("companyId") Long companyId);
+
     // Find companies that have no organization linked (directly created in DB)
     @Query(value = "SELECT * FROM public.companies WHERE organization_id IS NULL", nativeQuery = true)
     List<Company> findAllOrphanCompaniesPublic();

@@ -1,7 +1,5 @@
 package com.example.demo.common.controller;
 
-import com.example.demo.base.entity.Company;
-import com.example.demo.base.entity.Organization;
 import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.service.FileUploadService;
@@ -73,9 +71,7 @@ public class FileUploadController {
     private String resolveOrgSlug() {
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (scope != null && scope.getCompanyId() != null) {
-            return companyRepository.findById(scope.getCompanyId())
-                    .map(Company::getOrganization)
-                    .map(Organization::getSlug)
+            return companyRepository.findOrganizationSlugByCompanyId(scope.getCompanyId())
                     .orElse("default");
         }
         return "default";

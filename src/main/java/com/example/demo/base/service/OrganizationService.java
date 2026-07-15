@@ -20,11 +20,15 @@ import com.example.demo.employee.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +40,7 @@ import java.util.stream.Collectors;
  * Follows the same pattern as CompanyService — controller delegates here.
  */
 @Service
+@Slf4j
 public class OrganizationService {
 
     private final OrganizationRepository organizationRepository;
@@ -48,6 +53,7 @@ public class OrganizationService {
     private final CrossBranchAccessGrantRepository crossBranchAccessGrantRepository;
     private final CompanyService companyService;
     private final SchemaProvisioningService schemaProvisioningService;
+    private final DataSource dataSource;
 
     public OrganizationService(OrganizationRepository organizationRepository,
                                 CompanyRepository companyRepository,
@@ -58,7 +64,8 @@ public class OrganizationService {
                                 UserRepository userRepository,
                                 CrossBranchAccessGrantRepository crossBranchAccessGrantRepository,
                                 @Lazy CompanyService companyService,
-                                SchemaProvisioningService schemaProvisioningService) {
+                                SchemaProvisioningService schemaProvisioningService,
+                                DataSource dataSource) {
         this.organizationRepository = organizationRepository;
         this.companyRepository = companyRepository;
         this.employeeRepository = employeeRepository;
@@ -69,6 +76,7 @@ public class OrganizationService {
         this.crossBranchAccessGrantRepository = crossBranchAccessGrantRepository;
         this.companyService = companyService;
         this.schemaProvisioningService = schemaProvisioningService;
+        this.dataSource = dataSource;
     }
 
     // Self-reference so deleteOrganization can call @Transactional sub-methods through the proxy
@@ -224,6 +232,41 @@ public class OrganizationService {
      *     completes in milliseconds rather than the usual 5-15 s.
      */
     public void deleteOrganization(Long id) {
+        // Guard against a second overlapping delete for the same org (double-click, client
+        // retry after a slow response, etc.). Without this, two concurrent invocations of this
+        // method race over the same rows (user_roles, companies) and can block each other
+        // indefinitely — that previously starved the entire HikariCP pool and took down login
+        // for everyone. pg_try_advisory_lock is non-blocking: the second caller fails fast with
+        // a clear error instead of queueing up behind the first one's locks.
+        try (Connection lockConn = dataSource.getConnection()) {
+            boolean acquired;
+            try (var ps = lockConn.prepareStatement("SELECT pg_try_advisory_lock(?)")) {
+                ps.setLong(1, id);
+                try (var rs = ps.executeQuery()) {
+                    rs.next();
+                    acquired = rs.getBoolean(1);
+                }
+            }
+            if (!acquired) {
+                throw new BadRequestException(
+                        "This organization is already being deleted. Please wait for it to finish.");
+            }
+            try {
+                deleteOrganizationLocked(id);
+            } finally {
+                try (var ps = lockConn.prepareStatement("SELECT pg_advisory_unlock(?)")) {
+                    ps.setLong(1, id);
+                    ps.execute();
+                } catch (SQLException e) {
+                    log.warn("Failed to release delete-organization advisory lock for org {}: {}", id, e.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to acquire deletion lock for organization " + id, e);
+        }
+    }
+
+    private void deleteOrganizationLocked(Long id) {
         Organization org = getOrganizationById(id);
         List<Company> companies = companyRepository.findByOrganizationId(id);
 

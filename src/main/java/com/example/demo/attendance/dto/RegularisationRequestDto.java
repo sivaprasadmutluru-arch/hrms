@@ -1,6 +1,7 @@
 package com.example.demo.attendance.dto;
 
 import com.example.demo.attendance.entity.AttendanceRegularisationRequest;
+import com.example.demo.employee.entity.Employee;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -48,7 +49,6 @@ public class RegularisationRequestDto {
     private String rejectedByName;
     private LocalDateTime rejectedAt;
     private String rejectionRemarks;
-    private String rejectionStage;
 
     private LocalDateTime createdAt;
 
@@ -69,34 +69,41 @@ public class RegularisationRequestDto {
         dto.setHrApprovedAt(r.getHrApprovedAt());
         dto.setRejectionRemarks(r.getRejectionRemarks());
         dto.setRejectedAt(r.getRejectedAt());
-        dto.setRejectionStage(r.getRejectionStage() != null ? r.getRejectionStage().name() : null);
         dto.setCreatedAt(r.getCreatedAt());
 
         if (r.getAttendance() != null) {
             dto.setAttendanceId(r.getAttendance().getId());
             dto.setAttendanceDate(r.getAttendance().getAttendanceDate());
+        } else {
+            dto.setAttendanceDate(r.getRequestDate());
         }
         if (r.getEmployee() != null) {
             dto.setEmployeeId(r.getEmployee().getId());
-            dto.setEmployeeName(r.getEmployee().getFirstName() + " " + r.getEmployee().getLastName());
+            dto.setEmployeeName(fullName(r.getEmployee()));
             dto.setEmployeeBadgeId(r.getEmployee().getBadgeId());
         }
         if (r.getManager() != null) {
             dto.setManagerId(r.getManager().getId());
-            dto.setManagerName(r.getManager().getFirstName() + " " + r.getManager().getLastName());
+            dto.setManagerName(fullName(r.getManager()));
         }
         if (r.getManagerApprovedBy() != null) {
             dto.setManagerApprovedById(r.getManagerApprovedBy().getId());
-            dto.setManagerApprovedByName(r.getManagerApprovedBy().getFirstName() + " " + r.getManagerApprovedBy().getLastName());
+            dto.setManagerApprovedByName(fullName(r.getManagerApprovedBy()));
         }
         if (r.getHrApprovedBy() != null) {
             dto.setHrApprovedById(r.getHrApprovedBy().getId());
-            dto.setHrApprovedByName(r.getHrApprovedBy().getFirstName() + " " + r.getHrApprovedBy().getLastName());
+            dto.setHrApprovedByName(fullName(r.getHrApprovedBy()));
         }
         if (r.getRejectedBy() != null) {
             dto.setRejectedById(r.getRejectedBy().getId());
-            dto.setRejectedByName(r.getRejectedBy().getFirstName() + " " + r.getRejectedBy().getLastName());
+            dto.setRejectedByName(fullName(r.getRejectedBy()));
         }
         return dto;
+    }
+
+    private static String fullName(Employee e) {
+        String first = e.getFirstName() != null ? e.getFirstName() : "";
+        String last = e.getLastName() != null ? e.getLastName() : "";
+        return (first + " " + last).trim();
     }
 }

@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
@@ -35,23 +36,24 @@ public class AttendanceRegularisationRequest extends BaseEntity {
     }
 
     public enum RequestStatus {
-        PENDING_MANAGER,    // submitted, awaiting reporting manager
-        APPROVED_BY_MANAGER, // manager approved, auto-moved to PENDING_HR
-        PENDING_HR,         // awaiting HR verification
-        APPROVED,           // fully approved — attendance updated, notification sent
-        REJECTED            // rejected at manager or HR stage
-    }
-
-    public enum RejectionStage {
-        MANAGER, HR
+        PENDING,            // submitted, awaiting admin/HR manager approval
+        APPROVED,           // approved — attendance updated, notification sent
+        REJECTED            // rejected
     }
 
     // ─── Core Fields ──────────────────────────────────────────────────────────
 
-    /** The attendance record this request relates to. Nullable for date-only OT requests. */
+    /** The attendance record this request relates to. Null when requesting regularisation for a
+     *  day with no attendance row yet (e.g. currently shown as Absent / On Leave / Holiday / Week Off) —
+     *  see {@link #requestDate} for the date in that case. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "attendance_id")
     private Attendance attendance;
+
+    /** Calendar date being regularised when {@link #attendance} is null. Approval creates the
+     *  Attendance record for this date. */
+    @Column(name = "request_date")
+    private LocalDate requestDate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
@@ -67,7 +69,7 @@ public class AttendanceRegularisationRequest extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 25)
-    private RequestStatus status = RequestStatus.PENDING_MANAGER;
+    private RequestStatus status = RequestStatus.PENDING;
 
     @Column(name = "reason", columnDefinition = "TEXT")
     private String reason;
@@ -89,9 +91,11 @@ public class AttendanceRegularisationRequest extends BaseEntity {
     @Column(name = "requested_overtime_hours")
     private Double requestedOvertimeHours;
 
-    // ─── Manager Approval ─────────────────────────────────────────────────────
+    // ─── Manager Approval (legacy) ────────────────────────────────────────────
+    // Retained for audit history on requests created before the single-stage
+    // approval redesign. No longer set for new requests.
 
-    /** The reporting manager who needs to approve this request. */
+    /** The reporting manager who needed to approve this request under the old workflow. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manager_id")
     private Employee manager;
@@ -106,7 +110,9 @@ public class AttendanceRegularisationRequest extends BaseEntity {
     @Column(name = "manager_remarks", columnDefinition = "TEXT")
     private String managerRemarks;
 
-    // ─── HR Approval ──────────────────────────────────────────────────────────
+    // ─── Approval ─────────────────────────────────────────────────────────────
+    // These columns are named hr_* for historical reasons but now represent the
+    // single admin/HR-manager approver under the simplified workflow.
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hr_approved_by")
@@ -129,8 +135,4 @@ public class AttendanceRegularisationRequest extends BaseEntity {
 
     @Column(name = "rejection_remarks", columnDefinition = "TEXT")
     private String rejectionRemarks;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rejection_stage", length = 10)
-    private RejectionStage rejectionStage;
 }

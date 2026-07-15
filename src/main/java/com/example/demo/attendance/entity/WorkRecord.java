@@ -46,10 +46,10 @@ public class WorkRecord extends BaseEntity {
     @Column(name = "record_date")
     private LocalDate date;
 
-    @Column(name = "at_work", length = 5)
+    @Column(name = "at_work", length = 16)
     private String atWork = "00:00";
 
-    @Column(name = "min_hour", length = 5)
+    @Column(name = "min_hour", length = 16)
     private String minHour = "00:00";
 
     @Column(name = "at_work_second")

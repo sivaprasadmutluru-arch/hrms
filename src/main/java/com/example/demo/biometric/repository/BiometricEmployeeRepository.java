@@ -10,5 +10,6 @@ public interface BiometricEmployeeRepository extends JpaRepository<BiometricEmpl
     List<BiometricEmployee> findByDeviceId(Long deviceId);
     List<BiometricEmployee> findByEmployeeId(Long employeeId);
     List<BiometricEmployee> findByDeviceIdAndIsActiveTrue(Long deviceId);
+    List<BiometricEmployee> findByUserIdAndIsActiveTrue(String userId);
     Optional<BiometricEmployee> findByDeviceIdAndUserId(Long deviceId, String userId);
 }

@@ -218,18 +218,25 @@ public class AttendanceController {
 
     @PostMapping("/clock-in")
     @PreAuthorize("hasAuthority('attendance:create')")
-    @Operation(summary = "Clock in an employee")
+    @Operation(summary = "Clock in an employee, optionally with the device's GPS coordinates")
     public ResponseEntity<AttendanceResponse> clockIn(
             @RequestParam Long employeeId,
-            @RequestParam Long companyId) {
-        return ResponseEntity.ok(attendanceService.clockIn(employeeId, companyId));
+            @RequestParam Long companyId,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false) Double accuracy) {
+        return ResponseEntity.ok(attendanceService.clockIn(employeeId, companyId, latitude, longitude, accuracy, "manual"));
     }
 
     @PostMapping("/clock-out")
     @PreAuthorize("hasAuthority('attendance:edit')")
-    @Operation(summary = "Clock out an employee")
-    public ResponseEntity<AttendanceResponse> clockOut(@RequestParam Long attendanceId) {
-        return ResponseEntity.ok(attendanceService.clockOut(attendanceId));
+    @Operation(summary = "Clock out an employee, optionally with the device's GPS coordinates")
+    public ResponseEntity<AttendanceResponse> clockOut(
+            @RequestParam Long attendanceId,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false) Double accuracy) {
+        return ResponseEntity.ok(attendanceService.clockOut(attendanceId, latitude, longitude, accuracy, "manual"));
     }
 
     // ─── Not Clocked In / Out ─────────────────────────────────────────────────
