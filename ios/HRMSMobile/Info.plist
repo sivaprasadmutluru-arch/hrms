@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>HRMSMobile</string>
+	<string>Grecha HRMS</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,11 +34,19 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>Grecha HRMS uses your location to validate geofenced clock-in and clock-out.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Grecha HRMS can save profile photos when you choose to update them.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Grecha HRMS needs access to Photos so you can update your employee profile photo.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Ionicons.ttf</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
+	<string>BootSplash</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
