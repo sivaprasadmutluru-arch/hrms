@@ -116,6 +116,9 @@ export default function ManualPayrollPage() {
 
   // Local editable row state
   const [rowEdits,      setRowEdits]      = useState({})
+  // Bumped after import/generate so the row-edits populate effect below re-runs even when
+  // monthPayslips.length is unchanged (import/generate updates EXISTING rows, not new ones).
+  const [editsResetKey, setEditsResetKey] = useState(0)
   const [savingIds,     setSavingIds]     = useState(new Set())
   const [dlIds,         setDlIds]         = useState(new Set())
   const [bulkDlLoading, setBulkDlLoading] = useState(false)
@@ -176,7 +179,7 @@ export default function ManualPayrollPage() {
       })
       return next
     })
-  }, [monthPayslips.length, selectedMonth])
+  }, [monthPayslips.length, selectedMonth, editsResetKey])
 
   // ── Derived calc ────────────────────────────────────────────────────────────
 
@@ -214,15 +217,20 @@ export default function ManualPayrollPage() {
     if (!file)      return toast.error('Please select an Excel file to upload')
     dispatch(processPayslipImport({ companyId, month: selectedMonth, year: selectedYear, file }))
       .unwrap()
-      .then(result => {
+      .then(async result => {
         if (result.status === 'success') toast.success(result.message)
         else if (result.status === 'partial') toast(`Import completed with errors: ${result.message}`, { icon: '⚠️' })
         else toast.error(result.message)
         setFile(null)
         if (fileRef.current) fileRef.current.value = ''
-        dispatch(fetchImportInfo({ companyId, year: selectedYear }))
-        dispatch(fetchMonthPayslips({ year: selectedYear }))
+        // Await so Redux has the freshly-imported values BEFORE we clear rowEdits and force
+        // the populate effect to re-run — otherwise it can re-populate from stale data.
+        await Promise.all([
+          dispatch(fetchImportInfo({ companyId, year: selectedYear })),
+          dispatch(fetchMonthPayslips({ year: selectedYear })),
+        ])
         setRowEdits({})
+        setEditsResetKey(k => k + 1)
       })
       .catch(e => toast.error(e || 'Import failed'))
   }
@@ -236,9 +244,12 @@ export default function ManualPayrollPage() {
       const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${lastDay}`
       await dispatch(generateBulkPayslips({ companyId, startDate, endDate })).unwrap()
       toast.success(`Payslips generated for ${MONTH_NAMES[selectedMonth]} ${selectedYear}`)
-      dispatch(fetchImportInfo({ companyId, year: selectedYear }))
-      dispatch(fetchMonthPayslips({ year: selectedYear, month: selectedMonth }))
+      await Promise.all([
+        dispatch(fetchImportInfo({ companyId, year: selectedYear })),
+        dispatch(fetchMonthPayslips({ year: selectedYear })),
+      ])
       setRowEdits({})
+      setEditsResetKey(k => k + 1)
     } catch (e) {
       toast.error(e || 'Generation failed')
     } finally {

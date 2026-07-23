@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import { fetchShiftAllocations, approveShiftAllocation, cancelShiftAllocation, deleteShiftAllocation, selectShiftAllocations, selectShiftAllocationsLoading } from './shiftAllocationsSlice'
-import { fetchAll as fetchEmployees } from '../employees/employeesSlice'
+import { fetchAll as fetchEmployees, fetchAllGlobal as fetchEmployeesGlobal } from '../employees/employeesSlice'
 import useAuth from '../../hooks/useAuth'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
@@ -23,7 +23,7 @@ const STATUS_BADGE = {
 
 export default function ShiftAllocationsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { isPlatformAdmin, selectedCompanyId, effectiveCompanyId } = useAuth()
   const allocations = useSelector(selectShiftAllocations)
   const loading = useSelector(selectShiftAllocationsLoading)
 
@@ -32,10 +32,15 @@ export default function ShiftAllocationsPage() {
   const [editing, setEditing] = useState(null)
   const [showBulk, setShowBulk] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const platformAdmin = isPlatformAdmin()
 
   useEffect(() => {
-    dispatch(fetchEmployees({ page: 0, size: 500 }))
-  }, [dispatch])
+    if (platformAdmin && !selectedCompanyId) {
+      dispatch(fetchEmployeesGlobal({ page: 0, size: 500 }))
+    } else {
+      dispatch(fetchEmployees({ page: 0, size: 500, companyIdOverride: selectedCompanyId || undefined }))
+    }
+  }, [dispatch, platformAdmin, selectedCompanyId])
 
   useEffect(() => {
     const params = {}
@@ -149,7 +154,7 @@ export default function ShiftAllocationsPage() {
         <ShiftAllocationFormModal
           open
           allocation={editing}
-          companyId={user?.companyId}
+          companyId={effectiveCompanyId}
           onClose={() => { setShowForm(false); setEditing(null) }}
         />
       )}
@@ -157,7 +162,7 @@ export default function ShiftAllocationsPage() {
       {showBulk && (
         <BulkAllocateModal
           open
-          companyId={user?.companyId}
+          companyId={effectiveCompanyId}
           onClose={() => setShowBulk(false)}
         />
       )}

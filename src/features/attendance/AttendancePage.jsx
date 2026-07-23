@@ -26,17 +26,6 @@ import { formatAttendanceTime, formatDate } from '../../utils/formatters'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import api from '../../services/api'
 
-const REQUEST_TYPES = [
-  { value: 'LATE_ARRIVAL',             label: 'Late Arrival', description: 'Use when you checked in after the shift start time.' },
-  { value: 'MISSING_PUNCH',            label: 'Missing Punch', description: 'Use when check-in or check-out is missing.' },
-  { value: 'WORKING_HOURS_CORRECTION', label: 'Working Hours Correction', description: 'Use for early checkout or incorrect worked hours.' },
-  { value: 'OVERTIME_REQUEST',         label: 'Overtime Request', description: 'Use only for extra hours worked beyond the shift.' },
-  { value: 'WRONG_STATUS',             label: 'Wrong Status', description: 'Use when your punches are correct but the status is wrong.' },
-  { value: 'HALF_TO_FULL_DAY',         label: 'Half Day → Full Day', description: 'Use to request a half-day record be counted as full day.' },
-  { value: 'WORK_FROM_HOME',           label: 'Work From Home', description: 'Use when the work was completed remotely.' },
-  { value: 'OFFICIAL_DUTY',            label: 'Official Duty', description: 'Use for approved field work or client visits.' },
-]
-
 const TABS = ['Attendance', 'Punches', 'Late / Early Out', 'Overtime']
 
 function LocationLink({ latitude, longitude, address }) {
@@ -109,7 +98,6 @@ export default function AttendancePage() {
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const { register: regRegister, handleSubmit: regHandleSubmit, watch: regWatch, reset: regReset, formState: { errors: regErrors } } = useForm()
   const selectedRegType = regWatch('requestType')
-  const selectedRegTypeInfo = REQUEST_TYPES.find(t => t.value === selectedRegType)
 
   useEffect(() => {
     dispatch(fetchLateComeEarlyOut())
@@ -296,26 +284,12 @@ export default function AttendancePage() {
       )
       return <span className="text-gray-300 text-xs">—</span>
     }},
-    { id: 'checkInLocation', header: 'Check In Location', cell: ({ row }) => (
-      <LocationLink latitude={row.original.checkInLatitude} longitude={row.original.checkInLongitude} address={row.original.checkInAddress} />
-    )},
-    { id: 'checkOutLocation', header: 'Check Out Location', cell: ({ row }) => (
-      <LocationLink latitude={row.original.checkOutLatitude} longitude={row.original.checkOutLongitude} address={row.original.checkOutAddress} />
-    )},
     { accessorKey: 'workedHour', header: 'Hours', cell: ({ getValue }) => {
       const v = getValue()
       if (!v && v !== 0) return '—'
       const h = Math.floor(v)
       const m = Math.round((v - h) * 60)
       return m > 0 ? `${h}h ${m}m` : `${h}h`
-    }},
-    { id: 'ot', header: 'OT', cell: ({ row }) => {
-      const ot = row.original.attendanceOvertime
-      if (!ot || ot === 0) return <span className="text-gray-300 text-xs">—</span>
-      const h = Math.floor(ot)
-      const m = Math.round((ot - h) * 60)
-      const label = h > 0 ? `${h}h ${m > 0 ? m + 'm' : ''}`.trim() : `${m}m`
-      return <span className="text-indigo-600 font-medium text-sm">{label}</span>
     }},
     { id: 'status', header: 'Status', cell: ({ row }) => {
       const qs = row.original.displayStatus || row.original.attendanceStatus || 'REGULAR'
@@ -347,31 +321,46 @@ export default function AttendancePage() {
           </button>
         )
       }
+      // HR/Admin viewing someone else's row files on that employee's behalf via employeeId —
+      // still goes through the normal pending-approval queue, same as a self-filed request.
+      const onBehalfEmployeeId = canRequest ? undefined : rec.employeeId
+
       if (as_ === 'IRREGULAR' && (!rs || rs === 'NONE')) {
-        if (canRequest) {
-          return (
-            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceId: rec.id }); setRegModal({ open: true, record: rec, noAttendance: false }) }}>
-              Request
-            </Button>
-          )
-        }
-        return <span className="text-gray-400 text-xs italic">Awaiting Request</span>
+        return (
+          <Button size="sm" variant="secondary" onClick={() => {
+            const requestType = !rec.checkOut
+              ? 'MISSING_PUNCH'
+              : (rec.minimumHour > 0 && rec.workedHour < rec.minimumHour)
+                ? 'WORKING_HOURS_CORRECTION'
+                : 'WRONG_STATUS'
+            regReset({ attendanceId: rec.id, requestType })
+            setRegModal({ open: true, record: rec, noAttendance: false, employeeId: onBehalfEmployeeId })
+          }}>
+            Regularize
+          </Button>
+        )
       }
       // No attendance row yet (Absent / On Leave / Holiday / Week Off) — employee can claim they
-      // were actually present that day.
+      // were actually present that day; HR/Admin can file on the employee's behalf too.
       const ds = rec.displayStatus
       if (!rec.id && ['ABSENT', 'ON_LEAVE', 'HOLIDAY', 'WEEK_OFF'].includes(ds) && (!rs || rs === 'NONE')) {
-        if (canRequest) {
-          return (
-            <Button size="sm" variant="warning" onClick={() => { regReset({ attendanceDate: rec.attendanceDate }); setRegModal({ open: true, record: rec, noAttendance: true }) }}>
-              Request
-            </Button>
-          )
-        }
-        return <span className="text-gray-400 text-xs italic">Awaiting Request</span>
+        return (
+          <Button size="sm" variant="secondary" onClick={() => {
+            regReset({ attendanceDate: rec.attendanceDate, requestType: 'MISSING_PUNCH' })
+            setRegModal({ open: true, record: rec, noAttendance: true, employeeId: onBehalfEmployeeId })
+          }}>
+            Regularize
+          </Button>
+        )
       }
       return <span className="text-gray-300 text-xs">—</span>
     }},
+    { id: 'checkInLocation', header: 'Check In Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.checkInLatitude} longitude={row.original.checkInLongitude} address={row.original.checkInAddress} />
+    )},
+    { id: 'checkOutLocation', header: 'Check Out Location', cell: ({ row }) => (
+      <LocationLink latitude={row.original.checkOutLatitude} longitude={row.original.checkOutLongitude} address={row.original.checkOutAddress} />
+    )},
     { id: 'actions', header: '', cell: ({ row }) => {
       if (!isEmp) {
         if (row.original.id) {
@@ -599,6 +588,7 @@ export default function AttendancePage() {
                 const payload = { ...data }
                 if (regModal.noAttendance) delete payload.attendanceId
                 else delete payload.attendanceDate
+                if (regModal.employeeId != null) payload.employeeId = regModal.employeeId
                 await dispatch(submitRequest(payload)).unwrap()
                 toast.success('Regularisation request submitted')
                 setRegModal({ open: false, record: null })
@@ -612,6 +602,11 @@ export default function AttendancePage() {
         <div className="space-y-4">
           {regModal.record && (
             <div className="space-y-2">
+              {regModal.employeeId != null && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded px-3 py-2 text-sm text-indigo-800">
+                  Filing on behalf of <span className="font-semibold">{regModal.record.employeeName}</span>. This will still go to the pending approval queue.
+                </div>
+              )}
               <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 text-sm text-yellow-800">
                 <span className="font-medium">{formatDate(regModal.record.attendanceDate)}</span>
                 {regModal.noAttendance ? (
@@ -633,24 +628,9 @@ export default function AttendancePage() {
           )}
           <input type="hidden" {...regRegister('attendanceId')} />
           <input type="hidden" {...regRegister('attendanceDate')} />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Request Type</label>
-            <select
-              {...regRegister('requestType', { required: 'Select a request type' })}
-              className={`w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 ${regErrors.requestType ? 'border-red-500' : 'border-gray-300'}`}
-            >
-              <option value="">Select type</option>
-              {(regModal.noAttendance
-                ? REQUEST_TYPES.filter(t => ['MISSING_PUNCH', 'WORK_FROM_HOME', 'OFFICIAL_DUTY'].includes(t.value))
-                : REQUEST_TYPES
-              ).map(t => <option key={t.value} value={t.value}>{t.label} — {t.description}</option>)}
-            </select>
-            {regErrors.requestType && <span className="text-red-500 text-xs mt-1 block">{regErrors.requestType.message}</span>}
-            {selectedRegTypeInfo && <p className="text-xs text-gray-500 mt-1">{selectedRegTypeInfo.description}</p>}
-            {selectedRegType === 'OVERTIME_REQUEST' && regModal.record?.attendanceStatus === 'IRREGULAR' && (
-              <p className="text-xs text-amber-700 mt-1 font-medium">Overtime approval will not correct late arrival, early checkout, or short hours.</p>
-            )}
-          </div>
+          {/* Request type is auto-derived when the Regularize button is clicked (missing
+              punch / short hours / wrong status) — no need to ask the user to pick a type. */}
+          <input type="hidden" {...regRegister('requestType')} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
             <textarea

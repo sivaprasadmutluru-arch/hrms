@@ -10,6 +10,15 @@ export const fetchAll = createAsyncThunk('offboarding/fetchAll', async (params, 
   }
 })
 
+export const fetchLeavers = createAsyncThunk('offboarding/fetchLeavers', async (params, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/offboarding/leavers', { params })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch leavers')
+  }
+})
+
 export const fetchById = createAsyncThunk('offboarding/fetchById', async (id, { rejectWithValue }) => {
   try {
     const res = await api.get(`/offboarding/${id}`)
@@ -270,6 +279,8 @@ const offboardingSlice = createSlice({
     selected: {},
     resignations: [],
     exitReasons: [],
+    leavers: [],
+    leaversPagination: { page: 0, size: 20, total: 0 },
     pagination: { page: 0, size: 20, total: 0 },
     loading: false,
     error: null,
@@ -293,6 +304,18 @@ const offboardingSlice = createSlice({
         }
       })
       .addCase(fetchAll.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+
+      .addCase(fetchLeavers.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchLeavers.fulfilled, (state, action) => {
+        state.loading = false
+        state.leavers = action.payload.content || action.payload
+        if (action.payload.totalElements !== undefined) {
+          state.leaversPagination.total = action.payload.totalElements
+          state.leaversPagination.page = action.payload.number ?? state.leaversPagination.page
+          state.leaversPagination.size = action.payload.size ?? state.leaversPagination.size
+        }
+      })
+      .addCase(fetchLeavers.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
       .addCase(fetchById.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchById.fulfilled, (state, action) => { state.loading = false; state.selected = action.payload })
@@ -386,6 +409,8 @@ export const selectAll = (state) => state.offboarding.data
 export const selectSelected = (state) => state.offboarding.selected
 export const selectLoading = (state) => state.offboarding.loading
 export const selectPagination = (state) => state.offboarding.pagination
+export const selectLeavers = (state) => state.offboarding.leavers
+export const selectLeaversPagination = (state) => state.offboarding.leaversPagination
 export const selectResignations = (state) => state.offboarding.resignations
 export const selectExitReasons = (state) => state.offboarding.exitReasons
 export const selectPlans = (state) => state.offboarding.plans

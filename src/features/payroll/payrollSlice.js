@@ -179,12 +179,61 @@ export const downloadExportImportFormat = createAsyncThunk('payroll/downloadExpo
   }
 })
 
-export const markPaid = createAsyncThunk('payroll/markPaid', async (id, { rejectWithValue }) => {
+export const markPaid = createAsyncThunk('payroll/markPaid', async (arg, { rejectWithValue }) => {
+  // Backward compatible: accepts either a raw payslip id, or { id, paymentReference, paymentDate }
+  const { id, paymentReference, paymentDate } = typeof arg === 'object' && arg !== null ? arg : { id: arg }
   try {
-    const res = await api.post(`/payroll/payslips/${id}/mark-paid`)
+    const res = await api.post(`/payroll/payslips/${id}/mark-paid`, { paymentReference, paymentDate })
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to mark payslip as paid')
+  }
+})
+
+// ─── PAY-006: Draft -> Pending -> Approved -> Paid workflow ────────────────
+
+export const submitPayslip = createAsyncThunk('payroll/submitPayslip', async (id, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/payroll/payslips/${id}/submit`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to submit payslip')
+  }
+})
+
+export const reopenPayslip = createAsyncThunk('payroll/reopenPayslip', async ({ id, reason }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/payroll/payslips/${id}/reopen`, { reason })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to reopen payslip')
+  }
+})
+
+export const submitPayslipsBulk = createAsyncThunk('payroll/submitPayslipsBulk', async (body, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/payroll/payslips/submit/bulk', body)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Bulk submit failed')
+  }
+})
+
+export const confirmPayslipsBulk = createAsyncThunk('payroll/confirmPayslipsBulk', async (body, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/payroll/payslips/confirm/bulk', body)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Bulk approve failed')
+  }
+})
+
+export const markPaidBulk = createAsyncThunk('payroll/markPaidBulk', async (body, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/payroll/payslips/mark-paid/bulk', body)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Bulk mark-paid failed')
   }
 })
 
@@ -778,6 +827,8 @@ const payrollSlice = createSlice({
         if (idx !== -1) state.payslips[idx] = action.payload
         const aIdx = state.autoPayslips.findIndex((item) => item.id === action.payload.id)
         if (aIdx !== -1) state.autoPayslips[aIdx] = action.payload
+        const mIdx = state.monthPayslips.findIndex((item) => item.id === action.payload.id)
+        if (mIdx !== -1) state.monthPayslips[mIdx] = action.payload
       })
       .addCase(confirmPayslip.rejected, (state, action) => { state.error = action.payload })
 
@@ -786,8 +837,30 @@ const payrollSlice = createSlice({
         if (idx !== -1) state.payslips[idx] = action.payload
         const aIdx = state.autoPayslips.findIndex((item) => item.id === action.payload.id)
         if (aIdx !== -1) state.autoPayslips[aIdx] = action.payload
+        const mIdx = state.monthPayslips.findIndex((item) => item.id === action.payload.id)
+        if (mIdx !== -1) state.monthPayslips[mIdx] = action.payload
       })
       .addCase(markPaid.rejected, (state, action) => { state.error = action.payload })
+
+      .addCase(submitPayslip.fulfilled, (state, action) => {
+        const idx = state.payslips.findIndex((item) => item.id === action.payload.id)
+        if (idx !== -1) state.payslips[idx] = action.payload
+        const mIdx = state.monthPayslips.findIndex((item) => item.id === action.payload.id)
+        if (mIdx !== -1) state.monthPayslips[mIdx] = action.payload
+      })
+      .addCase(submitPayslip.rejected, (state, action) => { state.error = action.payload })
+
+      .addCase(reopenPayslip.fulfilled, (state, action) => {
+        const idx = state.payslips.findIndex((item) => item.id === action.payload.id)
+        if (idx !== -1) state.payslips[idx] = action.payload
+        const mIdx = state.monthPayslips.findIndex((item) => item.id === action.payload.id)
+        if (mIdx !== -1) state.monthPayslips[mIdx] = action.payload
+      })
+      .addCase(reopenPayslip.rejected, (state, action) => { state.error = action.payload })
+
+      .addCase(submitPayslipsBulk.rejected, (state, action) => { state.error = action.payload })
+      .addCase(confirmPayslipsBulk.rejected, (state, action) => { state.error = action.payload })
+      .addCase(markPaidBulk.rejected, (state, action) => { state.error = action.payload })
 
       .addCase(fetchFilingStatuses.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchFilingStatuses.fulfilled, (state, action) => { state.loading = false; state.filingStatuses = action.payload.content || action.payload })

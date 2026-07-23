@@ -145,6 +145,50 @@ export const uploadLogo = createAsyncThunk('companies/uploadLogo', async ({ id, 
   }
 })
 
+export const uploadStamp = createAsyncThunk('companies/uploadStamp', async ({ id, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post(`/companies/${id}/stamp`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return { id, stampPath: res.data.stampPath }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to upload stamp')
+  }
+})
+
+export const deleteStamp = createAsyncThunk('companies/deleteStamp', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/companies/${id}/stamp`)
+    return { id }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to remove stamp')
+  }
+})
+
+export const uploadSignature = createAsyncThunk('companies/uploadSignature', async ({ id, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post(`/companies/${id}/signature`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return { id, signaturePath: res.data.signaturePath }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to upload signature')
+  }
+})
+
+export const deleteSignature = createAsyncThunk('companies/deleteSignature', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/companies/${id}/signature`)
+    return { id }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to remove signature')
+  }
+})
+
 const companiesSlice = createSlice({
   name: 'companies',
   initialState: {
@@ -251,6 +295,26 @@ const companiesSlice = createSlice({
             state.branches[hoId][bIdx] = { ...state.branches[hoId][bIdx], logoPath: action.payload.logoPath }
           }
         }
+      })
+      .addCase(uploadStamp.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], stampPath: action.payload.stampPath }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, stampPath: action.payload.stampPath }
+      })
+      .addCase(deleteStamp.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], stampPath: null }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, stampPath: null }
+      })
+      .addCase(uploadSignature.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], signaturePath: action.payload.signaturePath }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, signaturePath: action.payload.signaturePath }
+      })
+      .addCase(deleteSignature.fulfilled, (state, action) => {
+        const idx = state.data.findIndex(item => item.id === action.payload.id)
+        if (idx !== -1) state.data[idx] = { ...state.data[idx], signaturePath: null }
+        if (state.selected?.id === action.payload.id) state.selected = { ...state.selected, signaturePath: null }
       })
   },
 })

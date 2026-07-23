@@ -11,6 +11,23 @@ import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 
+const DAYS = [
+  { value: 'MONDAY', label: 'Mon' },
+  { value: 'TUESDAY', label: 'Tue' },
+  { value: 'WEDNESDAY', label: 'Wed' },
+  { value: 'THURSDAY', label: 'Thu' },
+  { value: 'FRIDAY', label: 'Fri' },
+  { value: 'SATURDAY', label: 'Sat' },
+  { value: 'SUNDAY', label: 'Sun' },
+]
+
+function formatWeekOff(weeklyOffDays) {
+  if (!weeklyOffDays) return '—'
+  const values = weeklyOffDays.split(',').filter(Boolean)
+  if (values.length === 0) return '—'
+  return values.map(v => DAYS.find(d => d.value === v)?.label || v).join(', ')
+}
+
 export default function ShiftSchedulesPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
@@ -18,6 +35,7 @@ export default function ShiftSchedulesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [weekOff, setWeekOff] = useState([])
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchShiftSchedules()) }, [dispatch])
@@ -35,7 +53,12 @@ export default function ShiftSchedulesPage() {
       overtimeCutoff: editing.overtimeCutoff || '',
       minimumOvertimeToApprove: editing.minimumOvertimeToApprove || '',
     } : {})
+    setWeekOff(editing?.weeklyOffDays ? editing.weeklyOffDays.split(',').filter(Boolean) : [])
   }, [modalOpen, editing])
+
+  const toggleWeekOffDay = (day) => {
+    setWeekOff(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  }
 
   const onSubmit = async (data) => {
     const payload = {
@@ -45,6 +68,7 @@ export default function ShiftSchedulesPage() {
       minimumWorkingHour: data.minimumWorkingHour ? Number(data.minimumWorkingHour) : null,
       overtimeCutoff: data.overtimeCutoff || null,
       minimumOvertimeToApprove: data.minimumOvertimeToApprove || null,
+      weeklyOffDays: weekOff.length ? weekOff.join(',') : null,
       company: user?.companyId ? { id: user.companyId } : undefined,
     }
     try {
@@ -74,6 +98,7 @@ export default function ShiftSchedulesPage() {
     { accessorKey: 'minimumWorkingHour', header: 'Min Hours', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
     { accessorKey: 'minimumOvertimeToApprove', header: 'Min OT', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'overtimeCutoff', header: 'OT Cutoff', cell: ({ getValue }) => getValue() || '—' },
+    { accessorKey: 'weeklyOffDays', header: 'Week Off', cell: ({ getValue }) => formatWeekOff(getValue()) },
     {
       id: 'actions', header: '', cell: ({ row }) => (
         <div className="flex gap-2">
@@ -101,6 +126,30 @@ export default function ShiftSchedulesPage() {
           <div className="grid grid-cols-2 gap-3">
             <Input label="Min OT to Approve (HH:MM)" placeholder="00:30" {...register('minimumOvertimeToApprove')} />
             <Input label="OT Cutoff (HH:MM)" placeholder="02:00" {...register('overtimeCutoff')} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Working Week</label>
+            <div className="flex gap-2">
+              {DAYS.map(d => {
+                const isOff = weekOff.includes(d.value)
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => toggleWeekOffDay(d.value)}
+                    className={`w-11 h-9 rounded-lg text-xs font-medium border transition-colors ${
+                      isOff
+                        ? 'bg-gray-100 text-gray-400 border-gray-200'
+                        : 'bg-indigo-600 text-white border-indigo-600'
+                    }`}
+                    title={isOff ? `${d.label}: Week Off` : `${d.label}: Working Day`}
+                  >
+                    {d.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Highlighted days are working days. Click a day to mark it as week off.</p>
           </div>
         </div>
       </Modal>

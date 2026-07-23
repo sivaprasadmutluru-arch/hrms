@@ -14,12 +14,80 @@ import { BellIcon, CheckIcon, TrashIcon, XMarkIcon, PencilIcon } from '@heroicon
 import toast from 'react-hot-toast'
 import ConfirmModal from '../../components/common/ConfirmModal'
 
-// Maps a notification's relatedEntity to the page it should open when clicked.
+const ROUTE_FIELDS = ['redirectUrl', 'redirectPath', 'targetUrl', 'targetPath', 'actionUrl', 'actionPath', 'link', 'url', 'path']
+const RELATED_ID_FIELDS = ['relatedEntityId', 'relatedId', 'entityId', 'referenceId', 'targetId']
+
+const asLocalRoute = (value) => {
+  if (!value || typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = new URL(trimmed, window.location.origin)
+    if (parsed.origin === window.location.origin) return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    // Fall through and handle plain relative paths.
+  }
+
+  if (trimmed.startsWith('/')) return trimmed
+  if (!trimmed.includes('://')) return `/${trimmed.replace(/^\/+/, '')}`
+  return null
+}
+
+const getRelatedId = (notification) => {
+  for (const field of RELATED_ID_FIELDS) {
+    if (notification[field] !== undefined && notification[field] !== null && notification[field] !== '') {
+      return notification[field]
+    }
+  }
+  return null
+}
+
+const entityKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
+
+// Maps notification payloads to the most specific route the current app supports.
 const RELATED_ENTITY_ROUTES = {
-  REGULARISATION_REQUEST: () => '/attendance/regularisation',
-  DocumentRequest:        () => '/documents/my',
-  DisciplinaryAction:     () => '/disciplinary-actions',
-  HrPolicy:               () => '/policies',
+  REGULARISATIONREQUEST: () => '/attendance/regularisation',
+  ATTENDANCEREGULARISATION: () => '/attendance/regularisation',
+  ATTENDANCEREGULARISATIONREQUEST: () => '/attendance/regularisation',
+  LEAVEREQUEST: () => '/leave',
+  LEAVE: () => '/leave',
+  DOCUMENTREQUEST: () => '/documents/requests',
+  DOCUMENT: () => '/documents/my',
+  DISCIPLINARYACTION: () => '/disciplinary-actions',
+  HRPOLICY: () => '/policies',
+  POLICY: () => '/policies',
+  PAYSLIP: () => '/payroll/payslips',
+  PAYROLL: () => '/payroll/payslips',
+  ASSETREQUEST: () => '/assets/requests',
+  ASSET: (id) => id ? `/assets/${id}` : '/assets',
+  PROJECT: (id) => id ? `/projects/${id}` : '/projects',
+  TICKET: (id) => id ? `/helpdesk/${id}` : '/helpdesk',
+  HELPDESKTICKET: (id) => id ? `/helpdesk/${id}` : '/helpdesk',
+  EMPLOYEE: (id, notification) => {
+    const companyId = notification.companyId || notification.relatedCompanyId || notification.targetCompanyId
+    const query = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
+    return id ? `/employees/${id}${query}` : '/employees'
+  },
+  CANDIDATE: () => '/recruitment/applicants',
+  APPLICANT: () => '/recruitment/applicants',
+  ONBOARDING: () => '/onboarding',
+  OFFBOARDING: () => '/offboarding',
+  RESIGNATION: () => '/offboarding/resignations',
+  OBJECTIVE: () => '/performance/objectives',
+  PERFORMANCEOBJECTIVE: () => '/performance/objectives',
+  MEETING: () => '/performance/meetings',
+}
+
+const resolveNotificationRoute = (notification) => {
+  for (const field of ROUTE_FIELDS) {
+    const route = asLocalRoute(notification[field])
+    if (route) return route
+  }
+
+  const relatedId = getRelatedId(notification)
+  const resolveRoute = RELATED_ENTITY_ROUTES[entityKey(notification.relatedEntity || notification.type || notification.category)]
+  return resolveRoute ? resolveRoute(relatedId, notification) : null
 }
 
 export default function NotificationsPage() {
@@ -68,8 +136,8 @@ export default function NotificationsPage() {
 
   const handleOpen = (n) => {
     if (!n.isRead) handleMarkRead(n.id)
-    const resolveRoute = RELATED_ENTITY_ROUTES[n.relatedEntity]
-    if (resolveRoute) navigate(resolveRoute(n))
+    const route = resolveNotificationRoute(n)
+    if (route) navigate(route)
   }
 
   if (loading) return <Spinner className="py-16" />
@@ -92,7 +160,8 @@ export default function NotificationsPage() {
       ) : (
         <div className="space-y-2">
           {notifications.map(n => {
-            const clickable = !!RELATED_ENTITY_ROUTES[n.relatedEntity]
+            const targetRoute = resolveNotificationRoute(n)
+            const clickable = !!targetRoute
             return (
               <Card
                 key={n.id}

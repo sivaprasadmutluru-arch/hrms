@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -6,12 +6,13 @@ import { createShiftAllocation, updateShiftAllocation } from './shiftAllocations
 import { fetchShiftSchedules, selectShiftSchedules } from '../base/baseExtrasSlice'
 import Modal from '../../components/common/Modal'
 import Button from '../../components/common/Button'
+import Combobox from '../../components/common/Combobox'
 
 export default function ShiftAllocationFormModal({ open, allocation, companyId, onClose }) {
   const dispatch = useDispatch()
   const employees = useSelector(s => s.employees.data)
   const shiftSchedules = useSelector(selectShiftSchedules)
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm()
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm()
 
   useEffect(() => {
     dispatch(fetchShiftSchedules())
@@ -32,6 +33,7 @@ export default function ShiftAllocationFormModal({ open, allocation, companyId, 
   }, [allocation, reset])
 
   const onSubmit = async (data) => {
+    if (!data.employeeId) { toast.error('Please select an employee'); return }
     const payload = {
       employee:       { id: Number(data.employeeId) },
       allocatedShift: { id: Number(data.shiftId) },
@@ -51,24 +53,26 @@ export default function ShiftAllocationFormModal({ open, allocation, companyId, 
 
   const empLabel = (e) => `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.employeeCode || `#${e.id}`
 
+  const employeeOptions = useMemo(() => employees.map(e => ({
+    value: e.id,
+    label: empLabel(e),
+    sublabel: e.badgeId,
+    searchText: `${empLabel(e)} ${e.badgeId || ''} ${e.email || ''}`,
+  })), [employees])
+
   return (
     <Modal open={open} title={allocation ? 'Edit Shift Allocation' : 'New Shift Allocation'} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
         {/* Employee */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Employee *</label>
-          <select
-            {...register('employeeId', { required: 'Employee is required' })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Select employee…</option>
-            {employees.map(e => (
-              <option key={e.id} value={e.id}>{empLabel(e)}</option>
-            ))}
-          </select>
-          {errors.employeeId && <p className="text-xs text-red-500 mt-1">{errors.employeeId.message}</p>}
-        </div>
+        <Combobox
+          label="Employee *"
+          options={employeeOptions}
+          value={watch('employeeId') || null}
+          onChange={(v) => setValue('employeeId', v, { shouldValidate: true })}
+          placeholder="Search employee by name or badge..."
+          emptyText="No employees found"
+        />
 
         {/* Allocated Shift */}
         <div>

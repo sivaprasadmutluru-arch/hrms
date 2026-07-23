@@ -8,6 +8,7 @@ import { selectIsAuthenticated, selectRoles, selectUser, fetchMe } from '../../f
 import { fetchMyCompany, fetchMyCompanyInfo } from '../../features/companies/companiesSlice'
 import { fetchUnreadCount } from '../../features/notifications/notificationsSlice'
 import UnresolvedRegularisationReminder from '../../features/attendance/UnresolvedRegularisationReminder'
+import ChatbotWidget from './ChatbotWidget'
 
 export default function AppLayout() {
   const dispatch = useDispatch()
@@ -57,6 +58,7 @@ export default function AppLayout() {
         </main>
       </div>
       {roles.includes('EMPLOYEE') && <UnresolvedRegularisationReminder />}
+      <ChatbotWidget />
     </div>
   )
 }

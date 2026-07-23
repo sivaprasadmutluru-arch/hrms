@@ -694,7 +694,7 @@ export default function Sidebar() {
       'transition-all duration-300 ease-out',
       isActive
         ? 'sidebar-active text-white'
-        : 'text-white/[0.85] hover:bg-white/[0.08] hover:text-white',
+        : 'text-[#D8D6F2] hover:bg-white/[0.075] hover:text-white',
       extra,
     ].join(' ')
 
@@ -702,61 +702,54 @@ export default function Sidebar() {
     <>
       {/* Scoped styles: 4px thin scrollbar + active item gradient for sidebar only */}
       <style>{`
-        .sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.20) transparent; }
+        .sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(210,207,255,0.22) transparent; }
         .sidebar-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
         .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
         .sidebar-scroll::-webkit-scrollbar-thumb {
-          background-color: rgba(255,255,255,0.20);
+          background-color: rgba(210,207,255,0.22);
           border-radius: 9999px;
         }
-        .sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.35); }
+        .sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(210,207,255,0.38); }
         @media (prefers-reduced-motion: reduce) {
-          .sidebar-scroll { scrollbar-color: rgba(255,255,255,0.30) transparent; }
+          .sidebar-scroll { scrollbar-color: rgba(210,207,255,0.34) transparent; }
         }
         .sidebar-active {
-          background: linear-gradient(90deg, #6B4EFF 0%, #5B3FFF 100%);
-          box-shadow: 0 6px 18px rgba(107,78,255,0.28);
+          background: #5F43D8;
+          box-shadow: 0 10px 24px rgba(22,18,72,0.24), inset 0 1px 0 rgba(255,255,255,0.18);
           color: #FFFFFF;
         }
         .sidebar-active svg { color: #FFFFFF; }
         .sidebar-child-active {
-          background: linear-gradient(90deg, #6B4EFF 0%, #5B3FFF 100%);
+          background: rgba(95,67,216,0.38);
+          box-shadow: inset 2px 0 0 rgba(200,190,255,0.78);
           color: #FFFFFF;
         }
       `}</style>
     <aside
-      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-white/[0.08] text-white transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-white/[0.10] text-white transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         collapsed ? 'w-[72px]' : 'w-60'
       }`}
       style={{
-        // Premium sidebar background — subtle vertical gradient (#241E4D → #2B255A)
-        background:
-          'linear-gradient(180deg, #241E4D 0%, #2B255A 100%)',
+        background: '#21184E',
         backdropFilter: 'blur(20px) saturate(140%)',
         WebkitBackdropFilter: 'blur(20px) saturate(140%)',
       }}
     >
-      {/* Subtle top accent glow */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-32 opacity-40"
-        style={{ background: 'radial-gradient(60% 100% at 50% 0%, rgba(107,78,255,0.18), transparent)' }}
-      />
-
       {/* ── Logo / Brand ─────────────────────────────────────────────── */}
-      <div className={`relative flex items-center border-b border-white/[0.08] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
-        <div className={`flex items-center ${collapsed ? '' : 'gap-2.5'} min-w-0`}>
-          {displayLogoUrl && !logoLoadError ? (
-            <img
-              src={displayLogoUrl}
-              alt="Company logo"
-              className="h-8 w-8 rounded-lg object-contain flex-shrink-0 bg-white/10 p-1"
-              onError={() => setLogoLoadError(true)}
-            />
-          ) : (
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#6B4EFF] to-[#5B3FFF] shadow-lg shadow-[#6B4EFF]/30">
-              <Building2 className="h-4 w-4 text-white" strokeWidth={2.2} />
-            </div>
-          )}
+      <div className={`relative flex items-center border-b border-white/[0.10] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
+        <div className={`flex min-w-0 items-center ${collapsed ? '' : 'gap-2.5'}`}>
+          <div className={`${collapsed ? 'h-11 w-11' : 'h-10 w-10'} flex flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-lg shadow-black/10`}>
+            {displayLogoUrl && !logoLoadError ? (
+              <img
+                src={displayLogoUrl}
+                alt={`${displayName} logo`}
+                className="h-full w-full object-contain p-1 [image-rendering:-webkit-optimize-contrast]"
+                onError={() => setLogoLoadError(true)}
+              />
+            ) : (
+              <Building2 className="h-5 w-5 text-[#5F43D8]" strokeWidth={2.2} />
+            )}
+          </div>
           {!collapsed && (
             <span className="truncate text-[15px] font-semibold tracking-tight text-white">
               {displayName}
@@ -766,7 +759,7 @@ export default function Sidebar() {
         {!collapsed && (
           <button
             onClick={() => setCollapsed(c => !c)}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/[0.55] transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[#D8D6F2]/70 transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
             title="Collapse sidebar"
             aria-label="Collapse sidebar"
           >
@@ -779,7 +772,7 @@ export default function Sidebar() {
       {collapsed && (
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="absolute right-2 top-5 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-white/[0.55] opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
+          className="absolute right-2 top-5 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-[#D8D6F2]/70 opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
@@ -793,12 +786,12 @@ export default function Sidebar() {
           {sections.map(section => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/[0.45]">
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#BDB7E8]/55">
                   {section.title}
                 </p>
               )}
               {collapsed && (
-                <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.08]" />
+                <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.10]" />
               )}
               <div className="space-y-0.5">
                 {section.items.map(item => {
@@ -817,7 +810,7 @@ export default function Sidebar() {
                             <>
                               <span className="flex-1 text-left">{item.label}</span>
                               <ChevronDown
-                                className={`h-4 w-4 flex-shrink-0 text-white/[0.40] transition-transform duration-300 ease-out ${isOpen ? 'rotate-180' : ''}`}
+                                className={`h-4 w-4 flex-shrink-0 text-[#BDB7E8]/50 transition-transform duration-300 ease-out ${isOpen ? 'rotate-180' : ''}`}
                                 strokeWidth={2.2}
                               />
                             </>
@@ -830,7 +823,7 @@ export default function Sidebar() {
                           }`}
                         >
                           <div className="overflow-hidden">
-                            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/[0.08] pl-2">
+                            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/[0.10] pl-2">
                               {item.children.map(child => (
                                 <NavLink
                                   key={child.to}
@@ -840,7 +833,7 @@ export default function Sidebar() {
                                     `flex items-center rounded-lg px-3 py-1.5 text-[13px] transition-all duration-200 ${
                                       isActive
                                         ? 'sidebar-child-active font-medium text-white'
-                                        : 'text-white/[0.85] hover:bg-white/[0.08] hover:text-white'
+                                        : 'text-[#D8D6F2] hover:bg-white/[0.075] hover:text-white'
                                     }`
                                   }
                                 >
@@ -874,11 +867,11 @@ export default function Sidebar() {
         {/* Notifications — always shown */}
         <div className="mt-5">
           {!collapsed && (
-            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/[0.45]">
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#BDB7E8]/55">
               Account
             </p>
           )}
-          {collapsed && <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.06]" />}
+          {collapsed && <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.10]" />}
           <NavLink
             to="/notifications"
             end
@@ -908,18 +901,18 @@ export default function Sidebar() {
       </nav>
 
       {/* ── User footer ──────────────────────────────────────────────── */}
-      <div className="border-t border-white/[0.08] p-3">
+      <div className="border-t border-white/[0.10] bg-black/[0.08] p-3">
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <Avatar name={user?.name || user?.username || 'User'} src={userPhotoUrl} size="sm" />
           {!collapsed && (
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-white">{user?.name || user?.username}</p>
-                <p className="truncate text-xs capitalize text-white/[0.60]">{user?.role?.replace(/_/g, ' ')}</p>
+                <p className="truncate text-xs capitalize text-[#BDB7E8]/70">{user?.role?.replace(/_/g, ' ')}</p>
               </div>
               <button
                 onClick={() => setLogoutConfirmOpen(true)}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white/[0.60] transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[#D8D6F2]/70 transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
                 title="Logout"
                 aria-label="Logout"
               >
@@ -930,7 +923,7 @@ export default function Sidebar() {
           {collapsed && (
             <button
               onClick={() => setLogoutConfirmOpen(true)}
-              className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-white/[0.60] opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
+              className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-[#D8D6F2]/70 opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
               title="Logout"
               aria-label="Logout"
             >

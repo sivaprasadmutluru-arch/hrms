@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, fetchMyCompany, create, update, remove, uploadLogo,
+  fetchAll, fetchMyCompany, create, update, remove, uploadLogo, uploadStamp, uploadSignature,
   fetchBranches, selectAll, selectLoading, selectBranches,
 } from './companiesSlice'
 import { validateCompanyScope } from '../platform/platformSlice'
@@ -26,6 +26,8 @@ import {
   BuildingStorefrontIcon,
   CameraIcon,
   TrashIcon,
+  CheckBadgeIcon,
+  PencilIcon,
 } from '@heroicons/react/24/outline'
 import useAuth from '../../hooks/useAuth'
 
@@ -62,7 +64,7 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
             <CameraIcon className="h-4 w-4 text-white" />
           </div>
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
+          <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={handleChange} />
         </>
       )}
     </div>
@@ -514,12 +516,14 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                     >
                       {branchCount}/5 branches ↓
                     </button>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditHeadOffice(company) }}
-                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                        className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                        title="Edit company branding"
                       >
                         <PencilSquareIcon className="h-3.5 w-3.5" />
+                        Edit
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onDeleteHeadOffice(company) }}
@@ -527,7 +531,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                       >
                         <TrashIcon className="h-3.5 w-3.5" />
                       </button>
-                      <span className="text-xs text-indigo-400 font-medium">Open Dashboard →</span>
+                      <span className="text-xs text-indigo-400 font-medium">Open →</span>
                     </div>
                   </div>
                 </div>
@@ -576,9 +580,15 @@ export default function CompaniesPage() {
   const [editTarget, setEditTarget] = useState(null)
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
+  const [stampFile, setStampFile] = useState(null)
+  const [stampPreview, setStampPreview] = useState(null)
+  const [signatureFile, setSignatureFile] = useState(null)
+  const [signaturePreview, setSignaturePreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [confirmModal, setConfirmModal] = useState({ open: false, company: null, action: null })
   const logoInputRef = useRef(null)
+  const stampInputRef = useRef(null)
+  const signatureInputRef = useRef(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const canAddBranch = isPlatformAdmin() || isEnterpriseAdmin()
@@ -635,6 +645,10 @@ export default function CompaniesPage() {
     setEditTarget(null)
     setLogoFile(null)
     setLogoPreview(null)
+    setStampFile(null)
+    setStampPreview(null)
+    setSignatureFile(null)
+    setSignaturePreview(null)
     reset({})
     setModalOpen(true)
   }
@@ -645,6 +659,10 @@ export default function CompaniesPage() {
     setEditTarget(branch)
     setLogoFile(null)
     setLogoPreview(getLogoUrl(branch.logoPath))
+    setStampFile(null)
+    setStampPreview(getLogoUrl(branch.stampPath))
+    setSignatureFile(null)
+    setSignaturePreview(getLogoUrl(branch.signaturePath))
     reset({
       name: branch.name,
       email: branch.email,
@@ -665,6 +683,10 @@ export default function CompaniesPage() {
     setEditTarget(company)
     setLogoFile(null)
     setLogoPreview(getLogoUrl(company.logoPath))
+    setStampFile(null)
+    setStampPreview(getLogoUrl(company.stampPath))
+    setSignatureFile(null)
+    setSignaturePreview(getLogoUrl(company.signaturePath))
     reset({
       name: company.name,
       email: company.email,
@@ -687,6 +709,22 @@ export default function CompaniesPage() {
     e.target.value = ''
   }
 
+  const onStampFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setStampFile(file)
+    setStampPreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
+  const onSignatureFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSignatureFile(file)
+    setSignaturePreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
   const onSubmit = async (data) => {
     setSaving(true)
     try {
@@ -705,6 +743,20 @@ export default function CompaniesPage() {
           await dispatch(uploadLogo({ id: savedCompany.id, file: logoFile })).unwrap()
         } catch {
           toast.error('Saved, but logo upload failed')
+        }
+      }
+      if (stampFile && savedCompany?.id) {
+        try {
+          await dispatch(uploadStamp({ id: savedCompany.id, file: stampFile })).unwrap()
+        } catch {
+          toast.error('Saved, but stamp upload failed')
+        }
+      }
+      if (signatureFile && savedCompany?.id) {
+        try {
+          await dispatch(uploadSignature({ id: savedCompany.id, file: signatureFile })).unwrap()
+        } catch {
+          toast.error('Saved, but signature upload failed')
         }
       }
       setModalOpen(false)
@@ -772,9 +824,9 @@ export default function CompaniesPage() {
         }
       >
         <div className="space-y-4">
-          {/* Logo upload */}
-          {(
-            <div className="flex flex-col items-center gap-2 pb-2">
+          {/* Branding: logo, company stamp, authorized signature — all three are stamped onto generated payslips */}
+          <div className="flex items-start justify-center gap-6 pb-2">
+            <div className="flex flex-col items-center gap-2">
               <div
                 className="relative w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:border-indigo-400 transition-colors group overflow-hidden bg-gray-50"
                 onClick={() => logoInputRef.current?.click()}
@@ -787,10 +839,45 @@ export default function CompaniesPage() {
                   <CameraIcon className="h-5 w-5 text-white" />
                 </div>
               </div>
-              <p className="text-xs text-gray-400">Click to change logo</p>
-              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={onLogoFileChange} />
+              <p className="text-xs text-gray-400">Logo</p>
+              <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={onLogoFileChange} />
             </div>
-          )}
+
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="relative w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:border-indigo-400 transition-colors group overflow-hidden bg-gray-50"
+                onClick={() => stampInputRef.current?.click()}
+              >
+                {stampPreview
+                  ? <img src={stampPreview} alt="stamp preview" className="w-full h-full object-contain p-1" />
+                  : <CheckBadgeIcon className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 transition-colors" />
+                }
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CameraIcon className="h-5 w-5 text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">Company Stamp</p>
+              <input ref={stampInputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={onStampFileChange} />
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="relative w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:border-indigo-400 transition-colors group overflow-hidden bg-gray-50"
+                onClick={() => signatureInputRef.current?.click()}
+              >
+                {signaturePreview
+                  ? <img src={signaturePreview} alt="signature preview" className="w-full h-full object-contain p-1" />
+                  : <PencilIcon className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 transition-colors" />
+                }
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CameraIcon className="h-5 w-5 text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">Signature</p>
+              <input ref={signatureInputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={onSignatureFileChange} />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 text-center -mt-2">Use PNG/JPG. Logo, stamp and signature are printed on generated payslips.</p>
 
           <Input label="Company Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
           <div className="grid grid-cols-2 gap-3">

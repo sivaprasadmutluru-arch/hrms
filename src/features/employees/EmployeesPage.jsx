@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
+import { fetchLeavers, selectLeavers, selectLeaversPagination } from '../offboarding/offboardingSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
 import { fetchAll as fetchAll_companies, fetchMyCompany, fetchBranches, selectAll as selectCompanies, selectBranches } from '../companies/companiesSlice'
@@ -195,6 +196,9 @@ export default function EmployeesPage() {
   const employees = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
+  const leavers = useSelector(selectLeavers)
+  const leaversPagination = useSelector(selectLeaversPagination)
+  const [activeTab, setActiveTab] = useState('employees') // 'employees' | 'leavers'
   const companies = useSelector(selectCompanies)
   const allBranches = useSelector(selectBranches)
   const departments = useSelector(selectDepartments)
@@ -278,6 +282,14 @@ export default function EmployeesPage() {
       dispatch(fetchOnlineStatus(user.companyId))
     }
   }, [dispatch])
+
+  const loadLeavers = (page = 0, size = pageSize) => {
+    dispatch(fetchLeavers({ page, size, ...(selectedCompanyId ? { companyId: selectedCompanyId } : user?.companyId ? { companyId: user.companyId } : {}) }))
+  }
+
+  useEffect(() => {
+    if (activeTab === 'leavers') loadLeavers(0)
+  }, [activeTab, selectedCompanyId])
 
   // Super Admin with no company filter → global; otherwise scoped
   const load = (page, size = pageSize) => {
@@ -586,6 +598,44 @@ export default function EmployeesPage() {
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[{ id: 'employees', label: 'Employees' }, { id: 'leavers', label: 'Leavers' }].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === t.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'leavers' ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <DataTable
+            columns={[
+              { id: 'name', header: 'Employee', cell: ({ row }) => row.original.employee?.fullName || `${row.original.employee?.firstName || ''} ${row.original.employee?.lastName || ''}`.trim() || '—' },
+              { id: 'email', header: 'Email', cell: ({ row }) => row.original.employee?.email || '—' },
+              { accessorKey: 'exitDate', header: 'Last Working Date', cell: ({ getValue }) => formatDate(getValue()) },
+              { accessorKey: 'reasonOfLeaving', header: 'Reason', cell: ({ getValue }) => getValue() || '—' },
+              { accessorKey: 'retentionPeriodMonths', header: 'Retention', cell: ({ getValue }) => getValue() ? `${getValue()} month${getValue() > 1 ? 's' : ''}` : '—' },
+              { accessorKey: 'retentionExpiresAt', header: 'Retention Expires', cell: ({ getValue }) => getValue() ? formatDate(getValue()) : '—' },
+              { accessorKey: 'employeeDeactivatedAt', header: 'Deactivated On', cell: ({ getValue }) => getValue() ? new Date(getValue()).toLocaleString() : '—' },
+            ]}
+            data={leavers}
+            loading={loading}
+          />
+          <div className="p-4">
+            <Pagination
+              page={leaversPagination.page}
+              totalPages={Math.ceil(leaversPagination.total / pageSize)}
+              onPageChange={loadLeavers}
+            />
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <StatCard label="Total Employees" value={pagination.total || employees.length} icon="👥" color="bg-indigo-50 text-indigo-600" />
@@ -747,6 +797,8 @@ export default function EmployeesPage() {
         totalPages={Math.ceil(pagination.total / pageSize)}
         onPageChange={load}
       />
+      </>
+      )}
 
       {/* Create / Edit Modal */}
       <Modal

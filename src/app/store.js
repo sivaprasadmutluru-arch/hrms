@@ -29,6 +29,7 @@ import employeeExtrasReducer from '../features/employees/employeeExtrasSlice'
 import shiftRequestsReducer from '../features/attendance/shiftRequestSlice'
 import workTypeRequestsReducer from '../features/attendance/workTypeRequestSlice'
 import regularisationReducer from '../features/attendance/regularisationSlice'
+import loanRequestReducer from '../features/payroll/loanRequestSlice'
 import documentsReducer from '../features/documents/documentsSlice'
 import auditReducer from '../features/audit/auditSlice'
 import announcementsReducer from '../features/announcements/announcementsSlice'
@@ -44,6 +45,7 @@ import viewsReducer from '../features/views/viewsSlice'
 import dynamicFieldsReducer from '../features/dynamicfields/dynamicFieldsSlice'
 import essReducer from '../features/ess/essSlice'
 import mailAutomationReducer from '../features/mail-automation/mailAutomationSlice'
+import chatbotReducer from '../features/chatbot/chatbotSlice'
 
 export const store = configureStore({
   reducer: {
@@ -77,6 +79,7 @@ export const store = configureStore({
     shiftRequests: shiftRequestsReducer,
     workTypeRequests: workTypeRequestsReducer,
     regularisation: regularisationReducer,
+    loanRequests: loanRequestReducer,
     documents: documentsReducer,
     audit: auditReducer,
     announcements: announcementsReducer,
@@ -92,6 +95,7 @@ export const store = configureStore({
     dynamicFields: dynamicFieldsReducer,
     ess: essReducer,
     mailAutomation: mailAutomationReducer,
+    chatbot: chatbotReducer,
   },
   devTools: import.meta.env.DEV
 })

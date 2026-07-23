@@ -4,7 +4,7 @@ import { Fragment } from 'react'
 import { XMarkIcon, ArrowDownTrayIcon, PrinterIcon } from '@heroicons/react/24/outline'
 import { API_BASE_URL } from '../../config/constants'
 
-export default function PdfPreviewModal({ open, onClose, payslipId, fileName }) {
+export default function PdfPreviewModal({ open, onClose, payslipId, fileName, companyId }) {
   const [blobUrl, setBlobUrl] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -14,14 +14,25 @@ export default function PdfPreviewModal({ open, onClose, payslipId, fileName }) 
     if (!open || !payslipId) return
 
     let url = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError(null)
 
     const token = localStorage.getItem('token')
-    const companyId = localStorage.getItem('selectedCompanyId')
-      || (() => { try { return JSON.parse(localStorage.getItem('user') || '{}')?.companyId } catch (_) { return null } })()
+    const selectedCompanyId = localStorage.getItem('selectedCompanyId')
+    const storedRoles = localStorage.getItem('roles')
+    const isPlatformAdmin = storedRoles
+      ? (() => { try { return JSON.parse(storedRoles).includes('PLATFORM_SUPER_ADMIN') } catch { return false } })()
+      : false
+    const fallbackCompanyId = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}')?.companyId } catch { return null } })()
+    // Prefer whatever company context we can actually resolve (the payslip's own company, then
+    // the topbar-selected company) — only fall back to "no header" (public/unscoped) when a
+    // platform admin genuinely has nothing selected ("All Companies" mode). Platform admins still
+    // need the correct tenant schema resolved when a company IS known; unrestricted ACL access
+    // doesn't mean "skip schema resolution".
+    const resolvedCompanyId = companyId || selectedCompanyId || (isPlatformAdmin ? null : fallbackCompanyId)
     const headers = { Authorization: `Bearer ${token}` }
-    if (companyId) headers['X-Company-Id'] = companyId
+    if (resolvedCompanyId) headers['X-Company-Id'] = resolvedCompanyId
     fetch(`${API_BASE_URL}/payroll/payslips/${payslipId}/pdf`, { headers })
       .then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`)
@@ -37,7 +48,7 @@ export default function PdfPreviewModal({ open, onClose, payslipId, fileName }) 
     return () => {
       // cleanup on unmount or payslipId change
     }
-  }, [open, payslipId])
+  }, [open, payslipId, companyId])
 
   const handleClose = () => {
     if (blobUrl) {
