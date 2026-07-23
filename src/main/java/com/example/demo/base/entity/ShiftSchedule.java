@@ -36,6 +36,10 @@ public class ShiftSchedule extends BaseEntity {
     @Column(name = "minimum_overtime_to_approve")
     private String minimumOvertimeToApprove;
 
+    /** Comma-separated java.time.DayOfWeek names (e.g. "SATURDAY,SUNDAY") that are week-off for this shift; all other days are working days. Null/empty means no week-off days configured. */
+    @Column(name = "weekly_off_days")
+    private String weeklyOffDays;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;

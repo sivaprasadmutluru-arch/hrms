@@ -645,68 +645,48 @@ public class SchemaProvisioningService {
     }
 
     /**
-     * Nullifies employee.company_id in every OTHER tenant schema (i.e. schemas NOT in
-     * {@code ownSchemas}) where the employee row references one of the given company IDs.
+     * Cleans up every company-owned row (employees, departments, etc. — any table with a
+     * {@code company_id} column) in every OTHER tenant schema (i.e. schemas NOT in
+     * {@code ownSchemas}) that references one of the given company IDs.
      *
-     * Background: each tenant schema has its own {@code employees} table with a
-     * {@code company_id} FK into {@code public.companies}. When an organisation is
-     * deleted its own schema is dropped via CASCADE, but employees in sibling tenant
-     * schemas that happen to reference the same company IDs would still block the
-     * {@code DELETE FROM public.companies} with an FK violation.
+     * Background: every tenant schema has its own copies of company-owned tables
+     * (employees, departments, ...) each with a {@code company_id} FK into
+     * {@code public.companies}. When an organisation is deleted its own schema is dropped
+     * via CASCADE, but sibling tenant schemas can hold orphaned rows — e.g. test data or an
+     * import — that happen to reference the same company IDs. Those rows would otherwise
+     * block the {@code DELETE FROM public.companies} with an FK violation (previously this
+     * only cleaned the {@code employees} table, missing {@code departments} and any other
+     * company-owned table, which is exactly the case that surfaces this violation).
      *
-     * Nullifying (rather than deleting) is safe — it severs the FK reference without
-     * destroying data in another organisation's schema.
+     * Reuses {@link #cleanupTenantDataForCompanies} per foreign schema, which already
+     * discovers every company-owned table and deletes in FK-safe order.
      */
-    public void nullifyCrossSchemaEmployeeReferences(List<Long> companyIds, List<String> ownSchemas) {
+    public void cleanupCrossSchemaCompanyReferences(List<Long> companyIds, List<String> ownSchemas) {
         if (companyIds.isEmpty()) return;
-        String ids = companyIds.stream().map(String::valueOf).collect(Collectors.joining(","));
         Set<String> ownSet = new HashSet<>(ownSchemas);
 
+        List<String> tenantSchemas = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
             // Discover all tenant schemas (excludes pg_catalog, information_schema, public)
-            List<String> tenantSchemas = new ArrayList<>();
             try (var ps = conn.prepareStatement(
                     "SELECT nspname FROM pg_namespace " +
                     "WHERE nspname NOT IN ('public','pg_catalog','information_schema') " +
                     "  AND nspname NOT LIKE 'pg_%' " +
-                    "ORDER BY nspname")) {
-                try (var rs = ps.executeQuery()) {
-                    while (rs.next()) tenantSchemas.add(rs.getString(1));
-                }
+                    "ORDER BY nspname");
+                 var rs = ps.executeQuery()) {
+                while (rs.next()) tenantSchemas.add(rs.getString(1));
             }
-
-            for (String schema : tenantSchemas) {
-                if (ownSet.contains(schema)) continue; // already dropped by caller
-                // Verify employees table exists in this schema (defensive)
-                boolean hasEmployees = false;
-                try (var ps = conn.prepareStatement(
-                        "SELECT 1 FROM pg_class c " +
-                        "JOIN pg_namespace n ON n.oid = c.relnamespace " +
-                        "WHERE n.nspname = ? AND c.relname = 'employees' AND c.relkind = 'r'")) {
-                    ps.setString(1, schema);
-                    try (var rs = ps.executeQuery()) { hasEmployees = rs.next(); }
-                }
-                if (!hasEmployees) continue;
-
-                // DELETE rather than nullify: company_id is NOT NULL in tenant employee tables.
-                // These are orphaned employees whose company belongs to a different org being deleted.
-                String sql = "DELETE FROM " + schema + ".employees " +
-                             "WHERE company_id IN (" + ids + ")";
-                try {
-                    int deleted = conn.createStatement().executeUpdate(sql);
-                    if (deleted > 0) {
-                        log.info("[CrossSchema] Deleted {} orphaned employee(s) in schema={} for companies={}", deleted, schema, ids);
-                    }
-                } catch (SQLException e) {
-                    log.warn("[CrossSchema] Could not delete employees in schema={}: {}", schema, e.getMessage());
-                    conn.rollback();
-                    conn.setAutoCommit(false);
-                }
-            }
-            conn.commit();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to nullify cross-schema employee references", e);
+            throw new RuntimeException("Failed to discover tenant schemas", e);
+        }
+
+        for (String schema : tenantSchemas) {
+            if (ownSet.contains(schema)) continue; // already dropped by caller
+            try {
+                cleanupTenantDataForCompanies(schema, companyIds);
+            } catch (Exception e) {
+                log.warn("[CrossSchema] Could not clean up schema={} for companies={}: {}", schema, companyIds, e.getMessage());
+            }
         }
     }
 

@@ -19,4 +19,6 @@ public interface HolidayRepository extends JpaRepository<Holiday, Long>, JpaSpec
     @Query("SELECT h FROM Holiday h WHERE h.company.id = :companyId " +
            "AND ((h.startDate <= :endDate AND h.endDate >= :startDate))")
     List<Holiday> findByCompanyIdAndDateRange(Long companyId, LocalDate startDate, LocalDate endDate);
+
+    Optional<Holiday> findFirstByCompanyIdAndStartDateGreaterThanEqualOrderByStartDateAsc(Long companyId, LocalDate from);
 }

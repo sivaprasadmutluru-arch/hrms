@@ -467,9 +467,10 @@ public class PayrollService {
             return existing.get(0);
         }
 
-        // ── 1. Basic Pay from active contract ───────────────────────────────
+        // ── 1. Basic Pay from contract — prefer ACTIVE, fall back to the most recent
+        // contract of any status rather than silently zeroing out DRAFT salaries (PAY-001) ──
         Contract contract = contractRepository
-                .findByEmployeeIdAndContractStatus(employeeId, Contract.ContractStatus.ACTIVE)
+                .findBestContractForPayroll(employeeId)
                 .orElse(null);
 
         double contractWage = 0.0;

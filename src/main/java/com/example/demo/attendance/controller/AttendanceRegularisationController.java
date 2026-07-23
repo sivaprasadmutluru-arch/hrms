@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,8 +31,12 @@ public class AttendanceRegularisationController {
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Employee submits a regularisation request for an IRREGULAR attendance")
+    @Operation(summary = "Employee submits a regularisation request for an IRREGULAR attendance; " +
+            "HR/Admin (with attendance:approve) may submit on behalf of another employee via employeeId")
     public ResponseEntity<RegularisationRequestDto> submit(@RequestBody RegularisationSubmitRequest req) {
+        if (req.getEmployeeId() != null && !hasApprovalAuthority()) {
+            throw new AccessDeniedException("Only an HR/Admin with attendance approval rights can submit a request on behalf of another employee");
+        }
         Long userId = getCurrentUserId();
         return ResponseEntity.ok(regularisationService.submitRequest(req, userId));
     }
@@ -113,5 +118,11 @@ public class AttendanceRegularisationController {
             return principal.getId();
         }
         throw new IllegalStateException("No authenticated user");
+    }
+
+    private boolean hasApprovalAuthority() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("attendance:approve"));
     }
 }

@@ -324,6 +324,52 @@ public class CompanyService {
         return companyRepository.save(company);
     }
 
+    @Transactional
+    public Company uploadStamp(Long companyId, MultipartFile file) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        Organization org = company.getOrganization();
+        String orgSlug = (org != null && org.getSlug() != null) ? org.getSlug() : "default";
+        if (company.getStampPath() != null) fileUploadService.delete(company.getStampPath());
+        String path = fileUploadService.storeOrgScoped(file, orgSlug, "stamps");
+        company.setStampPath(path);
+        return companyRepository.save(company);
+    }
+
+    @Transactional
+    public void deleteStamp(Long companyId) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        if (company.getStampPath() != null) {
+            fileUploadService.delete(company.getStampPath());
+            company.setStampPath(null);
+            companyRepository.save(company);
+        }
+    }
+
+    @Transactional
+    public Company uploadSignature(Long companyId, MultipartFile file) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        Organization org = company.getOrganization();
+        String orgSlug = (org != null && org.getSlug() != null) ? org.getSlug() : "default";
+        if (company.getSignaturePath() != null) fileUploadService.delete(company.getSignaturePath());
+        String path = fileUploadService.storeOrgScoped(file, orgSlug, "signatures");
+        company.setSignaturePath(path);
+        return companyRepository.save(company);
+    }
+
+    @Transactional
+    public void deleteSignature(Long companyId) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        if (company.getSignaturePath() != null) {
+            fileUploadService.delete(company.getSignaturePath());
+            company.setSignaturePath(null);
+            companyRepository.save(company);
+        }
+    }
+
     // --- Private helpers ---
 
     private Company buildCompany(CompanyRequest request) {

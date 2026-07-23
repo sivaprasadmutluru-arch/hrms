@@ -1,12 +1,16 @@
 package com.example.demo.offboarding.controller;
 
+import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.offboarding.entity.*;
 import com.example.demo.offboarding.service.OffboardingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +24,31 @@ public class OffboardingController {
 
     private final OffboardingService offboardingService;
 
+    @GetMapping
+    @PreAuthorize("hasAuthority('offboarding:view')")
+    @Operation(summary = "List active (non-leaver) offboarding records, optionally filtered by status")
+    public ResponseEntity<Page<EmployeeOffboarding>> list(
+            @RequestParam(required = false) EmployeeOffboarding.OffboardingStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(offboardingService.list(status, PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/leavers")
+    @PreAuthorize("hasAuthority('offboarding:view')")
+    @Operation(summary = "List employees who have been deactivated via offboarding (Leavers tab, EMP-004)")
+    public ResponseEntity<Page<EmployeeOffboarding>> listLeavers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(offboardingService.listLeavers(PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('offboarding:view')")
+    public ResponseEntity<EmployeeOffboarding> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(offboardingService.getById(id));
+    }
+
     @GetMapping("/employee/{employeeId}")
     @PreAuthorize("hasAuthority('offboarding:view')")
     public ResponseEntity<List<EmployeeOffboarding>> getEmployeeOffboarding(@PathVariable Long employeeId) {
@@ -28,8 +57,17 @@ public class OffboardingController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('offboarding:create')")
-    public ResponseEntity<EmployeeOffboarding> create(@RequestBody EmployeeOffboarding offboarding) {
-        return ResponseEntity.ok(offboardingService.create(offboarding));
+    public ResponseEntity<EmployeeOffboarding> create(@AuthenticationPrincipal UserPrincipal principal,
+                                                       @RequestBody EmployeeOffboarding offboarding) {
+        String name = principal != null && principal.getUsername() != null ? principal.getUsername() : "";
+        Long userId = principal != null ? principal.getId() : null;
+        return ResponseEntity.ok(offboardingService.create(offboarding, userId, name));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('offboarding:edit')")
+    public ResponseEntity<EmployeeOffboarding> update(@PathVariable Long id, @RequestBody EmployeeOffboarding updated) {
+        return ResponseEntity.ok(offboardingService.update(id, updated));
     }
 
     @PutMapping("/{id}/complete")

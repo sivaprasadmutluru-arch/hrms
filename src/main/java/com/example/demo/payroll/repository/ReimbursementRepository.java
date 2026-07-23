@@ -13,4 +13,5 @@ public interface ReimbursementRepository extends JpaRepository<Reimbursement, Lo
     List<Reimbursement> findByEmployeeIdAndStatusAndAllowanceOnBetween(
             Long employeeId, Reimbursement.ReimbursementStatus status, LocalDate from, LocalDate to);
     List<Reimbursement> findByCompanyId(Long companyId);
+    List<Reimbursement> findByEmployeeIdAndStatus(Long employeeId, Reimbursement.ReimbursementStatus status);
 }

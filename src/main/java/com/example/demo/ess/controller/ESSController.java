@@ -345,7 +345,8 @@ public class ESSController {
         Double latitude = toDouble(body, "latitude");
         Double longitude = toDouble(body, "longitude");
         Double accuracy = toDouble(body, "accuracy");
-        return ResponseEntity.ok(attendanceService.clockIn(emp.getId(), emp.getCompany().getId(), latitude, longitude, accuracy, "web"));
+        String source = toSource(body);
+        return ResponseEntity.ok(attendanceService.clockIn(emp.getId(), emp.getCompany().getId(), latitude, longitude, accuracy, source));
     }
 
     @PostMapping("/check-out")
@@ -361,7 +362,8 @@ public class ESSController {
             Double latitude = toDouble(body, "latitude");
             Double longitude = toDouble(body, "longitude");
             Double accuracy = toDouble(body, "accuracy");
-            return ResponseEntity.ok(attendanceService.clockOut(opt.get().getId(), latitude, longitude, accuracy, "web"));
+            String source = toSource(body);
+            return ResponseEntity.ok(attendanceService.clockOut(opt.get().getId(), latitude, longitude, accuracy, source));
         } else {
             return ResponseEntity.badRequest().body("No attendance record found for today.");
         }
@@ -371,6 +373,11 @@ public class ESSController {
         if (body == null) return null;
         Object value = body.get(key);
         return value instanceof Number number ? number.doubleValue() : null;
+    }
+
+    private String toSource(Map<String, Object> body) {
+        Object value = body == null ? null : body.get("source");
+        return value instanceof String s && !s.isBlank() ? s : "web";
     }
 
     @GetMapping("/my-attendance/export")
@@ -439,10 +446,12 @@ public class ESSController {
 
     @GetMapping("/my-payslips")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get own payslips")
+    @Operation(summary = "Get own payslips — Approved/Paid only (PAY-006 req #13); Draft/Pending stay HR/Accountant-only")
     public ResponseEntity<List<Payslip>> myPayslips(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(payslipRepository.findByEmployeeId(emp.getId()));
+        return ResponseEntity.ok(payslipRepository.findByEmployeeId(emp.getId()).stream()
+                .filter(p -> p.getStatus() == Payslip.PayslipStatus.CONFIRMED || p.getStatus() == Payslip.PayslipStatus.PAID)
+                .toList());
     }
 
     // ── Leave balance (own) ───────────────────────────────────────────────────

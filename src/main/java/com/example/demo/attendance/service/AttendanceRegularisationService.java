@@ -77,8 +77,13 @@ public class AttendanceRegularisationService {
             throw new BadRequestException("Invalid request type: " + req.getRequestType());
         }
 
-        Employee employee = employeeRepository.findByUserId(submittingUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee for user", submittingUserId));
+        // Normally the submitter is filing for themselves. When employeeId is set, an HR/Admin
+        // (authority already checked in the controller) is filing on behalf of that employee instead.
+        Employee employee = req.getEmployeeId() != null
+                ? employeeRepository.findById(req.getEmployeeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Employee", req.getEmployeeId()))
+                : employeeRepository.findByUserId(submittingUserId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Employee for user", submittingUserId));
 
         if (req.getAttendanceId() == null) {
             return submitNoAttendanceRequest(req, employee, requestType);
@@ -92,7 +97,8 @@ public class AttendanceRegularisationService {
             throw new BadRequestException("Only IRREGULAR attendance records can be regularised");
         }
 
-        // Ownership check
+        // Ownership check — the attendance row must belong to the target employee (self, unless
+        // an HR/Admin explicitly filed on someone else's behalf via employeeId above).
         if (!att.getEmployee().getId().equals(employee.getId())) {
             throw new BadRequestException("You can only submit requests for your own attendance");
         }

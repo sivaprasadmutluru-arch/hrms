@@ -75,6 +75,19 @@ public class Payslip extends BaseEntity {
     @Column(name = "status")
     private PayslipStatus status = PayslipStatus.DRAFT;
 
+    /** Set when status transitions to PAID (PAY-006 req #14). */
+    @Column(name = "payment_date")
+    private LocalDate paymentDate;
+
+    @Column(name = "payment_reference")
+    private String paymentReference;
+
+    @Column(name = "marked_paid_by_user_id")
+    private Long markedPaidByUserId;
+
+    @Column(name = "marked_paid_by_name")
+    private String markedPaidByName;
+
     @Column(name = "sent_to_employee")
     private Boolean sentToEmployee = false;
 

@@ -84,6 +84,14 @@ public class Company extends BaseEntity {
     @Column(name = "logo_path")
     private String logoPath;
 
+    // Round/rectangular company seal, stamped onto generated payslips
+    @Column(name = "stamp_path")
+    private String stampPath;
+
+    // Authorized signatory's signature image, stamped onto generated payslips
+    @Column(name = "signature_path")
+    private String signaturePath;
+
     @Column(name = "tax_id")
     private String taxId;
 

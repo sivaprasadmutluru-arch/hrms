@@ -17,8 +17,11 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.tenant.TenantContext;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -32,6 +35,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private final AuthenticationManager authenticationManager;
@@ -61,19 +65,44 @@ public class AuthService {
 
         // Resolve the user's primary company ID — prefer the highest-scope role's company
         // so ENTERPRISE_ADMIN gets their head office ID, not a random branch.
-        // Platform Super Admin may have a company assigned (Prabha Tech HO); if still null,
-        // fall back to the first available Head Office so the tenant schema is always set.
         Long companyId = userRoleRepository.findByUserId(principal.getId()).stream()
                 .filter(ur -> ur.getCompany() != null)
                 .max(java.util.Comparator.comparingInt(ur ->
                         ur.getAccessScope() != null ? ur.getAccessScope().ordinal() : -1))
                 .map(ur -> ur.getCompany().getId())
-                .orElseGet(() -> companyRepository
-                        .findAll().stream()
-                        .filter(Company::isHeadOffice)
-                        .map(Company::getId)
-                        .findFirst()
-                        .orElse(null));
+                .orElse(null);
+
+        // Employee rows live inside each company's own tenant schema, so the lookup
+        // must switch TenantContext to that schema first — querying without doing so
+        // (the previous behaviour) silently misses real data and always returns null.
+        Long employeeId = null;
+        if (companyId != null) {
+            String schema = companyRepository.findById(companyId).map(Company::getSchemaName).orElse(null);
+            Employee emp = findEmployeeInTenant(principal.getId(), schema);
+            if (emp != null) employeeId = emp.getId();
+        } else {
+            // No role-scoped company — typically Platform Super Admin. Rather than
+            // guessing "first head office" (previously non-deterministic: findAll()
+            // has no defined order, so the same admin could land in a different
+            // tenant on every login), search every active head office's tenant schema
+            // for a linked Employee record. If the admin has one, that company is the
+            // unambiguous correct choice; sorting by ID keeps the no-employee fallback
+            // deterministic too.
+            List<Company> headOffices = companyRepository.findAllHeadOfficesActivePublic().stream()
+                    .sorted(java.util.Comparator.comparing(Company::getId))
+                    .collect(java.util.stream.Collectors.toList());
+            for (Company ho : headOffices) {
+                Employee emp = findEmployeeInTenant(principal.getId(), ho.getSchemaName());
+                if (emp != null) {
+                    companyId = ho.getId();
+                    employeeId = emp.getId();
+                    break;
+                }
+            }
+            if (companyId == null && !headOffices.isEmpty()) {
+                companyId = headOffices.get(0).getId();
+            }
+        }
 
         // Block login if the user's organization is suspended (Platform Super Admin is exempt)
         if (companyId != null && !roles.contains("PLATFORM_SUPER_ADMIN")) {
@@ -84,15 +113,26 @@ public class AuthService {
             });
         }
 
-        Long employeeId = employeeRepository.findByUserId(principal.getId())
-                .map(e -> e.getId())
-                .orElse(null);
-
         String companyName = companyId != null
                 ? companyRepository.findById(companyId).map(Company::getName).orElse(null)
                 : null;
 
         return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId);
+    }
+
+    /** Looks up a linked Employee by userId inside a specific tenant schema, restoring the
+     *  previous TenantContext afterward. Returns null for a blank schema or no match. */
+    private Employee findEmployeeInTenant(Long userId, String schema) {
+        if (schema == null || schema.isBlank()) return null;
+        try {
+            TenantContext.setTenant(schema);
+            return employeeRepository.findByUserId(userId).orElse(null);
+        } catch (Exception e) {
+            log.warn("Employee lookup failed for schema='{}': {}", schema, e.getMessage());
+            return null;
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @Transactional

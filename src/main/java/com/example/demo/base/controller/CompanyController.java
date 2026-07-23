@@ -157,4 +157,38 @@ public class CompanyController {
         Company company = companyService.uploadLogo(id, file);
         return ResponseEntity.ok(Map.of("logoPath", company.getLogoPath(), "url", "/api/files/" + company.getLogoPath()));
     }
+
+    @PostMapping("/{id}/stamp")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Upload company stamp/seal, stamped onto generated payslips")
+    public ResponseEntity<Map<String, String>> uploadStamp(@PathVariable Long id,
+                                                            @RequestParam("file") MultipartFile file) {
+        Company company = companyService.uploadStamp(id, file);
+        return ResponseEntity.ok(Map.of("stampPath", company.getStampPath(), "url", "/api/files/" + company.getStampPath()));
+    }
+
+    @DeleteMapping("/{id}/stamp")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Remove company stamp/seal")
+    public ResponseEntity<Map<String, String>> deleteStamp(@PathVariable Long id) {
+        companyService.deleteStamp(id);
+        return ResponseEntity.ok(Map.of("message", "Stamp removed"));
+    }
+
+    @PostMapping("/{id}/signature")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Upload authorized signatory's signature, stamped onto generated payslips")
+    public ResponseEntity<Map<String, String>> uploadSignature(@PathVariable Long id,
+                                                                @RequestParam("file") MultipartFile file) {
+        Company company = companyService.uploadSignature(id, file);
+        return ResponseEntity.ok(Map.of("signaturePath", company.getSignaturePath(), "url", "/api/files/" + company.getSignaturePath()));
+    }
+
+    @DeleteMapping("/{id}/signature")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Operation(summary = "Remove authorized signatory's signature")
+    public ResponseEntity<Map<String, String>> deleteSignature(@PathVariable Long id) {
+        companyService.deleteSignature(id);
+        return ResponseEntity.ok(Map.of("message", "Signature removed"));
+    }
 }

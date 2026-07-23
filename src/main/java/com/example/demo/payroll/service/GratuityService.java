@@ -49,11 +49,11 @@ public class GratuityService {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found: " + employeeId));
 
-        // Fetch active contract for joining date & basic salary
+        // Fetch the contract for joining date & basic salary: prefer ACTIVE, otherwise the
+        // most recent contract of any status (deterministic, unlike an unordered findFirst).
         Contract contract = contractRepository
-                .findByEmployeeIdAndContractStatus(employeeId, Contract.ContractStatus.ACTIVE)
-                .orElse(contractRepository.findByEmployeeId(employeeId).stream()
-                        .findFirst().orElse(null));
+                .findBestContractForPayroll(employeeId)
+                .orElse(null);
 
         LocalDate joiningDate;
         BigDecimal basicSalary;

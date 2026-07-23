@@ -561,9 +561,11 @@ public class PayslipExcelExportService {
             // ── Data rows ─────────────────────────────────────────────────────
             int dataRow = 3;
             for (Employee emp : employees) {
-                // Look up active contract for base salary values
+                // Look up the contract to use for base salary values: prefer ACTIVE, but fall
+                // back to the most recent contract of any status rather than silently zeroing
+                // out real salary data for employees still in DRAFT (see PAY-001).
                 Contract contract = contractRepository
-                        .findByEmployeeIdAndContractStatus(emp.getId(), Contract.ContractStatus.ACTIVE)
+                        .findBestContractForPayroll(emp.getId())
                         .orElse(null);
 
                 double basicSalary = contract != null && contract.getWage()                != null ? contract.getWage().doubleValue()                : 0.0;

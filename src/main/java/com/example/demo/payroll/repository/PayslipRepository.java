@@ -34,6 +34,9 @@ public interface PayslipRepository extends JpaRepository<Payslip, Long>, JpaSpec
     List<Payslip> findByCompanyIdAndStatus(Long companyId, Payslip.PayslipStatus status);
     List<Payslip> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);
 
+    /** Resolves "select all" for bulk workflow actions scoped to one payroll month + status (PAY-006 req #10). */
+    List<Payslip> findByCompanyIdAndStartDateBetweenAndStatus(Long companyId, LocalDate from, LocalDate to, Payslip.PayslipStatus status);
+
     @Query("SELECT p FROM Payslip p LEFT JOIN FETCH p.employee e LEFT JOIN FETCH e.department LEFT JOIN FETCH p.company " +
            "WHERE p.company.id IN :companyIds AND p.startDate >= :startDate AND p.startDate <= :endDate")
     List<Payslip> findAllWithAssociationsByCompanyIdInAndStartDateBetween(

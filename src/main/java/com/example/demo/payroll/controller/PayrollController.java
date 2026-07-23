@@ -1,11 +1,13 @@
 package com.example.demo.payroll.controller;
 
+import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.repository.*;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.util.ScopeFilter;
+import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeBankDetailsRepository;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.payroll.entity.*;
@@ -14,6 +16,7 @@ import com.example.demo.payroll.service.PayrollScheduler;
 import com.example.demo.payroll.service.PayrollService;
 import com.example.demo.payroll.service.PayslipExcelExportService;
 import com.example.demo.payroll.service.PayslipImportService;
+import com.example.demo.payroll.service.PayslipWorkflowService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lowagie.text.*;
@@ -27,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,6 +50,7 @@ import java.util.HashMap;
 public class PayrollController {
 
     private final PayrollService payrollService;
+    private final PayslipWorkflowService payslipWorkflowService;
     private final PayslipExcelExportService payslipExcelExportService;
     private final ContractRepository contractRepository;
     private final PayslipRepository payslipRepository;
@@ -439,30 +444,105 @@ public class PayrollController {
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id)));
     }
 
+    // ─── PAY-006: Draft -> Pending -> Approved -> Paid workflow ────────────────
+    // These, plus the /bulk variants below, are the ONLY sanctioned way to change a payslip's
+    // status — patchPayslip/inlineEditPayslip reject status changes (see below).
+
+    @PostMapping("/payslips/{id}/submit")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT')")
+    @Operation(summary = "HR submits a Draft payslip for review (Draft -> Pending)")
+    public ResponseEntity<Payslip> submitPayslip(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id) {
+        Payslip saved = payslipWorkflowService.submit(id, principal.getId(), principal.getUsername());
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(saved.getId()).orElse(saved));
+    }
+
+    @PostMapping("/payslips/submit/bulk")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'ACCOUNTANT')")
+    @Operation(summary = "Bulk submit Draft payslips for review, for selected IDs or an entire payroll month")
+    public ResponseEntity<PayslipWorkflowService.BulkResult> submitPayslipsBulk(
+            @AuthenticationPrincipal UserPrincipal principal, @RequestBody BulkWorkflowRequest req) {
+        List<Long> ids = resolveBulkIds(req, Payslip.PayslipStatus.DRAFT);
+        return ResponseEntity.ok(payslipWorkflowService.submitBulk(ids, principal.getId(), principal.getUsername()));
+    }
+
     @PostMapping("/payslips/{id}/confirm")
     @PreAuthorize("hasAuthority('payroll:approve')")
-    @Transactional
-    public ResponseEntity<?> confirmPayslip(@PathVariable Long id) {
-        Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
-        if (p.getStatus() != Payslip.PayslipStatus.DRAFT) {
-            return ResponseEntity.badRequest().body("Payslip must be in DRAFT status to confirm");
-        }
-        p.setStatus(Payslip.PayslipStatus.CONFIRMED);
-        payslipRepository.save(p);
-        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
+    @Operation(summary = "Accountant approves a Pending payslip (Pending -> Approved)")
+    public ResponseEntity<Payslip> confirmPayslip(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id) {
+        Payslip saved = payslipWorkflowService.approve(id, principal.getId(), principal.getUsername());
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(saved.getId()).orElse(saved));
+    }
+
+    @PostMapping("/payslips/confirm/bulk")
+    @PreAuthorize("hasAuthority('payroll:approve')")
+    @Operation(summary = "Bulk approve Pending payslips, for selected IDs or an entire payroll month")
+    public ResponseEntity<PayslipWorkflowService.BulkResult> confirmPayslipsBulk(
+            @AuthenticationPrincipal UserPrincipal principal, @RequestBody BulkWorkflowRequest req) {
+        List<Long> ids = resolveBulkIds(req, Payslip.PayslipStatus.REVIEW_ONGOING);
+        return ResponseEntity.ok(payslipWorkflowService.approveBulk(ids, principal.getId(), principal.getUsername()));
     }
 
     @PostMapping("/payslips/{id}/mark-paid")
     @PreAuthorize("hasAuthority('payroll:approve')")
-    @Transactional
-    public ResponseEntity<?> markPaid(@PathVariable Long id) {
-        Payslip p = payslipRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
-        if (p.getStatus() != Payslip.PayslipStatus.CONFIRMED) {
-            return ResponseEntity.badRequest().body("Payslip must be in CONFIRMED status to mark as paid");
+    @Operation(summary = "Accountant marks an Approved payslip Paid, capturing payment date/reference")
+    public ResponseEntity<Payslip> markPaid(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id,
+                                             @RequestBody(required = false) MarkPaidRequest body) {
+        String ref = body != null ? body.paymentReference : null;
+        LocalDate date = body != null ? body.paymentDate : null;
+        Payslip saved = payslipWorkflowService.markPaid(id, ref, date, principal.getId(), principal.getUsername());
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(saved.getId()).orElse(saved));
+    }
+
+    @PostMapping("/payslips/mark-paid/bulk")
+    @PreAuthorize("hasAuthority('payroll:approve')")
+    @Operation(summary = "Bulk mark Approved payslips Paid, for selected IDs or an entire payroll month")
+    public ResponseEntity<PayslipWorkflowService.BulkResult> markPaidBulk(
+            @AuthenticationPrincipal UserPrincipal principal, @RequestBody BulkWorkflowRequest req) {
+        List<Long> ids = resolveBulkIds(req, Payslip.PayslipStatus.CONFIRMED);
+        return ResponseEntity.ok(payslipWorkflowService.markPaidBulk(
+                ids, req.paymentReference, req.paymentDate, principal.getId(), principal.getUsername()));
+    }
+
+    @PostMapping("/payslips/{id}/reopen")
+    @PreAuthorize("hasAuthority('payroll:approve')")
+    @Operation(summary = "Reopen a Paid payslip back to Approved — requires a reason, fully audited (req #15)")
+    public ResponseEntity<Payslip> reopenPayslip(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id,
+                                                  @RequestBody ReopenRequest body) {
+        Payslip saved = payslipWorkflowService.reopen(id, body.reason, principal.getId(), principal.getUsername());
+        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(saved.getId()).orElse(saved));
+    }
+
+    private List<Long> resolveBulkIds(BulkWorkflowRequest req, Payslip.PayslipStatus expectedStatus) {
+        if (Boolean.TRUE.equals(req.selectAll)) {
+            if (req.companyId == null || req.periodStart == null || req.periodEnd == null) {
+                throw new com.example.demo.common.exception.BadRequestException(
+                        "companyId, periodStart and periodEnd are required when selectAll is true");
+            }
+            return payslipWorkflowService.resolvePeriodIds(req.companyId, req.periodStart, req.periodEnd, expectedStatus);
         }
-        p.setStatus(Payslip.PayslipStatus.PAID);
-        payslipRepository.save(p);
-        return ResponseEntity.ok(payslipRepository.findByIdWithAssociations(id).orElse(p));
+        if (req.payslipIds == null || req.payslipIds.isEmpty()) {
+            throw new com.example.demo.common.exception.BadRequestException("payslipIds must not be empty when selectAll is false");
+        }
+        return req.payslipIds;
+    }
+
+    public static class BulkWorkflowRequest {
+        public List<Long> payslipIds;
+        public Boolean selectAll;
+        public Long companyId;
+        public LocalDate periodStart;
+        public LocalDate periodEnd;
+        public String paymentReference;
+        public LocalDate paymentDate;
+    }
+
+    public static class MarkPaidRequest {
+        public String paymentReference;
+        public LocalDate paymentDate;
+    }
+
+    public static class ReopenRequest {
+        public String reason;
     }
 
     @DeleteMapping("/payslips/{id}")
@@ -485,7 +565,21 @@ public class PayrollController {
     @GetMapping("/employee/{employeeId}/payslips")
     @PreAuthorize("hasAuthority('payroll:view') or hasRole('EMPLOYEE')")
     @Transactional(readOnly = true)
+    @Operation(summary = "Payslips for one employee — self-scoped callers only see their own, Approved/Paid only (PAY-006 req #13)")
     public ResponseEntity<List<Payslip>> employeePayslips(@PathVariable Long employeeId) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && scope.isSelfScope()) {
+            Long userId = scope.getUserId();
+            Employee target = employeeRepository.findById(employeeId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
+            boolean owns = target.getUser() != null && target.getUser().getId().equals(userId);
+            if (!owns) {
+                throw new org.springframework.security.access.AccessDeniedException("Not authorized to view this employee's payslips");
+            }
+            return ResponseEntity.ok(payslipRepository.findByEmployeeId(employeeId).stream()
+                    .filter(p -> p.getStatus() == Payslip.PayslipStatus.CONFIRMED || p.getStatus() == Payslip.PayslipStatus.PAID)
+                    .toList());
+        }
         return ResponseEntity.ok(payslipRepository.findByEmployeeId(employeeId));
     }
 
@@ -1160,6 +1254,10 @@ public class PayrollController {
             @RequestBody Map<String, Object> updates) {
         Payslip p = payslipRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+        if (p.getStatus() == Payslip.PayslipStatus.PAID) {
+            throw new com.example.demo.common.exception.BadRequestException(
+                    "Payslip is Paid and locked; use /payslips/{id}/reopen first (PAY-006 req #15)");
+        }
 
         // Parse existing pay_head_data
         Map<String, Object> phd = new java.util.LinkedHashMap<>();
@@ -1178,10 +1276,8 @@ public class PayrollController {
             p.setTransportAllowance(new java.math.BigDecimal(updates.get("transportAllowance").toString()));
         if (updates.containsKey("otherAllowance"))
             p.setOtherAllowance(new java.math.BigDecimal(updates.get("otherAllowance").toString()));
-        if (updates.containsKey("status")) {
-            try { p.setStatus(Payslip.PayslipStatus.valueOf(updates.get("status").toString())); }
-            catch (Exception ignored) {}
-        }
+        // Status is no longer settable here (PAY-006 req #9) — use the dedicated
+        // /submit, /confirm, /mark-paid, /reopen endpoints, which validate transitions and audit them.
 
         // Apply updates to pay_head_data
         if (updates.containsKey("overtime"))
@@ -1473,6 +1569,15 @@ public class PayrollController {
         }
     }
 
+    private boolean isPdfLogoSupported(String logoPath) {
+        String lower = logoPath.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".png")
+                || lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif")
+                || lower.endsWith(".bmp");
+    }
+
     /** Generates a single payslip PDF into the given output stream (shared by single + bulk endpoints) */
     private void generateSinglePayslipPdf(Payslip p, ByteArrayOutputStream baos) throws Exception {
         Color INDIGO   = new Color(79,  70,  229);
@@ -1570,12 +1675,12 @@ public class PayrollController {
         PdfPCell hRight = new PdfPCell(); hRight.setBorder(Rectangle.NO_BORDER);
         hRight.setHorizontalAlignment(Element.ALIGN_RIGHT); hRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
         hRight.setPadding(0);
-        if (logoPath != null && !logoPath.isBlank()) {
+        if (logoPath != null && !logoPath.isBlank() && isPdfLogoSupported(logoPath)) {
             try {
                 java.nio.file.Path lp = fileUploadService.resolve(logoPath);
                 if (java.nio.file.Files.exists(lp)) {
                     com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(lp.toAbsolutePath().toString());
-                    logo.scaleToFit(90f, 45f);
+                    logo.scaleToFit(150f, 75f);
                     logo.setAlignment(com.lowagie.text.Image.ALIGN_RIGHT);
                     hRight.addElement(logo);
                 }
@@ -1786,17 +1891,56 @@ public class PayrollController {
         sigEmp.addElement(new Paragraph("________________________________", fSigLine));
         sigEmp.addElement(new Paragraph("Employee Signature", fSigLbl));
         sigTable.addCell(sigEmp);
-        // Stamp placeholder (center)
-        PdfPCell sigStamp = new PdfPCell(); sigStamp.setBorder(Rectangle.BOX); sigStamp.setBorderColor(INDIGO_B);
-        sigStamp.setBorderWidth(0.5f); sigStamp.setPadding(12f); sigStamp.setHorizontalAlignment(Element.ALIGN_CENTER);
-        Paragraph stampP = new Paragraph("Company Stamp", fSigLbl); stampP.setAlignment(Element.ALIGN_CENTER);
-        sigStamp.addElement(stampP); sigTable.addCell(sigStamp);
-        // Authorized signature
+        // Stamp: real company seal image if the organization has uploaded one, else a text placeholder
+        PdfPCell sigStamp = new PdfPCell(); sigStamp.setBorder(Rectangle.NO_BORDER);
+        sigStamp.setPadding(4f); sigStamp.setHorizontalAlignment(Element.ALIGN_CENTER);
+        sigStamp.setVerticalAlignment(Element.ALIGN_BOTTOM);
+        String stampPath = co != null ? co.getStampPath() : null;
+        boolean stampAdded = false;
+        if (stampPath != null && !stampPath.isBlank()) {
+            try {
+                java.nio.file.Path sp = fileUploadService.resolve(stampPath);
+                if (java.nio.file.Files.exists(sp)) {
+                    com.lowagie.text.Image stampImg = com.lowagie.text.Image.getInstance(sp.toAbsolutePath().toString());
+                    stampImg.scaleToFit(80f, 80f);
+                    stampImg.setAlignment(com.lowagie.text.Image.ALIGN_CENTER);
+                    sigStamp.addElement(stampImg);
+                    stampAdded = true;
+                }
+            } catch (Exception ignored) { /* stamp load failure falls back to placeholder */ }
+        }
+        if (!stampAdded) {
+            PdfPCell placeholder = new PdfPCell(); placeholder.setBorder(Rectangle.BOX); placeholder.setBorderColor(INDIGO_B);
+            placeholder.setBorderWidth(0.5f); placeholder.setPadding(12f); placeholder.setHorizontalAlignment(Element.ALIGN_CENTER);
+            Paragraph stampP = new Paragraph("Company Stamp", fSigLbl); stampP.setAlignment(Element.ALIGN_CENTER);
+            placeholder.addElement(stampP);
+            sigTable.addCell(placeholder);
+        } else {
+            sigTable.addCell(sigStamp);
+        }
+        // Authorized signature: real signature image if uploaded, else a blank line to sign by hand
         PdfPCell sigAuth = new PdfPCell(); sigAuth.setBorder(Rectangle.NO_BORDER); sigAuth.setPadding(4f);
         sigAuth.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph authLine = new Paragraph("________________________________", fSigLine); authLine.setAlignment(Element.ALIGN_RIGHT);
-        Paragraph authLbl  = new Paragraph("Authorized Signature",            fSigLbl);  authLbl.setAlignment(Element.ALIGN_RIGHT);
-        sigAuth.addElement(authLine); sigAuth.addElement(authLbl);
+        String signaturePath = co != null ? co.getSignaturePath() : null;
+        boolean signatureAdded = false;
+        if (signaturePath != null && !signaturePath.isBlank()) {
+            try {
+                java.nio.file.Path gp = fileUploadService.resolve(signaturePath);
+                if (java.nio.file.Files.exists(gp)) {
+                    com.lowagie.text.Image sigImg = com.lowagie.text.Image.getInstance(gp.toAbsolutePath().toString());
+                    sigImg.scaleToFit(110f, 45f);
+                    sigImg.setAlignment(com.lowagie.text.Image.ALIGN_RIGHT);
+                    sigAuth.addElement(sigImg);
+                    signatureAdded = true;
+                }
+            } catch (Exception ignored) { /* signature load failure falls back to blank line */ }
+        }
+        if (!signatureAdded) {
+            Paragraph authLine = new Paragraph("________________________________", fSigLine); authLine.setAlignment(Element.ALIGN_RIGHT);
+            sigAuth.addElement(authLine);
+        }
+        Paragraph authLbl = new Paragraph("Authorized Signature", fSigLbl); authLbl.setAlignment(Element.ALIGN_RIGHT);
+        sigAuth.addElement(authLbl);
         sigTable.addCell(sigAuth);
         doc.add(sigTable);
 
@@ -1971,6 +2115,10 @@ public class PayrollController {
                                                       @RequestBody Map<String, Object> fields) {
         Payslip p = payslipRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", id));
+        if (p.getStatus() == Payslip.PayslipStatus.PAID) {
+            throw new com.example.demo.common.exception.BadRequestException(
+                    "Payslip is Paid and locked; use /payslips/{id}/reopen first (PAY-006 req #15)");
+        }
 
         boolean recalcGross = fields.containsKey("basicPay") || fields.containsKey("housingAllowance")
                 || fields.containsKey("transportAllowance") || fields.containsKey("otherAllowance");
@@ -1979,18 +2127,8 @@ public class PayrollController {
             switch (key) {
                 case "groupName" -> p.setGroupName(value != null ? value.toString() : null);
                 case "reference" -> p.setReference(value != null ? value.toString() : null);
-                case "status" -> {
-                    if (value != null) {
-                        String sv = value.toString();
-                        // Accept frontend-friendly labels as aliases
-                        Payslip.PayslipStatus status = switch (sv) {
-                            case "PENDING" -> Payslip.PayslipStatus.REVIEW_ONGOING;
-                            case "APPROVED" -> Payslip.PayslipStatus.CONFIRMED;
-                            default -> Payslip.PayslipStatus.valueOf(sv);
-                        };
-                        p.setStatus(status);
-                    }
-                }
+                // Status is no longer settable here (PAY-006 req #9) — use the dedicated
+                // /submit, /confirm, /mark-paid, /reopen endpoints, which validate transitions and audit them.
                 case "basicPay" -> {
                     if (value != null) p.setBasicPay(new java.math.BigDecimal(value.toString()));
                 }

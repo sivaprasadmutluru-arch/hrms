@@ -11,9 +11,12 @@ import com.example.demo.payroll.repository.PayslipRepository;
 import com.example.demo.recruitment.entity.RecruitmentPost;
 import com.example.demo.recruitment.repository.ApplicantRepository;
 import com.example.demo.recruitment.repository.RecruitmentPostRepository;
+import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.payroll.service.PayslipExcelExportService;
+import com.example.demo.report.entity.GeneratedReport;
 import com.example.demo.report.service.ConsolidatedReportService;
+import com.example.demo.report.service.ReportRepositoryService;
 import com.example.demo.report.util.ExcelExporter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +26,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -51,6 +55,7 @@ public class ConsolidatedReportController {
     private final RecruitmentPostRepository recruitmentPostRepository;
     private final ApplicantRepository applicantRepository;
     private final AssetRepository assetRepository;
+    private final ReportRepositoryService reportRepositoryService;
 
     @GetMapping("/headcount")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
@@ -104,9 +109,11 @@ public class ConsolidatedReportController {
     @Transactional(readOnly = true)
     @Operation(summary = "Export report as Excel (.xlsx). type = attendance | leave | payroll")
     public ResponseEntity<byte[]> export(
+            @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) throws Exception {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long companyId) throws Exception {
 
         LocalDate resolvedFrom = from != null ? from : LocalDate.now().minusDays(30);
         LocalDate resolvedTo   = to   != null ? to   : LocalDate.now();
@@ -129,11 +136,29 @@ public class ConsolidatedReportController {
             bytes = excelExporter.buildSheet(type, data);
         }
 
+        if (companyId != null) {
+            GeneratedReport.ReportType reportType = mapExportType(type);
+            if (reportType != null) {
+                reportRepositoryService.recordExistingExport(reportType, resolvedFrom, resolvedTo,
+                        companyId, bytes, principal.getId(), principal.getUsername());
+            }
+        }
+
         String filename = type + "_report_" + resolvedFrom + "_to_" + resolvedTo + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
+    }
+
+    private GeneratedReport.ReportType mapExportType(String type) {
+        if (type == null) return null;
+        return switch (type.toLowerCase()) {
+            case "attendance" -> GeneratedReport.ReportType.ATTENDANCE;
+            case "leave" -> GeneratedReport.ReportType.LEAVE;
+            case "payroll" -> GeneratedReport.ReportType.PAYROLL;
+            default -> null;
+        };
     }
 
     // ─── Dashboard Endpoints ───────────────────────────────────────────────────

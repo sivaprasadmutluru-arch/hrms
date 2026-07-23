@@ -19,6 +19,19 @@ public interface ContractRepository extends JpaRepository<Contract, Long>, JpaSp
     List<Contract> findByEmployeeIdAndContractStatusIn(Long employeeId, List<Contract.ContractStatus> statuses);
     List<Contract> findByCompanyId(Long companyId);
 
+    /** The contract to use for salary/payroll calculations: the ACTIVE one if there is one,
+     *  otherwise the most recently created contract of any status (e.g. still DRAFT) rather
+     *  than silently treating the employee as having no salary at all. */
+    @Query("SELECT c FROM Contract c WHERE c.employee.id = :employeeId " +
+           "ORDER BY CASE WHEN c.contractStatus = :activeStatus THEN 0 ELSE 1 END, c.createdAt DESC")
+    List<Contract> findByEmployeeIdOrderByActiveFirstThenRecent(
+            @Param("employeeId") Long employeeId, @Param("activeStatus") Contract.ContractStatus activeStatus);
+
+    default Optional<Contract> findBestContractForPayroll(Long employeeId) {
+        return findByEmployeeIdOrderByActiveFirstThenRecent(employeeId, Contract.ContractStatus.ACTIVE)
+                .stream().findFirst();
+    }
+
     @Query("SELECT c FROM Contract c " +
            "LEFT JOIN FETCH c.employee " +
            "LEFT JOIN FETCH c.company " +

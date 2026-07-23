@@ -42,9 +42,14 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -348,9 +353,11 @@ public class EmployeeService {
 
     /**
      * Permanently deletes an employee and every row in the current tenant schema that
-     * references it, by discovering foreign keys at runtime rather than hardcoding table
-     * names — the employees table is referenced by ~100 tables (attendance, payroll,
-     * leave, tickets, etc.) and that list changes as features are added.
+     * (transitively) references it, by discovering foreign keys at runtime rather than
+     * hardcoding table names — the employees table is referenced by ~100 tables (attendance,
+     * payroll, leave, tickets, etc.), directly and indirectly (e.g. attendances is a direct
+     * dependent, attendance_late_come_early_out depends on attendances rather than employees
+     * directly), and that graph changes as features are added.
      *
      * PLATFORM_SUPER_ADMIN only, irreversible. Intended for cleaning up broken/junk records
      * (e.g. duplicate stubs from bugs), not routine offboarding — use delete() for that.
@@ -359,46 +366,158 @@ public class EmployeeService {
     public Map<String, Object> hardDelete(Long id) {
         findEmployee(id); // 404s if it doesn't exist in the current tenant schema
 
-        // Self-referencing FK (reporting_manager_id) isn't caught by the generic loop below
-        // since it points from employees back to employees — null it out rather than deleting
-        // whoever reports to this person.
-        entityManager.createNativeQuery(
-                "UPDATE employees SET reporting_manager_id = NULL WHERE reporting_manager_id = :id")
-                .setParameter("id", id)
-                .executeUpdate();
+        org.hibernate.Session session = entityManager.unwrap(org.hibernate.Session.class);
+        return session.doReturningWork(conn -> {
 
-        @SuppressWarnings("unchecked")
-        List<Object[]> referencingTables = entityManager.createNativeQuery(
-                "SELECT tc.table_name, kcu.column_name " +
-                "FROM information_schema.table_constraints tc " +
-                "JOIN information_schema.key_column_usage kcu " +
-                "  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema " +
-                "JOIN information_schema.constraint_column_usage ccu " +
-                "  ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema " +
-                "WHERE tc.constraint_type = 'FOREIGN KEY' " +
-                "  AND ccu.table_name = 'employees' AND ccu.table_schema = current_schema() " +
-                "  AND tc.table_schema = current_schema() AND tc.table_name <> 'employees'")
-                .getResultList();
-
-        Map<String, Object> clearedCounts = new LinkedHashMap<>();
-        for (Object[] row : referencingTables) {
-            String tableName = (String) row[0];
-            String columnName = (String) row[1];
-            int cleared = entityManager.createNativeQuery(
-                    "DELETE FROM \"" + tableName + "\" WHERE \"" + columnName + "\" = :id")
-                    .setParameter("id", id)
-                    .executeUpdate();
-            if (cleared > 0) {
-                clearedCounts.merge(tableName, cleared, (a, b) -> (Integer) a + (Integer) b);
+            // Self-referencing FK (reporting_manager_id) isn't caught by the generic BFS below
+            // since it points from employees back to employees — null it out rather than deleting
+            // whoever reports to this person.
+            try (var st = conn.createStatement()) {
+                st.executeUpdate("UPDATE employees SET reporting_manager_id = NULL WHERE reporting_manager_id = " + id);
             }
-        }
 
-        entityManager.createNativeQuery("DELETE FROM employees WHERE id = :id")
-                .setParameter("id", id)
-                .executeUpdate();
+            // Precompute which tables in this schema have an 'id' column (pg_catalog — fast),
+            // so the BFS below never has to *attempt* a SELECT id on a table that doesn't have one.
+            // A failed statement doesn't just throw in Postgres — it poisons the rest of the
+            // transaction (every subsequent statement fails with "transaction is aborted") unless
+            // rolled back to a savepoint, so this must be known up front, not discovered via try/catch.
+            Set<String> tablesWithId = new HashSet<>();
+            try (var ps = conn.prepareStatement(
+                    "SELECT c.relname FROM pg_attribute a " +
+                    "JOIN pg_class c ON c.oid = a.attrelid " +
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace " +
+                    "WHERE n.nspname = current_schema() AND a.attname = 'id' " +
+                    "  AND a.attnum > 0 AND NOT a.attisdropped AND c.relkind = 'r'");
+                 var rs = ps.executeQuery()) {
+                while (rs.next()) tablesWithId.add(rs.getString(1));
+            }
 
-        log.warn("[hardDelete] Permanently deleted employee id={} — cleared dependent rows: {}", id, clearedCounts);
-        return Map.of("message", "Employee permanently deleted", "clearedDependents", clearedCounts);
+            // Load every FK edge in the current tenant schema: parentTable -> [(childTable, childColumn, isNullable)].
+            Map<String, List<String[]>> fkEdges = new HashMap<>();
+            try (var ps = conn.prepareStatement(
+                    "SELECT ccu.table_name AS parent_table, tc.table_name AS child_table, kcu.column_name AS child_column, " +
+                    "       col.is_nullable AS is_nullable " +
+                    "FROM information_schema.table_constraints tc " +
+                    "JOIN information_schema.key_column_usage kcu " +
+                    "  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema " +
+                    "JOIN information_schema.constraint_column_usage ccu " +
+                    "  ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema " +
+                    "JOIN information_schema.columns col " +
+                    "  ON col.table_schema = tc.table_schema AND col.table_name = tc.table_name AND col.column_name = kcu.column_name " +
+                    "WHERE tc.constraint_type = 'FOREIGN KEY' " +
+                    "  AND tc.table_schema = current_schema() AND ccu.table_schema = current_schema() " +
+                    "  AND tc.table_name <> ccu.table_name");
+                 var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    fkEdges.computeIfAbsent(rs.getString(1), k -> new ArrayList<>())
+                            .add(new String[]{rs.getString(2), rs.getString(3), rs.getString(4)});
+                }
+            }
+
+            // BFS outward from "employees", tracking each discovered table's row IDs so we can
+            // find ITS dependents too (attendances -> attendance_late_come_early_out, etc.).
+            //
+            // Not every FK pointing at employees means "this row belongs to the deleted employee" —
+            // e.g. loan_requests.reviewed_by, departments.manager_id, tickets.assigned_to_id reference
+            // an employee acting ON someone else's row, not ownership of it. Deleting those rows would
+            // destroy a DIFFERENT employee's real data. Nullable columns are treated as such references
+            // and severed (set NULL) rather than deleted; only NOT NULL columns are treated as ownership
+            // (that row cannot exist without this employee) and cascade-deleted.
+            //
+            // Every statement runs under its own savepoint: an unexpected failure (e.g. a table with
+            // additional constraints this heuristic doesn't foresee) is rolled back to that savepoint
+            // and logged, rather than poisoning every statement that runs after it.
+            Map<String, String> tableIdLists = new HashMap<>();
+            tableIdLists.put("employees", String.valueOf(id));
+
+            Set<String> visited = new HashSet<>(List.of("employees"));
+            List<String[]> deleteOrder = new ArrayList<>(); // [table, deleteSql], shallow-to-deep BFS order
+            Queue<String> queue = new ArrayDeque<>(List.of("employees"));
+            Map<String, Object> severedCounts = new LinkedHashMap<>();
+
+            while (!queue.isEmpty()) {
+                String parent = queue.poll();
+                String parentIds = tableIdLists.getOrDefault(parent, "");
+                if (parentIds.isEmpty()) continue;
+
+                for (String[] edge : fkEdges.getOrDefault(parent, List.of())) {
+                    String childTable = edge[0];
+                    String childColumn = edge[1];
+                    boolean nullable = "YES".equalsIgnoreCase(edge[2]);
+
+                    if (nullable) {
+                        // Reference, not ownership — sever the link, leave the row (and its real
+                        // owner's data) intact.
+                        java.sql.Savepoint sp = conn.setSavepoint();
+                        try (var st = conn.createStatement()) {
+                            int severed = st.executeUpdate(
+                                    "UPDATE \"" + childTable + "\" SET \"" + childColumn + "\" = NULL " +
+                                    "WHERE \"" + childColumn + "\" IN (" + parentIds + ")");
+                            conn.releaseSavepoint(sp);
+                            if (severed > 0) {
+                                severedCounts.merge(childTable, severed, (a, b) -> (Integer) a + (Integer) b);
+                            }
+                        } catch (java.sql.SQLException e) {
+                            conn.rollback(sp);
+                            log.warn("[hardDelete] Could not sever {}.{}: {}", childTable, childColumn, e.getMessage());
+                        }
+                        continue;
+                    }
+
+                    deleteOrder.add(new String[]{childTable,
+                            "DELETE FROM \"" + childTable + "\" WHERE \"" + childColumn + "\" IN (" + parentIds + ")"});
+
+                    // Fetch this child's row IDs before it's deleted, so BFS can expand into ITS
+                    // dependents. Tables without an 'id' column (composite-key join tables) are leaves.
+                    if (visited.add(childTable) && tablesWithId.contains(childTable)) {
+                        java.sql.Savepoint sp = conn.setSavepoint();
+                        try (var st = conn.createStatement();
+                             var rs = st.executeQuery(
+                                     "SELECT id FROM \"" + childTable + "\" WHERE \"" + childColumn + "\" IN (" + parentIds + ")")) {
+                            StringBuilder sb = new StringBuilder();
+                            while (rs.next()) {
+                                if (sb.length() > 0) sb.append(',');
+                                sb.append(rs.getLong(1));
+                            }
+                            conn.releaseSavepoint(sp);
+                            if (sb.length() > 0) {
+                                tableIdLists.put(childTable, sb.toString());
+                                queue.add(childTable);
+                            }
+                        } catch (java.sql.SQLException e) {
+                            conn.rollback(sp);
+                            log.warn("[hardDelete] Could not fetch child ids for {}: {}", childTable, e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            // Delete deepest dependents first (reverse BFS order) so children are gone before parents.
+            Collections.reverse(deleteOrder);
+            Map<String, Object> clearedCounts = new LinkedHashMap<>();
+            for (String[] entry : deleteOrder) {
+                java.sql.Savepoint sp = conn.setSavepoint();
+                try (var st = conn.createStatement()) {
+                    int cleared = st.executeUpdate(entry[1]);
+                    conn.releaseSavepoint(sp);
+                    if (cleared > 0) {
+                        clearedCounts.merge(entry[0], cleared, (a, b) -> (Integer) a + (Integer) b);
+                    }
+                } catch (java.sql.SQLException e) {
+                    conn.rollback(sp);
+                    log.warn("[hardDelete] Could not delete from {}: {}", entry[0], e.getMessage());
+                }
+            }
+
+            try (var st = conn.createStatement()) {
+                st.executeUpdate("DELETE FROM employees WHERE id = " + id);
+            }
+
+            log.warn("[hardDelete] Permanently deleted employee id={} — cleared dependent rows: {}, severed references: {}",
+                    id, clearedCounts, severedCounts);
+            return Map.of("message", "Employee permanently deleted",
+                    "clearedDependents", clearedCounts, "severedReferences", severedCounts);
+        });
     }
 
     @Transactional

@@ -289,13 +289,13 @@ public class OrganizationService {
         // takes < 1 s; it is always faster than row-by-row JDBC cleanup.
         schemas.forEach(schemaProvisioningService::dropSchema);
 
-        // Step 1b: Nullify company_id in employees of OTHER tenant schemas that still
-        // reference these company IDs.  These are cross-org FK references — e.g. a row
-        // created via test data or an import that points to a company in another org.
-        // The org's OWN schemas were just dropped above (Step 1).  Any remaining
-        // sibling-schema employees would block the public.companies DELETE below.
+        // Step 1b: Clean up company-owned rows (employees, departments, etc.) in OTHER
+        // tenant schemas that still reference these company IDs.  These are cross-org FK
+        // references — e.g. a row created via test data or an import that points to a
+        // company in another org.  The org's OWN schemas were just dropped above (Step 1).
+        // Any remaining sibling-schema rows would block the public.companies DELETE below.
         if (!companyIds.isEmpty()) {
-            schemaProvisioningService.nullifyCrossSchemaEmployeeReferences(companyIds, schemas);
+            schemaProvisioningService.cleanupCrossSchemaCompanyReferences(companyIds, schemas);
         }
 
         // Step 2: Delete public-schema rows (contracts, payslips, etc.) that FK to companies.

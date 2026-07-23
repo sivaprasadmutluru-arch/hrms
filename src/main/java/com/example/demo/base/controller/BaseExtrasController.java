@@ -412,6 +412,7 @@ public class BaseExtrasController {
         s.setFullTime(updated.getFullTime());
         s.setOvertimeCutoff(updated.getOvertimeCutoff());
         s.setMinimumOvertimeToApprove(updated.getMinimumOvertimeToApprove());
+        s.setWeeklyOffDays(updated.getWeeklyOffDays());
         return ResponseEntity.ok(shiftScheduleRepository.save(s));
     }
 

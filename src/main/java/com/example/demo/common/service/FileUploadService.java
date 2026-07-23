@@ -56,6 +56,38 @@ public class FileUploadService {
     }
 
     /**
+     * Store raw bytes (e.g. a generated report, not a user upload) under a sub-directory
+     * and return the relative path.
+     */
+    public String storeBytes(byte[] bytes, String filename, String subDir) {
+        String safeName = StringUtils.cleanPath(filename != null ? filename : "file");
+        if (safeName.contains("..")) {
+            throw new IllegalArgumentException("Filename contains invalid path sequence: " + safeName);
+        }
+        String uniqueName = UUID.randomUUID() + "_" + safeName;
+        Path targetDir = Paths.get(uploadDir).resolve(subDir).normalize();
+        Path targetFile = targetDir.resolve(uniqueName);
+        try {
+            Files.createDirectories(targetDir);
+            Files.write(targetFile, bytes);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to store file " + safeName, e);
+        }
+        return subDir + "/" + uniqueName;
+    }
+
+    /**
+     * Read back a previously stored file's bytes by its relative path.
+     */
+    public byte[] readBytes(String relativePath) {
+        try {
+            return Files.readAllBytes(resolve(relativePath));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read file " + relativePath, e);
+        }
+    }
+
+    /**
      * Delete a previously stored file by its relative path.
      */
     public void delete(String relativePath) {
@@ -80,6 +112,12 @@ public class FileUploadService {
     public String storeOrgScoped(MultipartFile file, String orgSlug, String subDir) {
         String safeSlug = orgSlug.toLowerCase().replaceAll("[^a-z0-9_-]", "-");
         return store(file, safeSlug + "/" + subDir);
+    }
+
+    /** Same org-scoped folder convention as {@link #storeOrgScoped}, for raw bytes. */
+    public String storeBytesOrgScoped(byte[] bytes, String filename, String orgSlug, String subDir) {
+        String safeSlug = orgSlug.toLowerCase().replaceAll("[^a-z0-9_-]", "-");
+        return storeBytes(bytes, filename, safeSlug + "/" + subDir);
     }
 
     /**
