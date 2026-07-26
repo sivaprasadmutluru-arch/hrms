@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -23,7 +24,13 @@ import {dateText, employeeName, money, timeText, workDuration} from '../utils/fo
 import HelpdeskScreen from './HelpdeskScreen';
 import NotificationsScreen from './NotificationsScreen';
 
-type ModuleKey = 'overview' | 'attendance' | 'leave' | 'leaveRequest' | 'payslips' | 'documents' | 'hours' | 'holidays' | 'notifications' | 'helpdesk';
+type ModuleKey = 'overview' | 'attendance' | 'leave' | 'leaveRequest' | 'payslips' | 'documents' | 'hours' | 'holidays' | 'notifications' | 'helpdesk' | 'loans';
+
+const LOAN_TYPES = [
+  {value: 'LOAN', label: 'Loan'},
+  {value: 'ADVANCED_SALARY', label: 'Advance Salary'},
+  {value: 'FINE', label: 'Fine'},
+];
 
 const REGULARISATION_TYPES = [
   {value: 'LATE_ARRIVAL', label: 'Late Arrival'},
@@ -47,6 +54,7 @@ const moduleInfo: Record<ModuleKey, {label: string; icon: string; subtitle: stri
   holidays: {label: 'Holidays', icon: 'sparkles-outline', subtitle: 'Company holiday calendar'},
   notifications: {label: 'Notifications', icon: 'notifications-outline', subtitle: 'Read, unread, and cleared notifications'},
   helpdesk: {label: 'Helpdesk', icon: 'help-circle-outline', subtitle: 'Tickets and support request status'},
+  loans: {label: 'Loans', icon: 'cash-outline', subtitle: 'Apply for a loan and track requests'},
 };
 
 function asArray(value: any) {
@@ -444,6 +452,134 @@ function LeaveHistoryList({requests}: {requests: any[]}) {
   );
 }
 
+function loanStatusGroup(item: any): 'PENDING' | 'APPROVED' | 'REJECTED' | 'OTHER' {
+  const text = String(field(item, ['status'], '')).toUpperCase();
+  if (text === 'PENDING') return 'PENDING';
+  if (text === 'APPROVED') return 'APPROVED';
+  if (text === 'REJECTED') return 'REJECTED';
+  return 'OTHER';
+}
+
+function loanTypeLabel(value: string) {
+  return LOAN_TYPES.find(type => type.value === value)?.label || value;
+}
+
+function LoanRequestForm({onSubmit, submitting}: {onSubmit: (values: {loanType: string; amount: string; installments: string; reason: string}) => void; submitting: boolean}) {
+  const [loanType, setLoanType] = useState(LOAN_TYPES[0].value);
+  const [amount, setAmount] = useState('');
+  const [installments, setInstallments] = useState('');
+  const [reason, setReason] = useState('');
+
+  return (
+    <Card style={styles.formCard}>
+      <SectionTitle title="Request a Loan" subtitle="Submit a loan, advance, or fine request" icon="cash-outline" />
+      <Text style={styles.inputLabel}>Type</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.leaveTypeRow}>
+        {LOAN_TYPES.map(type => {
+          const selected = loanType === type.value;
+          return (
+            <Pressable key={type.value} onPress={() => setLoanType(type.value)} style={[styles.leaveType, selected && styles.leaveTypeActive]}>
+              <Text style={[styles.leaveTypeText, selected && styles.leaveTypeTextActive]}>{type.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <Text style={styles.inputLabel}>Amount</Text>
+      <TextInput
+        value={amount}
+        onChangeText={setAmount}
+        placeholder="Requested amount"
+        placeholderTextColor={colors.subtle}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+      <Text style={styles.inputLabel}>Installments</Text>
+      <TextInput
+        value={installments}
+        onChangeText={setInstallments}
+        placeholder="Number of installments"
+        placeholderTextColor={colors.subtle}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+      <Text style={styles.inputLabel}>Reason</Text>
+      <TextInput
+        value={reason}
+        onChangeText={setReason}
+        placeholder="Reason for the request"
+        placeholderTextColor={colors.subtle}
+        multiline
+        style={[styles.input, styles.reasonInput]}
+      />
+      <PrimaryButton title="Submit Loan Request" loading={submitting} onPress={() => onSubmit({loanType, amount, installments, reason})} />
+    </Card>
+  );
+}
+
+function LoanHistoryList({requests}: {requests: any[]}) {
+  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+
+  const counts = useMemo(() => {
+    const base = {ALL: requests.length, PENDING: 0, APPROVED: 0, REJECTED: 0};
+    requests.forEach(item => {
+      const group = loanStatusGroup(item);
+      if (group === 'PENDING' || group === 'APPROVED' || group === 'REJECTED') {
+        base[group] += 1;
+      }
+    });
+    return base;
+  }, [requests]);
+
+  const filtered = useMemo(() => {
+    if (filter === 'ALL') return requests;
+    return requests.filter(item => loanStatusGroup(item) === filter);
+  }, [requests, filter]);
+
+  if (!requests.length) {
+    return <Empty title="No Loan Requests" text="Submitted loan requests will appear here." icon="cash-outline" />;
+  }
+
+  const filters: {key: typeof filter; label: string}[] = [
+    {key: 'ALL', label: `All (${counts.ALL})`},
+    {key: 'PENDING', label: `Pending (${counts.PENDING})`},
+    {key: 'APPROVED', label: `Approved (${counts.APPROVED})`},
+    {key: 'REJECTED', label: `Rejected (${counts.REJECTED})`},
+  ];
+
+  return (
+    <>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.leaveFilterRow}>
+        {filters.map(f => (
+          <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[styles.leaveFilterChip, filter === f.key && styles.leaveFilterChipActive]}>
+            <Text style={[styles.leaveFilterText, filter === f.key && styles.leaveFilterTextActive]}>{f.label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {filtered.length === 0 ? (
+        <Empty title="No matching requests" text="Try a different filter above." icon="filter-outline" />
+      ) : (
+        filtered.map(item => (
+          <RecordCard
+            key={String(field(item, ['id'], ''))}
+            title={loanTypeLabel(field(item, ['loanType'], ''))}
+            subtitle={money(field(item, ['requestedAmount'], ''), '')}
+            meta={[
+              field(item, ['requestedInstallments'], '') ? `${field(item, ['requestedInstallments'], '')} installments` : '',
+              field(item, ['reason'], ''),
+              field(item, ['reviewRemarks'], ''),
+            ]
+              .filter(Boolean)
+              .join('  •  ')}
+            status={field(item, ['status'], '')}
+          />
+        ))
+      )}
+    </>
+  );
+}
+
 export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: boolean) => void}) {
   const insets = useSafeAreaInsets();
   const {user, profile, refreshProfile} = useAuth();
@@ -457,6 +593,9 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [leaveBalance, setLeaveBalance] = useState<any[]>([]);
   const [payslips, setPayslips] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<any[]>([]);
+  const [loanRequests, setLoanRequests] = useState<any[]>([]);
+  const [submittingLoan, setSubmittingLoan] = useState(false);
+  const [loanModalVisible, setLoanModalVisible] = useState(false);
   const [selectedLeaveType, setSelectedLeaveType] = useState<any>(null);
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -487,10 +626,11 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       api.leaveBalance(),
       api.myPayslips(),
       api.holidays(),
+      api.myLoanRequests(),
       refreshProfile(),
     ]);
 
-    const [clockRes, workRes, docsRes, attendanceRes, leaveRes, typesRes, balanceRes, paysRes, holidayRes] = results;
+    const [clockRes, workRes, docsRes, attendanceRes, leaveRes, typesRes, balanceRes, paysRes, holidayRes, loansRes] = results;
     if (clockRes.status === 'fulfilled') setClock(clockRes.value);
     if (workRes.status === 'fulfilled') setWorkInfo(workRes.value);
     if (docsRes.status === 'fulfilled') setDocuments(asArray(docsRes.value));
@@ -504,6 +644,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     if (balanceRes.status === 'fulfilled') setLeaveBalance(asArray(balanceRes.value));
     if (paysRes.status === 'fulfilled') setPayslips(asArray(paysRes.value));
     if (holidayRes.status === 'fulfilled') setHolidays(asArray(holidayRes.value));
+    if (loansRes.status === 'fulfilled') setLoanRequests(asArray(loansRes.value));
   }, [refreshProfile]);
 
   useEffect(() => {
@@ -583,6 +724,36 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     }
   }
 
+  async function submitLoan(values: {loanType: string; amount: string; installments: string; reason: string}) {
+    const amount = Number(values.amount);
+    const installments = Number(values.installments);
+    if (!amount || amount <= 0) {
+      Alert.alert('Loan Request', 'Please enter a valid amount.');
+      return;
+    }
+    if (!installments || installments <= 0) {
+      Alert.alert('Loan Request', 'Please enter a valid number of installments.');
+      return;
+    }
+
+    setSubmittingLoan(true);
+    try {
+      await api.submitLoanRequest({
+        loanType: values.loanType,
+        requestedAmount: amount,
+        requestedInstallments: installments,
+        reason: values.reason,
+      });
+      setLoanModalVisible(false);
+      Alert.alert('Loan Request', 'Loan request submitted successfully.');
+      await load();
+    } catch (err: any) {
+      Alert.alert('Loan Request', err.message || 'Unable to submit loan request.');
+    } finally {
+      setSubmittingLoan(false);
+    }
+  }
+
   async function chooseDocument() {
     setUploadingDocument(true);
     try {
@@ -647,6 +818,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           <FeatureTile icon="time-outline" label="Hours" description="Track work hours" tone="warning" onPress={() => setActive('hours')} />
           <FeatureTile icon="people-outline" label="Holidays" description="View holiday calendar" tone="success" onPress={() => setActive('holidays')} />
           <FeatureTile icon="card-outline" label="Payslips" description="Salary documents" tone="success" onPress={() => setActive('payslips')} />
+          <FeatureTile icon="cash-outline" label="Loans" description="Apply and track loan requests" tone="purple" onPress={() => setActive('loans')} />
         </View>
 
         <Card style={styles.panel}>
@@ -923,6 +1095,46 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     );
   }
 
+  function renderLoans() {
+    return (
+      <>
+        <Pressable onPress={() => setLoanModalVisible(true)} style={({pressed}) => [styles.requestLeaveCta, pressed && styles.pressed]}>
+          <View style={styles.requestLeaveCtaIcon}>
+            <Icon name="add-circle" size={22} color={colors.white} />
+          </View>
+          <View style={styles.requestLeaveCtaCopy}>
+            <Text style={styles.requestLeaveCtaTitle}>Apply Loan</Text>
+            <Text style={styles.requestLeaveCtaSub}>Submit a loan, advance, or fine request</Text>
+          </View>
+          <Icon name="chevron-forward-outline" size={18} color={colors.white} />
+        </Pressable>
+
+        <Card style={styles.panel}>
+          <SectionTitle
+            title="Loan History"
+            subtitle={loanRequests.length ? `${loanRequests.length} request${loanRequests.length === 1 ? '' : 's'} total` : 'Track your loan requests'}
+            icon="cash-outline"
+          />
+          <LoanHistoryList requests={loanRequests} />
+        </Card>
+
+        <Modal visible={loanModalVisible} animationType="slide" transparent onRequestClose={() => setLoanModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHandle} />
+              <Pressable onPress={() => setLoanModalVisible(false)} style={styles.modalClose}>
+                <Icon name="close-outline" size={20} color={colors.textMid} />
+              </Pressable>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <LoanRequestForm onSubmit={submitLoan} submitting={submittingLoan} />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  }
+
   function renderHolidays() {
     return (
       <Card style={styles.panel}>
@@ -953,6 +1165,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     if (active === 'documents') return renderDocuments();
     if (active === 'hours') return renderHours();
     if (active === 'holidays') return renderHolidays();
+    if (active === 'loans') return renderLoans();
     return renderOverview();
   }
 
@@ -1248,4 +1461,26 @@ const styles = StyleSheet.create({
   regularisationChipText: {color: colors.textMid, fontSize: 12, fontWeight: '900'},
   regularisationChipTextActive: {color: colors.white},
   regularisationActions: {gap: 10, paddingHorizontal: 16, paddingBottom: 16},
+  modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.5)', justifyContent: 'flex-end'},
+  modalSheet: {
+    maxHeight: '88%',
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  modalHandle: {alignSelf: 'center', width: 40, height: 5, borderRadius: 999, backgroundColor: colors.border, marginBottom: 8},
+  modalClose: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+    zIndex: 1,
+  },
 });

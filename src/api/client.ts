@@ -79,6 +79,16 @@ export const api = {
   me: () => request<any>('/ess/me'),
   myCompanyInfo: () => request<any>('/companies/mine'),
   adminList: (path: string, params?: Record<string, any>) => request<any>(`${path}${queryString(params)}`),
+  approveLeaveRequest: (id: number | string) => request<any>(`/leave/requests/${id}/approve`, {method: 'POST'}),
+  rejectLeaveRequest: (id: number | string, reason?: string) =>
+    request<any>(`/leave/requests/${id}/reject`, {method: 'POST', body: JSON.stringify({reason})}),
+  approveRegularisation: (id: number | string, remarks?: string) =>
+    request<any>(`/attendance/regularisation/${id}/approve`, {method: 'POST', body: JSON.stringify({remarks})}),
+  rejectRegularisation: (id: number | string, remarks?: string) =>
+    request<any>(`/attendance/regularisation/${id}/reject`, {method: 'POST', body: JSON.stringify({remarks})}),
+  assignableUsers: () => request<any[]>('/user-roles/users'),
+  assignRole: (data: {userId: number | string; roleName: string; companyId: number | string; accessScope: string}) =>
+    request<any>('/user-roles/assign', {method: 'POST', body: JSON.stringify(data)}),
   updateMyProfile: (data: Record<string, any>) =>
     request<any>('/ess/me', {
       method: 'PUT',
@@ -139,6 +149,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({...location, source: 'mobile'}),
     }),
+  myLoanRequests: () => request<any[]>('/payroll/loan-requests/my'),
+  submitLoanRequest: (data: {loanType: string; requestedAmount: number; requestedInstallments: number; reason: string}) =>
+    request<any>('/payroll/loan-requests', {method: 'POST', body: JSON.stringify(data)}),
   documentRequests: () => request<any[]>('/documents/requests/my'),
   uploadDocument: (file: {uri: string; name: string; type: string}) => {
     const body = new FormData();

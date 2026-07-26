@@ -8,8 +8,8 @@ import {colors} from '../theme/colors';
 
 export default function LoginScreen() {
   const {signIn} = useAuth();
-  const [usernameOrEmail, setUsernameOrEmail] = useState('sivaprasadmutluru@gmail.com');
-  const [password, setPassword] = useState('Siva@1234');
+  const [usernameOrEmail, setUsernameOrEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +44,6 @@ export default function LoginScreen() {
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Employee Login</Text>
-        <Text style={styles.panelSub}>Sign in to view attendance, profile, and documents.</Text>
 
         <View style={styles.inputWrap}>
           <Icon name="mail-outline" size={20} color={colors.muted} />
@@ -123,12 +122,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 22,
     fontWeight: '900',
-  },
-  panelSub: {
-    color: colors.muted,
-    marginTop: 4,
     marginBottom: 18,
-    fontWeight: '600',
   },
   inputWrap: {
     minHeight: 54,

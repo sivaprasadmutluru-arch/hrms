@@ -11,16 +11,7 @@ import {colors} from '../theme/colors';
 import {captureCurrentLocation, Position, reverseGeocode} from '../utils/location';
 import {dateText, employeeName, workDuration} from '../utils/format';
 
-const REQUEST_TYPES = [
-  {value: 'LATE_ARRIVAL', label: 'Late Arrival'},
-  {value: 'MISSING_PUNCH', label: 'Missing Punch'},
-  {value: 'WORKING_HOURS_CORRECTION', label: 'Hours Correction'},
-  {value: 'OVERTIME_REQUEST', label: 'Overtime'},
-  {value: 'WRONG_STATUS', label: 'Wrong Status'},
-  {value: 'HALF_TO_FULL_DAY', label: 'Half to Full Day'},
-  {value: 'WORK_FROM_HOME', label: 'Work From Home'},
-  {value: 'OFFICIAL_DUTY', label: 'Official Duty'},
-];
+const DEFAULT_REQUEST_TYPE = 'MISSING_PUNCH';
 
 function payload(position?: Position | null) {
   return position?.coords
@@ -217,7 +208,6 @@ export default function CheckInScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedRegularisation, setSelectedRegularisation] = useState<any>(null);
-  const [requestType, setRequestType] = useState(REQUEST_TYPES[1].value);
   const [reason, setReason] = useState('');
   const [submittingRegularisation, setSubmittingRegularisation] = useState(false);
   const [tick, setTick] = useState(0);
@@ -432,12 +422,11 @@ export default function CheckInScreen() {
     try {
       await api.submitRegularisationRequest({
         attendanceId: selectedRegularisation.id,
-        requestType,
+        requestType: DEFAULT_REQUEST_TYPE,
         reason: reason.trim(),
       });
       setSelectedRegularisation(null);
       setReason('');
-      setRequestType(REQUEST_TYPES[1].value);
       await loadStatus();
       Alert.alert('Regularisation', 'Request submitted successfully.');
     } catch (err: any) {
@@ -578,16 +567,6 @@ export default function CheckInScreen() {
                 <Text style={styles.cardSub}>{dateText(selectedRegularisation.attendanceDate)}</Text>
               </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
-              {REQUEST_TYPES.map(type => (
-                <Pressable
-                  key={type.value}
-                  onPress={() => setRequestType(type.value)}
-                  style={[styles.typeChip, requestType === type.value && styles.typeChipActive]}>
-                  <Text style={[styles.typeChipText, requestType === type.value && styles.typeChipTextActive]}>{type.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
             <TextInput
               value={reason}
               onChangeText={setReason}
@@ -764,11 +743,6 @@ const styles = StyleSheet.create({
   chipTextActive: {color: colors.success},
 
   formCard: {padding: 14, borderRadius: 16, marginHorizontal: 16, marginTop: 16},
-  typeRow: {gap: 8, paddingBottom: 12},
-  typeChip: {borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, paddingHorizontal: 11, paddingVertical: 7},
-  typeChipActive: {backgroundColor: colors.primary, borderColor: colors.primary},
-  typeChipText: {color: colors.textMid, fontSize: 12, fontWeight: '900'},
-  typeChipTextActive: {color: colors.white},
   reasonInput: {
     minHeight: 84,
     borderWidth: 1,

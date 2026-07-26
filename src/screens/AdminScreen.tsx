@@ -6,7 +6,7 @@ import Icon from '../components/Icon';
 import {API_BASE_URL, api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
-import {hasRole, roleLabel, ROLES, userRoles} from '../utils/roles';
+import {ACCESS_SCOPES, hasRole, roleLabel, ROLES, userRoles} from '../utils/roles';
 import {dateText} from '../utils/format';
 
 type AdminModule = {
@@ -185,6 +185,24 @@ function field(item: any, names: string[], fallback = '-') {
   return fallback;
 }
 
+const PENDING_STATUSES = new Set(['REQUESTED', 'PENDING']);
+
+function isApprovalPage(page: string) {
+  return page === 'Leave Requests' || page === 'Regularisation';
+}
+
+function isPendingRecord(item: any) {
+  return PENDING_STATUSES.has(String(field(item, ['status'], '')).toUpperCase());
+}
+
+function statusColors(status: string) {
+  const value = status.toUpperCase();
+  if (value === 'APPROVED') return {bg: colors.successLight, fg: colors.success};
+  if (value === 'REJECTED') return {bg: colors.dangerLight, fg: colors.danger};
+  if (value === 'CANCELLED') return {bg: colors.border, fg: colors.muted};
+  return {bg: colors.warningLight, fg: colors.warning};
+}
+
 function logoUrl(path?: string) {
   if (!path) return null;
   if (String(path).startsWith('http')) return String(path);
@@ -244,14 +262,26 @@ function StatsGrid({item}: {item: any}) {
 
 function DataRecord({item, page, onPress}: {item: any; page: string; onPress: () => void}) {
   const isEmployee = page === 'Employees';
+  const isLeave = page === 'Leave Requests';
+  const isRegularisation = page === 'Regularisation';
   const title = field(item, ['name', 'fullName', 'title', 'subject', 'employeeName', 'companyName', 'roleName', 'departmentName', 'jobPositionName', 'code'], page);
   const subtitle = isEmployee
     ? field(item, ['email', 'workEmail', 'phone'], '')
+    : isLeave
+    ? [field(item, ['leaveTypeName'], ''), [smartDate(field(item, ['startDate'], '')), smartDate(field(item, ['endDate'], ''))].filter(Boolean).join(' - ')]
+        .filter(Boolean)
+        .join(' | ')
+    : isRegularisation
+    ? [field(item, ['requestType'], ''), smartDate(field(item, ['attendanceDate'], ''))].filter(Boolean).join(' | ')
     : smartDate(field(item, ['email', 'description', 'subtitle', 'status', 'type', 'companyType', 'phone', 'date'], ''));
   const meta = isEmployee
     ? [field(item, ['companyName', 'organizationName'], ''), field(item, ['departmentName'], ''), field(item, ['jobPositionName'], '')].filter(Boolean).join(' | ')
+    : isLeave || isRegularisation
+    ? field(item, ['reason', 'description'], '')
     : field(item, ['address', 'city', 'departmentName', 'employeeType', 'priority'], '');
   const logo = logoUrl(field(item, ['logoPath', 'photoPath'], ''));
+  const status = (isLeave || isRegularisation) && field(item, ['status'], '');
+  const statusStyle = status ? statusColors(status) : null;
 
   return (
     <Pressable onPress={onPress} style={({pressed}) => [pressed && styles.pressed]}>
@@ -273,12 +303,32 @@ function DataRecord({item, page, onPress}: {item: any; page: string; onPress: ()
                 <Text style={styles.companyPillText} numberOfLines={1}>{field(item, ['companyName', 'organizationName'], '')}</Text>
               </View>
             ) : null}
+            {statusStyle ? (
+              <View style={[styles.statusPill, {backgroundColor: statusStyle.bg}]}>
+                <Text style={[styles.statusPillText, {color: statusStyle.fg}]}>{String(status)}</Text>
+              </View>
+            ) : null}
             {!!meta && <Text style={styles.dataMeta} numberOfLines={1}>{meta}</Text>}
           </View>
           <Icon name="chevron-forward-outline" size={18} color={colors.subtle} />
         </View>
       </Card>
     </Pressable>
+  );
+}
+
+function ApprovalButtons({busy, onApprove, onReject}: {busy: boolean; onApprove: () => void; onReject: () => void}) {
+  return (
+    <View style={styles.approvalRow}>
+      <Pressable onPress={onReject} disabled={busy} style={({pressed}) => [styles.approvalBtn, styles.rejectBtn, (busy || pressed) && styles.pressed]}>
+        <Icon name="close-outline" size={16} color={colors.danger} />
+        <Text style={styles.rejectBtnText}>Reject</Text>
+      </Pressable>
+      <Pressable onPress={onApprove} disabled={busy} style={({pressed}) => [styles.approvalBtn, styles.approveBtn, (busy || pressed) && styles.pressed]}>
+        {busy ? <ActivityIndicator size="small" color={colors.white} /> : <Icon name="checkmark-outline" size={16} color={colors.white} />}
+        <Text style={styles.approveBtnText}>Approve</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -344,6 +394,18 @@ export default function AdminScreen() {
   const [recordsError, setRecordsError] = useState('');
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState('All');
+  const [actionBusyId, setActionBusyId] = useState<string | number | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedRole, setSelectedRole] = useState('');
+  const [selectedScope, setSelectedScope] = useState('');
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignError, setAssignError] = useState('');
+  const [assignMessage, setAssignMessage] = useState('');
   const roles = useMemo(() => userRoles(user, profile), [user, profile]);
   const visibleGroups = useMemo(
     () =>
@@ -356,7 +418,7 @@ export default function AdminScreen() {
   const moduleCount = visibleGroups.reduce((total, group) => total + group.modules.length, 0);
 
   const loadPage = useCallback(async () => {
-    if (!activePage) return;
+    if (!activePage || activePage === 'Assign Role') return;
     const endpoint = activePage === 'Employees' && roles.includes(ROLES.PLATFORM_SUPER_ADMIN) ? '/employees/global' : PAGE_ENDPOINTS[activePage];
     setRecordsError('');
     setRecords([]);
@@ -386,11 +448,88 @@ export default function AdminScreen() {
     setSearch('');
     setCompanyFilter('All');
     setSelectedRecord(null);
+    setUserSearch('');
+    setSelectedUser(null);
+    setSelectedRole('');
+    setSelectedScope('');
+    setAssignError('');
+    setAssignMessage('');
+    setActionError('');
   }, [activePage]);
 
   useEffect(() => {
     loadPage();
   }, [loadPage]);
+
+  const loadAssignableUsers = useCallback(async () => {
+    setUsersError('');
+    setLoadingUsers(true);
+    try {
+      const result = await api.assignableUsers();
+      setAssignableUsers(asArray(result));
+    } catch (err: any) {
+      setUsersError(err?.message || 'Unable to load users.');
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activePage === 'Assign Role') {
+      loadAssignableUsers();
+    }
+  }, [activePage, loadAssignableUsers]);
+
+  async function handleApprovalAction(item: any, action: 'approve' | 'reject') {
+    setActionBusyId(item.id);
+    setActionError('');
+    try {
+      if (activePage === 'Leave Requests') {
+        await (action === 'approve' ? api.approveLeaveRequest(item.id) : api.rejectLeaveRequest(item.id));
+      } else if (activePage === 'Regularisation') {
+        await (action === 'approve' ? api.approveRegularisation(item.id) : api.rejectRegularisation(item.id));
+      }
+      await loadPage();
+    } catch (err: any) {
+      setActionError(err?.message || `Unable to ${action} this request.`);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function handleAssignRole() {
+    if (!selectedUser || !selectedRole || !selectedScope || !user?.companyId) return;
+    setAssignBusy(true);
+    setAssignError('');
+    setAssignMessage('');
+    try {
+      await api.assignRole({
+        userId: selectedUser.id,
+        roleName: selectedRole,
+        companyId: user.companyId,
+        accessScope: selectedScope,
+      });
+      setAssignMessage(`${roleLabel(selectedRole)} assigned to ${selectedUser.username || selectedUser.email}.`);
+      setSelectedUser(null);
+      setSelectedRole('');
+      setSelectedScope('');
+    } catch (err: any) {
+      setAssignError(err?.message || 'Unable to assign role.');
+    } finally {
+      setAssignBusy(false);
+    }
+  }
+
+  const visibleUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return assignableUsers;
+    return assignableUsers.filter(item => {
+      const haystack = [field(item, ['username'], ''), field(item, ['email'], ''), field(item, ['firstName'], ''), field(item, ['lastName'], '')]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [assignableUsers, userSearch]);
 
   const companyOptions = useMemo(() => {
     const names = records
@@ -442,6 +581,133 @@ export default function AdminScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <RecordDetail item={selectedRecord} page={activePage} />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (activeModule && activePage === 'Assign Role') {
+    return (
+      <View style={styles.screen}>
+        <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
+          <Pressable onPress={() => setActivePage('')} style={styles.backButton}>
+            <Icon name="chevron-back-outline" size={22} color={colors.primary} />
+          </Pressable>
+          <View style={styles.pageTitleWrap}>
+            <Text style={styles.pageTitle}>Assign Role</Text>
+            <Text style={styles.pageSubtitle}>{activeModule.title}</Text>
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Card style={styles.filterCard}>
+            <View style={styles.searchBox}>
+              <Icon name="search-outline" size={18} color={colors.muted} />
+              <TextInput
+                value={userSearch}
+                onChangeText={setUserSearch}
+                placeholder="Search user by name, username, or email..."
+                placeholderTextColor={colors.subtle}
+                style={styles.searchInput}
+              />
+            </View>
+          </Card>
+
+          {!!assignMessage && (
+            <Card style={styles.successCard}>
+              <Text style={styles.successCardText}>{assignMessage}</Text>
+            </Card>
+          )}
+
+          {loadingUsers && !assignableUsers.length ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.emptyText}>Loading users...</Text>
+            </View>
+          ) : usersError ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Icon name="alert-circle-outline" size={28} color={colors.warning} />
+              </View>
+              <Text style={styles.emptyTitle}>Cannot Load Users</Text>
+              <Text style={styles.emptyText}>{usersError}</Text>
+            </View>
+          ) : visibleUsers.length ? (
+            visibleUsers.map((item, index) => {
+              const key = String(item?.id ?? index);
+              const selected = selectedUser?.id === item.id;
+              const name = field(item, ['fullName', 'username'], field(item, ['email'], 'User'));
+              return (
+                <Pressable key={key} onPress={() => setSelectedUser(item)} style={({pressed}) => [pressed && styles.pressed]}>
+                  <Card style={[styles.dataCard, selected && styles.dataCardSelected]}>
+                    <View style={styles.dataTop}>
+                      <View style={styles.dataAvatar}>
+                        <Text style={styles.dataAvatarText}>{name.slice(0, 2).toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.moduleCopy}>
+                        <Text style={styles.dataTitle} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.dataSub} numberOfLines={1}>{field(item, ['email'], '')}</Text>
+                      </View>
+                      {selected && <Icon name="checkmark-circle" size={22} color={colors.primary} />}
+                    </View>
+                  </Card>
+                </Pressable>
+              );
+            })
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Icon name="folder-open-outline" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>No Users</Text>
+              <Text style={styles.emptyText}>No users match your search.</Text>
+            </View>
+          )}
+
+          {selectedUser && (
+            <Card style={styles.groupCard}>
+              <View style={styles.groupHead}>
+                <View style={styles.groupIcon}>
+                  <Icon name="shield-checkmark-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.groupCopy}>
+                  <Text style={styles.groupTitle}>Assign role to {field(selectedUser, ['fullName', 'username'], 'user')}</Text>
+                  <Text style={styles.groupSub}>Choose a role and access scope</Text>
+                </View>
+              </View>
+
+              <View style={styles.chipSection}>
+                <Text style={styles.chipSectionLabel}>Role</Text>
+                <View style={styles.chipWrap}>
+                  {Object.values(ROLES).map(role => (
+                    <Pressable key={role} onPress={() => setSelectedRole(role)} style={[styles.roleChip, selectedRole === role && styles.roleChipActive]}>
+                      <Text style={[styles.roleChipText, selectedRole === role && styles.roleChipTextActive]}>{roleLabel(role)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.chipSection}>
+                <Text style={styles.chipSectionLabel}>Access Scope</Text>
+                <View style={styles.chipWrap}>
+                  {ACCESS_SCOPES.map(scope => (
+                    <Pressable key={scope} onPress={() => setSelectedScope(scope)} style={[styles.roleChip, selectedScope === scope && styles.roleChipActive]}>
+                      <Text style={[styles.roleChipText, selectedScope === scope && styles.roleChipTextActive]}>{roleLabel(scope)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {!!assignError && <Text style={styles.error}>{assignError}</Text>}
+
+              <Pressable
+                onPress={handleAssignRole}
+                disabled={assignBusy || !selectedRole || !selectedScope}
+                style={[styles.assignButton, (assignBusy || !selectedRole || !selectedScope) && styles.assignButtonDisabled]}>
+                {assignBusy ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.assignButtonText}>Assign Role</Text>}
+              </Pressable>
+            </Card>
+          )}
         </ScrollView>
       </View>
     );
@@ -508,6 +774,8 @@ export default function AdminScreen() {
             </Card>
           )}
 
+          {!!actionError && <Text style={styles.error}>{actionError}</Text>}
+
           {loadingRecords && !records.length ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color={colors.primary} />
@@ -522,18 +790,24 @@ export default function AdminScreen() {
               <Text style={styles.emptyText}>{recordsError}</Text>
             </View>
           ) : visibleRecords.length ? (
-            visibleRecords.map((item, index) =>
-              isStatsObject(item) ? (
-                <StatsGrid key={String(item?.id || item?.uuid || index)} item={item} />
-              ) : (
-                <DataRecord
-                  key={String(item?.id || item?.uuid || index)}
-                  item={item}
-                  page={activePage}
-                  onPress={() => setSelectedRecord(item)}
-                />
-              ),
-            )
+            visibleRecords.map((item, index) => {
+              const key = String(item?.id || item?.uuid || index);
+              if (isStatsObject(item)) {
+                return <StatsGrid key={key} item={item} />;
+              }
+              return (
+                <View key={key}>
+                  <DataRecord item={item} page={activePage} onPress={() => setSelectedRecord(item)} />
+                  {isApprovalPage(activePage) && isPendingRecord(item) && (
+                    <ApprovalButtons
+                      busy={actionBusyId === item.id}
+                      onApprove={() => handleApprovalAction(item, 'approve')}
+                      onReject={() => handleApprovalAction(item, 'reject')}
+                    />
+                  )}
+                </View>
+              );
+            })
           ) : (
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}>
@@ -809,4 +1083,57 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   pageRowIcon: {width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
+  error: {
+    color: colors.danger,
+    backgroundColor: colors.dangerSoft,
+    padding: 11,
+    borderRadius: 12,
+    marginBottom: 10,
+    fontWeight: '700',
+  },
+  statusPill: {alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7},
+  statusPillText: {fontSize: 10, fontWeight: '900', textTransform: 'uppercase'},
+  approvalRow: {flexDirection: 'row', gap: 10, marginTop: -4, marginBottom: 10},
+  approvalBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  rejectBtn: {backgroundColor: colors.dangerLight, borderWidth: 1, borderColor: colors.danger},
+  rejectBtnText: {color: colors.danger, fontSize: 13, fontWeight: '900'},
+  approveBtn: {backgroundColor: colors.success},
+  approveBtnText: {color: colors.white, fontSize: 13, fontWeight: '900'},
+  successCard: {padding: 13, marginBottom: 10, borderRadius: 12, backgroundColor: colors.successLight},
+  successCardText: {color: colors.success, fontSize: 13, fontWeight: '800'},
+  dataCardSelected: {borderWidth: 2, borderColor: colors.primary},
+  chipSection: {paddingHorizontal: 14, marginTop: 4, marginBottom: 6},
+  chipSectionLabel: {color: colors.muted, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', marginBottom: 8},
+  chipWrap: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  roleChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  roleChipActive: {backgroundColor: colors.primary, borderColor: colors.primary},
+  roleChipText: {color: colors.textMid, fontSize: 12, fontWeight: '800'},
+  roleChipTextActive: {color: colors.white},
+  assignButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 14,
+    marginBottom: 14,
+    marginTop: 6,
+  },
+  assignButtonDisabled: {opacity: 0.5},
+  assignButtonText: {color: colors.white, fontSize: 14, fontWeight: '900'},
 });

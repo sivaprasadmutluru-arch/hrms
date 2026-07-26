@@ -29,6 +29,8 @@ export function isAdminRole(roles: string[]) {
   ]);
 }
 
+export const ACCESS_SCOPES = ['SELF', 'DEPARTMENT', 'BRANCH', 'HEAD_OFFICE', 'ENTERPRISE'] as const;
+
 export function roleLabel(role: string) {
   return role
     .toLowerCase()

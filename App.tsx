@@ -15,7 +15,7 @@ import {isAdminRole, userRoles} from './src/utils/roles';
 
 function Shell() {
   const {booting, token, user, profile} = useAuth();
-  const [tab, setTab] = useState<AvailableTabKey>('home');
+  const [tab, setTab] = useState<AvailableTabKey>('checkin');
   const [homeAtRoot, setHomeAtRoot] = useState(true);
   const showAdmin = isAdminRole(userRoles(user, profile));
 
