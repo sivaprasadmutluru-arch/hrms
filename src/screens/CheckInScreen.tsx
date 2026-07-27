@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Card from '../components/Card';
@@ -79,17 +79,6 @@ function timerClock(totalSeconds: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-}
-
-function regularisationLabel(record: any) {
-  const status = record?.regularisationStatus;
-  const attendanceStatus = record?.attendanceStatus;
-  const displayStatus = record?.displayStatus;
-  if (status === 'REGULARISED' || attendanceStatus === 'REGULARISED') return 'Regularised';
-  if (status === 'HAS_PENDING') return 'Pending';
-  if (attendanceStatus === 'IRREGULAR') return 'Request needed';
-  if (displayStatus && displayStatus !== 'REGULAR') return String(displayStatus).replace(/_/g, ' ');
-  return 'Regular';
 }
 
 function canRequestRegularisation(record: any) {
@@ -210,7 +199,7 @@ export default function CheckInScreen() {
   const [selectedRegularisation, setSelectedRegularisation] = useState<any>(null);
   const [reason, setReason] = useState('');
   const [submittingRegularisation, setSubmittingRegularisation] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const [heroHeight, setHeroHeight] = useState(0);
   const [stickyHeaderHeight, setStickyHeaderHeight] = useState(0);
   const [monthCursor, setMonthCursor] = useState(() => new Date());
@@ -292,12 +281,12 @@ export default function CheckInScreen() {
     [attendance],
   );
 
-  const liveTime = useMemo(() => new Date(), [tick]);
+  const liveTime = new Date();
   const wallClockLabel = liveTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
   const wallDateLabel = liveTime.toLocaleDateString(undefined, {weekday: 'short', day: 'numeric', month: 'short'});
 
   const isClockedIn = !!clock?.online;
-  const workedSeconds = useMemo(() => elapsedSeconds(clock, todayRecord), [clock, todayRecord, tick]);
+  const workedSeconds = elapsedSeconds(clock, todayRecord);
   // While checked in this reads as a live ticking stopwatch (HH:MM:SS); once checked out it
   // settles into a plain "Xh Ym" total so it doesn't look like a frozen/broken timer.
   const workedLabel = isClockedIn ? timerClock(workedSeconds) : workDuration(workedSeconds);
@@ -556,33 +545,41 @@ export default function CheckInScreen() {
           </Card>
         )}
 
-        {selectedRegularisation && (
-          <Card style={styles.formCard}>
-            <View style={styles.cardHead}>
-              <View style={styles.cardIcon}>
-                <Icon name="create-outline" size={18} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Request Regularisation</Text>
-                <Text style={styles.cardSub}>{dateText(selectedRegularisation.attendanceDate)}</Text>
-              </View>
-            </View>
-            <TextInput
-              value={reason}
-              onChangeText={setReason}
-              placeholder="Reason for correction"
-              placeholderTextColor={colors.subtle}
-              multiline
-              style={styles.reasonInput}
-            />
-            <View style={styles.formActions}>
-              <PrimaryButton title="Submit Request" loading={submittingRegularisation} onPress={submitRegularisation} />
-              <PrimaryButton title="Cancel" variant="outline" onPress={() => setSelectedRegularisation(null)} />
-            </View>
-          </Card>
-        )}
-
       </ScrollView>
+
+      <Modal visible={!!selectedRegularisation} animationType="slide" transparent onRequestClose={() => setSelectedRegularisation(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Pressable onPress={() => setSelectedRegularisation(null)} style={styles.modalClose}>
+              <Icon name="close-outline" size={20} color={colors.textMid} />
+            </Pressable>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardIcon}>
+                  <Icon name="create-outline" size={18} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.cardTitle}>Request Regularisation</Text>
+                  <Text style={styles.cardSub}>{dateText(selectedRegularisation?.attendanceDate)}</Text>
+                </View>
+              </View>
+              <TextInput
+                value={reason}
+                onChangeText={setReason}
+                placeholder="Reason for correction"
+                placeholderTextColor={colors.subtle}
+                multiline
+                style={styles.reasonInput}
+              />
+              <View style={styles.formActions}>
+                <PrimaryButton title="Submit Request" loading={submittingRegularisation} onPress={submitRegularisation} />
+                <PrimaryButton title="Cancel" variant="outline" onPress={() => setSelectedRegularisation(null)} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <View
         style={styles.stickyLocationHeader}
@@ -757,4 +754,27 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   formActions: {gap: 10},
+  modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.5)', justifyContent: 'flex-end'},
+  modalSheet: {
+    maxHeight: '88%',
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  modalContent: {paddingHorizontal: 16, paddingTop: 12},
+  modalHandle: {alignSelf: 'center', width: 40, height: 5, borderRadius: 999, backgroundColor: colors.border, marginBottom: 8},
+  modalClose: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+    zIndex: 1,
+  },
 });

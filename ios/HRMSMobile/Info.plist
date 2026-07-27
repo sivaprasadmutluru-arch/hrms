@@ -35,6 +35,8 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Grecha HRMS uses your location to validate geofenced clock-in and clock-out.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Grecha HRMS uses your location to validate geofenced attendance only when you clock in or clock out.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Grecha HRMS can save profile photos when you choose to update them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

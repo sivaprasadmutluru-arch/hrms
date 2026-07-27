@@ -132,10 +132,44 @@ function todayKey() {
   return new Date().toLocaleDateString('en-CA', {timeZone: 'Asia/Dubai'});
 }
 
+function punchDateTime(record: any, value: any) {
+  if (!value) return null;
+  const text = String(value);
+  if (text.includes('T')) {
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const timeMatch = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!timeMatch) return null;
+
+  const dateTextValue = String(field(record, ['attendanceDate', 'date', 'createdAt'], todayKey())).slice(0, 10);
+  const date = new Date(`${dateTextValue}T${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}:${timeMatch[3] || '00'}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function durationFromPunches(record: any) {
+  const checkIn = punchDateTime(record, field(record, ['checkIn', 'checkInTime', 'inTime'], ''));
+  const checkOut = punchDateTime(record, field(record, ['checkOut', 'checkOutTime', 'outTime'], ''));
+  if (!checkIn || !checkOut) return '-';
+
+  let seconds = Math.floor((checkOut.getTime() - checkIn.getTime()) / 1000);
+  if (seconds < 0) {
+    seconds += 24 * 60 * 60;
+  }
+  return seconds > 0 ? workDuration(seconds) : '-';
+}
+
+function attendanceTime(record: any) {
+  const value = field(record, ['attendanceDate', 'date', 'createdAt'], '');
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function hoursWorked(record: any, clock?: any) {
   const seconds = record?.atWorkSecond ?? clock?.atWorkSecond;
   if (seconds !== undefined && seconds !== null) return workDuration(Number(seconds));
-  return record?.workedHours || record?.totalHours || record?.hours || record?.duration || '-';
+  return record?.workedHours || record?.totalHours || record?.hours || record?.duration || durationFromPunches(record);
 }
 
 function regularisationLabel(record: any) {
@@ -269,6 +303,110 @@ function PageHeader({active, onBack}: {active: ModuleKey; onBack: () => void}) {
   );
 }
 
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function todayDateKey() {
+  return dateKey(new Date());
+}
+
+function parseDateKey(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function CalendarDateField({label, value, onChange}: {label: string; value: string; onChange: (value: string) => void}) {
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => parseDateKey(value) || new Date());
+  const selectedDate = parseDateKey(value);
+  const monthStart = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  const firstDay = monthStart.getDay();
+  const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate();
+  const cells = Array.from({length: firstDay + daysInMonth}, (_, index) => (index < firstDay ? 0 : index - firstDay + 1));
+  const monthLabel = visibleMonth.toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+  const minDate = todayDateKey();
+
+  function shiftMonth(offset: number) {
+    setVisibleMonth(current => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function openPicker() {
+    setVisibleMonth(selectedDate || new Date());
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <Pressable onPress={openPicker} style={({pressed}) => [styles.datePickerButton, pressed && styles.pressed]}>
+        <Text style={[styles.datePickerValue, !value && styles.datePickerPlaceholder]}>{value || 'Select date'}</Text>
+        <Icon name="calendar-outline" size={18} color={colors.primary} />
+      </Pressable>
+
+      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.calendarHeader}>
+              <Pressable onPress={() => shiftMonth(-1)} style={styles.calendarNavButton}>
+                <Icon name="chevron-back-outline" size={20} color={colors.primary} />
+              </Pressable>
+              <Text style={styles.calendarTitle}>{monthLabel}</Text>
+              <Pressable onPress={() => shiftMonth(1)} style={styles.calendarNavButton}>
+                <Icon name="chevron-forward-outline" size={20} color={colors.primary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.calendarWeekRow}>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <Text key={day} style={styles.calendarWeekText}>{day}</Text>
+              ))}
+            </View>
+            <View style={styles.calendarGrid}>
+              {cells.map((day, index) => {
+                const cellDate = day ? new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day) : null;
+                const cellKey = cellDate ? dateKey(cellDate) : '';
+                const selected = value === cellKey;
+                const disabled = !day || cellKey < minDate;
+                return (
+                  <Pressable
+                    key={`${index}-${day}`}
+                    disabled={disabled}
+                    onPress={() => {
+                      onChange(cellKey);
+                      setOpen(false);
+                    }}
+                    style={[styles.calendarDay, disabled && styles.calendarDayDisabled, selected && styles.calendarDaySelected]}>
+                    {!!day && <Text style={[styles.calendarDayText, disabled && styles.calendarDayTextDisabled, selected && styles.calendarDayTextSelected]}>{day}</Text>}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.calendarActions}>
+              <PrimaryButton
+                title="Today"
+                variant="outline"
+                onPress={() => {
+                  onChange(dateKey(new Date()));
+                  setOpen(false);
+                }}
+              />
+              <PrimaryButton title="Done" onPress={() => setOpen(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 function LeaveRequestForm({
   leaveTypes,
   selectedLeaveType,
@@ -307,22 +445,8 @@ function LeaveRequestForm({
       </ScrollView>
       {!leaveTypes.length && <Text style={styles.inlineHelp}>Leave types are not available yet.</Text>}
 
-      <Text style={styles.inputLabel}>Start Date</Text>
-      <TextInput
-        value={startDate}
-        onChangeText={setStartDate}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.subtle}
-        style={styles.input}
-      />
-      <Text style={styles.inputLabel}>End Date</Text>
-      <TextInput
-        value={endDate}
-        onChangeText={setEndDate}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.subtle}
-        style={styles.input}
-      />
+      <CalendarDateField label="Start Date" value={startDate} onChange={setStartDate} />
+      <CalendarDateField label="End Date" value={endDate} onChange={setEndDate} />
       <Text style={styles.inputLabel}>Reason</Text>
       <TextInput
         value={reason}
@@ -670,15 +794,17 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const filteredAttendance = useMemo(() => {
     const from = attendanceFrom.trim();
     const to = attendanceTo.trim();
-    if (!from && !to) return attendance;
+    const records = !from && !to
+      ? attendance
+      : attendance.filter(item => {
+          const date = String(field(item, ['attendanceDate', 'date', 'createdAt'], '')).slice(0, 10);
+          if (!date) return false;
+          if (from && date < from) return false;
+          if (to && date > to) return false;
+          return true;
+        });
 
-    return attendance.filter(item => {
-      const date = String(field(item, ['attendanceDate', 'date', 'createdAt'], '')).slice(0, 10);
-      if (!date) return false;
-      if (from && date < from) return false;
-      if (to && date > to) return false;
-      return true;
-    });
+    return [...records].sort((a, b) => attendanceTime(b) - attendanceTime(a));
   }, [attendance, attendanceFrom, attendanceTo]);
 
   const todayRecord = useMemo(
@@ -702,6 +828,15 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     }
     if (!values.startDate || !values.endDate) {
       Alert.alert('Leave Request', 'Please enter start date and end date.');
+      return;
+    }
+    const today = todayDateKey();
+    if (values.startDate < today || values.endDate < today) {
+      Alert.alert('Leave Request', 'Back-dated leave requests are not allowed.');
+      return;
+    }
+    if (values.endDate < values.startDate) {
+      Alert.alert('Leave Request', 'End date cannot be before start date.');
       return;
     }
 
@@ -830,8 +965,8 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           <FieldRow label="Regularisation" value={regularisationLabel(todayRecord)} />
           <FieldRow label="Shift" value={profile?.shiftName || workInfo?.shiftName} />
           {canRequestRegularisation(todayRecord) && (
-            <Pressable onPress={() => openRegularisationRequest(todayRecord)} style={styles.homeRegulariseButton}>
-              <Icon name="create-outline" size={14} color={colors.warning} />
+            <Pressable onPress={() => openRegularisationRequest(todayRecord)} style={({pressed}) => [styles.homeRegulariseButton, pressed && styles.pressed]}>
+              <Icon name="create-outline" size={16} color={colors.white} />
               <Text style={styles.regulariseButtonText}>Request regularisation</Text>
             </Pressable>
           )}
@@ -892,11 +1027,11 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 key={String(field(item, ['id', 'attendanceDate', 'date']))}
                 title={dateText(field(item, ['attendanceDate', 'date', 'createdAt'], ''))}
                 subtitle={`In ${timeText(field(item, ['checkIn', 'checkInTime', 'inTime']))} | Out ${timeText(field(item, ['checkOut', 'checkOutTime', 'outTime']))}`}
-                meta={`Hours ${field(item, ['workedHours', 'totalHours', 'hours', 'duration'])}`}
+                meta={`Hours ${hoursWorked(item)}`}
                 status={field(item, ['displayStatus', 'status', 'attendanceStatus'], '')}>
                 {canRequestRegularisation(item) ? (
-                  <Pressable onPress={() => setRegularisationTarget(item)} style={styles.regulariseButton}>
-                    <Icon name="create-outline" size={14} color={colors.warning} />
+                  <Pressable onPress={() => openRegularisationRequest(item)} style={({pressed}) => [styles.regulariseButton, pressed && styles.pressed]}>
+                    <Icon name="create-outline" size={16} color={colors.white} />
                     <Text style={styles.regulariseButtonText}>Request regularisation</Text>
                   </Pressable>
                 ) : item.attendanceStatus === 'IRREGULAR' ? (
@@ -922,37 +1057,51 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           )}
         </Card>
 
-        {regularisationTarget && (
-          <Card style={styles.formCard}>
-            <SectionTitle title="Request Regularisation" subtitle={dateText(field(regularisationTarget, ['attendanceDate', 'date'], ''))} icon="create-outline" />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regularisationTypeRow}>
-              {REGULARISATION_TYPES.map(type => (
-                <Pressable
-                  key={type.value}
-                  onPress={() => setRegularisationType(type.value)}
-                  style={[styles.regularisationChip, regularisationType === type.value && styles.regularisationChipActive]}>
-                  <Text style={[styles.regularisationChipText, regularisationType === type.value && styles.regularisationChipTextActive]}>
-                    {type.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Text style={styles.inputLabel}>Reason</Text>
-            <TextInput
-              value={regularisationReason}
-              onChangeText={setRegularisationReason}
-              placeholder="Reason for correction"
-              placeholderTextColor={colors.subtle}
-              multiline
-              style={[styles.input, styles.reasonInput]}
-            />
-            <View style={styles.regularisationActions}>
-              <PrimaryButton title="Submit Request" loading={submittingRegularisation} onPress={submitRegularisation} />
-              <PrimaryButton title="Cancel" variant="outline" onPress={() => setRegularisationTarget(null)} />
-            </View>
-          </Card>
-        )}
+        {renderRegularisationModal()}
       </>
+    );
+  }
+
+  function renderRegularisationModal() {
+    return (
+      <Modal visible={!!regularisationTarget} animationType="slide" transparent onRequestClose={() => setRegularisationTarget(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Pressable onPress={() => setRegularisationTarget(null)} style={styles.modalClose}>
+              <Icon name="close-outline" size={20} color={colors.textMid} />
+            </Pressable>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <SectionTitle title="Request Regularisation" subtitle={dateText(field(regularisationTarget, ['attendanceDate', 'date'], ''))} icon="create-outline" />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regularisationTypeRow}>
+                {REGULARISATION_TYPES.map(type => (
+                  <Pressable
+                    key={type.value}
+                    onPress={() => setRegularisationType(type.value)}
+                    style={[styles.regularisationChip, regularisationType === type.value && styles.regularisationChipActive]}>
+                    <Text style={[styles.regularisationChipText, regularisationType === type.value && styles.regularisationChipTextActive]}>
+                      {type.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <Text style={styles.inputLabel}>Reason</Text>
+              <TextInput
+                value={regularisationReason}
+                onChangeText={setRegularisationReason}
+                placeholder="Reason for correction"
+                placeholderTextColor={colors.subtle}
+                multiline
+                style={[styles.input, styles.reasonInput]}
+              />
+              <View style={styles.regularisationActions}>
+                <PrimaryButton title="Submit Request" loading={submittingRegularisation} onPress={submitRegularisation} />
+                <PrimaryButton title="Cancel" variant="outline" onPress={() => setRegularisationTarget(null)} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     );
   }
 
@@ -1349,9 +1498,9 @@ const styles = StyleSheet.create({
   recordTitle: {color: colors.text, fontSize: 15, fontWeight: '900'},
   recordSub: {color: colors.textMid, marginTop: 4, fontWeight: '700'},
   recordMeta: {color: colors.muted, marginTop: 8, fontWeight: '600'},
-  regulariseButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, borderRadius: 999, backgroundColor: colors.warningLight, paddingHorizontal: 10, paddingVertical: 7},
-  homeRegulariseButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 16, marginTop: 10, marginBottom: 14, borderRadius: 999, backgroundColor: colors.warningLight, paddingHorizontal: 10, paddingVertical: 7},
-  regulariseButtonText: {color: colors.warning, fontSize: 12, fontWeight: '900'},
+  regulariseButton: {alignSelf: 'stretch', minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14, borderRadius: 12, backgroundColor: colors.warning, paddingHorizontal: 14, paddingVertical: 11},
+  homeRegulariseButton: {minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginHorizontal: 16, marginTop: 10, marginBottom: 14, borderRadius: 12, backgroundColor: colors.warning, paddingHorizontal: 14, paddingVertical: 11},
+  regulariseButtonText: {color: colors.white, fontSize: 13, fontWeight: '900'},
   regularisationStatusPill: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, borderRadius: 999, backgroundColor: colors.surfaceAlt, paddingHorizontal: 10, paddingVertical: 7},
   regularisationStatusText: {fontSize: 12, fontWeight: '900'},
   pill: {borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5},
@@ -1461,6 +1610,22 @@ const styles = StyleSheet.create({
   regularisationChipText: {color: colors.textMid, fontSize: 12, fontWeight: '900'},
   regularisationChipTextActive: {color: colors.white},
   regularisationActions: {gap: 10, paddingHorizontal: 16, paddingBottom: 16},
+  datePickerButton: {
+    minHeight: 48,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: colors.surfaceAlt,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  datePickerValue: {flex: 1, color: colors.text, fontSize: 14, fontWeight: '800'},
+  datePickerPlaceholder: {color: colors.subtle},
   modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.5)', justifyContent: 'flex-end'},
   modalSheet: {
     maxHeight: '88%',
@@ -1483,4 +1648,38 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     zIndex: 1,
   },
+  calendarSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  calendarHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12},
+  calendarNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+  },
+  calendarTitle: {color: colors.text, fontSize: 17, fontWeight: '900'},
+  calendarWeekRow: {flexDirection: 'row', marginBottom: 8},
+  calendarWeekText: {width: `${100 / 7}%`, color: colors.muted, fontSize: 11, fontWeight: '900', textAlign: 'center'},
+  calendarGrid: {flexDirection: 'row', flexWrap: 'wrap'},
+  calendarDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+  calendarDayDisabled: {opacity: 0.35},
+  calendarDaySelected: {backgroundColor: colors.primary},
+  calendarDayText: {color: colors.textMid, fontSize: 14, fontWeight: '900'},
+  calendarDayTextDisabled: {color: colors.subtle},
+  calendarDayTextSelected: {color: colors.white},
+  calendarActions: {flexDirection: 'row', gap: 10, marginTop: 16},
 });
