@@ -42,9 +42,14 @@ export const update = createAsyncThunk('employees/update', async ({ id, data }, 
   }
 })
 
-export const remove = createAsyncThunk('employees/remove', async (id, { rejectWithValue }) => {
+// companyId is optional but important: employee ids are only unique WITHIN an org's own
+// schema, not globally, so deleting a row surfaced by the cross-org "All Companies" view
+// must say which org it belongs to — otherwise the backend looks in whatever schema
+// happens to be ambient (often none, in All-Companies mode) and 404s with a misleading
+// "Employee not found with id: X" even though the employee genuinely exists elsewhere.
+export const remove = createAsyncThunk('employees/remove', async ({ id, companyId } = {}, { rejectWithValue }) => {
   try {
-    await api.delete(`/employees/${id}`)
+    await api.delete(`/employees/${id}`, { params: { companyId } })
     return id
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to delete employee')
@@ -52,9 +57,10 @@ export const remove = createAsyncThunk('employees/remove', async (id, { rejectWi
 })
 
 // PLATFORM_SUPER_ADMIN only — irreversible, deletes the employee and all dependent records.
-export const hardDelete = createAsyncThunk('employees/hardDelete', async (id, { rejectWithValue }) => {
+// companyId — see remove() above.
+export const hardDelete = createAsyncThunk('employees/hardDelete', async ({ id, companyId } = {}, { rejectWithValue }) => {
   try {
-    await api.delete(`/employees/${id}/permanent`)
+    await api.delete(`/employees/${id}/permanent`, { params: { companyId } })
     return id
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to permanently delete employee')

@@ -208,9 +208,14 @@ export default function EmployeeFormFields({
         </>
       )}
 
-      {/* Company (platform/enterprise admin only) */}
+      {/* Company (platform/enterprise admin only) — placeholder is required, not cosmetic:
+          without it a <select> with no matching option silently renders as whichever
+          company happens to be first in the list, which would defeat the "no default"
+          guard in EmployeesPage and could submit the wrong company without any visible
+          sign that nothing was actually chosen. */}
       {canSelectCompany && (
         <Select label="Branch / Company" options={companyOptions}
+          placeholder="Select organization / branch..."
           error={errors.companyId?.message}
           {...register('companyId', { required: 'Required' })} />
       )}

@@ -233,6 +233,7 @@ export default function EmployeesPage() {
   const [selectedRows, setSelectedRows] = useState([])
   const [showBulkUpdate, setShowBulkUpdate] = useState(false)
   const [pageSize, setPageSize] = useState(20)
+  const [importFailures, setImportFailures] = useState(null) // per-row reasons from the last import, or null when none/hidden
   const importEmployeesRef = useRef()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
@@ -351,7 +352,19 @@ export default function EmployeesPage() {
         isActive: String(editing.isActive ?? true),
       })
     } else {
-      reset({ companyId: user?.companyId || '', isActive: 'true' })
+      // Anyone who gets a Branch/Company dropdown (platform/enterprise admin) must
+      // explicitly choose it — no pre-filled default, even a "reasonable" one. A silent
+      // default is exactly what caused an employee meant for a newly created org to be
+      // saved under the admin's own company instead: the dropdown had already
+      // pre-selected a value, and it went un-reviewed before submitting. Leaving it
+      // blank forces a conscious choice every time (the field is `required`, so the
+      // form can't submit without it).
+      //
+      // Regular users without that dropdown (branch admin, HR manager, ...) only ever
+      // belong to one company, so defaulting to it isn't a "fallback" in the same
+      // sense — there's nothing else it could correctly be.
+      const canPickCompany = isPlatformAdmin() || isEnterpriseAdmin()
+      reset({ companyId: canPickCompany ? '' : (user?.companyId || ''), isActive: 'true' })
     }
   }, [modalOpen, editing])
 
@@ -412,7 +425,9 @@ export default function EmployeesPage() {
 
   const handleDelete = async () => {
     try {
-      await dispatch(remove(deleteTarget.id)).unwrap()
+      // companyId pins which org's schema to delete from — required when this row came
+      // from the cross-org "All Companies" grid, where ids repeat across orgs.
+      await dispatch(remove({ id: deleteTarget.id, companyId: deleteTarget.companyId })).unwrap()
       toast.success('Employee removed')
       setDeleteTarget(null)
       load(0)
@@ -421,7 +436,7 @@ export default function EmployeesPage() {
 
   const handleHardDelete = async () => {
     try {
-      await dispatch(hardDelete(hardDeleteTarget.id)).unwrap()
+      await dispatch(hardDelete({ id: hardDeleteTarget.id, companyId: hardDeleteTarget.companyId })).unwrap()
       toast.success('Employee permanently deleted')
       setHardDeleteTarget(null)
       load(0)
@@ -542,6 +557,12 @@ export default function EmployeesPage() {
       ]
     : companies.map(c => ({ value: c.id, label: `${c.name} [${c.companyType || c.type || 'Company'}]` }))
 
+  // The single org a bulk import/template download targets — never falls back silently;
+  // null here means "no organization is unambiguously selected", which disables both
+  // actions rather than guessing (a platform admin viewing "All Organizations" has no
+  // safe default to fall back to).
+  const importTargetCompanyId = selectedCompanyId || user?.companyId || null
+
   const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }))
   const jobPositionOptions = jobPositions.map(p => ({ value: p.id, label: p.name }))
   const jobRoleOptions = jobRoles.map(r => ({ value: r.id, label: r.name }))
@@ -564,8 +585,18 @@ export default function EmployeesPage() {
                 Bulk Update ({selectedRows.length})
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={() => dispatch(downloadImportTemplate(selectedCompanyId || user?.companyId))}>Download Template</Button>
-            <Button variant="secondary" size="sm" onClick={() => importEmployeesRef.current?.click()}>Import Employees</Button>
+            <Button
+              variant="secondary" size="sm"
+              disabled={!importTargetCompanyId}
+              title={!importTargetCompanyId ? 'Select an organization above first' : undefined}
+              onClick={() => dispatch(downloadImportTemplate(importTargetCompanyId))}
+            >Download Template</Button>
+            <Button
+              variant="secondary" size="sm"
+              disabled={!importTargetCompanyId}
+              title={!importTargetCompanyId ? 'Select an organization above first' : undefined}
+              onClick={() => importEmployeesRef.current?.click()}
+            >Import Employees</Button>
             <input
               ref={importEmployeesRef}
               type="file"
@@ -574,15 +605,26 @@ export default function EmployeesPage() {
               onChange={async e => {
                 const f = e.target.files[0]
                 if (!f) return
-                const res = await dispatch(importEmployees({ companyId: user?.companyId, file: f }))
+                e.target.value = ''
+                // Strict guard: an import must target one explicit organization — never fall
+                // back silently to the admin's own company. Must match the org currently
+                // selected in the company picker above (same value Download Template uses) —
+                // this previously always sent the logged-in admin's OWN companyId, so
+                // importing while viewing a different organization silently imported into
+                // the wrong org instead.
+                if (!importTargetCompanyId) {
+                  toast.error('Select an organization before importing employees')
+                  return
+                }
+                const res = await dispatch(importEmployees({ companyId: importTargetCompanyId, file: f }))
                 if (res.error) {
                   toast.error(res.payload)
                 } else {
-                  const { successCount, failureCount } = res.payload
+                  const { successCount, failureCount, failures } = res.payload
                   toast.success(`Imported ${successCount} employee(s)${failureCount > 0 ? `, ${failureCount} failed` : ''}`)
+                  if (failureCount > 0) setImportFailures(failures || [])
                   dispatch(fetchAll({ page: 0, size: pageSize }))
                 }
-                e.target.value = ''
               }}
             />
             <button
@@ -859,6 +901,23 @@ export default function EmployeesPage() {
           onSuccess={() => { setSelectedRows([]); load(pagination.page) }}
         />
       )}
+
+      <Modal
+        open={!!importFailures?.length}
+        onClose={() => setImportFailures(null)}
+        title="Import failures"
+        footer={<Button variant="secondary" onClick={() => setImportFailures(null)}>Close</Button>}
+      >
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {importFailures?.map((f, i) => (
+            <div key={i} className="text-sm border border-gray-100 rounded-lg p-2">
+              <span className="font-medium text-gray-700">Row {f.row}</span>
+              {f.email && <span className="text-gray-400"> ({f.email})</span>}
+              <p className="text-red-600 mt-0.5">{f.reason}</p>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   )
 }

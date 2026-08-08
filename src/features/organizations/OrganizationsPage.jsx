@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { fetchAll, create, update, uploadLogo, remove, selectAll, selectLoading, selectPagination } from './organizationsSlice'
+import { setSelectedCompany } from '../auth/authSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -74,8 +75,17 @@ export default function OrganizationsPage() {
         savedOrg = await dispatch(update({ id: editing.id, data: formData })).unwrap()
         toast.success('Organization updated')
       } else {
-        savedOrg = await dispatch(create(formData)).unwrap()
-        toast.success('Organization created')
+        // Creation returns { organization, headOfficeCompanyId } — unlike update/edit which
+        // returns the bare Organization. Switch the active org context to the new org right
+        // away: previously nothing updated selectedCompanyId/X-Company-Id after creating an
+        // org, so the very next action (e.g. adding an employee) kept operating against
+        // whatever org was active before, landing data in the wrong place.
+        const result = await dispatch(create(formData)).unwrap()
+        savedOrg = result.organization
+        if (result.headOfficeCompanyId) {
+          dispatch(setSelectedCompany(result.headOfficeCompanyId))
+        }
+        toast.success('Organization created — switched to it')
       }
       if (logoFile && savedOrg?.id) {
         try {
