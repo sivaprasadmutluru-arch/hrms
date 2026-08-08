@@ -7,6 +7,7 @@ import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.base.dto.CompanyRequest;
 import com.example.demo.base.dto.CreateOrganizationRequest;
+import com.example.demo.base.dto.CreateOrganizationResponse;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.enums.SubscriptionPlan;
@@ -109,8 +110,18 @@ public class OrganizationService {
         return organizationRepository.findWithoutHeadOffice();
     }
 
-    @Transactional
-    public Organization createOrganization(CreateOrganizationRequest request) {
+    /**
+     * Intentionally NOT @Transactional at this level (unlike before). companyService
+     * .createHeadOffice() internally provisions a brand-new tenant schema — DDL that
+     * creates ~100 tables and can take several seconds. If this whole method were one
+     * transaction, that DDL would run while still holding the connection (and locks)
+     * from the organizations/companies row inserts open the entire time; a second
+     * org-creation request arriving during that window would then block on those locks
+     * and fail with "canceling statement due to lock timeout" once Postgres's
+     * lock_timeout elapsed — exactly what happened in production. Each phase below now
+     * commits and releases its connection before the next one starts.
+     */
+    public CreateOrganizationResponse createOrganization(CreateOrganizationRequest request) {
         Organization organization = new Organization();
         organization.setName(request.getName());
         organization.setContactEmail(request.getContactEmail());
@@ -157,9 +168,9 @@ public class OrganizationService {
         hoRequest.setAdminFirstName(request.getAdminFirstName());
         hoRequest.setAdminLastName(request.getAdminLastName());
 
-        companyService.createHeadOffice(hoRequest);
+        Company headOffice = companyService.createHeadOffice(hoRequest);
 
-        return savedOrg;
+        return new CreateOrganizationResponse(savedOrg, headOffice.getId());
     }
 
     @Transactional

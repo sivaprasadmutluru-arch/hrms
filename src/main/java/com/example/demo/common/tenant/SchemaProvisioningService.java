@@ -102,19 +102,6 @@ public class SchemaProvisioningService {
     }
 
     /**
-     * Fire-and-forget version — returns immediately, provisions in a background thread.
-     * Use this from HTTP request handlers so the response is not delayed.
-     */
-    @Async
-    public void provisionSchemaAsync(String schemaName) {
-        try {
-            provisionSchema(schemaName);
-        } catch (Exception e) {
-            log.error("[Tenant] Background schema provisioning failed for '{}': {}", schemaName, e.getMessage(), e);
-        }
-    }
-
-    /**
      * Converts a company name to a safe PostgreSQL schema identifier.
      * "Yuwa Tech Solutions" → "yuwa_tech_solutions"
      */

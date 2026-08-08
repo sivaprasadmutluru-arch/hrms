@@ -20,11 +20,13 @@ import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.tenant.SchemaProvisioningService;
+import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,9 +45,19 @@ import java.util.stream.Collectors;
  *   3. Maximum branches per Head Office = branchLimit (default 5).
  *   4. A branch is always linked to its parent Head Office and same organization.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CompanyService {
+
+    // Self-reference through Spring proxy: createHeadOffice() is intentionally NOT
+    // @Transactional so each of its phases commits and releases its connection
+    // separately (see createHeadOffice's javadoc) — calling through the proxy is what
+    // makes each self.xxx() call actually start its own transaction instead of just
+    // continuing whatever's already open (or none, here).
+    @org.springframework.context.annotation.Lazy
+    @org.springframework.beans.factory.annotation.Autowired
+    private CompanyService self;
 
     private final CompanyRepository companyRepository;
     private final OrganizationRepository organizationRepository;
@@ -64,9 +76,41 @@ public class CompanyService {
     /**
      * Creates a new Head Office company for an organization.
      * Only Prabha Tech (Platform Super Admin) can call this.
+     *
+     * Intentionally NOT @Transactional at this level, and deliberately split into three
+     * separate self-proxied phases below. Schema provisioning (DDL creating ~100 tables)
+     * can take several seconds; if the whole flow ran as one transaction, that DDL would
+     * run while still holding the connection — and any locks it holds, including on
+     * unique indexes shared with public.organizations — open the entire time. A second
+     * org-creation request arriving during that window would then block on those locks
+     * and fail with "canceling statement due to lock timeout" once Postgres's
+     * lock_timeout elapsed (exactly what happened in production after an earlier fix
+     * made this synchronous within one transaction to solve a different bug — the admin
+     * Employee record landing in the wrong schema). Each phase now commits and releases
+     * its connection before the next one starts, so nothing stays open across the DDL.
      */
-    @Transactional
     public Company createHeadOffice(CompanyRequest request) {
+        Company headOffice = self.createHeadOfficeRecord(request);
+        String schemaName = headOffice.getSchemaName();
+        try {
+            schemaProvisioningService.provisionSchema(schemaName);
+        } catch (Exception e) {
+            // The organization and its Head Office row already exist and are committed —
+            // don't fail org creation over this. schemaReady stays false, so
+            // EmployeeService rejects employee create/import against it with a clear
+            // message until someone re-provisions (see OrganizationService
+            // #provisionOrganizationForCompany) rather than every row failing with a raw
+            // SQL error. No admin Employee is created below either, for the same reason.
+            log.error("[createHeadOffice] Schema provisioning failed for '{}' (org={}, company={}): {}",
+                    schemaName, request.getOrganizationId(), headOffice.getId(), e.getMessage(), e);
+            return headOffice;
+        }
+        self.activateHeadOfficeAndCreateAdmin(headOffice.getId(), schemaName, request);
+        return headOffice;
+    }
+
+    @Transactional
+    public Company createHeadOfficeRecord(CompanyRequest request) {
         if (request.getOrganizationId() == null) {
             throw new BadRequestException("Organization ID is required when creating a Head Office");
         }
@@ -88,13 +132,23 @@ public class CompanyService {
 
         headOffice = companyRepository.save(headOffice);
 
-        // Provision tenant schema for the new Head Office
         String schemaName = SchemaProvisioningService.toSchemaName(org.getName());
         headOffice.setSchemaName(schemaName);
+        headOffice.setSchemaReady(false);
+        return companyRepository.save(headOffice);
+    }
+
+    @Transactional
+    public void activateHeadOfficeAndCreateAdmin(Long companyId, String schemaName, CompanyRequest request) {
+        Company headOffice = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        headOffice.setSchemaReady(true);
         headOffice = companyRepository.save(headOffice);
-        // Provision asynchronously — returns immediately so the HTTP response is fast.
-        // Tables are created in the background; they're ready well before any user data is entered.
-        schemaProvisioningService.provisionSchemaAsync(schemaName);
+
+        // Switch into the new org's schema for the rest of this transaction so the admin
+        // Employee record below is written to the correct place. User/Role/UserRole are
+        // pinned to schema="public" explicitly, so this doesn't affect them.
+        TenantContext.setTenant(schemaName);
 
         // Create the enterprise admin user and assign ENTERPRISE_ADMIN + ENTERPRISE scope
         if (request.getAdminUsername() != null && !request.getAdminUsername().isBlank()
@@ -125,8 +179,6 @@ public class CompanyService {
             adminEmployee.setDateJoining(LocalDate.now());
             employeeRepository.save(adminEmployee);
         }
-
-        return headOffice;
     }
 
     /**

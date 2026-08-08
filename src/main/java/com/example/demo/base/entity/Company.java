@@ -68,6 +68,19 @@ public class Company extends BaseEntity {
     @Column(name = "schema_name", unique = true)
     private String schemaName;
 
+    /**
+     * Whether this Head Office's tenant schema has finished provisioning.
+     * Only meaningful for HEAD_OFFICE type companies (branches inherit their
+     * Head Office's schema). Defaults to true at the DB level (ColumnDefault)
+     * so existing, already-provisioned companies aren't affected when this
+     * column is added — CompanyService explicitly flips it to false while a
+     * brand-new Head Office's schema is being provisioned in the background,
+     * then back to true once provisioning succeeds.
+     */
+    @Column(name = "schema_ready", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("true")
+    private boolean schemaReady = true;
+
     @JsonIgnore
     @OneToMany(mappedBy = "parentCompany", cascade = CascadeType.ALL)
     private List<Company> branches = new ArrayList<>();

@@ -150,23 +150,62 @@ public class EmployeeService {
      * Fix: set TenantContext here (no transaction yet, so no connection acquired)
      * and then call self.doCreate() through the proxy so REQUIRES_NEW starts with
      * the correct search_path already in place.
+     *
+     * IMPORTANT: this always re-resolves the schema from req.getCompanyId() rather
+     * than only when TenantContext is at the default "public" tenant. A previous
+     * version only corrected the schema when at default, which meant a stale
+     * X-Company-Id header from an earlier request (e.g. the UI hadn't updated its
+     * "active org" header after the user switched organizations in the picker)
+     * would silently write the new employee into the WRONG tenant schema, even
+     * though its company_id FK correctly pointed at the intended organization.
+     * The employee would then be invisible when filtering by that organization,
+     * while still showing up in the cross-schema "All Companies" view.
+     *
+     * STRICT GUARD: an employee can never be created without a company — this is
+     * the single choke point both EmployeeController#create (single) and
+     * EmployeeService#bulkImport (every row of an import) funnel through, so one
+     * explicit check here covers both. @NotNull on EmployeeRequest.companyId
+     * already blocks the single-create HTTP endpoint, and the import endpoint's
+     * companyId is a required @RequestParam — but neither produces a clean error
+     * for any other caller, and a null id here would otherwise surface as a raw
+     * "findById(null)" IllegalArgumentException instead of a clear message.
      */
     public EmployeeResponse create(EmployeeRequest req) {
-        if (TenantContext.DEFAULT_TENANT.equals(TenantContext.getTenant())) {
-            Company company = companyRepository.findById(req.getCompanyId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
-            String schema = company.isHeadOffice()
-                    ? company.getSchemaName()
-                    : (company.getParentCompanyId() != null
-                        ? companyRepository.findById(company.getParentCompanyId())
-                              .map(Company::getSchemaName).orElse(null)
-                        : null);
-            if (schema != null && !schema.isBlank()) {
-                log.info("[create] TenantContext was at default — setting schema='{}' from companyId={}", schema, req.getCompanyId());
-                TenantContext.setTenant(schema);
-            }
+        if (req.getCompanyId() == null) {
+            throw new BadRequestException("A company/organization must be selected to create an employee");
         }
+        resolveTenantForCompany(req.getCompanyId());
         return self.doCreate(req);
+    }
+
+    /**
+     * Re-resolves TenantContext to the schema owning companyId, if it differs from
+     * whatever schema is currently set. Every single-employee-by-id operation
+     * (update/delete/hardDelete/...) needs this: employee numeric ids are only
+     * unique WITHIN a schema, not globally — the "All Companies" platform-admin
+     * view lists employees from every org's schema side by side, so two different
+     * orgs can both have an employee with id=16. Acting on a specific row from
+     * that view must pin the schema to THAT row's company, or the lookup runs
+     * against whatever schema TenantContext happens to already be on (often
+     * "public", since All-Companies mode sends no X-Company-Id header at all) and
+     * fails with a misleading "Employee not found with id: 16" even though the
+     * employee genuinely exists — just in a different schema.
+     */
+    private void resolveTenantForCompany(Long companyId) {
+        if (companyId == null) return;
+        Company targetCompany = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        String schema = targetCompany.isHeadOffice()
+                ? targetCompany.getSchemaName()
+                : (targetCompany.getParentCompanyId() != null
+                    ? companyRepository.findById(targetCompany.getParentCompanyId())
+                          .map(Company::getSchemaName).orElse(null)
+                    : null);
+        if (schema != null && !schema.isBlank() && !schema.equals(TenantContext.getTenant())) {
+            log.info("[tenant] resolving schema='{}' from companyId={} (was '{}')",
+                    schema, companyId, TenantContext.getTenant());
+            TenantContext.setTenant(schema);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -175,10 +214,35 @@ public class EmployeeService {
         if (req.getEmail() != null && employeeRepository.findByEmail(req.getEmail()).isPresent()) {
             throw new BadRequestException("Employee with this email already exists");
         }
+        // A manually-entered Employee/Badge ID must be unique — badge_id has a DB-level
+        // unique constraint, so without this check a duplicate would surface as a raw
+        // constraint-violation error instead of a clear message. A blank one is left
+        // alone here; it gets auto-generated further down.
+        if (req.getBadgeId() != null && !req.getBadgeId().isBlank()
+                && employeeRepository.findByBadgeId(req.getBadgeId().trim()).isPresent()) {
+            throw new BadRequestException("Employee ID '" + req.getBadgeId().trim() + "' is already in use");
+        }
 
         // Check subscription plan employee limit before creating
         Company company = companyRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
+
+        // Defense in depth: a Head Office's tenant schema must be fully provisioned
+        // (all tables created) before any Employee row can be written into it — see
+        // CompanyService#createHeadOffice, which flips schemaReady true only after
+        // provisioning succeeds. If this is ever false here, creating/importing an
+        // employee would otherwise fail with a raw "relation does not exist" SQL
+        // error (or worse, land in a leftover schema from a previous request) —
+        // fail fast with a clear message instead.
+        Company schemaOwner = company.isHeadOffice()
+                ? company
+                : (company.getParentCompanyId() != null
+                    ? companyRepository.findById(company.getParentCompanyId()).orElse(null)
+                    : null);
+        if (schemaOwner != null && !schemaOwner.isSchemaReady()) {
+            throw new BadRequestException(
+                    "This organization's workspace is still being set up. Please wait a few seconds and try again.");
+        }
 
         Organization org = company.getOrganization();
         if (org != null && org.getSubscriptionPlan() != null) {
@@ -316,8 +380,18 @@ public class EmployeeService {
         workInfoRepository.save(wi);
     }
 
-    @Transactional
+    // Same TenantContext staleness problem as create() — see resolveTenantForCompany's
+    // javadoc — and the same "must set TenantContext before the @Transactional proxy
+    // acquires a connection" constraint, hence the wrapper/doUpdate split.
     public EmployeeResponse update(Long id, EmployeeRequest req) {
+        if (req.getCompanyId() != null) {
+            resolveTenantForCompany(req.getCompanyId());
+        }
+        return self.doUpdate(id, req);
+    }
+
+    @Transactional
+    public EmployeeResponse doUpdate(Long id, EmployeeRequest req) {
         Employee emp = findEmployee(id);
         buildEmployee(emp, req);
         // Link to user account if not already linked and email is provided
@@ -344,8 +418,16 @@ public class EmployeeService {
         return EmployeeResponse.from(saved, contract);
     }
 
+    // companyId (query param, threaded from the row the frontend already has) pins the
+    // schema before lookup — see resolveTenantForCompany's javadoc for why this matters
+    // specifically for actions taken from the "All Companies" global view.
+    public void delete(Long id, Long companyId) {
+        resolveTenantForCompany(companyId);
+        self.doDelete(id);
+    }
+
     @Transactional
-    public void delete(Long id) {
+    public void doDelete(Long id) {
         Employee emp = findEmployee(id);
         emp.setActive(false);
         employeeRepository.save(emp);
@@ -362,8 +444,13 @@ public class EmployeeService {
      * PLATFORM_SUPER_ADMIN only, irreversible. Intended for cleaning up broken/junk records
      * (e.g. duplicate stubs from bugs), not routine offboarding — use delete() for that.
      */
+    public Map<String, Object> hardDelete(Long id, Long companyId) {
+        resolveTenantForCompany(companyId);
+        return self.doHardDelete(id);
+    }
+
     @Transactional
-    public Map<String, Object> hardDelete(Long id) {
+    public Map<String, Object> doHardDelete(Long id) {
         findEmployee(id); // 404s if it doesn't exist in the current tenant schema
 
         org.hibernate.Session session = entityManager.unwrap(org.hibernate.Session.class);
@@ -587,7 +674,7 @@ public class EmployeeService {
         emp.setCompany(company);
         emp.setFirstName(req.getFirstName());
         emp.setLastName(req.getLastName());
-        emp.setBadgeId(req.getBadgeId());
+        emp.setBadgeId(req.getBadgeId() != null && !req.getBadgeId().isBlank() ? req.getBadgeId().trim() : null);
         emp.setPhone(req.getPhone());
         emp.setEmail(req.getEmail());
         emp.setGender(req.getGender());

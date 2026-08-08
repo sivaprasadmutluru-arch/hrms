@@ -131,17 +131,22 @@ public class EmployeeController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:delete')")
-    @Operation(summary = "Soft delete employee")
-    public ResponseEntity<Map<String, String>> delete(@PathVariable Long id) {
-        employeeService.delete(id);
+    @Operation(summary = "Soft delete employee. companyId optional — pins the tenant schema when " +
+            "acting on a row from the cross-org 'All Companies' view, where employee ids are only " +
+            "unique per-schema, not globally.")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable Long id,
+                                                        @RequestParam(required = false) Long companyId) {
+        employeeService.delete(id, companyId);
         return ResponseEntity.ok(Map.of("message", "Employee deactivated"));
     }
 
     @DeleteMapping("/{id}/permanent")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Permanently delete employee and all dependent records (irreversible)")
-    public ResponseEntity<Map<String, Object>> hardDelete(@PathVariable Long id) {
-        return ResponseEntity.ok(employeeService.hardDelete(id));
+    @Operation(summary = "Permanently delete employee and all dependent records (irreversible). " +
+            "companyId optional — see delete().")
+    public ResponseEntity<Map<String, Object>> hardDelete(@PathVariable Long id,
+                                                            @RequestParam(required = false) Long companyId) {
+        return ResponseEntity.ok(employeeService.hardDelete(id, companyId));
     }
 
     @PostMapping("/{id}/photo")
@@ -275,7 +280,7 @@ public class EmployeeController {
                 //          5=Department 6=JobPosition 7=Shift 8=WageType 9=EmployeeType
                 //          10=Location 11=DateJoining 12=BasicSalary 13=HousingAllowance
                 //          14=TransportAllowance 15=OtherAllowance 16=TotalSalary
-                //          17=SalaryPerHour(skip) 18=ContractEndDate
+                //          17=SalaryPerHour(skip) 18=ContractEndDate 19=EmployeeId
                 EmployeeRequest req = new EmployeeRequest();
                 req.setFirstName(firstName);
                 req.setLastName(getCellStr(row, 1));
@@ -338,6 +343,13 @@ public class EmployeeController {
                 String contractEndStr = getCellStr(row, 18);
                 if (contractEndStr != null && !contractEndStr.isBlank()) {
                     try { req.setContractEndDate(LocalDate.parse(contractEndStr.trim())); } catch (Exception ignored) {}
+                }
+
+                // Optional manual Employee ID — left blank, EmployeeService auto-generates one
+                // (same fallback the single "New Employee" form uses).
+                String employeeIdStr = getCellStr(row, 19);
+                if (employeeIdStr != null && !employeeIdStr.isBlank()) {
+                    req.setBadgeId(employeeIdStr.trim());
                 }
 
                 log.info("[importEmployees] row {} → firstName={} lastName={} email={} companyId={}",
@@ -528,6 +540,7 @@ public class EmployeeController {
                 {"Total Salary",      "Number (sum of all components)", 6700.00,             true,  5500},
                 {"Salary Per Hour",   "Number",                         25.00,               true,  6500},
                 {"Contract End Date", "yyyy-MM-dd  (leave blank if permanent)", "2025-01-14", false, 7000},
+                {"Employee ID",       "Leave blank to auto-generate",   "",                  false, 6500},
             };
 
             // ── Row 0: Headers ─────────────────────────────────────────
