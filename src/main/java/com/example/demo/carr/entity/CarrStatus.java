@@ -1,0 +1,6 @@
+package com.example.demo.carr.entity;
+
+public enum CarrStatus {
+    DRAFT, SUBMITTED, MANAGER_REVIEW, DEPT_HEAD_REVIEW, HR_REVIEW,
+    APPROVED, ACKNOWLEDGEMENT_PENDING, PUBLISHED, RETURNED, ARCHIVED
+}

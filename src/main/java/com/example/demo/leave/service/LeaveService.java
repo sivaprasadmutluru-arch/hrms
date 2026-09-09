@@ -45,14 +45,25 @@ public class LeaveService {
     private final CompanyRepository companyRepository;
     private final EmployeeTypeRepository employeeTypeRepository;
     private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
+    private final LeaveRequestCommentRepository requestCommentRepository;
+    private final LeaveRequestFileRepository requestFileRepository;
 
     // ─── Queries ──────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable) {
+        return getAllRequests(pageable, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year) {
         // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
         // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<LeaveRequest> spec = ScopeFilter.byEmployeeDepartment();
+        if (year != null) {
+            Specification<LeaveRequest> yearRange = yearSpecification(year);
+            spec = spec == null ? yearRange : spec.and(yearRange);
+        }
         return spec != null
                 ? leaveRequestRepository.findAll(spec, pageable)
                 : leaveRequestRepository.findAll(pageable);
@@ -94,10 +105,24 @@ public class LeaveService {
     @Transactional
     public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
                                     LocalDate endDate, String description, Long companyId) {
+        return applyLeave(employeeId, leaveTypeId, startDate, endDate, description, companyId,
+                LeaveRequest.LeaveDuration.FULL_DAY);
+    }
+
+    @Transactional
+    public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
+                                    LocalDate endDate, String description, Long companyId,
+                                    LeaveRequest.LeaveDuration leaveDuration) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new BadRequestException("End date must be on or after start date");
+        }
+        LeaveRequest.LeaveDuration duration = leaveDuration == null
+                ? LeaveRequest.LeaveDuration.FULL_DAY : leaveDuration;
         LeaveType leaveType = leaveTypeRepository.findById(leaveTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveType", leaveTypeId));
 
-        double days = calculateWorkingDays(startDate, endDate, companyId, leaveType);
+        double workingDays = calculateWorkingDays(startDate, endDate, companyId, leaveType, employeeId);
+        double days = resolveRequestedDays(workingDays, duration, startDate, endDate);
 
         // Reject if employee already has an active (pending or approved) request overlapping these dates
         List<LeaveRequest> overlapping = leaveRequestRepository.findActiveOverlapping(employeeId, startDate, endDate);
@@ -112,7 +137,7 @@ public class LeaveService {
         // Validate balance: remaining is DERIVED (available + carryforward − used), not stored.
         // Available Days is the constant allocation; we never read it as "what's left" anymore.
         AvailableLeave balance = getOrCreateAvailableLeave(employeeId, leaveTypeId);
-        double remaining = computeRemaining(balance, employeeId, leaveTypeId);
+        double remaining = computeRemaining(balance, employeeId, leaveTypeId, startDate);
         double forecasted = balance.forcastedLeaves(startDate);
         double totalBalance = remaining + forecasted;
         if (days > totalBalance) {
@@ -138,6 +163,7 @@ public class LeaveService {
         request.setStartDate(startDate);
         request.setEndDate(endDate);
         request.setRequestedDays(days);
+        request.setLeaveDuration(duration);
         request.setDescription(description);
         request.setStatus(LeaveRequest.LeaveStatus.REQUESTED);
         request.setCompany(companyRepository.findById(companyId)
@@ -174,7 +200,7 @@ public class LeaveService {
                 request.getEmployee().getId(), request.getLeaveType().getId());
 
         // Balance check: remaining is DERIVED (available + carryforward − used), not stored.
-        double remaining = computeRemaining(balance, request.getEmployee().getId(), request.getLeaveType().getId());
+        double remaining = computeRemaining(balance, request.getEmployee().getId(), request.getLeaveType().getId(), request.getStartDate());
         double forecasted = balance.forcastedLeaves(request.getStartDate());
         double totalBalance = remaining + forecasted;
         if (request.getRequestedDays() > totalBalance) {
@@ -228,7 +254,107 @@ public class LeaveService {
         }
 
         request.setStatus(LeaveRequest.LeaveStatus.CANCELLED);
-        return leaveRequestRepository.save(request);
+        LeaveRequest saved = leaveRequestRepository.save(request);
+        if (saved.getStatus() == LeaveRequest.LeaveStatus.APPROVED) {
+            eventPublisher.publishEvent(new LeaveApprovedEvent(this, saved));
+        }
+        return saved;
+    }
+
+    static double resolveRequestedDays(double workingDays, LeaveRequest.LeaveDuration duration,
+                                       LocalDate startDate, LocalDate endDate) {
+        if (duration != LeaveRequest.LeaveDuration.FULL_DAY) {
+            if (!startDate.equals(endDate)) {
+                throw new BadRequestException("Half-day leave must start and end on the same date");
+            }
+            if (workingDays != 1.0) {
+                throw new BadRequestException("Half-day leave must be requested on a working day");
+            }
+            return 0.5;
+        }
+        if (workingDays <= 0) {
+            throw new BadRequestException("The selected period contains no eligible working days");
+        }
+        return workingDays;
+    }
+
+    /** Permanently deletes leave requests visible to the current administrative scope. */
+    @Transactional
+    public int deleteRequests(List<Long> requestIds) {
+        if (requestIds == null || requestIds.isEmpty()) {
+            throw new BadRequestException("Select at least one leave request");
+        }
+        List<Long> ids = requestIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty() || ids.size() > 10000) {
+            throw new BadRequestException("Select between 1 and 10,000 leave requests");
+        }
+
+        List<LeaveRequest> requests = leaveRequestRepository.findAllById(ids);
+        if (requests.size() != ids.size()) {
+            throw new ResourceNotFoundException("One or more leave requests were not found");
+        }
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        for (LeaveRequest request : requests) {
+            Long companyId = request.getCompany().getId();
+            if (scope == null || !scope.canAccess(companyId)
+                    || (scope.getFilterCompanyId() != null && !scope.getFilterCompanyId().equals(companyId))) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "You cannot delete leave requests outside the selected company");
+            }
+        }
+
+        for (LeaveRequest request : requests) {
+            conditionApprovalRepository.deleteAll(
+                    conditionApprovalRepository.findByLeaveRequestIdOrderBySequenceAsc(request.getId()));
+            requestCommentRepository.deleteAll(requestCommentRepository.findByLeaveRequestId(request.getId()));
+            List<LeaveRequestFile> files = requestFileRepository.findByLeaveRequestId(request.getId());
+            requestFileRepository.deleteAll(files);
+            for (LeaveRequestFile file : files) {
+                if (file.getFilePath() == null || file.getFilePath().isBlank()) continue;
+                try {
+                    java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get(file.getFilePath()));
+                } catch (java.io.IOException ex) {
+                    log.warn("Leave request {} deleted, but attachment cleanup failed: {}",
+                            request.getId(), ex.getMessage());
+                }
+            }
+        }
+        leaveRequestRepository.deleteAll(requests);
+        log.info("Permanently deleted {} leave request(s): {}", requests.size(), ids);
+        return requests.size();
+    }
+
+    @Transactional
+    public int deleteAllocations(List<Long> allocationIds) {
+        if (allocationIds == null || allocationIds.isEmpty()) {
+            throw new BadRequestException("Select at least one leave allocation");
+        }
+        List<Long> ids = allocationIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty() || ids.size() > 10000) {
+            throw new BadRequestException("Select between 1 and 10,000 leave allocations");
+        }
+        List<LeaveAllocation> allocations = leaveAllocationRepository.findAllById(ids);
+        if (allocations.size() != ids.size()) {
+            throw new ResourceNotFoundException("One or more leave allocations were not found");
+        }
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        for (LeaveAllocation allocation : allocations) {
+            Long companyId = allocation.getCompany().getId();
+            if (scope == null || !scope.canAccess(companyId)
+                    || (scope.getFilterCompanyId() != null && !scope.getFilterCompanyId().equals(companyId))) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "You cannot delete leave allocations outside the selected company");
+            }
+        }
+        leaveAllocationRepository.deleteAll(allocations);
+        log.info("Permanently deleted {} leave allocation(s): {}", allocations.size(), ids);
+        return allocations.size();
+    }
+
+    private Specification<LeaveRequest> yearSpecification(int year) {
+        if (year < 1900 || year > 2200) throw new BadRequestException("Enter a valid four-digit year");
+        return (root, query, cb) -> cb.between(
+                root.get("startDate"), LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31));
     }
 
     // ─── Leave Types ──────────────────────────────────────────────────────────
@@ -693,18 +819,14 @@ public class LeaveService {
      * request days. Carryforward is capped by carryforward_max. This replaces the old pattern of
      * reading availableDays directly as "remaining" (which coupled allocation to consumption).
      */
-    private double computeRemaining(AvailableLeave balance, Long employeeId, Long leaveTypeId) {
+    private double computeRemaining(AvailableLeave balance, Long employeeId, Long leaveTypeId, LocalDate balanceDate) {
         double avail = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
         double cf = resolveCarryforwardDays(balance);
-        double used = 0.0;
-        List<Object[]> rows = leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(employeeId);
-        for (Object[] row : rows) {
-            Long ltId = ((Number) row[0]).longValue();
-            if (leaveTypeId != null && ltId != null && ltId.equals(leaveTypeId)) {
-                used = ((Number) row[1]).doubleValue();
-                break;
-            }
-        }
+        LeavePeriodResolver.Period period = LeavePeriodResolver.containing(
+                balance.getLeaveType(), balanceDate != null ? balanceDate : LocalDate.now());
+        Double usedValue = leaveRequestRepository.sumApprovedDaysForPeriod(
+                employeeId, leaveTypeId, period.start(), period.end());
+        double used = usedValue != null ? usedValue : 0.0;
         return (avail + cf) - used;
     }
 }

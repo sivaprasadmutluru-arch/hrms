@@ -12,6 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -55,9 +56,16 @@ public class UserPrincipal implements UserDetails {
         // Add ROLE_ prefix for each role the user has (used with hasRole())
         // Add permission strings directly (used with hasAuthority())
         user.getUserRoles().forEach(ur -> {
-            auths.add(new SimpleGrantedAuthority("ROLE_" + ur.getRole().getName().name()));
+            Role.RoleName roleName = ur.getRole().getName();
+            auths.add(new SimpleGrantedAuthority("ROLE_" + roleName.name()));
             ur.getRole().getPermissions().forEach(p ->
                     auths.add(new SimpleGrantedAuthority(p.getName())));
+
+            // Keep core payroll access consistent with the admin role even
+            // when an existing installation has older role-permission rows.
+            // Data visibility remains restricted by the company/branch scope.
+            roleBaselinePermissions(roleName).forEach(permission ->
+                    auths.add(new SimpleGrantedAuthority(permission)));
         });
 
         // Platform Super Admin (isSuperuser flag) always gets the top-level role
@@ -70,6 +78,20 @@ public class UserPrincipal implements UserDetails {
 
         // Remove duplicates (a user might have the same role in multiple companies)
         this.authorities = auths.stream().distinct().collect(Collectors.toList());
+    }
+
+    private static Set<String> roleBaselinePermissions(Role.RoleName roleName) {
+        return switch (roleName) {
+            case ENTERPRISE_ADMIN -> Set.of(
+                    "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
+            case BRANCH_ADMIN -> Set.of(
+                    "payroll:view", "payroll:create", "payroll:edit");
+            case ACCOUNTANT -> Set.of(
+                    "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
+            case EMPLOYEE -> Set.of(
+                    "leave:view", "leave:create", "payroll:view");
+            default -> Set.of();
+        };
     }
 
     @Override public boolean isAccountNonExpired() { return true; }

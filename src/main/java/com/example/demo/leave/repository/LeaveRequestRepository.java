@@ -17,6 +17,9 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findByCompanyIdAndStatus(Long companyId, LeaveRequest.LeaveStatus status);
     List<LeaveRequest> findByEmployeeIdAndStatus(Long employeeId, LeaveRequest.LeaveStatus status);
     List<LeaveRequest> findByEmployeeIdAndStartDateBetween(Long employeeId, LocalDate from, LocalDate to);
+    boolean existsByEmployeeIdAndLeaveTypeIdAndStartDateAndEndDateAndStatus(
+            Long employeeId, Long leaveTypeId, LocalDate startDate, LocalDate endDate,
+            LeaveRequest.LeaveStatus status);
 
     @Query("SELECT lr FROM LeaveRequest lr WHERE lr.company.id = :companyId " +
            "AND lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
@@ -46,4 +49,22 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
            "AND lr.employee.id = :employeeId " +
            "GROUP BY lr.leaveType.id")
     List<Object[]> sumApprovedDaysByLeaveTypeForEmployee(@Param("employeeId") Long employeeId);
+
+    @Query("SELECT COALESCE(SUM(lr.requestedDays), 0) " +
+           "FROM LeaveRequest lr " +
+           "WHERE lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.employee.id = :employeeId AND lr.leaveType.id = :leaveTypeId " +
+           "AND YEAR(lr.startDate) = :year")
+    Double sumApprovedDaysForAllocationYear(@Param("employeeId") Long employeeId,
+                                             @Param("leaveTypeId") Long leaveTypeId,
+                                             @Param("year") Integer year);
+
+    @Query("SELECT COALESCE(SUM(lr.requestedDays), 0) FROM LeaveRequest lr " +
+           "WHERE lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.employee.id = :employeeId AND lr.leaveType.id = :leaveTypeId " +
+           "AND lr.startDate BETWEEN :startDate AND :endDate")
+    Double sumApprovedDaysForPeriod(@Param("employeeId") Long employeeId,
+                                    @Param("leaveTypeId") Long leaveTypeId,
+                                    @Param("startDate") LocalDate startDate,
+                                    @Param("endDate") LocalDate endDate);
 }

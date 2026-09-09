@@ -32,9 +32,11 @@ import java.util.Optional;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.example.demo.auth.service.EmployeeCompanyGuard employeeCompanyGuard;
     private final UserRoleRepository userRoleRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
+    private final com.example.demo.auth.repository.UserRepository userRepository;
 
     @GetMapping("/me")
     @Transactional
@@ -50,11 +52,7 @@ public class AuthController {
                 .distinct()
                 .collect(java.util.stream.Collectors.toList());
 
-        UserRole primaryRole = userRoleRepository.findByUserId(principal.getId()).stream()
-                .filter(ur -> ur.getCompany() != null)
-                .max(java.util.Comparator.comparingInt(ur ->
-                        ur.getAccessScope() != null ? ur.getAccessScope().ordinal() : -1))
-                .orElse(null);
+        UserRole primaryRole = employeeCompanyGuard.primaryRole(principal.getId());
 
         Long rawCompanyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
         // For ENTERPRISE scope, ensure we return the head office ID.
@@ -106,6 +104,9 @@ public class AuthController {
         response.put("employeeId", employeeId);
         response.put("firstName", firstName);
         response.put("photoPath", photoPath);
+        response.put("mustChangePassword", userRepository.findById(principal.getId())
+                .map(com.example.demo.auth.entity.User::isMustChangePassword)
+                .orElse(false));
         return ResponseEntity.ok(response);
     }
 

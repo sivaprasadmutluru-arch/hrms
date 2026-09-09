@@ -56,12 +56,17 @@ public class LeaveEventHandler {
                 wr.setCompany(req.getCompany());
                 wr.setDate(date);
                 wr.setWorkRecordType(WorkRecord.WorkRecordType.LEA);
-                wr.setDayPercentage(1.0);
+                boolean halfDay = req.getLeaveDuration() == LeaveRequest.LeaveDuration.FIRST_HALF
+                        || req.getLeaveDuration() == LeaveRequest.LeaveDuration.SECOND_HALF;
+                wr.setDayPercentage(halfDay ? 0.5 : 1.0);
                 wr.setIsLeaveRecord(true);
                 wr.setIsAttendanceRecord(false);
                 wr.setAtWork("00:00");
                 wr.setAtWorkSecond(0);
-                wr.setNote(leaveName);
+                String durationLabel = req.getLeaveDuration() == LeaveRequest.LeaveDuration.FIRST_HALF
+                        ? "First half" : req.getLeaveDuration() == LeaveRequest.LeaveDuration.SECOND_HALF
+                        ? "Second half" : "Full day";
+                wr.setNote(leaveName + " (" + durationLabel + ")");
                 wr.setLastUpdate(LocalDateTime.now());
                 workRecordRepository.save(wr);
             }

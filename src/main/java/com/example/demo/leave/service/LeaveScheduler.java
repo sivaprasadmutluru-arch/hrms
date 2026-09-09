@@ -1,5 +1,8 @@
 package com.example.demo.leave.service;
 
+import com.example.demo.base.entity.Company;
+import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.leave.entity.AvailableLeave;
 import com.example.demo.leave.entity.LeaveType;
 import com.example.demo.leave.repository.AvailableLeaveRepository;
@@ -26,16 +29,41 @@ public class LeaveScheduler {
     private final AvailableLeaveRepository availableLeaveRepository;
     private final LeaveTypeRepository leaveTypeRepository;
     private final LeaveAccrualService leaveAccrualService;
+    private final CompanyRepository companyRepository;
 
     /**
-     * Runs daily at midnight.
-     * On the last day of each month, triggers accrual posting for all accrual-enabled leave types.
+     * Runs daily at midnight and posts the previous month's accrual in every tenant.
+     * Running daily provides automatic catch-up when the application was unavailable on
+     * the first day of the month. LeaveAccrualService is idempotent, so later daily runs
+     * cannot credit an employee twice for the same month.
      */
     @Scheduled(cron = "0 0 0 * * *")
     public void monthEndAccrual() {
-        LocalDate today = LocalDate.now();
-        if (today.equals(YearMonth.from(today).atEndOfMonth())) {
-            leaveAccrualService.processMonthlyAccrual(today);
+        runMonthlyAccrualCatchUp(LocalDate.now());
+    }
+
+    void runMonthlyAccrualCatchUp(LocalDate today) {
+        LocalDate monthEnd = YearMonth.from(today).minusMonths(1).atEndOfMonth();
+        List<Company> tenants = companyRepository.findAllHeadOfficesActivePublic();
+        log.info("[LeaveScheduler] Processing accrual date={} across {} tenants", monthEnd, tenants.size());
+
+        for (Company tenant : tenants) {
+            String schema = tenant.getSchemaName();
+            if (schema == null || schema.isBlank()) {
+                log.warn("[LeaveScheduler] Skipping company id={} because it has no tenant schema", tenant.getId());
+                continue;
+            }
+
+            try {
+                TenantContext.setTenant(schema);
+                int posted = leaveAccrualService.processMonthlyAccrual(monthEnd);
+                log.info("[LeaveScheduler] Tenant={} accrualDate={} posted={}", schema, monthEnd, posted);
+            } catch (Exception ex) {
+                // One tenant must not prevent accrual processing for every other company.
+                log.error("[LeaveScheduler] Accrual failed for tenant={} accrualDate={}", schema, monthEnd, ex);
+            } finally {
+                TenantContext.clear();
+            }
         }
     }
 

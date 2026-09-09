@@ -19,6 +19,7 @@
 		<jjwt.version>0.12.6</jjwt.version>
 		<mapstruct.version>1.6.3</mapstruct.version>
 		<frontend-maven-plugin.version>1.15.1</frontend-maven-plugin.version>
+		<frontend.skip>false</frontend.skip>
 		<node.version>v22.14.0</node.version>
 	</properties>
 
@@ -170,6 +171,7 @@
 				<configuration>
 					<workingDirectory>../hrms-web</workingDirectory>
 					<nodeVersion>${node.version}</nodeVersion>
+					<skip>${frontend.skip}</skip>
 				</configuration>
 				<executions>
 					<execution>

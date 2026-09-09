@@ -87,6 +87,13 @@ public class AttendanceResponse {
             r.setEmployeeId(a.getEmployee().getId());
             r.setEmployeeName(a.getEmployee().getFirstName() + " " + a.getEmployee().getLastName());
             r.setEmployeeBadgeId(a.getEmployee().getBadgeId());
+            // Some legacy/device-created attendance rows have no company link,
+            // which previously left Branch blank. Preserve a recorded branch
+            // when present; otherwise fall back to the employee's branch.
+            if (a.getCompany() == null && a.getEmployee().getCompany() != null) {
+                r.setCompanyId(a.getEmployee().getCompany().getId());
+                r.setCompanyName(a.getEmployee().getCompany().getName());
+            }
         }
         if (a.getShift() != null) {
             r.setShiftId(a.getShift().getId());
@@ -96,7 +103,7 @@ public class AttendanceResponse {
             r.setWorkTypeId(a.getWorkType().getId());
             r.setWorkTypeName(a.getWorkType().getName());
         }
-        if (a.getCompany() != null) {
+        if (r.getCompanyId() == null && a.getCompany() != null) {
             r.setCompanyId(a.getCompany().getId());
             r.setCompanyName(a.getCompany().getName());
         }

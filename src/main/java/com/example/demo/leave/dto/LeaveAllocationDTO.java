@@ -11,6 +11,8 @@ public record LeaveAllocationDTO(
         Double totalLeaveDays,
         Double availableDays,
         Double carryforwardDays,
+        Double usedDays,
+        Double remainingDays,
         Integer year,
         AllocationStatus status
 ) {}

@@ -41,6 +41,7 @@ public class UserRoleService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final CompanyRepository companyRepository;
+    private final EmployeeCompanyGuard employeeCompanyGuard;
 
     @Transactional
     public UserRoleDto assignRole(AssignRoleRequest request) {
@@ -57,6 +58,9 @@ public class UserRoleService {
                 .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
 
         // Enforce role assignment privilege: BRANCH_ADMIN cannot assign ENTERPRISE_ADMIN or above
+        if (request.getRoleName() == Role.RoleName.EMPLOYEE) {
+            employeeCompanyGuard.validateEmployment(request.getUserId(), request.getCompanyId());
+        }
         AccessScopeContext.ScopeData callerScope = AccessScopeContext.get();
         if (callerScope != null && !callerScope.hasUnrestrictedAccess()) {
             validateRoleAssignmentPrivilege(callerScope.getScope(), request.getRoleName());

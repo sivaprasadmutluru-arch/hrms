@@ -42,11 +42,12 @@ public class ReverseGeocodingService {
 
         try {
             String url = String.format(Locale.US,
-                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=%f&lon=%f&zoom=18&addressdetails=0",
+                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=%f&lon=%f&zoom=18&addressdetails=0&accept-language=en",
                     latitude, longitude);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("User-Agent", USER_AGENT)
+                    .header("Accept-Language", "en")
                     .timeout(Duration.ofSeconds(4))
                     .GET()
                     .build();

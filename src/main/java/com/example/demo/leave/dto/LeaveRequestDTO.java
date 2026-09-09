@@ -1,6 +1,7 @@
 package com.example.demo.leave.dto;
 
 import com.example.demo.leave.entity.LeaveRequest.LeaveStatus;
+import com.example.demo.leave.entity.LeaveRequest.LeaveDuration;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,6 +15,7 @@ public record LeaveRequestDTO(
         LocalDate startDate,
         LocalDate endDate,
         Double requestedDays,
+        LeaveDuration leaveDuration,
         LeaveStatus status,
         String description,
         String rejectReason,

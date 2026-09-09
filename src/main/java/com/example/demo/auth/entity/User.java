@@ -36,6 +36,9 @@ public class User extends BaseEntity {
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "must_change_password", nullable = false, columnDefinition = "boolean default false")
+    private boolean mustChangePassword = false;
+
     @Column(name = "reset_token")
     private String resetToken;
 

@@ -67,6 +67,7 @@ public class EmployeeService {
     private final UserRepository userRepository;
     private final AuthService authService;
     private final UserRoleService userRoleService;
+    private final com.example.demo.auth.service.EmployeeCompanyGuard employeeCompanyGuard;
     private final CompanyRepository companyRepository;
     private final DepartmentRepository departmentRepository;
     private final JobPositionRepository jobPositionRepository;
@@ -273,7 +274,9 @@ public class EmployeeService {
                 isNewUser[0] = true;
                 log.info("[create] user not found, registering new user for email={}", req.getEmail());
                 RegisterRequest reg = new RegisterRequest();
-                reg.setUsername(req.getEmail());
+                reg.setUsername(req.getPhone() != null && !req.getPhone().isBlank()
+                        ? req.getPhone().trim()
+                        : req.getEmail());
                 reg.setEmail(req.getEmail());
                 reg.setPassword(req.getPassword() != null && !req.getPassword().isBlank()
                         ? req.getPassword()
@@ -283,6 +286,11 @@ public class EmployeeService {
                 reg.setCompanyId(null); // role assignment handled explicitly below
                 return authService.register(reg);
             });
+            if (isNewUser[0]) {
+                user.setMustChangePassword(true);
+                user = userRepository.save(user);
+            }
+            employeeCompanyGuard.validateEmployment(user.getId(), req.getCompanyId());
             emp.setUser(user);
 
             // Assign role: use selected role, or default to EMPLOYEE+SELF.
@@ -384,8 +392,13 @@ public class EmployeeService {
     // javadoc — and the same "must set TenantContext before the @Transactional proxy
     // acquires a connection" constraint, hence the wrapper/doUpdate split.
     public EmployeeResponse update(Long id, EmployeeRequest req) {
+        String originalTenant = TenantContext.getTenant();
         if (req.getCompanyId() != null) {
             resolveTenantForCompany(req.getCompanyId());
+            if (!TenantContext.DEFAULT_TENANT.equals(originalTenant) && !originalTenant.equals(TenantContext.getTenant())) {
+                TenantContext.setTenant(originalTenant);
+                throw new BadRequestException("Cannot change an employee's organization through employee edit. Select the original company and use a reviewed transfer process.");
+            }
         }
         return self.doUpdate(id, req);
     }
@@ -393,10 +406,27 @@ public class EmployeeService {
     @Transactional
     public EmployeeResponse doUpdate(Long id, EmployeeRequest req) {
         Employee emp = findEmployee(id);
+
+        if (req.getCompanyId() != null && !req.getCompanyId().equals(emp.getCompany().getId())) {
+            throw new BadRequestException("Company changes require a reviewed employee transfer, not an ordinary edit.");
+        }
+
+        if (req.getBadgeId() != null && !req.getBadgeId().isBlank()) {
+            String requestedBadgeId = req.getBadgeId().trim();
+            employeeRepository.findByBadgeId(requestedBadgeId)
+                    .filter(existing -> !existing.getId().equals(id))
+                    .ifPresent(existing -> {
+                        throw new BadRequestException("Employee ID '" + requestedBadgeId + "' is already in use");
+                    });
+        }
+
         buildEmployee(emp, req);
         // Link to user account if not already linked and email is provided
         if (emp.getUser() == null && req.getEmail() != null && !req.getEmail().isBlank()) {
-            userRepository.findByEmail(req.getEmail()).ifPresent(emp::setUser);
+            userRepository.findByEmail(req.getEmail()).ifPresent(user -> {
+                employeeCompanyGuard.validateEmployment(user.getId(), emp.getCompany().getId());
+                emp.setUser(user);
+            });
         }
         Employee saved = employeeRepository.save(emp);
 

@@ -44,6 +44,20 @@ public class AdmsController {
     private final AdmsTenantResolver tenantResolver;
 
     /**
+     * Initial device registration/options handshake.
+     * Older ZKTeco/iClock firmware calls GET /iclock/cdata?options=all before it
+     * starts polling getrequest or posting ATTLOG records.
+     */
+    @GetMapping(value = "/cdata", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getDeviceOptions(
+            @RequestParam(value = "SN", defaultValue = "") String serialNumber,
+            @RequestParam(value = "options", required = false) String options,
+            @RequestParam(value = "INFO", required = false) String info) {
+        log.info("ADMS options handshake from SN={} options={}", serialNumber, options);
+        return buildOptionsResponse(serialNumber, info);
+    }
+
+    /**
      * Device heartbeat / handshake.
      * The device polls this endpoint every ~10 seconds.
      * MUST return the exact ATTLOGStamp format or the device stops pushing data.
@@ -53,12 +67,15 @@ public class AdmsController {
             @RequestParam(value = "SN", defaultValue = "") String serialNumber,
             @RequestParam(value = "INFO", required = false) String info) {
 
+        return buildOptionsResponse(serialNumber, info);
+    }
+
+    private ResponseEntity<String> buildOptionsResponse(String serialNumber, String info) {
+
         // Resolve & set tenant context for this device's handshake
-        runInTenant(serialNumber, () -> {
-            if (info != null && !info.isEmpty()) {
-                admsService.logDeviceInfo(serialNumber, info);
-            }
-        });
+        // Every poll is proof that the push device can reach HRMS. Persist it so the
+        // admin UI can distinguish "configured for push" from "actually connected".
+        runInTenant(serialNumber, () -> admsService.recordHeartbeat(serialNumber, info));
 
         // ATTLOGStamp=0 tells the device to send ALL records from the beginning.
         // Realtime=1 enables real-time push mode.

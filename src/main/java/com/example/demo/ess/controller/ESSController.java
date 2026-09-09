@@ -28,6 +28,7 @@ import com.example.demo.leave.dto.LeaveMapper;
 import com.example.demo.leave.repository.AvailableLeaveRepository;
 import com.example.demo.leave.repository.LeaveRequestRepository;
 import com.example.demo.leave.service.LeaveService;
+import com.example.demo.leave.service.LeavePeriodResolver;
 import com.example.demo.payroll.entity.Contract;
 import com.example.demo.payroll.entity.Payslip;
 import com.example.demo.payroll.repository.ContractRepository;
@@ -252,10 +253,11 @@ public class ESSController {
             @RequestParam Long leaveTypeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "FULL_DAY") LeaveRequest.LeaveDuration leaveDuration,
             @RequestParam(required = false) String description) {
         Employee emp = resolveEmployee(auth);
         LeaveRequest req = leaveService.applyLeave(
-                emp.getId(), leaveTypeId, startDate, endDate, description, emp.getCompany().getId());
+                emp.getId(), leaveTypeId, startDate, endDate, description, emp.getCompany().getId(), leaveDuration);
         return ResponseEntity.ok(req);
     }
 
@@ -462,13 +464,16 @@ public class ESSController {
     @Operation(summary = "Get own leave balance per leave type")
     public ResponseEntity<List<AvailableLeaveDTO>> myBalance(Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        java.util.Map<Long, Double> usedByType = new java.util.HashMap<>();
-        leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(emp.getId())
-                .forEach(row -> usedByType.put(((Number) row[0]).longValue(), ((Number) row[1]).doubleValue()));
         List<AvailableLeaveDTO> balance = availableLeaveRepository.findByEmployeeId(emp.getId()).stream()
                 .map(al -> {
-                    Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
-                    double used = ltId != null ? usedByType.getOrDefault(ltId, 0.0) : 0.0;
+                    double used = 0.0;
+                    if (al.getLeaveType() != null) {
+                        LeavePeriodResolver.Period period = LeavePeriodResolver.containing(
+                                al.getLeaveType(), java.time.LocalDate.now());
+                        Double value = leaveRequestRepository.sumApprovedDaysForPeriod(
+                                emp.getId(), al.getLeaveType().getId(), period.start(), period.end());
+                        used = value != null ? value : 0.0;
+                    }
                     return LeaveMapper.toDTO(al, used);
                 })
                 .toList();

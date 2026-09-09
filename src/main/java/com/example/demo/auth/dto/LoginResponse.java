@@ -15,8 +15,9 @@ public class LoginResponse {
     private final Long companyId;
     private final String companyName;
     private final Long employeeId;
+    private final boolean mustChangePassword;
 
-    public LoginResponse(String token, Long userId, String username, String email, List<String> roles, Long companyId, String companyName, Long employeeId) {
+    public LoginResponse(String token, Long userId, String username, String email, List<String> roles, Long companyId, String companyName, Long employeeId, boolean mustChangePassword) {
         this.token = token;
         this.userId = userId;
         this.username = username;
@@ -25,5 +26,6 @@ public class LoginResponse {
         this.companyId = companyId;
         this.companyName = companyName;
         this.employeeId = employeeId;
+        this.mustChangePassword = mustChangePassword;
     }
 }

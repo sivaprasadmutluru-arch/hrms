@@ -51,6 +51,12 @@ public class BiometricController {
         return ResponseEntity.ok(Map.of("message", "Deleted"));
     }
 
+    @GetMapping("/devices/{id}/test")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, Object>> testDeviceConnection(@PathVariable Long id) {
+        return ResponseEntity.ok(biometricService.testDeviceConnection(id));
+    }
+
     // ---- Biometric Employees ----
 
     @GetMapping("/employees")

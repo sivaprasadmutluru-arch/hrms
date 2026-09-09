@@ -46,16 +46,21 @@ public class AuthService {
     private final EmployeeRepository employeeRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final EmployeeCompanyGuard employeeCompanyGuard;
 
     public LoginResponse login(LoginRequest request) {
+        String loginIdentifier = resolveLoginIdentifier(request.getUsernameOrEmail());
         Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsernameOrEmail(), request.getPassword()));
+                new UsernamePasswordAuthenticationToken(loginIdentifier, request.getPassword()));
         String token = jwtTokenProvider.generateToken(auth);
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
-        userRepository.findById(principal.getId()).ifPresent(u -> {
+        User loginUser = userRepository.findById(principal.getId()).orElse(null);
+        boolean hasNeverLoggedIn = loginUser != null && loginUser.getLastLogin() == null;
+        if (loginUser != null) {
+            User u = loginUser;
             u.setLastLogin(LocalDateTime.now());
             userRepository.save(u);
-        });
+        }
         List<String> roles = principal.getAuthorities().stream()
                 .map(a -> a.getAuthority())
                 .filter(a -> a.startsWith("ROLE_"))
@@ -65,12 +70,8 @@ public class AuthService {
 
         // Resolve the user's primary company ID — prefer the highest-scope role's company
         // so ENTERPRISE_ADMIN gets their head office ID, not a random branch.
-        Long companyId = userRoleRepository.findByUserId(principal.getId()).stream()
-                .filter(ur -> ur.getCompany() != null)
-                .max(java.util.Comparator.comparingInt(ur ->
-                        ur.getAccessScope() != null ? ur.getAccessScope().ordinal() : -1))
-                .map(ur -> ur.getCompany().getId())
-                .orElse(null);
+        UserRole primaryRole = employeeCompanyGuard.primaryRole(principal.getId());
+        Long companyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
 
         // Employee rows live inside each company's own tenant schema, so the lookup
         // must switch TenantContext to that schema first — querying without doing so
@@ -117,7 +118,42 @@ public class AuthService {
                 ? companyRepository.findById(companyId).map(Company::getName).orElse(null)
                 : null;
 
-        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId);
+        boolean mustChangePassword = userRepository.findById(principal.getId())
+                .map(User::isMustChangePassword)
+                .orElse(false);
+        if (!mustChangePassword && hasNeverLoggedIn && roles.contains("EMPLOYEE") && loginUser != null) {
+            loginUser.setMustChangePassword(true);
+            userRepository.save(loginUser);
+            mustChangePassword = true;
+        }
+        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId, mustChangePassword);
+    }
+
+    /** Allows employee phone-number login without duplicating phone data in the public users table. */
+    private String resolveLoginIdentifier(String suppliedIdentifier) {
+        String identifier = suppliedIdentifier == null ? "" : suppliedIdentifier.trim();
+        if (userRepository.findByUsernameOrEmail(identifier, identifier).isPresent()) return identifier;
+
+        String matchedUsername = null;
+        for (Company company : companyRepository.findAllHeadOfficesActivePublic().stream()
+                .sorted(java.util.Comparator.comparing(Company::getId)).toList()) {
+            try {
+                TenantContext.setTenant(company.getSchemaName());
+                Employee employee = employeeRepository.findByPhone(identifier).orElse(null);
+                if (employee == null || employee.getUser() == null) continue;
+                String username = employee.getUser().getUsername();
+                if (matchedUsername != null && !matchedUsername.equals(username)) {
+                    log.warn("Phone login is ambiguous across tenant schemas: {}", identifier);
+                    return identifier;
+                }
+                matchedUsername = username;
+            } catch (Exception e) {
+                log.debug("Phone login lookup skipped schema='{}': {}", company.getSchemaName(), e.getMessage());
+            } finally {
+                TenantContext.clear();
+            }
+        }
+        return matchedUsername != null ? matchedUsername : identifier;
     }
 
     /** Looks up a linked Employee by userId inside a specific tenant schema, restoring the
@@ -186,6 +222,7 @@ public class AuthService {
             throw new BadRequestException("Reset token has expired");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
         userRepository.save(user);
@@ -210,6 +247,7 @@ public class AuthService {
             throw new BadRequestException("Current password is incorrect");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         userRepository.save(user);
     }
 
@@ -232,6 +270,7 @@ public class AuthService {
         }
 
         target.setPassword(passwordEncoder.encode(newPassword));
+        target.setMustChangePassword(true);
         userRepository.save(target);
     }
 }

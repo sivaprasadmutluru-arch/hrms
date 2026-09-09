@@ -14,6 +14,7 @@ import com.example.demo.leave.dto.*;
 import com.example.demo.leave.entity.*;
 import com.example.demo.leave.repository.*;
 import com.example.demo.leave.service.LeaveAccrualService;
+import com.example.demo.leave.service.LeavePeriodResolver;
 import com.example.demo.leave.service.LeaveService;
 import com.example.demo.notification.entity.Notification;
 import com.example.demo.notification.service.NotificationService;
@@ -36,6 +37,7 @@ import com.example.demo.auth.security.UserPrincipal;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.IOException;
@@ -44,10 +46,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -90,8 +97,83 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "List all leave requests (company-scoped)")
-    public ResponseEntity<Page<LeaveRequestDTO>> listRequests(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(leaveService.getAllRequests(pageable).map(LeaveMapper::toDTO));
+    public ResponseEntity<Page<LeaveRequestDTO>> listRequests(
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year).map(LeaveMapper::toDTO));
+    }
+
+    @DeleteMapping("/requests/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Permanently delete one leave request")
+    public ResponseEntity<Map<String, Object>> deleteRequest(@PathVariable Long id) {
+        int deleted = leaveService.deleteRequests(List.of(id));
+        return ResponseEntity.ok(Map.of("message", "Leave request deleted", "deleted", deleted));
+    }
+
+    @PostMapping("/requests/bulk-delete")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Permanently delete selected leave requests")
+    public ResponseEntity<Map<String, Object>> bulkDeleteRequests(@RequestBody List<Long> ids) {
+        int deleted = leaveService.deleteRequests(ids);
+        return ResponseEntity.ok(Map.of("message", deleted + " leave request(s) deleted", "deleted", deleted));
+    }
+
+
+    @GetMapping("/requests/export")
+    @PreAuthorize("hasAuthority('leave:view')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Export all accessible leave requests as Excel")
+    public void exportRequests(HttpServletResponse response) throws IOException {
+        List<LeaveRequest> requests = leaveService.getAllRequests(Pageable.unpaged()).getContent();
+
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=leave_requests.xlsx");
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Leave Requests");
+            Row header = sheet.createRow(0);
+            String[] columns = {
+                    "System Record ID", "Employee ID", "Employee", "Department", "Leave Type",
+                    "Start Date", "End Date", "Days", "Duration", "Status", "Reason",
+                    "Rejection Reason", "Approved By", "Applied On"
+            };
+            for (int i = 0; i < columns.length; i++) {
+                header.createCell(i).setCellValue(columns[i]);
+            }
+
+            int rowNumber = 1;
+            for (LeaveRequest request : requests) {
+                Row row = sheet.createRow(rowNumber++);
+                Employee employee = request.getEmployee();
+
+                row.createCell(0).setCellValue(employee != null && employee.getId() != null ? employee.getId() : 0L);
+                row.createCell(1).setCellValue(employee != null && employee.getBadgeId() != null ? employee.getBadgeId() : "");
+                row.createCell(2).setCellValue(employee == null ? "" :
+                        ((employee.getFirstName() != null ? employee.getFirstName() : "") + " " +
+                                (employee.getLastName() != null ? employee.getLastName() : "")).trim());
+                row.createCell(3).setCellValue(employee != null && employee.getDepartment() != null
+                        ? employee.getDepartment().getName() : "");
+                row.createCell(4).setCellValue(request.getLeaveType() != null && request.getLeaveType().getName() != null
+                        ? request.getLeaveType().getName() : "");
+                row.createCell(5).setCellValue(request.getStartDate() != null ? request.getStartDate().toString() : "");
+                row.createCell(6).setCellValue(request.getEndDate() != null ? request.getEndDate().toString() : "");
+                row.createCell(7).setCellValue(request.getRequestedDays() != null ? request.getRequestedDays() : 0.0);
+                row.createCell(8).setCellValue(request.getLeaveDuration() != null ? request.getLeaveDuration().name() : "FULL_DAY");
+                row.createCell(9).setCellValue(request.getStatus() != null ? request.getStatus().name() : "");
+                row.createCell(10).setCellValue(request.getDescription() != null ? request.getDescription() : "");
+                row.createCell(11).setCellValue(request.getRejectReason() != null ? request.getRejectReason() : "");
+                row.createCell(12).setCellValue(request.getApprovedBy() == null ? "" :
+                        ((request.getApprovedBy().getFirstName() != null ? request.getApprovedBy().getFirstName() : "") + " " +
+                                (request.getApprovedBy().getLastName() != null ? request.getApprovedBy().getLastName() : "")).trim());
+                row.createCell(13).setCellValue(request.getCreatedAt() != null ? request.getCreatedAt().toString() : "");
+            }
+
+            for (int i = 0; i < columns.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            workbook.write(response.getOutputStream());
+        }
     }
 
     @GetMapping("/types")
@@ -164,7 +246,7 @@ public class LeaveController {
 
         return ResponseEntity.ok(LeaveMapper.toDTO(
                 leaveService.applyLeave(targetEmployee.getId(), body.leaveTypeId(), body.startDate(), body.endDate(),
-                        body.description(), targetCompanyId)));
+                        body.description(), targetCompanyId, body.leaveDuration())));
     }
 
     @PostMapping("/requests/{id}/approve")
@@ -200,7 +282,9 @@ public class LeaveController {
     public ResponseEntity<List<LeaveAllocationDTO>> listAllocations(
             @RequestParam(required = false) Long employeeId,
             @RequestParam(required = false) Integer year) {
-        return ResponseEntity.ok(leaveService.getAllocations(employeeId, year).stream().map(LeaveMapper::toDTO).toList());
+        return ResponseEntity.ok(leaveService.getAllocations(employeeId, year).stream()
+                .map(a -> LeaveMapper.toDTO(a, getUsedDays(a)))
+                .toList());
     }
 
     @PutMapping("/allocations/{id}")
@@ -220,11 +304,16 @@ public class LeaveController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Delete a leave allocation")
     public ResponseEntity<Map<String, String>> deleteAllocation(@PathVariable Long id) {
-        if (!leaveAllocationRepository.existsById(id)) {
-            throw new ResourceNotFoundException("LeaveAllocation", id);
-        }
-        leaveAllocationRepository.deleteById(id);
+        leaveService.deleteAllocations(List.of(id));
         return ResponseEntity.ok(Map.of("message", "Leave allocation deleted"));
+    }
+
+    @PostMapping("/allocations/bulk-delete")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Delete selected leave allocations")
+    public ResponseEntity<Map<String, Object>> bulkDeleteAllocations(@RequestBody List<Long> ids) {
+        int deleted = leaveService.deleteAllocations(ids);
+        return ResponseEntity.ok(Map.of("message", deleted + " leave allocation(s) deleted", "deleted", deleted));
     }
 
     @PostMapping("/allocate")
@@ -271,17 +360,8 @@ public class LeaveController {
         List<AvailableLeave> result = spec != null
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();
-        var scope = AccessScopeContext.get();
-        Long companyId = scope != null ? scope.getCompanyId() : null;
-        java.util.Map<String, Double> usedDaysMap = new java.util.HashMap<>();
-        if (companyId != null) {
-            leaveRequestRepository.sumApprovedDaysByEmployeeAndLeaveType(companyId)
-                    .forEach(row -> usedDaysMap.put(row[0] + ":" + row[1], ((Number) row[2]).doubleValue()));
-        }
         return ResponseEntity.ok(result.stream().map(al -> {
-            Long empId = al.getEmployee() != null ? al.getEmployee().getId() : null;
-            Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
-            double used = (empId != null && ltId != null) ? usedDaysMap.getOrDefault(empId + ":" + ltId, 0.0) : 0.0;
+            double used = getCurrentPeriodUsedDays(al);
             return LeaveMapper.toDTO(al, used);
         }).toList());
     }
@@ -291,12 +371,8 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "Get leave balance for a specific employee")
     public ResponseEntity<List<AvailableLeaveDTO>> getEmployeeBalance(@PathVariable Long employeeId) {
-        java.util.Map<Long, Double> usedByType = new java.util.HashMap<>();
-        leaveRequestRepository.sumApprovedDaysByLeaveTypeForEmployee(employeeId)
-                .forEach(row -> usedByType.put(((Number) row[0]).longValue(), ((Number) row[1]).doubleValue()));
         return ResponseEntity.ok(availableLeaveRepository.findByEmployeeId(employeeId).stream().map(al -> {
-            Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
-            double used = ltId != null ? usedByType.getOrDefault(ltId, 0.0) : 0.0;
+            double used = getCurrentPeriodUsedDays(al);
             return LeaveMapper.toDTO(al, used);
         }).toList());
     }
@@ -372,17 +448,6 @@ public class LeaveController {
                 ? availableLeaveRepository.findAll(spec)
                 : availableLeaveRepository.findAll();
 
-        // Build used-days lookup: key = "employeeId:leaveTypeId"
-        // Use AccessScopeContext company ID (same source as /balance endpoint) to ensure consistency
-        var exportScope = AccessScopeContext.get();
-        Long usedDaysCompanyId = (exportScope != null && exportScope.getCompanyId() != null)
-                ? exportScope.getCompanyId() : companyId;
-        java.util.Map<String, Double> usedDaysMap = new java.util.HashMap<>();
-        if (usedDaysCompanyId != null) {
-            leaveRequestRepository.sumApprovedDaysByEmployeeAndLeaveType(usedDaysCompanyId)
-                    .forEach(row -> usedDaysMap.put(row[0] + ":" + row[1], ((Number) row[2]).doubleValue()));
-        }
-
         // Stable read order: by Employee, then Leave Type — mirrors the grouped UI
         records.sort(java.util.Comparator
                 .comparing((AvailableLeave al) -> al.getEmployee() != null
@@ -426,10 +491,7 @@ public class LeaveController {
                           + (al.getEmployee().getLastName() != null ? al.getEmployee().getLastName() : "")
                         : "";
                 empName = empName.trim();
-                Long empId = al.getEmployee() != null ? al.getEmployee().getId() : null;
-                Long ltId = al.getLeaveType() != null ? al.getLeaveType().getId() : null;
-                double usedDays = (empId != null && ltId != null)
-                        ? usedDaysMap.getOrDefault(empId + ":" + ltId, 0.0) : 0.0;
+                double usedDays = getCurrentPeriodUsedDays(al);
                 double totalDays = al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0;
                 double leaveBalance = Math.max(totalDays - usedDays, 0.0);
 
@@ -1109,13 +1171,17 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Operation(summary = "Export leave allocations as Excel")
     public void exportAllocations(@RequestParam Long companyId, HttpServletResponse response) throws IOException {
-        List<LeaveAllocation> allocations = leaveAllocationRepository.findByCompanyId(companyId);
+        List<LeaveAllocation> allocations = leaveAllocationRepository.findByCompanyId(companyId).stream()
+                .filter(a -> a.getStatus() == LeaveAllocation.AllocationStatus.ACTIVE)
+                .toList();
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=leave_allocations.xlsx");
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("Leave Allocations");
             Row header = sheet.createRow(0);
-            String[] cols = {"Employee", "Leave Type", "Start Date", "End Date", "Days"};
+            String[] cols = {"System Record ID", "Employee ID", "Employee", "Leave Type", "Year",
+                    "Total Days", "Available Days", "Carryforward Days", "Used Days",
+                    "Remaining Days", "Status"};
             for (int i = 0; i < cols.length; i++) {
                 header.createCell(i).setCellValue(cols[i]);
             }
@@ -1126,11 +1192,21 @@ public class LeaveController {
                         ? a.getEmployee().getFirstName() + " " + a.getEmployee().getLastName()
                         : "";
                 String leaveTypeName = a.getLeaveType() != null ? a.getLeaveType().getName() : "";
-                row.createCell(0).setCellValue(empName);
-                row.createCell(1).setCellValue(leaveTypeName);
-                row.createCell(2).setCellValue(a.getYear() != null ? a.getYear().toString() : "");
-                row.createCell(3).setCellValue(a.getYear() != null ? a.getYear().toString() : "");
-                row.createCell(4).setCellValue(a.getTotalLeaveDays() != null ? a.getTotalLeaveDays() : 0.0);
+                row.createCell(0).setCellValue(a.getEmployee() != null ? a.getEmployee().getId() : 0L);
+                row.createCell(1).setCellValue(a.getEmployee() != null && a.getEmployee().getBadgeId() != null
+                        ? a.getEmployee().getBadgeId() : "");
+                row.createCell(2).setCellValue(empName);
+                row.createCell(3).setCellValue(leaveTypeName);
+                row.createCell(4).setCellValue(a.getYear() != null ? a.getYear() : LocalDate.now().getYear());
+                row.createCell(5).setCellValue(a.getTotalLeaveDays() != null ? a.getTotalLeaveDays() : 0.0);
+                row.createCell(6).setCellValue(a.getAvailableDays() != null ? a.getAvailableDays() : 0.0);
+                row.createCell(7).setCellValue(a.getCarryforwardDays() != null ? a.getCarryforwardDays() : 0.0);
+                double usedDays = getUsedDays(a);
+                double allocatedDays = (a.getAvailableDays() != null ? a.getAvailableDays() : 0.0)
+                        + (a.getCarryforwardDays() != null ? a.getCarryforwardDays() : 0.0);
+                row.createCell(8).setCellValue(usedDays);
+                row.createCell(9).setCellValue(allocatedDays - usedDays);
+                row.createCell(10).setCellValue(a.getStatus() != null ? a.getStatus().name() : "ACTIVE");
             }
             workbook.write(response.getOutputStream());
         }
@@ -1172,7 +1248,7 @@ public class LeaveController {
                 if (row == null) continue;
 
                 try {
-                    // Employee — matched by "employee id", "badge id", or "employee"
+                    // Employee — matched by "employee id", legacy "badge id", or "employee"
                     String empRaw = getColValue(row, colIndex, "employee id", "badge id", "employee");
                     if (empRaw == null || empRaw.isBlank()) { failed++; errors.add("Row " + (i+1) + ": missing employee"); continue; }
                     Employee employee = null;
@@ -1188,6 +1264,9 @@ public class LeaveController {
                         if (!byBadge.isEmpty()) employee = byBadge.get(0);
                     }
                     if (employee == null) { failed++; errors.add("Row " + (i+1) + ": employee not found: " + empRaw); continue; }
+                    if (employee.getCompany() == null || !companyId.equals(employee.getCompany().getId())) {
+                        failed++; errors.add("Row " + (i+1) + ": employee does not belong to selected company"); continue;
+                    }
 
                     // Leave type — by "leave type" column
                     String ltRaw = getColValue(row, colIndex, "leave type");
@@ -1204,6 +1283,9 @@ public class LeaveController {
                                 .findFirst().orElse(null);
                     }
                     if (leaveType == null) { failed++; errors.add("Row " + (i+1) + ": leave type not found: " + ltRaw); continue; }
+                    if (leaveType.getCompany() == null || !companyId.equals(leaveType.getCompany().getId())) {
+                        failed++; errors.add("Row " + (i+1) + ": leave type does not belong to selected company"); continue;
+                    }
 
                     // Year
                     String yearRaw = getColValue(row, colIndex, "year");
@@ -1241,6 +1323,32 @@ public class LeaveController {
                     allocation.setStatus(status);
                     allocation.setCompany(company);
                     leaveAllocationRepository.save(allocation);
+
+                    // Keep the balance source-of-truth in sync so imported allocations are
+                    // immediately visible and usable when employees apply for leave.
+                    if (status == LeaveAllocation.AllocationStatus.ACTIVE) {
+                        Employee balanceEmployee = employee;
+                        LeaveType balanceLeaveType = leaveType;
+                        AvailableLeave balance = availableLeaveRepository
+                                .findByEmployeeIdAndLeaveTypeId(employee.getId(), leaveType.getId())
+                                .orElseGet(() -> {
+                                    AvailableLeave created = new AvailableLeave();
+                                    created.setEmployee(balanceEmployee);
+                                    created.setLeaveType(balanceLeaveType);
+                                    created.setAssignedDate(LocalDate.now());
+                                    return created;
+                                });
+                        balance.setAvailableDays(availDays);
+                        balance.setCarryforwardDays(cfDays);
+                        if (balance.getAssignedDate() == null) balance.setAssignedDate(LocalDate.now());
+                        if (Boolean.TRUE.equals(leaveType.getReset()) && balance.getResetDate() == null) {
+                            balance.setResetDate(balance.computeNextResetDate(LocalDate.now()));
+                        }
+                        if (leaveType.getCarryforwardType() == LeaveType.CarryforwardType.CARRYFORWARD_EXPIRE) {
+                            balance.setExpiredDate(leaveType.getCarryforwardExpireDate());
+                        }
+                        availableLeaveRepository.save(balance);
+                    }
                     imported++;
 
                 } catch (Exception ex) {
@@ -1284,6 +1392,291 @@ public class LeaveController {
             }
             default -> "";
         };
+    }
+
+    // ─── Import Historical Leave Requests ──────────────────────────────────────
+
+    @GetMapping("/requests/history-template")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Operation(summary = "Download the approved historical leave import template")
+    public void downloadHistoricalLeaveTemplate(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=sample_old_leave_template.xlsx");
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.INDIGO.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            createHistoricalTemplateSheet(workbook, "Annual Leave", headerStyle);
+            createHistoricalTemplateSheet(workbook, "Sick Leave", headerStyle);
+            workbook.setActiveSheet(0);
+            workbook.write(response.getOutputStream());
+        }
+    }
+
+    private void createHistoricalTemplateSheet(XSSFWorkbook workbook, String sheetName,
+                                                CellStyle headerStyle) {
+        Sheet sheet = workbook.createSheet(sheetName);
+        sheet.createFreezePane(0, 1);
+
+        Row header = sheet.createRow(0);
+        String[] columns = {"Emp ID", "Request From", "Request To", "Duration"};
+        for (int column = 0; column < columns.length; column++) {
+            Cell cell = header.createCell(column);
+            cell.setCellValue(columns[column]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        sheet.setColumnWidth(0, 18 * 256);
+        sheet.setColumnWidth(1, 18 * 256);
+        sheet.setColumnWidth(2, 18 * 256);
+        sheet.setColumnWidth(3, 14 * 256);
+        sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, 3));
+    }
+
+    @PostMapping("/requests/import-history")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional
+    @Operation(summary = "Import approved historical leave requests from Annual Leave / Sick leave Excel sheets")
+    public ResponseEntity<Map<String, Object>> importHistoricalLeaveRequests(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Long companyId) throws IOException {
+        var company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && !scope.canAccess(companyId)) {
+            throw new AccessDeniedException("You cannot import leave history outside your company access scope");
+        }
+
+        List<LeaveType> companyLeaveTypes = leaveService.getLeaveTypes().stream()
+                .filter(type -> Boolean.TRUE.equals(type.getIsOrganizationWide())
+                        || (type.getCompany() != null && companyId.equals(type.getCompany().getId())))
+                .toList();
+        int imported = 0;
+        int duplicates = 0;
+        int skipped = 0;
+        int failed = 0;
+        List<String> errors = new ArrayList<>();
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            for (Sheet sheet : workbook) {
+                String sheetName = sheet.getSheetName();
+                LeaveType leaveType = resolveHistoricalLeaveType(sheetName, companyLeaveTypes);
+                if (leaveType == null) {
+                    skipped += Math.max(sheet.getLastRowNum() - 1, 0);
+                    errors.add("Sheet '" + sheetName + "': no matching active Annual/Sick leave type found for the selected company");
+                    continue;
+                }
+
+                Row headerRow = findHistoricalHeaderRow(sheet);
+                if (headerRow == null) {
+                    errors.add("Sheet '" + sheetName + "': required Emp ID / Request From headers not found");
+                    continue;
+                }
+                Map<String, Integer> columns = historicalColumnIndexes(headerRow);
+                Employee currentEmployee = null;
+
+                for (int rowIndex = headerRow.getRowNum() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                    Row row = sheet.getRow(rowIndex);
+                    if (row == null) continue;
+                    Cell fromCell = historicalCell(row, columns, "request from");
+                    Cell toCell = historicalCell(row, columns, "request to");
+                    if (isBlankCell(fromCell) && isBlankCell(toCell)) {
+                        skipped++;
+                        continue;
+                    }
+
+                    try {
+                        String badge = historicalString(row, columns, "emp id");
+                        if (badge != null && !badge.isBlank()) {
+                            currentEmployee = employeeRepository.findByBadgeIdAndCompanyId(badge.trim(), companyId)
+                                    .orElse(null);
+                            if (currentEmployee == null) {
+                                throw new BadRequestException("employee badge not found in selected company: " + badge.trim());
+                            }
+                        }
+                        if (currentEmployee == null) {
+                            throw new BadRequestException("missing employee badge and no preceding employee row to inherit");
+                        }
+
+                        LocalDate[] dates = parseHistoricalDateRange(fromCell, toCell);
+                        LocalDate startDate = dates[0];
+                        LocalDate endDate = dates[1];
+                        if (endDate.isBefore(startDate)) {
+                            throw new BadRequestException("Request To is before Request From");
+                        }
+                        double days = parseHistoricalDuration(historicalString(row, columns, "duration"));
+                        if (days <= 0) {
+                            days = leaveService.calculateWorkingDays(
+                                    startDate, endDate, companyId, leaveType, currentEmployee.getId());
+                        }
+                        if (days <= 0) throw new BadRequestException("duration must be greater than zero");
+
+                        boolean exists = leaveRequestRepository
+                                .existsByEmployeeIdAndLeaveTypeIdAndStartDateAndEndDateAndStatus(
+                                        currentEmployee.getId(), leaveType.getId(), startDate, endDate,
+                                        LeaveRequest.LeaveStatus.APPROVED);
+                        if (exists) {
+                            duplicates++;
+                            continue;
+                        }
+
+                        LeaveRequest request = new LeaveRequest();
+                        request.setEmployee(currentEmployee);
+                        request.setLeaveType(leaveType);
+                        request.setStartDate(startDate);
+                        request.setEndDate(endDate);
+                        request.setRequestedDays(days);
+                        request.setStatus(LeaveRequest.LeaveStatus.APPROVED);
+                        request.setApprovedAvailableDays(days);
+                        request.setApprovedCarryforwardDays(0.0);
+                        request.setDescription("Historical leave imported from " + file.getOriginalFilename()
+                                + " (" + sheetName + ")");
+                        request.setCompany(company);
+                        leaveRequestRepository.save(request);
+                        imported++;
+                    } catch (Exception ex) {
+                        failed++;
+                        errors.add("Sheet '" + sheetName + "', row " + (rowIndex + 1) + ": " + ex.getMessage());
+                    }
+                }
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Historical leave import completed");
+        result.put("imported", imported);
+        result.put("duplicates", duplicates);
+        result.put("skipped", skipped);
+        result.put("failed", failed);
+        result.put("errors", errors);
+        return ResponseEntity.ok(result);
+    }
+
+    private double getUsedDays(LeaveAllocation allocation) {
+        if (allocation.getEmployee() == null || allocation.getLeaveType() == null) return 0.0;
+        int allocationYear = allocation.getYear() != null
+                ? allocation.getYear() : LocalDate.now().getYear();
+        LeavePeriodResolver.Period period = LeavePeriodResolver.forAllocationYear(
+                allocation.getLeaveType(), allocationYear);
+        Double used = leaveRequestRepository.sumApprovedDaysForPeriod(
+                allocation.getEmployee().getId(), allocation.getLeaveType().getId(),
+                period.start(), period.end());
+        return used != null ? used : 0.0;
+    }
+
+    private double getCurrentPeriodUsedDays(AvailableLeave balance) {
+        if (balance.getEmployee() == null || balance.getLeaveType() == null) return 0.0;
+        LeavePeriodResolver.Period period = LeavePeriodResolver.containing(
+                balance.getLeaveType(), LocalDate.now());
+        Double used = leaveRequestRepository.sumApprovedDaysForPeriod(
+                balance.getEmployee().getId(), balance.getLeaveType().getId(),
+                period.start(), period.end());
+        return used != null ? used : 0.0;
+    }
+
+    private LeaveType resolveHistoricalLeaveType(String sheetName, List<LeaveType> leaveTypes) {
+        String normalizedSheet = sheetName == null ? "" : sheetName.trim().toLowerCase(Locale.ROOT);
+        String keyword = normalizedSheet.contains("sick") ? "sick"
+                : normalizedSheet.contains("annual") ? "annual" : null;
+        if (keyword == null) return null;
+        return leaveTypes.stream()
+                .filter(LeaveType::isActive)
+                .filter(type -> type.getName() != null
+                        && type.getName().toLowerCase(Locale.ROOT).contains(keyword))
+                .findFirst().orElse(null);
+    }
+
+    private Row findHistoricalHeaderRow(Sheet sheet) {
+        for (int i = 0; i <= Math.min(sheet.getLastRowNum(), 10); i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) continue;
+            Map<String, Integer> columns = historicalColumnIndexes(row);
+            if (columns.containsKey("emp id") && columns.containsKey("request from")) return row;
+        }
+        return null;
+    }
+
+    private Map<String, Integer> historicalColumnIndexes(Row row) {
+        Map<String, Integer> columns = new HashMap<>();
+        for (int i = 0; i < row.getLastCellNum(); i++) {
+            String value = getCellStringValue(row.getCell(i));
+            if (value != null && !value.isBlank()) {
+                columns.put(value.trim().toLowerCase(Locale.ROOT), i);
+            }
+        }
+        return columns;
+    }
+
+    private Cell historicalCell(Row row, Map<String, Integer> columns, String name) {
+        Integer index = columns.get(name);
+        return index == null ? null : row.getCell(index);
+    }
+
+    private String historicalString(Row row, Map<String, Integer> columns, String name) {
+        Cell cell = historicalCell(row, columns, name);
+        return cell == null ? null : new DataFormatter(Locale.ENGLISH).formatCellValue(cell);
+    }
+
+    private boolean isBlankCell(Cell cell) {
+        return cell == null || cell.getCellType() == CellType.BLANK
+                || (cell.getCellType() == CellType.STRING && cell.getStringCellValue().trim().isEmpty());
+    }
+
+    private LocalDate[] parseHistoricalDateRange(Cell fromCell, Cell toCell) {
+        if (fromCell == null || isBlankCell(fromCell)) throw new BadRequestException("missing Request From date");
+        LocalDate start;
+        LocalDate end = null;
+        if (fromCell.getCellType() == CellType.STRING) {
+            String raw = fromCell.getStringCellValue().replace('\u00A0', ' ').trim();
+            String[] range = raw.split("\\s+[–—-]\\s+", 2);
+            start = parseHistoricalDateText(range[0]);
+            if (range.length == 2) end = parseHistoricalDateText(range[1]);
+        } else {
+            start = parseHistoricalDateCell(fromCell);
+        }
+        if (end == null && toCell != null && !isBlankCell(toCell)) end = parseHistoricalDateCell(toCell);
+        if (end == null) end = start;
+        return new LocalDate[]{start, end};
+    }
+
+    private LocalDate parseHistoricalDateCell(Cell cell) {
+        if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+            return cell.getDateCellValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        }
+        if (cell.getCellType() == CellType.NUMERIC) {
+            return DateUtil.getLocalDateTime(cell.getNumericCellValue()).toLocalDate();
+        }
+        return parseHistoricalDateText(getCellStringValue(cell));
+    }
+
+    private LocalDate parseHistoricalDateText(String raw) {
+        if (raw == null || raw.isBlank()) throw new BadRequestException("blank date");
+        String value = raw.replace('\u00A0', ' ').trim();
+        String[] patterns = {"d-MMM-uuuu", "d-MMM-uu", "d MMM uuuu", "d MMM uu",
+                "uuuu-MM-dd", "d/M/uuuu", "d/M/uu"};
+        for (String pattern : patterns) {
+            try {
+                DateTimeFormatter formatter = new DateTimeFormatterBuilder()
+                        .parseCaseInsensitive().appendPattern(pattern).toFormatter(Locale.ENGLISH);
+                return LocalDate.parse(value, formatter);
+            } catch (DateTimeParseException ignored) { }
+        }
+        throw new BadRequestException("unsupported date: " + value);
+    }
+
+    private double parseHistoricalDuration(String raw) {
+        if (raw == null || raw.isBlank()) return 0.0;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("[-+]?[0-9]*\\.?[0-9]+")
+                .matcher(raw.replace(',', '.'));
+        return matcher.find() ? Double.parseDouble(matcher.group()) : 0.0;
     }
 
     // ─── Export Holidays ──────────────────────────────────────────────────────

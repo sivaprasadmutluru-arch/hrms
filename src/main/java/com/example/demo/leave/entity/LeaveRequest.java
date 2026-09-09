@@ -39,6 +39,10 @@ public class LeaveRequest extends BaseEntity {
     private Double requestedDays;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "leave_duration")
+    private LeaveDuration leaveDuration = LeaveDuration.FULL_DAY;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private LeaveStatus status = LeaveStatus.REQUESTED;
 
@@ -69,5 +73,9 @@ public class LeaveRequest extends BaseEntity {
 
     public enum LeaveStatus {
         REQUESTED, APPROVED, REJECTED, CANCELLED
+    }
+
+    public enum LeaveDuration {
+        FULL_DAY, FIRST_HALF, SECOND_HALF
     }
 }

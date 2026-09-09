@@ -355,6 +355,23 @@ public class AdmsService {
         log.info("ADMS device info - SN={} INFO={}", serialNumber, info);
     }
 
+    /** Record the last successful ADMS poll from a physical device. */
+    @Transactional
+    public void recordHeartbeat(String serialNumber, String info) {
+        deviceRepo.findBySerialNumberAndIsActiveTrue(serialNumber).ifPresentOrElse(device -> {
+            ZonedDateTime now = ZonedDateTime.now(DEVICE_TIMEZONE);
+            device.setLastFetchDate(now.toLocalDate());
+            device.setLastFetchTime(now.toLocalTime().withNano(0));
+            device.setLive(true);
+            deviceRepo.save(device);
+            if (info != null && !info.isBlank()) {
+                logDeviceInfo(serialNumber, info);
+            } else {
+                log.info("ADMS heartbeat - SN={} device='{}'", serialNumber, device.getName());
+            }
+        }, () -> log.warn("ADMS heartbeat from unknown serial '{}'", serialNumber));
+    }
+
     /**
      * Internal record class for parsed ATTLOG punch data.
      */

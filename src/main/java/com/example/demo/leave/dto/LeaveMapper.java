@@ -27,6 +27,7 @@ public final class LeaveMapper {
                 r.getStartDate(),
                 r.getEndDate(),
                 r.getRequestedDays(),
+                r.getLeaveDuration() != null ? r.getLeaveDuration() : LeaveRequest.LeaveDuration.FULL_DAY,
                 r.getStatus(),
                 r.getDescription(),
                 r.getRejectReason(),
@@ -92,6 +93,12 @@ public final class LeaveMapper {
     }
 
     public static LeaveAllocationDTO toDTO(LeaveAllocation la) {
+        return toDTO(la, 0.0);
+    }
+
+    public static LeaveAllocationDTO toDTO(LeaveAllocation la, double usedDays) {
+        double allocated = (la.getAvailableDays() != null ? la.getAvailableDays() : 0.0)
+                + (la.getCarryforwardDays() != null ? la.getCarryforwardDays() : 0.0);
         return new LeaveAllocationDTO(
                 la.getId(),
                 la.getEmployee() != null ? la.getEmployee().getId() : null,
@@ -101,6 +108,8 @@ public final class LeaveMapper {
                 la.getTotalLeaveDays(),
                 la.getAvailableDays(),
                 la.getCarryforwardDays(),
+                usedDays,
+                allocated - usedDays,
                 la.getYear(),
                 la.getStatus()
         );

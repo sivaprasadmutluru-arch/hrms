@@ -142,7 +142,7 @@ public class PayslipImportService {
                     } catch (NumberFormatException ignored) {}
                 }
                 if (empOpt.isEmpty()) {
-                    errors.add("Row " + (rowIdx + 1) + ": Employee with badge ID '" + badgeId + "' not found.");
+                    errors.add("Row " + (rowIdx + 1) + ": Employee with Employee ID '" + badgeId + "' not found.");
                     continue;
                 }
                 Employee employee = empOpt.get();
