@@ -77,6 +77,7 @@ public class EmployeeService {
     private final ContractRepository contractRepository;
     private final FileUploadService fileUploadService;
     private final EmployeeWorkInformationRepository workInfoRepository;
+    private final ReportingManagerService reportingManagers;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -99,7 +100,7 @@ public class EmployeeService {
                         Contract contract = contractRepository.findByEmployeeId(e.getId())
                                 .stream().findFirst().orElse(null);
                         return (Page<EmployeeResponse>) new PageImpl<>(
-                                Collections.singletonList(EmployeeResponse.from(e, contract)), pageable, 1);
+                                Collections.singletonList(responseWithManager(e, contract)), pageable, 1);
                     })
                     .orElse(Page.empty(pageable));
         }
@@ -128,14 +129,14 @@ public class EmployeeService {
         Map<Long, Contract> contractByEmployeeId = contractRepository.findByEmployeeIdIn(employeeIds)
                 .stream().collect(Collectors.toMap(c -> c.getEmployee().getId(), c -> c, (a, b) -> a));
 
-        return page.map(e -> EmployeeResponse.from(e, contractByEmployeeId.get(e.getId())));
+        return page.map(e -> responseWithManager(e, contractByEmployeeId.get(e.getId())));
     }
 
     @Transactional(readOnly = true)
     public EmployeeResponse getById(Long id) {
         Employee emp = findEmployee(id);
         Contract contract = contractRepository.findByEmployeeId(id).stream().findFirst().orElse(null);
-        return EmployeeResponse.from(emp, contract);
+        return responseWithManager(emp, contract);
     }
 
     /**
@@ -307,6 +308,11 @@ public class EmployeeService {
                 roleReq.setRoleName(roleName);
                 roleReq.setCompanyId(req.getCompanyId());
                 roleReq.setAccessScope(scope);
+                // This assignment is generated as part of employee onboarding,
+                // not entered through the manual Roles & Access form. Keep an
+                // explicit audit reason so the canonical role validator can
+                // distinguish and record the system-driven grant.
+                roleReq.setReason("Automatic assignment during employee creation");
                 userRoleService.assignRole(roleReq);
             }
         }
@@ -317,7 +323,7 @@ public class EmployeeService {
         Contract contract = createDefaultContract(saved, req);
         createDefaultWorkInfo(saved);
         log.info("[create] done for employee id={}", saved.getId());
-        return EmployeeResponse.from(saved, contract);
+        return responseWithManager(saved, contract);
     }
 
     public Map<String, Object> bulkImport(List<EmployeeRequest> requests) {
@@ -420,6 +426,9 @@ public class EmployeeService {
                     });
         }
 
+        // Preserve the manager configured in Work Information when another
+        // employee field is edited without supplying a manager change.
+        emp.setReportingManager(reportingManagers.resolve(emp));
         buildEmployee(emp, req);
         // Link to user account if not already linked and email is provided
         if (emp.getUser() == null && req.getEmail() != null && !req.getEmail().isBlank()) {
@@ -445,7 +454,7 @@ public class EmployeeService {
         });
 
         Contract contract = contractRepository.findByEmployeeId(saved.getId()).stream().findFirst().orElse(null);
-        return EmployeeResponse.from(saved, contract);
+        return responseWithManager(saved, contract);
     }
 
     // companyId (query param, threaded from the row the frontend already has) pins the
@@ -698,6 +707,16 @@ public class EmployeeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
     }
 
+    private EmployeeResponse responseWithManager(Employee employee, Contract contract) {
+        EmployeeResponse response = EmployeeResponse.from(employee, contract);
+        Employee manager = reportingManagers.resolve(employee);
+        response.setReportingManagerId(manager == null ? null : manager.getId());
+        response.setReportingManagerName(manager == null ? null :
+                ((manager.getFirstName() == null ? "" : manager.getFirstName()) + " " +
+                        (manager.getLastName() == null ? "" : manager.getLastName())).trim());
+        return response;
+    }
+
     private Employee buildEmployee(Employee emp, EmployeeRequest req) {
         Company company = companyRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
@@ -734,7 +753,7 @@ public class EmployeeService {
         if (req.getJobRoleId() != null) emp.setJobRole(jobRoleRepository.findById(req.getJobRoleId()).orElse(null));
         if (req.getWorkTypeId() != null) emp.setWorkType(workTypeRepository.findById(req.getWorkTypeId()).orElse(null));
         if (req.getShiftId() != null) emp.setShift(shiftScheduleRepository.findById(req.getShiftId()).orElse(null));
-        if (req.getReportingManagerId() != null) emp.setReportingManager(employeeRepository.findById(req.getReportingManagerId()).orElse(null));
+        if (req.getReportingManagerId() != null) emp.setReportingManager(reportingManagers.validate(emp, req.getReportingManagerId()));
         if (req.getIsActive() != null) emp.setActive(req.getIsActive());
         return emp;
     }

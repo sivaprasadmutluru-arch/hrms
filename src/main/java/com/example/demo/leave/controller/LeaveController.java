@@ -100,7 +100,7 @@ public class LeaveController {
     public ResponseEntity<Page<LeaveRequestDTO>> listRequests(
             @PageableDefault(size = 20) Pageable pageable,
             @RequestParam(required = false) Integer year) {
-        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year).map(LeaveMapper::toDTO));
+        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year).map(r -> LeaveMapper.toDTO(r, leaveService.reviewAllowed(r.getId()))));
     }
 
     @DeleteMapping("/requests/{id}")
@@ -250,7 +250,7 @@ public class LeaveController {
     }
 
     @PostMapping("/requests/{id}/approve")
-    @PreAuthorize("hasAuthority('leave:approve')")
+    @PreAuthorize("hasAuthority('leave:view') and @leaveService.reviewAllowed(#id)")
     @Transactional
     @Operation(summary = "Approve leave request")
     public ResponseEntity<LeaveRequestDTO> approve(@PathVariable Long id, @AuthenticationPrincipal UserPrincipal principal) {
@@ -259,7 +259,7 @@ public class LeaveController {
     }
 
     @PostMapping("/requests/{id}/reject")
-    @PreAuthorize("hasAuthority('leave:approve')")
+    @PreAuthorize("hasAuthority('leave:view') and @leaveService.reviewAllowed(#id)")
     @Transactional
     @Operation(summary = "Reject leave request")
     public ResponseEntity<LeaveRequestDTO> reject(@PathVariable Long id,

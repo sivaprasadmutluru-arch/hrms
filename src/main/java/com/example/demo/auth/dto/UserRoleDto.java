@@ -3,6 +3,7 @@ package com.example.demo.auth.dto;
 import com.example.demo.auth.entity.UserRole;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -21,6 +22,16 @@ public class UserRoleDto {
     private String companyName;
 
     private UserRole.AccessScope accessScope;
+    private UserRole.AccessLevel accessLevel;
+    private Long departmentId;
+    private Long teamId;
+    private Long employeeScopeId;
+    private LocalDate effectiveFrom;
+    private LocalDate expiresOn;
+    private UserRole.AssignmentStatus assignmentStatus;
+    private Long grantedByUserId;
+    private String reason;
+    private String scopeSummary;
 
     public static UserRoleDto from(UserRole ur) {
         UserRoleDto dto = new UserRoleDto();
@@ -39,6 +50,19 @@ public class UserRoleDto {
             dto.setCompanyName(ur.getCompany().getName());
         }
         dto.setAccessScope(ur.getAccessScope());
+        dto.setAccessLevel(ur.getAccessLevel());
+        dto.setDepartmentId(ur.getDepartmentId());
+        dto.setTeamId(ur.getTeamId());
+        dto.setEmployeeScopeId(ur.getEmployeeScopeId());
+        dto.setEffectiveFrom(ur.getEffectiveFrom());
+        dto.setExpiresOn(ur.getExpiresOn());
+        dto.setAssignmentStatus(ur.getAssignmentStatus());
+        dto.setGrantedByUserId(ur.getGrantedByUserId());
+        dto.setReason(ur.getAssignmentReason());
+        dto.setScopeSummary(ur.getRole() != null && ur.getRole().getName() == com.example.demo.auth.entity.Role.RoleName.ACCOUNT_MANAGER
+                ? (ur.getAccessLevel() == UserRole.AccessLevel.PARTIAL
+                    ? "Company access (Payroll excluded)" : "Full company access")
+                : ur.getAccessScope() != null ? ur.getAccessScope().name().replace('_', ' ') : "No scope");
         return dto;
     }
 }

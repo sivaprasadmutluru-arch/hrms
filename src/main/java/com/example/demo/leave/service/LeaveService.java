@@ -47,6 +47,41 @@ public class LeaveService {
     private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
     private final LeaveRequestCommentRepository requestCommentRepository;
     private final LeaveRequestFileRepository requestFileRepository;
+    private final com.example.demo.employee.service.ReportingManagerService reportingManagers;
+    private final com.example.demo.notification.service.NotificationService notifications;
+
+    private boolean isReportingManager(Employee employee, Long userId) {
+        Employee manager = reportingManagers.resolve(employee);
+        return manager != null && manager.isActive() && manager.getUser() != null
+                && manager.getUser().getId().equals(userId)
+                && manager.getCompany().getId().equals(employee.getCompany().getId())
+                && (employee.getUser() == null || !employee.getUser().getId().equals(userId));
+    }
+
+    private Specification<LeaveRequest> directReports() {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || scope.getUserId() == null) return (r,q,c) -> c.disjunction();
+        List<Long> ids = scope.getAccessibleCompanyIds().stream()
+                .filter(id -> scope.getFilterCompanyId() == null || id.equals(scope.getFilterCompanyId()))
+                .flatMap(id -> employeeRepository.findByCompanyId(id).stream())
+                .filter(e -> isReportingManager(e, scope.getUserId())).map(Employee::getId).toList();
+        return (r,q,c) -> ids.isEmpty() ? c.disjunction() : r.get("employee").get("id").in(ids);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean reviewAllowed(Long requestId) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null) return false;
+        LeaveRequest request = leaveRequestRepository.findById(requestId).orElse(null);
+        if (request == null || !scope.canAccess(request.getCompany().getId())
+                || (scope.getFilterCompanyId() != null && !scope.getFilterCompanyId().equals(request.getCompany().getId()))) return false;
+        if (request.getEmployee().getUser() != null && request.getEmployee().getUser().getId().equals(scope.getUserId())) return false;
+        if (isReportingManager(request.getEmployee(), scope.getUserId())) return true;
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || scope.isSelfScope() || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("leave:approve"))) return false;
+        Specification<LeaveRequest> visible = ScopeFilter.byEmployeeDepartment();
+        return visible != null && leaveRequestRepository.exists(visible.and((r,q,c) -> c.equal(r.get("id"),requestId)));
+    }
 
     // ─── Queries ──────────────────────────────────────────────────────────────
 
@@ -60,6 +95,7 @@ public class LeaveService {
         // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
         // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<LeaveRequest> spec = ScopeFilter.byEmployeeDepartment();
+        if (spec != null) spec = spec.or(directReports());
         if (year != null) {
             Specification<LeaveRequest> yearRange = yearSpecification(year);
             spec = spec == null ? yearRange : spec.and(yearRange);
@@ -174,13 +210,23 @@ public class LeaveService {
             request.setStatus(LeaveRequest.LeaveStatus.APPROVED);
         }
 
-        return leaveRequestRepository.save(request);
+        LeaveRequest saved = leaveRequestRepository.save(request);
+        Employee manager = reportingManagers.resolve(saved.getEmployee());
+        if (saved.getStatus() == LeaveRequest.LeaveStatus.REQUESTED && manager != null
+                && isReportingManager(saved.getEmployee(), manager.getUser() == null ? null : manager.getUser().getId())) {
+            notifications.send(manager.getUser().getId(), "Leave request awaiting review",
+                    saved.getEmployee().getFirstName() + " requested leave from " + startDate + " to " + endDate,
+                    com.example.demo.notification.entity.Notification.NotificationType.LEAVE_REQUEST,
+                    "leave", saved.getId(), saved.getCompany());
+        }
+        return saved;
     }
 
     // ─── Approve / Reject / Cancel ────────────────────────────────────────────
 
     @Transactional
     public LeaveRequest approve(Long requestId, Long approverUserId) {
+        if (!reviewAllowed(requestId)) throw new org.springframework.security.access.AccessDeniedException("You cannot review this employee's leave request");
         LeaveRequest request = leaveRequestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveRequest", requestId));
         if (request.getStatus() != LeaveRequest.LeaveStatus.REQUESTED) {
@@ -222,6 +268,7 @@ public class LeaveService {
 
     @Transactional
     public LeaveRequest reject(Long requestId, String reason) {
+        if (!reviewAllowed(requestId)) throw new org.springframework.security.access.AccessDeniedException("You cannot review this employee's leave request");
         LeaveRequest request = leaveRequestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveRequest", requestId));
 

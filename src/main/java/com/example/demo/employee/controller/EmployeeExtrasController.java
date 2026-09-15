@@ -49,6 +49,7 @@ public class EmployeeExtrasController {
     private final EncashmentConditionRepository encashmentConditionRepository;
     private final ContractRepository contractRepository;
     private final NotificationService notificationService;
+    private final com.example.demo.employee.service.ReportingManagerService reportingManagers;
     private final EmailService emailService;
 
     // ─── Work Information ────────────────────────────────────────────────────
@@ -90,7 +91,9 @@ public class EmployeeExtrasController {
     @Operation(summary = "Create work information for an employee")
     public ResponseEntity<EmployeeWorkInformation> createWorkInfo(@PathVariable Long id,
                                                                    @RequestBody EmployeeWorkInformation workInfo) {
-        workInfo.setEmployee(employeeRepository.getReferenceById(id));
+        Employee employee = employeeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee", id));
+        workInfo.setEmployee(employee);
+        reportingManagers.assign(employee, workInfo.getReportingManager() == null ? null : workInfo.getReportingManager().getId());
         return ResponseEntity.ok(workInfoRepository.save(workInfo));
     }
 
@@ -111,7 +114,8 @@ public class EmployeeExtrasController {
         wi.setJobRole(updated.getJobRole());
         wi.setShift(updated.getShift());
         wi.setWorkType(updated.getWorkType());
-        wi.setReportingManager(updated.getReportingManager());
+        reportingManagers.assign(wi.getEmployee(), updated.getReportingManager() == null ? null : updated.getReportingManager().getId());
+        wi.setReportingManager(wi.getEmployee().getReportingManager());
         wi.setLocation(updated.getLocation());
         wi.setBasicSalary(updated.getBasicSalary());
         wi.setHousingAllowance(updated.getHousingAllowance());

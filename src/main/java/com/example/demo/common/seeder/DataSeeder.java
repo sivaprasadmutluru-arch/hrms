@@ -129,6 +129,24 @@ public class DataSeeder implements CommandLineRunner {
         Map<String, Permission> all = new HashMap<>();
         permissionRepository.findAll().forEach(p -> all.put(p.getName(), p));
 
+        createRole(Role.RoleName.SUPER_ADMIN, "Super Admin",
+                "Platform administration; confidential customer access requires explicit audited support access",
+                allPermissions(all));
+        createRole(Role.RoleName.ACCOUNT_MANAGER, "Account Manager",
+                "Standing operational access to explicitly assigned customer companies and all their branches",
+                excludingModules(all, Set.of("organization")));
+        createRole(Role.RoleName.COMPANY_ADMIN, "Company Admin",
+                "Company administration within delegated permissions",
+                excludingModules(all, Set.of("organization")));
+        createRole(Role.RoleName.COMPANY_MANAGER, "Company Manager",
+                "Company operations and designated approvals without unrestricted role administration",
+                perms(all, "employee:view", "attendance:view", "attendance:approve", "leave:view", "leave:approve",
+                        "recruitment:view", "recruitment:create", "pms:view", "pms:create", "report:view", "report:export"));
+        createRole(Role.RoleName.ACCOUNTS_MANAGER, "Accounts Manager",
+                "Payroll and employee finance within assigned scope",
+                perms(all, "employee:view", "attendance:view", "leave:view", "payroll:view", "payroll:create",
+                        "payroll:edit", "payroll:approve", "report:view", "report:export"));
+
         /*
          * PLATFORM_SUPER_ADMIN — Prabha Tech internal admin
          * Has all permissions. Manages organizations and companies.
@@ -205,7 +223,7 @@ public class DataSeeder implements CommandLineRunner {
          * Approves leave and attendance for their department team.
          */
         createRole(Role.RoleName.DEPARTMENT_MANAGER,
-                "Department Manager",
+                "Department Manager (Supervisor)",
                 "Manages one department — approvals, team visibility",
                 perms(all,
                         "employee:view",
@@ -236,7 +254,7 @@ public class DataSeeder implements CommandLineRunner {
          * Can only see and manage their own data.
          */
         createRole(Role.RoleName.EMPLOYEE,
-                "Employee (Self Service)",
+                "Employee",
                 "Self-service: own profile, leave, attendance, payslip",
                 perms(all,
                         "attendance:view", "attendance:create",
@@ -246,7 +264,7 @@ public class DataSeeder implements CommandLineRunner {
                         "helpdesk:view", "helpdesk:create",
                         "pms:view"));
 
-        log.info("Roles seeded: 8 roles created.");
+        log.info("Canonical and compatibility roles seeded.");
     }
 
     // ---------- Step 3: Default Organization and Head Office ----------
@@ -1042,6 +1060,12 @@ public class DataSeeder implements CommandLineRunner {
         return Arrays.stream(names)
                 .map(all::get)
                 .filter(Objects::nonNull)
+                .toArray(Permission[]::new);
+    }
+
+    private Permission[] excludingModules(Map<String, Permission> all, Set<String> excludedModules) {
+        return all.values().stream()
+                .filter(permission -> !excludedModules.contains(permission.getModule()))
                 .toArray(Permission[]::new);
     }
 

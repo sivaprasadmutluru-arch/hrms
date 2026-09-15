@@ -201,7 +201,17 @@ public class EmployeeController {
     @Transactional(readOnly = true)
     @Operation(summary = "Get org chart grouped by manager for a company")
     public ResponseEntity<List<Map<String, Object>>> orgChart(@RequestParam Long companyId) {
-        List<Employee> all = employeeRepository.findByCompanyId(companyId);
+        AccessScopeContext.ScopeData chartScope = AccessScopeContext.get();
+        if (chartScope == null || !chartScope.canAccess(companyId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Company is outside your access scope");
+        }
+        List<Employee> all = employeeRepository.findByCompanyId(companyId).stream().filter(Employee::isActive).toList();
+        Map<Long, Long> parents = new HashMap<>();
+        all.forEach(e -> {
+            Employee manager = employeeWorkInformationRepository.findByEmployeeId(e.getId()).map(w -> java.util.Optional.ofNullable(w.getReportingManager()))
+                    .orElseGet(() -> java.util.Optional.ofNullable(e.getReportingManager())).orElse(null);
+            parents.put(e.getId(), manager == null ? null : manager.getId());
+        });
 
         Map<Long, Map<String, Object>> nodeMap = new LinkedHashMap<>();
         for (Employee e : all) {
@@ -211,7 +221,11 @@ public class EmployeeController {
                     (e.getLastName() != null ? e.getLastName() : ""));
             node.put("position", e.getJobPosition() != null ? e.getJobPosition().getName() : null);
             node.put("department", e.getDepartment() != null ? e.getDepartment().getName() : null);
-            node.put("managerId", e.getReportingManager() != null ? e.getReportingManager().getId() : null);
+            node.put("jobRole", e.getJobRole() != null ? e.getJobRole().getName() : null);
+            node.put("accessRoles", e.getUser() == null ? List.of() : e.getUser().getUserRoles().stream()
+                    .filter(r -> r.isEffectiveOn(LocalDate.now()) && r.getCompany() != null && companyId.equals(r.getCompany().getId()))
+                    .map(r -> r.getRole().getName().name()).distinct().toList());
+            node.put("managerId", parents.get(e.getId()));
             node.put("photoPath", e.getPhotoPath());
             node.put("children", new ArrayList<>());
             nodeMap.put(e.getId(), node);
@@ -220,7 +234,17 @@ public class EmployeeController {
         List<Map<String, Object>> roots = new ArrayList<>();
         for (Map<String, Object> node : nodeMap.values()) {
             Long managerId = (Long) node.get("managerId");
-            if (managerId != null && nodeMap.containsKey(managerId)) {
+            Set<Long> visited = new HashSet<>();
+            Long ancestor = (Long) node.get("id");
+            boolean cycle = false;
+            while (ancestor != null && parents.containsKey(ancestor)) {
+                if (!visited.add(ancestor)) { cycle = true; break; }
+                ancestor = parents.get(ancestor);
+            }
+            node.put("hierarchyIssue", cycle ? "Reporting cycle — review manager assignment"
+                    : managerId != null && !nodeMap.containsKey(managerId) ? "Manager outside selected company"
+                    : managerId == null ? "No reporting manager assigned" : null);
+            if (!cycle && managerId != null && nodeMap.containsKey(managerId)) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> children = (List<Map<String, Object>>) nodeMap.get(managerId).get("children");
                 children.add(node);

@@ -18,11 +18,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDate;
 
 /**
  * Runs on every API request after JWT authentication.
@@ -42,6 +44,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class AccessScopeInterceptor implements HandlerInterceptor {
+
+    private static final String ORIGINAL_AUTHENTICATION = AccessScopeInterceptor.class.getName() + ".ORIGINAL_AUTH";
 
     private final UserRoleRepository userRoleRepository;
     private final CompanyRepository companyRepository;
@@ -87,6 +91,7 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
 
         // Step 4: Find the user's role assignment for this company
         List<UserRole> userRoles = new ArrayList<>(userRoleRepository.findByUserIdAndCompanyId(currentUser.getId(), companyId));
+        userRoles.removeIf(ur -> !ur.isEffectiveOn(LocalDate.now()));
         boolean isBranchFilter = false;
 
         // If the requested company is a branch, also merge any roles the user has on the parent
@@ -99,6 +104,7 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
                 && requestedCompany.getParentCompanyId() != null) {
             List<UserRole> hoRoles = userRoleRepository.findByUserIdAndCompanyId(
                     currentUser.getId(), requestedCompany.getParentCompanyId());
+            hoRoles = hoRoles.stream().filter(ur -> ur.isEffectiveOn(LocalDate.now())).toList();
             if (!hoRoles.isEmpty()) {
                 if (userRoles.isEmpty()) {
                     userRoles = new ArrayList<>(hoRoles);
@@ -112,6 +118,46 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
                 }
                 isBranchFilter = true;
             }
+        }
+
+        // A role authority held in another company must never authorize this company.
+        // Previously the global Spring authority could pass @PreAuthorize while an empty
+        // company assignment silently degraded to SELF scope.
+        if (userRoles.isEmpty() && !isPlatformAdmin) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            try {
+                response.getWriter().write("{\"status\":403,\"message\":\"NO_ACTIVE_COMPANY_ASSIGNMENT\"}");
+            } catch (java.io.IOException e) {
+                log.error("Failed to write company assignment response", e);
+            }
+            return false;
+        }
+
+        // Partial Account Managers can manage company operations but must never
+        // reach payroll APIs. This server-side check protects direct API calls too.
+        if (!isPlatformAdmin && isPayrollRequest(request) && hasPayrollExcludedAccess(userRoles)) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            try {
+                response.getWriter().write("{\"status\":403,\"message\":\"PAYROLL_NOT_INCLUDED_IN_PARTIAL_ACCESS\"}");
+            } catch (java.io.IOException e) {
+                log.error("Failed to write partial-access response", e);
+            }
+            return false;
+        }
+
+        // Method-security must evaluate only the roles belonging to the active
+        // company context. Without this narrowing, an administrator role in
+        // Company A could satisfy @PreAuthorize while operating in Company B.
+        if (!isPlatformAdmin) {
+            Authentication original = SecurityContextHolder.getContext().getAuthentication();
+            request.setAttribute(ORIGINAL_AUTHENTICATION, original);
+            UsernamePasswordAuthenticationToken scoped = new UsernamePasswordAuthenticationToken(
+                    original.getPrincipal(), original.getCredentials(),
+                    UserPrincipal.authoritiesForAssignments(userRoles));
+            scoped.setDetails(original.getDetails());
+            SecurityContextHolder.getContext().setAuthentication(scoped);
         }
 
         // Step 5: Determine access scope (use the highest scope if user has multiple roles)
@@ -207,6 +253,10 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
         AccessScopeContext.clear();
         CompanyContext.clear();
         TenantContext.clear();
+        Object original = request.getAttribute(ORIGINAL_AUTHENTICATION);
+        if (original instanceof Authentication authentication) {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+        }
     }
 
     // --- Private helpers ---
@@ -292,6 +342,26 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             case HEAD_OFFICE -> 4;
             case ENTERPRISE -> 5;
         };
+    }
+
+    private boolean isPayrollRequest(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.startsWith("/api/payroll") || path.startsWith("/api/gratuity");
+    }
+
+    private boolean hasPayrollExcludedAccess(List<UserRole> assignments) {
+        boolean partialAccountManager = assignments.stream().anyMatch(ur ->
+                ur.getRole().getName() == Role.RoleName.ACCOUNT_MANAGER
+                        && ur.getAccessLevel() == UserRole.AccessLevel.PARTIAL);
+        if (!partialAccountManager) return false;
+        return assignments.stream().noneMatch(ur ->
+                ur.getAccessLevel() != UserRole.AccessLevel.PARTIAL
+                        && switch (ur.getRole().getName()) {
+                            case SUPER_ADMIN, PLATFORM_SUPER_ADMIN, ACCOUNT_MANAGER, COMPANY_ADMIN,
+                                 ENTERPRISE_ADMIN, COMPANY_MANAGER, BRANCH_ADMIN, ACCOUNTS_MANAGER,
+                                 ACCOUNTANT -> true;
+                            default -> false;
+                        });
     }
 
     private UserPrincipal getAuthenticatedUser() {

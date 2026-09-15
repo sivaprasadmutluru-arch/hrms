@@ -22,5 +22,6 @@ public record LeaveRequestDTO(
         String departmentName,
         Long companyId,
         String approvedByName,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        boolean canReview
 ) {}

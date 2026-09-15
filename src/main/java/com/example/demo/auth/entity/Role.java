@@ -34,6 +34,16 @@ public class Role extends BaseEntity {
     private Set<Permission> permissions = new HashSet<>();
 
     public enum RoleName {
+        // Canonical production roles. Legacy roles below remain during migration.
+        SUPER_ADMIN,
+        ACCOUNT_MANAGER,
+        COMPANY_ADMIN,
+        COMPANY_MANAGER,
+        DEPARTMENT_MANAGER,
+        HR_MANAGER,
+        ACCOUNTS_MANAGER,
+        EMPLOYEE,
+
         // Prabha Tech internal — manages all client organizations on the platform
         PLATFORM_SUPER_ADMIN,
 
@@ -43,19 +53,13 @@ public class Role extends BaseEntity {
         // Branch level — manages one specific branch only
         BRANCH_ADMIN,
 
-        // HR operations — can be at Head Office level (all branches) or Branch level (one branch)
-        HR_MANAGER,
-
         // Finance/Payroll — can be at Head Office level (all branches) or Branch level (one branch)
         ACCOUNTANT,
-
-        // Manages a department within a branch — sees only their department
-        DEPARTMENT_MANAGER,
 
         // Team lead within a department — limited approvals and team visibility
         TEAM_LEAD,
 
-        // Regular employee — self-service only (payslip, leave, attendance, profile)
-        EMPLOYEE
+        // TEAM_LEAD is migrated to DEPARTMENT_MANAGER with its existing narrow scope.
+        // These identifiers are retained so existing assignments continue working.
     }
 }

@@ -39,6 +39,10 @@ public class User extends BaseEntity {
     @Column(name = "must_change_password", nullable = false, columnDefinition = "boolean default false")
     private boolean mustChangePassword = false;
 
+    /** Configurable company-assignment ceiling for Account Managers. */
+    @Column(name = "account_manager_company_limit", nullable = false, columnDefinition = "integer default 6")
+    private int accountManagerCompanyLimit = 6;
+
     @Column(name = "reset_token")
     private String resetToken;
 

@@ -5,6 +5,7 @@ import com.example.demo.auth.entity.UserRole;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 
 /**
  * Used by admins to assign a role to a user within a company.
@@ -30,4 +31,13 @@ public class AssignRoleRequest {
 
     @NotNull
     private UserRole.AccessScope accessScope;
+
+    private UserRole.AccessLevel accessLevel = UserRole.AccessLevel.FULL;
+
+    private Long departmentId;
+    private Long teamId;
+    private Long employeeScopeId;
+    private LocalDate effectiveFrom;
+    private LocalDate expiresOn;
+    private String reason;
 }

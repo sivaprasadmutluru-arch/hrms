@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.time.LocalDate;
 
 /**
  * Spring Security's representation of an authenticated user.
@@ -55,23 +56,20 @@ public class UserPrincipal implements UserDetails {
 
         // Add ROLE_ prefix for each role the user has (used with hasRole())
         // Add permission strings directly (used with hasAuthority())
-        user.getUserRoles().forEach(ur -> {
-            Role.RoleName roleName = ur.getRole().getName();
-            auths.add(new SimpleGrantedAuthority("ROLE_" + roleName.name()));
-            ur.getRole().getPermissions().forEach(p ->
-                    auths.add(new SimpleGrantedAuthority(p.getName())));
-
-            // Keep core payroll access consistent with the admin role even
-            // when an existing installation has older role-permission rows.
-            // Data visibility remains restricted by the company/branch scope.
-            roleBaselinePermissions(roleName).forEach(permission ->
-                    auths.add(new SimpleGrantedAuthority(permission)));
-        });
+        auths.addAll(authoritiesForAssignments(user.getUserRoles().stream()
+                .filter(ur -> ur.isEffectiveOn(LocalDate.now()))
+                // PLATFORM_SUPER_ADMIN is an account-level capability, represented by
+                // User.superuser. Never let a stale/company-scoped assignment elevate a
+                // normal user to unrestricted platform access.
+                .filter(ur -> ur.getRole().getName() != Role.RoleName.PLATFORM_SUPER_ADMIN
+                        || user.isSuperuser())
+                .toList()));
 
         // Platform Super Admin (isSuperuser flag) always gets the top-level role
         // plus every permission in the system so all hasAuthority() checks pass.
         if (user.isSuperuser()) {
             auths.add(new SimpleGrantedAuthority("ROLE_" + Role.RoleName.PLATFORM_SUPER_ADMIN.name()));
+            auths.add(new SimpleGrantedAuthority("ROLE_" + Role.RoleName.SUPER_ADMIN.name()));
             allPermissions.forEach(p ->
                     auths.add(new SimpleGrantedAuthority(p.getName())));
         }
@@ -80,16 +78,48 @@ public class UserPrincipal implements UserDetails {
         this.authorities = auths.stream().distinct().collect(Collectors.toList());
     }
 
+    public static List<GrantedAuthority> authoritiesForAssignments(Collection<UserRole> assignments) {
+        List<GrantedAuthority> result = new ArrayList<>();
+        assignments.forEach(ur -> {
+            Role.RoleName roleName = ur.getRole().getName();
+            boolean payrollExcluded = roleName == Role.RoleName.ACCOUNT_MANAGER
+                    && ur.getAccessLevel() == UserRole.AccessLevel.PARTIAL;
+            result.add(new SimpleGrantedAuthority("ROLE_" + roleName.name()));
+            compatibilityAuthorities(roleName).forEach(alias ->
+                    result.add(new SimpleGrantedAuthority("ROLE_" + alias.name())));
+            ur.getRole().getPermissions().stream()
+                    .map(Permission::getName)
+                    .filter(permission -> !payrollExcluded || !permission.startsWith("payroll:"))
+                    .forEach(permission -> result.add(new SimpleGrantedAuthority(permission)));
+            roleBaselinePermissions(roleName).stream()
+                    .filter(permission -> !payrollExcluded || !permission.startsWith("payroll:"))
+                    .forEach(permission -> result.add(new SimpleGrantedAuthority(permission)));
+        });
+        return result.stream().distinct().collect(Collectors.toList());
+    }
+
     private static Set<String> roleBaselinePermissions(Role.RoleName roleName) {
         return switch (roleName) {
-            case ENTERPRISE_ADMIN -> Set.of(
+            case SUPER_ADMIN, PLATFORM_SUPER_ADMIN, ACCOUNT_MANAGER, COMPANY_ADMIN, ENTERPRISE_ADMIN -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
-            case BRANCH_ADMIN -> Set.of(
+            case COMPANY_MANAGER, BRANCH_ADMIN -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit");
-            case ACCOUNTANT -> Set.of(
+            case ACCOUNTS_MANAGER, ACCOUNTANT -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
             case EMPLOYEE -> Set.of(
                     "leave:view", "leave:create", "payroll:view");
+            default -> Set.of();
+        };
+    }
+
+    /** Temporary endpoint compatibility while controllers move from legacy names. */
+    private static Set<Role.RoleName> compatibilityAuthorities(Role.RoleName roleName) {
+        return switch (roleName) {
+            // SUPER_ADMIN is company-scoped. Only User.superuser receives PLATFORM_SUPER_ADMIN.
+            case SUPER_ADMIN -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
+            case ACCOUNT_MANAGER, COMPANY_ADMIN -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
+            case COMPANY_MANAGER -> Set.of(Role.RoleName.BRANCH_ADMIN);
+            case ACCOUNTS_MANAGER -> Set.of(Role.RoleName.ACCOUNTANT);
             default -> Set.of();
         };
     }

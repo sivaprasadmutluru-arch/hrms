@@ -84,7 +84,7 @@ public class AccessScopeContext {
 
         // True when the user has no company restriction (Platform Super Admin)
         public boolean hasUnrestrictedAccess() {
-            return accessibleCompanyIds.isEmpty();
+            return scope == null && accessibleCompanyIds.isEmpty();
         }
 
         // True when the user is operating in SELF scope (employee sees only own data)
