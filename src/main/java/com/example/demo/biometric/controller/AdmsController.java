@@ -138,7 +138,7 @@ public class AdmsController {
             }
         } catch (IOException e) {
             log.error("ADMS cdata: failed to read request body from SN={}: {}", serialNumber, e.getMessage());
-            return ResponseEntity.ok("OK");
+            return ResponseEntity.status(503).body("RETRY");
         }
 
         if (requestContent.isEmpty()) {
@@ -187,8 +187,7 @@ public class AdmsController {
 
         String schema = tenantResolver.resolveSchema(serialNumber);
         if (schema == null) {
-            log.warn("ADMS: could not resolve tenant for SN='{}' - punch will be ignored", serialNumber);
-            return;
+            throw new IllegalStateException("Unknown device tenant; retry after device registration");
         }
 
         try {

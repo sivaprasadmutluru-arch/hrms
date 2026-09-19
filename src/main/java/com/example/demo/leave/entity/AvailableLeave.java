@@ -46,13 +46,19 @@ public class AvailableLeave extends BaseEntity {
     @Column(name = "expired_date")
     private LocalDate expiredDate;
 
+    /** Already credited entitlement; carryover policy applies when generating the next period's credit. */
+    public double creditedTotalDays() {
+        double available = availableDays != null ? availableDays : 0.0;
+        double carry = Math.max(carryforwardDays != null ? carryforwardDays : 0.0, 0.0);
+        return Math.max(available + carry, 0.0);
+    }
+
     @PrePersist
     @PreUpdate
     public void computeTotalLeaveDays() {
-        double avail = availableDays != null ? availableDays : 0.0;
         double carry = carryforwardDays != null ? carryforwardDays : 0.0;
         this.carryforwardDays = Math.max(carry, 0.0);
-        this.totalLeaveDays = Math.max(avail + this.carryforwardDays, 0.0);
+        this.totalLeaveDays = creditedTotalDays();
     }
 
     /**

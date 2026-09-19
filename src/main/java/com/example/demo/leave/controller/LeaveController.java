@@ -492,7 +492,7 @@ public class LeaveController {
                         : "";
                 empName = empName.trim();
                 double usedDays = getCurrentPeriodUsedDays(al);
-                double totalDays = al.getTotalLeaveDays() != null ? al.getTotalLeaveDays() : 0.0;
+                double totalDays = al.creditedTotalDays();
                 double leaveBalance = Math.max(totalDays - usedDays, 0.0);
 
                 if (dropZero && leaveBalance <= 0.0) continue;

@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Comparator;
 
 @Slf4j
 @Service
@@ -51,11 +52,19 @@ public class LeaveService {
     private final com.example.demo.notification.service.NotificationService notifications;
 
     private boolean isReportingManager(Employee employee, Long userId) {
+        if (employee == null || userId == null) return false;
         Employee manager = reportingManagers.resolve(employee);
-        return manager != null && manager.isActive() && manager.getUser() != null
-                && manager.getUser().getId().equals(userId)
-                && manager.getCompany().getId().equals(employee.getCompany().getId())
-                && (employee.getUser() == null || !employee.getUser().getId().equals(userId));
+        if (manager == null || !manager.isActive() || manager.getUser() == null || !manager.getUser().getId().equals(userId)) {
+            return false;
+        }
+        if (employee.getUser() != null && employee.getUser().getId().equals(userId)) {
+            return false;
+        }
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null) {
+            return scope.canAccess(employee.getCompany().getId());
+        }
+        return manager.getCompany().getId().equals(employee.getCompany().getId());
     }
 
     private Specification<LeaveRequest> directReports() {
@@ -78,7 +87,20 @@ public class LeaveService {
         if (request.getEmployee().getUser() != null && request.getEmployee().getUser().getId().equals(scope.getUserId())) return false;
         if (isReportingManager(request.getEmployee(), scope.getUserId())) return true;
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || scope.isSelfScope() || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("leave:approve"))) return false;
+        if (auth == null || scope.isSelfScope()) return false;
+        boolean hasApproveAuthority = auth.getAuthorities().stream().anyMatch(a -> {
+            String authority = a.getAuthority();
+            return authority.equals("leave:approve")
+                    || authority.equals("ROLE_DEPARTMENT_MANAGER")
+                    || authority.equals("ROLE_COMPANY_MANAGER")
+                    || authority.equals("ROLE_BRANCH_ADMIN")
+                    || authority.equals("ROLE_HR_MANAGER")
+                    || authority.equals("ROLE_ENTERPRISE_ADMIN")
+                    || authority.equals("ROLE_COMPANY_ADMIN")
+                    || authority.equals("ROLE_SUPER_ADMIN")
+                    || authority.equals("ROLE_PLATFORM_SUPER_ADMIN");
+        });
+        if (!hasApproveAuthority) return false;
         Specification<LeaveRequest> visible = ScopeFilter.byEmployeeDepartment();
         return visible != null && leaveRequestRepository.exists(visible.and((r,q,c) -> c.equal(r.get("id"),requestId)));
     }
@@ -100,9 +122,16 @@ public class LeaveService {
             Specification<LeaveRequest> yearRange = yearSpecification(year);
             spec = spec == null ? yearRange : spec.and(yearRange);
         }
-        return spec != null
-                ? leaveRequestRepository.findAll(spec, pageable)
-                : leaveRequestRepository.findAll(pageable);
+        Specification<LeaveRequest> pendingFirst = (root, query, cb) -> {
+            if (query != null && query.getResultType() != Long.class && query.getResultType() != long.class) {
+                var priority = cb.<Integer>selectCase().when(cb.equal(root.get("status"), LeaveRequest.LeaveStatus.REQUESTED), 0).otherwise(1);
+                query.orderBy(cb.asc(priority), cb.desc(root.get("createdAt")), cb.desc(root.get("id")));
+            }
+            return cb.conjunction();
+        };
+        spec = spec == null ? pendingFirst : spec.and(pendingFirst);
+        pageable = org.springframework.data.domain.PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return leaveRequestRepository.findAll(spec, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -110,9 +139,30 @@ public class LeaveService {
         Specification<LeaveType> spec = ScopeFilter.byCompany();
         if (spec != null) {
             Specification<LeaveType> orgWide = (root, query, cb) -> cb.isTrue(root.get("isOrganizationWide"));
-            return leaveTypeRepository.findAll(Specification.where(spec).or(orgWide));
+            return orderLeaveTypes(leaveTypeRepository.findAll(Specification.where(spec).or(orgWide)));
         }
-        return leaveTypeRepository.findAll();
+        return orderLeaveTypes(leaveTypeRepository.findAll());
+    }
+
+    /** Keep employee leave choices in a predictable, policy-friendly order. */
+    private List<LeaveType> orderLeaveTypes(List<LeaveType> leaveTypes) {
+        return leaveTypes.stream()
+                .sorted(Comparator.comparingInt(this::leaveTypeOrder)
+                        .thenComparing(t -> t.getName() == null ? "" : t.getName(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private int leaveTypeOrder(LeaveType leaveType) {
+        String name = leaveType == null || leaveType.getName() == null
+                ? "" : leaveType.getName().trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (name) {
+            case "annual leave" -> 0;
+            case "sick leave" -> 1;
+            case "compassionate leave" -> 2;
+            case "paternity leave" -> 3;
+            case "maternity leave" -> 4;
+            default -> 10;
+        };
     }
 
     @Transactional(readOnly = true)
@@ -249,7 +299,11 @@ public class LeaveService {
         double remaining = computeRemaining(balance, request.getEmployee().getId(), request.getLeaveType().getId(), request.getStartDate());
         double forecasted = balance.forcastedLeaves(request.getStartDate());
         double totalBalance = remaining + forecasted;
-        if (request.getRequestedDays() > totalBalance) {
+        LeaveType leaveType = request.getLeaveType();
+        boolean isUnpaid = leaveType != null && leaveType.getPaymentType() == LeaveType.PaymentType.UNPAID;
+        boolean allowNegative = leaveType != null && Boolean.TRUE.equals(leaveType.getNegativeBalanceAllowed());
+        double maxAllowed = totalBalance + (allowNegative ? (leaveType.getNegativeBalanceLimit() != null ? leaveType.getNegativeBalanceLimit() : 999999.0) : 0.0);
+        if (!isUnpaid && request.getRequestedDays() > maxAllowed) {
             throw new BadRequestException(
                     "Insufficient leave balance. Available: " + totalBalance
                             + ", Requested: " + request.getRequestedDays());
@@ -796,18 +850,6 @@ public class LeaveService {
     }
 
     /**
-     * Returns the effective carryforward days capped by carryforward_max (mirrors Horilla validation logic).
-     */
-    private double resolveCarryforwardDays(AvailableLeave balance) {
-        if (balance.getLeaveType() == null) return 0.0;
-        LeaveType.CarryforwardType cfType = balance.getLeaveType().getCarryforwardType();
-        if (cfType == null || cfType == LeaveType.CarryforwardType.NO_CARRYFORWARD) return 0.0;
-        double cf = balance.getCarryforwardDays() != null ? balance.getCarryforwardDays() : 0.0;
-        Double max = balance.getLeaveType().getCarryforwardMax();
-        return max != null ? Math.min(cf, max) : cf;
-    }
-
-    /**
      * Records how many days were drawn from available vs carryforward on the request (for audit).
      *
      * NOTE: the allocation (available_days / carryforward_days) is intentionally left UNCHANGED.
@@ -863,17 +905,16 @@ public class LeaveService {
     /**
      * Computes the REAL remaining leave days for an employee+type using the same source of truth
      * as the /balance endpoints: (available + carryforward) − used, where used = sum of APPROVED
-     * request days. Carryforward is capped by carryforward_max. This replaces the old pattern of
+     * request days. Already credited carryforward is preserved; reset policy governs future credits.
+     * This replaces the old pattern of
      * reading availableDays directly as "remaining" (which coupled allocation to consumption).
      */
     private double computeRemaining(AvailableLeave balance, Long employeeId, Long leaveTypeId, LocalDate balanceDate) {
-        double avail = balance.getAvailableDays() != null ? balance.getAvailableDays() : 0.0;
-        double cf = resolveCarryforwardDays(balance);
         LeavePeriodResolver.Period period = LeavePeriodResolver.containing(
                 balance.getLeaveType(), balanceDate != null ? balanceDate : LocalDate.now());
         Double usedValue = leaveRequestRepository.sumApprovedDaysForPeriod(
                 employeeId, leaveTypeId, period.start(), period.end());
         double used = usedValue != null ? usedValue : 0.0;
-        return (avail + cf) - used;
+        return balance.creditedTotalDays() - used;
     }
 }

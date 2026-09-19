@@ -17,9 +17,11 @@ public class ReportingManagerService {
 
     // Existing profiles are authoritative, including an explicitly cleared manager.
     public Employee resolve(Employee employee) {
-        return workInformation.findByEmployeeId(employee.getId())
-                .map(w -> java.util.Optional.ofNullable(w.getReportingManager()))
-                .orElseGet(() -> java.util.Optional.ofNullable(employee.getReportingManager())).orElse(null);
+        if (employee == null) return null;
+        var fromWorkInfo = workInformation.findByEmployeeId(employee.getId())
+                .map(com.example.demo.employee.entity.EmployeeWorkInformation::getReportingManager)
+                .orElse(null);
+        return fromWorkInfo != null ? fromWorkInfo : employee.getReportingManager();
     }
 
     public Employee validate(Employee employee, Long managerId) {

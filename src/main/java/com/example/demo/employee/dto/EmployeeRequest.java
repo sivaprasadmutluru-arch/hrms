@@ -51,7 +51,7 @@ public class EmployeeRequest {
     private LocalDate dateJoining;
     private Employee.EmployeeType employeeType;
 
-    @NotNull
+    // Optional on update (preserves existing employee company)
     private Long companyId;
 
     private Long departmentId;

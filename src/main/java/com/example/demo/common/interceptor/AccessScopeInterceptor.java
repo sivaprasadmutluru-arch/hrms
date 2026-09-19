@@ -233,6 +233,12 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             departmentId = employeeRepository.findByUserId(currentUser.getId())
                     .map(e -> e.getDepartment() != null ? e.getDepartment().getId() : null)
                     .orElse(null);
+            if (departmentId == null) {
+                departmentId = userRoles.stream()
+                        .filter(ur -> ur.getAccessScope() == UserRole.AccessScope.DEPARTMENT && ur.getDepartmentId() != null)
+                        .map(UserRole::getDepartmentId)
+                        .findFirst().orElse(null);
+            }
         }
 
         // Step 9: Store in thread-local context for services to use

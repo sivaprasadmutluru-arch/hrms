@@ -38,13 +38,14 @@ public class AdmsService {
     private static final DateTimeFormatter PUNCH_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ZoneId DEVICE_TIMEZONE = ZoneId.of("Asia/Dubai");
-    private static final Set<Integer> CLOCK_IN_CODES = Set.of(0, 2, 4);
+    private static final Set<Integer> CLOCK_IN_CODES = Set.of(0, 3, 4);
 
     private final BiometricDeviceRepository deviceRepo;
     private final BiometricEmployeeRepository mappingRepo;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceActivityRepository activityRepository;
     private final AttendanceService attendanceService;
+    private final com.example.demo.biometric.repository.BiometricPunchReceiptRepository receipts;
 
     /**
      * Process ATTLOG push data from a device identified by serial number.
@@ -54,7 +55,7 @@ public class AdmsService {
         log.info("ADMS push received - SN={}, content_length={}", serialNumber, content.length());
 
         // 1. Find device by serial number
-        BiometricDevice device = deviceRepo.findBySerialNumberAndIsActiveTrue(serialNumber)
+        BiometricDevice device = deviceRepo.lockActiveDevice(serialNumber)
                 .orElse(null);
 
         if (device == null) {
@@ -64,6 +65,7 @@ public class AdmsService {
 
         // 2. Parse ATTLOG punch records
         List<PunchRecord> records = parseAttlog(content);
+        records.sort(Comparator.comparing(r -> r.punchTime));
         if (records.isEmpty()) {
             log.debug("ADMS: no valid records parsed from SN={}", serialNumber);
             return;
@@ -72,29 +74,44 @@ public class AdmsService {
         // 3. Build employee mapping cache for this device (user_id → BiometricEmployee)
         Map<String, BiometricEmployee> bioMap = new HashMap<>();
         mappingRepo.findByDeviceIdAndIsActiveTrue(device.getId())
-                .forEach(m -> bioMap.put(m.getUserId(), m));
+                .forEach(m -> {
+                    if (bioMap.containsKey(m.getUserId())) bioMap.put(m.getUserId(), null);
+                    else bioMap.put(m.getUserId(), m);
+                });
 
         // 4. Process each punch record
         int processed = 0;
         for (PunchRecord rec : records) {
             try {
+                var receipt = receipts.findByFingerprint(fingerprint(serialNumber, rec)).orElseGet(() -> {
+                    var r = new com.example.demo.biometric.entity.BiometricPunchReceipt();
+                    r.setFingerprint(fingerprint(serialNumber, rec)); r.setSerialNumber(serialNumber);
+                    r.setDeviceUserId(rec.userId); r.setDeviceTime(rec.punchTime); r.setDeviceStatus(rec.status);
+                    r.setProcessingState("RECEIVED"); return receipts.save(r);
+                });
+                if ("PROCESSED".equals(receipt.getProcessingState())) continue;
                 BiometricEmployee mapping = resolveEmployeeMapping(device, rec.userId, bioMap);
                 if (mapping == null) {
-                    log.debug("ADMS: no same-organization mapping for user_id='{}' on device '{}' (SN={})",
+                    receipt.setProcessingState("UNMAPPED");
+                    receipt.setDetail("Explicit active device/user mapping required"); receipts.save(receipt);
+                    log.warn("ADMS: no unique device mapping for user_id='{}' on device '{}' (SN={}); punch retained",
                             rec.userId, device.getName(), serialNumber);
                     continue;
                 }
-                // Reuse a successful cross-branch resolution for the remaining records in this push.
-                bioMap.putIfAbsent(rec.userId, mapping);
 
                 Employee employee = mapping.getEmployee();
-                if (employee == null) {
+                if (employee == null || !employee.isActive() || !isSameOrganization(device.getCompany(), employee.getCompany())) {
+                    receipt.setProcessingState("INVALID_MAPPING"); receipts.save(receipt);
                     log.warn("ADMS: mapping found but employee is null for user_id='{}' on device '{}'",
                             rec.userId, device.getName());
                     continue;
                 }
 
                 String punchDir = resolvePunchDirection(rec.status, device.getDeviceDirection());
+                receipt.setEmployeeId(employee.getId());
+                if (punchDir == null) {
+                    receipt.setProcessingState("UNKNOWN_STATUS"); receipts.save(receipt); continue;
+                }
 
                 // Device records times in its local timezone
                 ZonedDateTime punchZdt = rec.punchTime.atZone(DEVICE_TIMEZONE);
@@ -114,10 +131,12 @@ public class AdmsService {
                 }
 
                 processed++;
+                receipt.setEmployeeId(employee.getId()); receipt.setProcessingState("PROCESSED"); receipts.save(receipt);
 
             } catch (Exception e) {
                 log.error("ADMS: failed to process punch for user_id='{}' on device '{}': {}",
                         rec.userId, device.getName(), e.getMessage(), e);
+                throw new IllegalStateException("Punch batch failed; transaction rolled back for device retry", e);
             }
         }
 
@@ -126,38 +145,19 @@ public class AdmsService {
     }
 
     /**
-     * Resolve a device user to an employee. Device-specific mappings remain authoritative. When an
-     * employee uses a biometric terminal in another branch, fall back to an active mapping with the
-     * same user ID only inside the device's organization. This deliberately never crosses tenant/
-     * organization boundaries and rejects ambiguous IDs instead of recording attendance for the
-     * wrong employee.
+     * Numeric IDs are terminal-local. Visiting employees require an explicit mapping on that terminal.
      */
     private BiometricEmployee resolveEmployeeMapping(BiometricDevice device, String userId,
                                                        Map<String, BiometricEmployee> deviceMappings) {
-        BiometricEmployee direct = deviceMappings.get(userId);
-        if (direct != null) return direct;
+        return deviceMappings.get(userId);
+    }
 
-        List<BiometricEmployee> candidates = mappingRepo.findByUserIdAndIsActiveTrue(userId).stream()
-                .filter(mapping -> mapping.getEmployee() != null)
-                .filter(mapping -> mapping.getEmployee().isActive())
-                .filter(mapping -> isSameOrganization(device.getCompany(), mapping.getEmployee().getCompany()))
-                .toList();
-
-        Map<Long, BiometricEmployee> byEmployee = new LinkedHashMap<>();
-        for (BiometricEmployee candidate : candidates) {
-            byEmployee.putIfAbsent(candidate.getEmployee().getId(), candidate);
-        }
-        if (byEmployee.size() == 1) {
-            BiometricEmployee resolved = byEmployee.values().iterator().next();
-            log.info("ADMS: cross-branch mapping resolved for user_id='{}' on device '{}' to employee {}",
-                    userId, device.getName(), resolved.getEmployee().getId());
-            return resolved;
-        }
-        if (byEmployee.size() > 1) {
-            log.warn("ADMS: ambiguous user_id='{}' on device '{}': {} employees in the same organization; punch skipped",
-                    userId, device.getName(), byEmployee.size());
-        }
-        return null;
+    private String fingerprint(String serial, PunchRecord record) {
+        try {
+            byte[] bytes = (serial + "|" + record.userId + "|" + record.punchTime + "|" + record.status)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
 
     private boolean isSameOrganization(Company deviceCompany, Company employeeCompany) {
@@ -184,9 +184,24 @@ public class AdmsService {
         // Check if there's already an open activity (clocked in but not out) for today
         List<AttendanceActivity> activities = activityRepository
                 .findByEmployeeIdAndAttendanceDate(employeeId, punchDate);
+        if (activities.stream().anyMatch(a -> punchTime.equals(a.getClockIn()))) return;
         boolean hasOpenActivity = activities.stream().anyMatch(a -> a.getClockOut() == null);
 
         if (hasOpenActivity) {
+            AttendanceActivity earliest = activities.stream().filter(a -> a.getClockOut() == null)
+                    .filter(a -> a.getClockIn() != null).min(Comparator.comparing(AttendanceActivity::getClockIn)).orElse(null);
+            if (earliest != null && punchTime.isBefore(earliest.getClockIn())) {
+                earliest.setClockIn(punchTime);
+                earliest.setInDatetime(LocalDateTime.of(punchDate, punchTime));
+                activityRepository.save(earliest);
+                attendanceRepository.findByEmployeeIdAndAttendanceDate(employeeId, punchDate).ifPresent(att -> {
+                    if (att.getCheckIn() == null || punchTime.isBefore(att.getCheckIn())) {
+                        att.setCheckIn(punchTime); att.setCheckInDate(punchDate); att.setCheckInUtc(punchInstant);
+                        att.setClockInDeviceName(device.getName()); att.setClockInSource("device");
+                        attendanceRepository.save(att);
+                    }
+                });
+            }
             log.debug("ADMS: employee {} already has open activity for {} - skipping duplicate clock-in",
                     employeeId, punchDate);
             return;
@@ -222,7 +237,7 @@ public class AdmsService {
                 });
 
         // Update first check-in of the day if not already set
-        if (att.getCheckIn() == null) {
+        if (att.getCheckIn() == null || punchTime.isBefore(att.getCheckIn())) {
             att.setCheckIn(punchTime);
             att.setCheckInDate(punchDate);
             att.setCheckInUtc(punchInstant);
@@ -245,7 +260,8 @@ public class AdmsService {
                 .findByEmployeeIdAndAttendanceDate(employeeId, punchDate);
         AttendanceActivity openActivity = activities.stream()
                 .filter(a -> a.getClockOut() == null)
-                .findFirst()
+                .filter(a -> a.getClockIn() != null && !a.getClockIn().isAfter(punchTime))
+                .max(Comparator.comparing(AttendanceActivity::getClockIn))
                 .orElse(null);
 
         if (openActivity != null) {
@@ -278,6 +294,10 @@ public class AdmsService {
                 });
 
         // Always update clock-out to the latest punch (last out wins)
+        if (att.getCheckOutUtc() != null && !punchInstant.isAfter(att.getCheckOutUtc())) {
+            if (openActivity != null) attendanceService.computeWorkedHours(att.getId());
+            return;
+        }
         att.setCheckOut(punchTime);
         att.setCheckOutDate(punchDate);
         att.setCheckOutUtc(punchInstant);
@@ -286,12 +306,7 @@ public class AdmsService {
         attendanceRepository.save(att);
 
         // Trigger the existing worked-hours computation, overtime detection, and WorkRecord generation
-        try {
-            attendanceService.computeWorkedHours(att.getId());
-        } catch (Exception e) {
-            log.warn("ADMS: failed to compute worked hours for attendance id={}: {}",
-                    att.getId(), e.getMessage());
-        }
+        attendanceService.computeWorkedHours(att.getId());
     }
 
     /**
@@ -306,18 +321,18 @@ public class AdmsService {
 
             String[] parts = trimmed.split("\t");
             if (parts.length < 2) {
-                log.debug("ADMS: skipping malformed ATTLOG line (< 2 fields): {}", trimmed);
-                continue;
+                throw new IllegalArgumentException("Malformed ATTLOG batch; device retry required");
             }
 
             try {
                 PunchRecord rec = new PunchRecord();
                 rec.userId = parts[0].strip();
+                if (rec.userId.isEmpty()) throw new IllegalArgumentException("Missing device user ID");
                 rec.punchTime = LocalDateTime.parse(parts[1].strip(), PUNCH_TIME_FORMAT);
-                rec.status = parts.length > 2 ? Integer.parseInt(parts[2].strip()) : 0;
+                rec.status = parts.length > 2 ? Integer.parseInt(parts[2].strip()) : -1;
                 records.add(rec);
             } catch (Exception e) {
-                log.warn("ADMS: could not parse ATTLOG line: '{}' - {}", trimmed, e.getMessage());
+                throw new IllegalArgumentException("Invalid ATTLOG timestamp/status; device retry required", e);
             }
         }
         return records;
@@ -329,13 +344,13 @@ public class AdmsService {
      * Device direction modes:
      *   IN        → all punches are clock-in
      *   OUT       → all punches are clock-out
-     *   ALTERNATE → status 0,2,4 = in; status 1,3,5 = out (ZKTeco standard)
+     *   ALTERNATE → status 0,3,4 = in; status 1,2,5 = out
      *   SYSTEM    → same as ALTERNATE (default)
      */
     private String resolvePunchDirection(int status, BiometricDevice.DeviceDirection direction) {
         if (direction == BiometricDevice.DeviceDirection.IN) return "in";
         if (direction == BiometricDevice.DeviceDirection.OUT) return "out";
-        // ALTERNATE or SYSTEM: even codes = in, odd codes = out
+        if (status < 0 || status > 5) return null;
         return CLOCK_IN_CODES.contains(status) ? "in" : "out";
     }
 

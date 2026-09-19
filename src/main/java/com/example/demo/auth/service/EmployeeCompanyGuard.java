@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.util.*;
+import java.time.LocalDate;
 
 /** Explicit schema queries avoid changing a transaction's already-bound tenant connection. */
 @Service
@@ -43,7 +44,12 @@ public class EmployeeCompanyGuard {
 
     public UserRole primaryRole(Long userId) {
         Set<Long> linked = linkedCompanies(userId);
-        return roles.findByUserId(userId).stream().filter(r -> r.getCompany()!=null)
+        // A login must never be anchored to a revoked, expired, or not-yet-effective
+        // assignment.  Besides presenting the wrong company in the UI, that used to
+        // select the wrong tenant schema and consequently hide company-scoped data
+        // such as leave types for newly created employees.
+        return roles.findByUserId(userId).stream()
+            .filter(r -> r.getCompany() != null && r.isEffectiveOn(LocalDate.now()))
             .sorted(Comparator.<UserRole>comparingInt(r -> r.getAccessScope()==null ? -1 : r.getAccessScope().ordinal()).reversed()
                 .thenComparing(r -> !linked.contains(r.getCompany().getId()))
                 .thenComparing(r -> r.getCompany().getId())
