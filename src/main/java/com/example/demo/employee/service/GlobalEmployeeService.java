@@ -1,5 +1,7 @@
 package com.example.demo.employee.service;
 
+import com.example.demo.auth.entity.UserRole;
+import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.employee.dto.EmployeeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,6 +35,7 @@ import java.util.stream.Collectors;
 public class GlobalEmployeeService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final UserRoleRepository userRoleRepository;
 
     // Only allow schemas that look like safe identifiers (alphanumeric + underscore)
     private static final Pattern SAFE_SCHEMA = Pattern.compile("^[a-z0-9_]+$");
@@ -76,6 +79,68 @@ public class GlobalEmployeeService {
                 pageable.getOffset()
         );
 
+        return new PageImpl<>(rows, pageable, total != null ? total : 0L);
+    }
+
+    /**
+     * Returns employees only from the organisations explicitly assigned to a
+     * company-scoped administrator.  This is deliberately separate from the
+     * platform-wide query: an "All Companies" selection must mean all of the
+     * caller's assignments, never all tenants on the platform.
+     */
+    public Page<EmployeeResponse> getAllAcrossAssignedOrgs(Long userId, Pageable pageable) {
+        List<Long> assignedCompanyIds = userRoleRepository.findByUserId(userId).stream()
+                .filter(role -> role.isEffectiveOn(LocalDate.now()))
+                .map(role -> role.getCompany() == null ? null : role.getCompany().getId())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        return getAllAcrossCompanyIds(assignedCompanyIds, pageable);
+    }
+
+    private Page<EmployeeResponse> getAllAcrossCompanyIds(List<Long> companyIds, Pageable pageable) {
+        if (companyIds == null || companyIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        String placeholders = companyIds.stream().map(id -> "?").collect(Collectors.joining(","));
+        String schemaQuery =
+                "SELECT schema_name FROM public.companies " +
+                "WHERE schema_name IS NOT NULL AND is_active = true " +
+                "AND (id IN (" + placeholders + ") OR parent_company_id IN (" + placeholders + "))";
+        Object[] params = new Object[companyIds.size() * 2];
+        for (int i = 0; i < companyIds.size(); i++) {
+            params[i] = companyIds.get(i);
+            params[i + companyIds.size()] = companyIds.get(i);
+        }
+        List<String> schemas = jdbcTemplate.queryForList(schemaQuery, String.class, params)
+                .stream()
+                .filter(s -> SAFE_SCHEMA.matcher(s).matches())
+                .distinct()
+                .collect(Collectors.toList());
+        if (schemas.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        return pageAcrossSchemas(schemas, pageable);
+    }
+
+    private Page<EmployeeResponse> pageAcrossSchemas(List<String> schemas, Pageable pageable) {
+        String unionSql = buildUnionSql(schemas);
+
+        String dedupedSql =
+                "SELECT * FROM (" +
+                "  SELECT _u.*, ROW_NUMBER() OVER (PARTITION BY _u.company_id, _u.id ORDER BY _u.created_at) AS _rn" +
+                "  FROM (" + unionSql + ") _u" +
+                ") _ranked WHERE _rn = 1";
+
+        String countSql = "SELECT COUNT(*) FROM (" + dedupedSql + ") _counted";
+        Long total = jdbcTemplate.queryForObject(countSql, Long.class);
+        String pagedSql = "SELECT * FROM (" + dedupedSql + ") _all ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        List<EmployeeResponse> rows = jdbcTemplate.query(
+                pagedSql,
+                (rs, rowNum) -> mapRow(rs),
+                pageable.getPageSize(),
+                pageable.getOffset()
+        );
         return new PageImpl<>(rows, pageable, total != null ? total : 0L);
     }
 

@@ -99,6 +99,7 @@ public class UserRoleService {
                 .findFirst()
                 .orElse(null);
         if (matchingAssignment != null
+                && matchingAssignment.isActive()
                 && matchingAssignment.getAssignmentStatus() == UserRole.AssignmentStatus.ACTIVE) {
             throw new BadRequestException("User already has the " + request.getRoleName() + " role in this company");
         }
@@ -127,6 +128,10 @@ public class UserRoleService {
         userRole.setEffectiveFrom(request.getEffectiveFrom() != null ? request.getEffectiveFrom() : LocalDate.now());
         userRole.setExpiresOn(request.getExpiresOn());
         userRole.setAssignmentStatus(UserRole.AssignmentStatus.ACTIVE);
+        // A revoked assignment is retained to satisfy the (user, role, company)
+        // uniqueness rule.  Re-using it must restore both status fields; otherwise
+        // the selector hides a row that appears ACTIVE in the roles audit screen.
+        userRole.setActive(true);
         userRole.setGrantedByUserId(currentUserId());
         userRole.setAssignmentReason(request.getReason());
 
@@ -276,7 +281,8 @@ public class UserRoleService {
             UserRole activeAssignment = userRoleRepository.findByUserIdAndCompanyId(request.getUserId(), companyId)
                     .stream()
                     .filter(ur -> ur.getRole().getName() == request.getRoleName()
-                            && ur.getAssignmentStatus() == UserRole.AssignmentStatus.ACTIVE)
+                            && ur.isActive()
+                            && ur.isEffectiveOn(LocalDate.now()))
                     .findFirst()
                     .orElse(null);
             // Bulk assignment is idempotent: retain companies that are already assigned

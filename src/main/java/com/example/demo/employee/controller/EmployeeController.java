@@ -12,6 +12,7 @@ import com.example.demo.base.repository.JobRoleRepository;
 import com.example.demo.base.repository.ShiftScheduleRepository;
 import com.example.demo.base.repository.WorkTypeRepository;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.employee.dto.EmployeeRequest;
 import com.example.demo.employee.dto.EmployeeResponse;
 import com.example.demo.employee.entity.Employee;
@@ -22,6 +23,7 @@ import com.example.demo.employee.repository.EmployeeTagRepository;
 import com.example.demo.employee.repository.EmployeeWorkInformationRepository;
 import com.example.demo.employee.service.EmployeeService;
 import com.example.demo.employee.service.GlobalEmployeeService;
+import com.example.demo.auth.security.UserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -40,6 +42,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -75,7 +78,24 @@ public class EmployeeController {
     @Operation(summary = "List all employees (company-scoped)")
     public ResponseEntity<Page<EmployeeResponse>> list(
             @RequestParam(required = false) Long filterByCompanyId,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @AuthenticationPrincipal UserPrincipal currentUser,
             @PageableDefault(size = 20) Pageable pageable) {
+        boolean isPlatformAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"));
+        boolean isMultiCompanyAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_SUPER_ADMIN")
+                        || authority.getAuthority().equals("ROLE_ACCOUNT_MANAGER"));
+
+        // A company-scoped administrator must never reach the tenant query without
+        // a company context.  In All Companies mode, aggregate only their active
+        // assignments; for every other role require the client to select a company.
+        if (companyId == null && !isPlatformAdmin) {
+            if (isMultiCompanyAdmin) {
+                return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable));
+            }
+            throw new BadRequestException("X-Company-Id header is required for employee listing");
+        }
         return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId));
     }
 
@@ -105,6 +125,15 @@ public class EmployeeController {
     @Operation(summary = "List ALL employees across every organization (Super Admin only)")
     public ResponseEntity<Page<EmployeeResponse>> listGlobal(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable));
+    }
+
+    @GetMapping("/assigned")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ACCOUNT_MANAGER')")
+    @Operation(summary = "List employees across the caller's assigned companies only")
+    public ResponseEntity<Page<EmployeeResponse>> listAssigned(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable));
     }
 
     @GetMapping("/{id}")

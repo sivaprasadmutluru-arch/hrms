@@ -104,10 +104,22 @@ public class UserRole extends BaseEntity {
 
     public enum AssignmentStatus { PENDING, ACTIVE, REVOKED, EXPIRED }
 
+    /**
+     * Keep the inherited soft-delete flag and the role lifecycle in sync.  A role
+     * assignment is reusable because of its unique key, so reactivation must not
+     * leave an ACTIVE row hidden by {@code is_active=false}.
+     */
+    @PrePersist
+    @PreUpdate
+    private void synchronizeActiveState() {
+        setActive(assignmentStatus == null || assignmentStatus == AssignmentStatus.ACTIVE);
+    }
+
     public boolean isEffectiveOn(LocalDate date) {
         // Null is treated as active only for legacy rows during the migration
         // window. The repeatable migration backfills it to ACTIVE.
-        return (assignmentStatus == null || assignmentStatus == AssignmentStatus.ACTIVE)
+        return isActive()
+                && (assignmentStatus == null || assignmentStatus == AssignmentStatus.ACTIVE)
                 && (effectiveFrom == null || !effectiveFrom.isAfter(date))
                 && (expiresOn == null || !expiresOn.isBefore(date));
     }

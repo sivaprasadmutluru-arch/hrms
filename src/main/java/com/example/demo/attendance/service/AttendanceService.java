@@ -127,7 +127,14 @@ public class AttendanceService {
         LocalDate start = from != null ? from : today;
         LocalDate end   = to   != null ? (to.isAfter(today) ? today : to) : today;
 
-        // All active employees (filtered by dept or single employee if provided)
+        // Read stored attendance first.  Historical punches remain reportable after an
+        // employee is made inactive; deactivation stops future work, it must not erase
+        // their attendance history from the register.
+        List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end);
+
+        // Active employees receive virtual Absent / Leave / Holiday rows.  Inactive
+        // employees are added only when they have a real stored attendance row in the
+        // selected period, so former employees are visible without creating new absences.
         List<Employee> employees;
         if (employeeId != null) {
             employees = employeeRepository.findById(employeeId).map(List::of).orElse(List.of());
@@ -138,7 +145,18 @@ public class AttendanceService {
         }
 
         // Attendance records keyed by "employeeId_date"
-        List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end);
+        Map<Long, Employee> visibleEmployees = new LinkedHashMap<>();
+        employees.forEach(employee -> visibleEmployees.put(employee.getId(), employee));
+        for (Attendance attendance : attendances) {
+            Employee employee = attendance.getEmployee();
+            boolean matchesDepartment = departmentId == null
+                    || (employee.getDepartment() != null && departmentId.equals(employee.getDepartment().getId()));
+            boolean matchesEmployee = employeeId == null || employeeId.equals(employee.getId());
+            if (matchesDepartment && matchesEmployee) {
+                visibleEmployees.putIfAbsent(employee.getId(), employee);
+            }
+        }
+        employees = new ArrayList<>(visibleEmployees.values());
         Map<String, Attendance> attMap = new HashMap<>();
         for (Attendance a : attendances) {
             if (a.getEmployee() != null) {
@@ -175,6 +193,10 @@ public class AttendanceService {
         while (!cursor.isBefore(start)) {
             for (Employee emp : employees) {
                 String key = emp.getId() + "_" + cursor;
+                // Never manufacture absent rows after an employee has been deactivated.
+                if (!emp.isActive() && !attMap.containsKey(key)) {
+                    continue;
+                }
                 AttendanceResponse row;
                 if (attMap.containsKey(key)) {
                     row = AttendanceResponse.from(attMap.get(key));

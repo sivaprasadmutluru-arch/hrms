@@ -27,7 +27,7 @@ public interface UserRoleRepository extends JpaRepository<UserRole, Long>, JpaSp
 
     void deleteByUserIdAndRoleIdAndCompanyId(Long userId, Long roleId, Long companyId);
 
-    @Query("select ur from UserRole ur where ur.user.id=:userId and ur.assignmentStatus=:status " +
+    @Query("select ur from UserRole ur where ur.user.id=:userId and ur.isActive=true and ur.assignmentStatus=:status " +
             "and (ur.effectiveFrom is null or ur.effectiveFrom<=:today) and (ur.expiresOn is null or ur.expiresOn>=:today)")
     List<UserRole> findEffectiveByUserId(@Param("userId") Long userId, @Param("today") LocalDate today,
                                          @Param("status") UserRole.AssignmentStatus status);
