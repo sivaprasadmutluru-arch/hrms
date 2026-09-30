@@ -57,6 +57,7 @@ const featherNames: Record<string, string> = {
   'eye-off-outline': 'eye-off',
   'arrow-forward-outline': 'arrow-right',
   'calendar-outline': 'calendar',
+  'calendar-clear-outline': 'calendar',
   'time-outline': 'clock',
   'add-circle': 'plus-circle',
   add: 'plus',

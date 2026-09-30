@@ -163,23 +163,23 @@ function PunchPill({
   loading?: boolean;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={loading}
-      style={({pressed}) => [
-        styles.punchPill,
-        isClockedIn ? styles.punchPillOut : styles.punchPillIn,
-        (pressed || loading) && styles.punchPillPressed,
-      ]}>
-      {loading ? (
-        <ActivityIndicator color={colors.white} size="small" />
-      ) : (
-        <>
-          <Icon name={isClockedIn ? 'log-out-outline' : 'log-in-outline'} size={15} color={colors.white} />
-          <Text style={styles.punchPillText}>{isClockedIn ? 'Check Out' : 'Check In'}</Text>
-        </>
-      )}
-    </Pressable>
+    <View style={[styles.punchButtonShell, {backgroundColor: isClockedIn ? colors.danger : colors.primary}]}>
+      <Pressable
+        onPress={onPress}
+        disabled={loading}
+        style={({pressed}) => [styles.punchPill, (pressed || loading) && styles.punchPillPressed]}>
+        {loading ? (
+          <View style={styles.punchPillContent}>
+            <ActivityIndicator color={colors.white} size="small" />
+          </View>
+        ) : (
+          <View style={styles.punchPillContent}>
+            <Icon name={isClockedIn ? 'log-out-outline' : 'log-in-outline'} size={16} color={colors.white} />
+            <Text style={styles.punchPillText}>{isClockedIn ? 'Check Out' : 'Check In'}</Text>
+          </View>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -433,7 +433,7 @@ export default function CheckInScreen() {
 
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <View style={[styles.heroBackdrop, {height: (heroHeight || 220) + (stickyHeaderHeight || insets.top + 50)}]} pointerEvents="none" />
+      <View style={[styles.heroBackdrop, {height: heroHeight || 220}]} pointerEvents="none" />
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={styles.content}
@@ -456,12 +456,10 @@ export default function CheckInScreen() {
         </View>
 
         <View style={styles.clockCard}>
-          <View>
-            <Text style={styles.clockCardTime}>{wallClockLabel}</Text>
-            <Text style={styles.clockCardDate}>{wallDateLabel}</Text>
-          </View>
-          <PunchPill isClockedIn={isClockedIn} onPress={submit} loading={loading || locating} />
+          <Text style={styles.clockCardTime} numberOfLines={1}>{wallClockLabel}</Text>
+          <Text style={styles.clockCardDate}>{wallDateLabel}</Text>
         </View>
+        <PunchPill isClockedIn={isClockedIn} onPress={submit} loading={loading || locating} />
 
         <Card style={[styles.quickStatsCard, styles.flatCard]}>
           <View style={styles.statsRow}>
@@ -497,7 +495,7 @@ export default function CheckInScreen() {
           )}
         </Card>
 
-        {!!message && (
+        {!!message && !isSuccessMessage && (
           <View style={[styles.messageBanner, isSuccessMessage ? styles.messageSuccess : styles.messageError]}>
             <Icon name={isSuccessMessage ? 'checkmark-circle' : 'alert-circle'} size={16} color={isSuccessMessage ? colors.success : colors.danger} />
             <Text style={[styles.messageText, isSuccessMessage ? styles.messageTextSuccess : styles.messageTextError]}>{message}</Text>
@@ -641,7 +639,7 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: colors.sidebar,
     paddingHorizontal: 20,
-    paddingBottom: 46,
+    paddingBottom: 28,
   },
   stickyLocationHeader: {
     position: 'absolute',
@@ -678,36 +676,44 @@ const styles = StyleSheet.create({
   heroChipText: {color: colors.white, fontSize: 11, fontFamily: fonts.semibold, letterSpacing: 0.2},
 
   clockCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: colors.white,
-    borderRadius: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    borderRadius: 16,
     marginHorizontal: 16,
-    marginTop: -30,
+    marginTop: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: colors.border,
     shadowOpacity: 0,
     shadowRadius: 0,
     elevation: 0,
+    overflow: 'hidden',
   },
-  clockCardTime: {color: colors.text, fontSize: 24, fontFamily: fonts.bold, fontVariant: ['tabular-nums']},
+  clockCardTime: {color: colors.text, fontSize: 22, lineHeight: 30, fontFamily: fonts.bold, fontVariant: ['tabular-nums']},
   clockCardDate: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 3},
-
+  punchButtonShell: {
+    height: 52,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 0,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
   punchPill: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  punchPillPressed: {opacity: 0.85},
+  punchPillContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 15,
   },
-  punchPillIn: {backgroundColor: colors.primary},
-  punchPillOut: {backgroundColor: colors.danger},
-  punchPillPressed: {opacity: 0.85},
-  punchPillText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
+  punchPillText: {color: colors.white, fontSize: 15, fontFamily: fonts.semibold, textAlign: 'center'},
 
   messageBanner: {
     flexDirection: 'row',
@@ -726,7 +732,7 @@ const styles = StyleSheet.create({
   messageTextSuccess: {color: colors.success},
   messageTextError: {color: colors.danger},
 
-  quickStatsCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 18, shadowOpacity: 0.06, elevation: 2},
+  quickStatsCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 14, shadowOpacity: 0.06, elevation: 2},
   activityCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 14, shadowOpacity: 0.04, elevation: 1},
   flatCard: {shadowOpacity: 0, shadowRadius: 0, elevation: 0, borderColor: colors.border},
   activityHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8},
