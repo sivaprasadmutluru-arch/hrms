@@ -43,7 +43,30 @@ public class LeaveAllocationRequest extends BaseEntity {
     @Column(name = "attachment_path")
     private String attachmentPath;
 
+    /** The business operation represented by this immutable request. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "allocation_action", nullable = false)
+    private AllocationAction allocationAction = AllocationAction.GRANT;
+
+    /** The approved allocation that an amendment or cancellation supersedes. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_request_id")
+    private LeaveAllocationRequest sourceRequest;
+
+    /** Days actually credited when this request was approved (zero for a cancellation). */
+    @Column(name = "applied_days")
+    private Double appliedDays;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lifecycle_status", nullable = false)
+    private LifecycleStatus lifecycleStatus = LifecycleStatus.ACTIVE;
+
     public enum AllocationStatus {
         REQUESTED, APPROVED, REJECTED
     }
+
+    public enum AllocationAction { GRANT, AMEND, CANCEL }
+
+    /** An approved allocation is never deleted; it is superseded or cancelled instead. */
+    public enum LifecycleStatus { ACTIVE, SUPERSEDED, CANCELLED }
 }

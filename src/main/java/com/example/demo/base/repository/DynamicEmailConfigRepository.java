@@ -11,5 +11,6 @@ import java.util.Optional;
 @Repository
 public interface DynamicEmailConfigRepository extends JpaRepository<DynamicEmailConfig, Long>, JpaSpecificationExecutor<DynamicEmailConfig> {
     Optional<DynamicEmailConfig> findFirstByCompanyId(Long companyId);
+    Optional<DynamicEmailConfig> findFirstByIsActiveTrueOrderByIdAsc();
     List<DynamicEmailConfig> findAllByCompanyId(Long companyId);
 }

@@ -3,6 +3,7 @@ package com.example.demo.auth.controller;
 import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.LoginResponse;
 import com.example.demo.auth.dto.PasswordResetRequest;
+import com.example.demo.auth.dto.PasswordResetConfirmRequest;
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.security.UserPrincipal;
@@ -119,16 +120,15 @@ public class AuthController {
     @PostMapping("/forgot-password")
     @Operation(summary = "Request password reset email")
     public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody PasswordResetRequest request) {
-        authService.generatePasswordResetToken(request.getEmail());
+        authService.requestPasswordReset(request.getEmail());
         return ResponseEntity.ok(Map.of("message", "Password reset email sent"));
     }
 
     @PostMapping("/reset-password")
     @Operation(summary = "Reset password using token")
     public ResponseEntity<Map<String, String>> resetPassword(
-            @RequestParam String token,
-            @RequestParam String newPassword) {
-        authService.resetPassword(token, newPassword);
+            @Valid @RequestBody PasswordResetConfirmRequest request) {
+        authService.resetPassword(request.getToken(), request.getNewPassword());
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 

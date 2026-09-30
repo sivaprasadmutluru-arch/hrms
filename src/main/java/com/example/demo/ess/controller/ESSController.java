@@ -47,6 +47,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -336,6 +337,34 @@ public class ESSController {
             return res;
         }).toList());
     }
+
+    @GetMapping("/my-attendance/activities")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get the current employee's individual clock-in and clock-out events for a day")
+    public ResponseEntity<List<AttendanceActivityDTO>> myAttendanceActivities(
+            Authentication auth,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        Employee emp = resolveEmployee(auth);
+        LocalDate targetDate = date != null ? date : LocalDate.now(DUBAI_ZONE);
+        List<AttendanceActivityDTO> activities = attendanceActivityRepository
+                .findByEmployeeIdAndAttendanceDate(emp.getId(), targetDate)
+                .stream()
+                .sorted(Comparator.comparing(AttendanceActivity::getInDatetime,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(activity -> new AttendanceActivityDTO(
+                        activity.getId(), activity.getAttendanceDate(), activity.getClockIn(), activity.getClockOut(),
+                        activity.getInDatetime(), activity.getOutDatetime(),
+                        activity.getClockType() == null ? null : activity.getClockType().name(),
+                        activity.getClockInAddress(), activity.getClockOutAddress()))
+                .toList();
+        return ResponseEntity.ok(activities);
+    }
+
+    public record AttendanceActivityDTO(
+            Long id, LocalDate attendanceDate, LocalTime clockIn, LocalTime clockOut,
+            java.time.LocalDateTime inDatetime, java.time.LocalDateTime outDatetime,
+            String clockType, String clockInAddress, String clockOutAddress) {}
 
     @PostMapping("/check-in")
     @PreAuthorize("isAuthenticated()")

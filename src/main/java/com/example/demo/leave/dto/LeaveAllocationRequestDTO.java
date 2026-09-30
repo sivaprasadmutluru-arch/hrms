@@ -14,5 +14,9 @@ public record LeaveAllocationRequestDTO(
         LocalDate requestedDate,
         AllocationStatus status,
         String description,
-        String rejectReason
+        String rejectReason,
+        String allocationAction,
+        Long sourceRequestId,
+        String lifecycleStatus,
+        Double appliedDays
 ) {}

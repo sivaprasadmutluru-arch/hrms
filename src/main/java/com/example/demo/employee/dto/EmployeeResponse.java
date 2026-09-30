@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 public class EmployeeResponse {
 
     private Long id;
+    /** Login account linked to this employee. Exposed only to authenticated employee-management clients. */
+    private Long userId;
     private String badgeId;
     private String firstName;
     private String lastName;
@@ -85,6 +87,7 @@ public class EmployeeResponse {
     public static EmployeeResponse from(Employee e, Contract contract) {
         EmployeeResponse r = new EmployeeResponse();
         r.setId(e.getId());
+        if (e.getUser() != null) r.setUserId(e.getUser().getId());
         r.setBadgeId(e.getBadgeId());
         r.setFirstName(e.getFirstName());
         r.setLastName(e.getLastName());

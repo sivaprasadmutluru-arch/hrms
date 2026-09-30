@@ -14,6 +14,7 @@ import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
@@ -47,6 +48,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final EmployeeCompanyGuard employeeCompanyGuard;
+    private final EmailService emailService;
 
     public LoginResponse login(LoginRequest request) {
         String loginIdentifier = resolveLoginIdentifier(request.getUsernameOrEmail());
@@ -204,14 +206,31 @@ public class AuthService {
     }
 
     @Transactional
-    public String generatePasswordResetToken(String email) {
+    public void requestPasswordReset(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestException("No user found with email: " + email));
+        UserRole primaryRole = employeeCompanyGuard.primaryRole(user.getId());
+        Long companyId = primaryRole != null && primaryRole.getCompany() != null
+                ? primaryRole.getCompany().getId() : null;
+        if (!emailService.hasActiveSmtpConfig(companyId)) {
+            throw new BadRequestException("Password reset email is not configured for this company. Please contact your HR administrator.");
+        }
         String token = UUID.randomUUID().toString();
         user.setResetToken(token);
-        user.setResetTokenExpiry(LocalDateTime.now().plusHours(24));
+        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(15));
         userRepository.save(user);
-        return token;
+
+        String resetUrl = "https://grecha.ai/forgot-password?token=" + token;
+        String body = "<p>Hello " + escapeHtml(user.getFirstName()) + ",</p>"
+                + "<p>We received a request to reset your GRECHA.AI password.</p>"
+                + "<p><a href=\"" + resetUrl + "\">Reset your password</a></p>"
+                + "<p>This secure link expires in 15 minutes and can be used only once. If you did not request this, you can ignore this email.</p>";
+        if (!emailService.sendEmail(companyId, user.getEmail(), "Reset your GRECHA.AI password", body, null)) {
+            user.setResetToken(null);
+            user.setResetTokenExpiry(null);
+            userRepository.save(user);
+            throw new BadRequestException("Unable to send password reset email. Please contact your HR administrator.");
+        }
     }
 
     @Transactional
@@ -226,6 +245,12 @@ public class AuthService {
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
         userRepository.save(user);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null || value.isBlank()) return "there";
+        return value.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     @Transactional

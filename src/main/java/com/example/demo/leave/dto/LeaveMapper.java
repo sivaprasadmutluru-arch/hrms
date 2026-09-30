@@ -131,7 +131,11 @@ public final class LeaveMapper {
                 lar.getRequestedDate(),
                 lar.getStatus(),
                 lar.getDescription(),
-                lar.getRejectReason()
+                lar.getRejectReason(),
+                lar.getAllocationAction() != null ? lar.getAllocationAction().name() : "GRANT",
+                lar.getSourceRequest() != null ? lar.getSourceRequest().getId() : null,
+                lar.getLifecycleStatus() != null ? lar.getLifecycleStatus().name() : "ACTIVE",
+                lar.getAppliedDays()
         );
     }
 

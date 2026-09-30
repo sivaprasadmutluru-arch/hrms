@@ -426,6 +426,22 @@ public class EmployeeService {
                     });
         }
 
+        // An employee's email is also their login email when the profile is linked to a
+        // user account.  Previously this edit changed only the tenant employee row,
+        // leaving public.users on the old email.  That made the newly saved address
+        // impossible to use at login.  Validate the target first, then update both
+        // records in this transaction so the two identities cannot drift apart.
+        String requestedEmail = normalizeEmail(req.getEmail());
+        if (requestedEmail != null) {
+            employeeRepository.findByEmail(requestedEmail)
+                    .filter(existing -> !existing.getId().equals(id))
+                    .ifPresent(existing -> {
+                        throw new BadRequestException("Email '" + requestedEmail + "' is already assigned to another employee");
+                    });
+            synchronizeLinkedLoginEmail(emp, requestedEmail);
+            req.setEmail(requestedEmail);
+        }
+
         // Preserve the manager configured in Work Information when another
         // employee field is edited without supplying a manager change.
         emp.setReportingManager(reportingManagers.resolve(emp));
@@ -455,6 +471,36 @@ public class EmployeeService {
 
         Contract contract = contractRepository.findByEmployeeId(saved.getId()).stream().findFirst().orElse(null);
         return responseWithManager(saved, contract);
+    }
+
+    /**
+     * Keeps the shared login identity aligned with the employee profile.  This is
+     * deliberately performed before the employee is saved: an email owned by a
+     * different account is rejected without making a partial profile change.
+     */
+    private void synchronizeLinkedLoginEmail(Employee employee, String requestedEmail) {
+        User linkedUser = employee.getUser();
+        if (linkedUser == null || requestedEmail.equalsIgnoreCase(linkedUser.getEmail())) {
+            return;
+        }
+
+        userRepository.findByEmail(requestedEmail)
+                .filter(otherUser -> !otherUser.getId().equals(linkedUser.getId()))
+                .ifPresent(otherUser -> {
+                    throw new BadRequestException(
+                            "Login email '" + requestedEmail + "' already belongs to another user. "
+                                    + "Use a different email or resolve the duplicate account first.");
+                });
+
+        linkedUser.setEmail(requestedEmail);
+        userRepository.save(linkedUser);
+        log.info("[employee-update] synchronized login email for employeeId={} userId={}",
+                employee.getId(), linkedUser.getId());
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) return null;
+        return email.trim().toLowerCase();
     }
 
     // companyId (query param, threaded from the row the frontend already has) pins the

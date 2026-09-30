@@ -44,7 +44,7 @@ public class EmailService {
      * @param employee      optional employee to associate with the log
      */
     @Transactional
-    public void sendEmail(Long companyId, String to, String subject, String htmlBody, Employee employee) {
+    public boolean sendEmail(Long companyId, String to, String subject, String htmlBody, Employee employee) {
         EmailLog emailLog = new EmailLog();
         emailLog.setRecipientEmail(to);
         emailLog.setSubject(subject);
@@ -68,12 +68,35 @@ public class EmailService {
 
             sender.send(message);
             emailLog.setStatus(EmailLog.EmailStatus.SENT);
+            emailLogRepository.save(emailLog);
+            return true;
         } catch (Exception e) {
             emailLog.setStatus(EmailLog.EmailStatus.FAILED);
             emailLog.setErrorMessage(e.getMessage());
             log.warn("Failed to send email to {}: {}", to, e.getMessage());
         }
         emailLogRepository.save(emailLog);
+        return false;
+    }
+
+    /** Whether this company can deliver email rather than falling back to the no-op sender. */
+    public boolean hasActiveSmtpConfig(Long companyId) {
+        return resolveActiveConfig(companyId)
+                .map(config -> Boolean.TRUE.equals(config.getIsActive())
+                        && config.getHost() != null && !config.getHost().isBlank()
+                        && config.getUsername() != null && !config.getUsername().isBlank()
+                        && config.getPassword() != null && !config.getPassword().isBlank())
+                .orElse(false);
+    }
+
+    private java.util.Optional<DynamicEmailConfig> resolveActiveConfig(Long companyId) {
+        java.util.Optional<DynamicEmailConfig> companyConfig = companyId == null
+                ? java.util.Optional.empty()
+                : emailConfigRepository.findFirstByCompanyId(companyId)
+                        .filter(config -> Boolean.TRUE.equals(config.getIsActive()));
+        return companyConfig.isPresent()
+                ? companyConfig
+                : emailConfigRepository.findFirstByIsActiveTrueOrderByIdAsc();
     }
 
     /**
@@ -127,34 +150,31 @@ public class EmailService {
      * Falls back to a minimal default SMTP if no config exists.
      */
     private JavaMailSender buildSender(Long companyId) {
-        if (companyId != null) {
-            DynamicEmailConfig config = emailConfigRepository.findFirstByCompanyId(companyId).orElse(null);
-            if (config != null && config.getHost() != null && config.getIsActive()) {
-                JavaMailSenderImpl sender = new JavaMailSenderImpl();
-                sender.setHost(config.getHost());
-                sender.setPort(config.getPort() != null ? config.getPort() : 587);
-                sender.setUsername(config.getUsername());
-                sender.setPassword(config.getPassword());
+        DynamicEmailConfig config = resolveActiveConfig(companyId).orElse(null);
+        if (config != null && config.getHost() != null) {
+            JavaMailSenderImpl sender = new JavaMailSenderImpl();
+            sender.setHost(config.getHost());
+            sender.setPort(config.getPort() != null ? config.getPort() : 587);
+            sender.setUsername(config.getUsername());
+            sender.setPassword(config.getPassword());
 
-                Properties props = sender.getJavaMailProperties();
-                props.put("mail.transport.protocol", "smtp");
-                props.put("mail.smtp.auth", "true");
-                if (Boolean.TRUE.equals(config.getUseTls())) {
-                    props.put("mail.smtp.starttls.enable", "true");
-                }
-                if (Boolean.TRUE.equals(config.getUseSsl())) {
-                    props.put("mail.smtp.ssl.enable", "true");
-                }
-                return sender;
+            Properties props = sender.getJavaMailProperties();
+            props.put("mail.transport.protocol", "smtp");
+            props.put("mail.smtp.auth", "true");
+            if (Boolean.TRUE.equals(config.getUseTls())) {
+                props.put("mail.smtp.starttls.enable", "true");
             }
+            if (Boolean.TRUE.equals(config.getUseSsl())) {
+                props.put("mail.smtp.ssl.enable", "true");
+            }
+            return sender;
         }
         // Return a no-op sender that logs but does not actually connect
         return new NoOpMailSender();
     }
 
     private String getFromEmail(Long companyId) {
-        if (companyId == null) return null;
-        return emailConfigRepository.findFirstByCompanyId(companyId)
+        return resolveActiveConfig(companyId)
                 .map(DynamicEmailConfig::getFromEmail)
                 .orElse(null);
     }

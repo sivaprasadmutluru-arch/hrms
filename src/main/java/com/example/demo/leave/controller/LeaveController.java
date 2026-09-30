@@ -562,7 +562,49 @@ public class LeaveController {
         }
         req.setRequestedDate(LocalDate.now());
         req.setStatus(LeaveAllocationRequest.AllocationStatus.REQUESTED);
+        req.setAllocationAction(LeaveAllocationRequest.AllocationAction.GRANT);
+        req.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.ACTIVE);
         return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
+    }
+
+    @PostMapping("/allocation-requests/{id}/adjust")
+    @PreAuthorize("hasAuthority('leave:create')")
+    @Transactional
+    @Operation(summary = "Request an auditable amendment or cancellation of an approved leave allocation")
+    public ResponseEntity<LeaveAllocationRequestDTO> requestAllocationAdjustment(
+            @PathVariable Long id, @RequestBody AllocationAdjustmentRequest body) {
+        LeaveAllocationRequest source = allocationRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
+        assertAllocationAccess(source);
+        if (source.getStatus() != LeaveAllocationRequest.AllocationStatus.APPROVED
+                || (source.getLifecycleStatus() != null && source.getLifecycleStatus() != LeaveAllocationRequest.LifecycleStatus.ACTIVE)) {
+            throw new BadRequestException("Only an active approved allocation can be amended or cancelled");
+        }
+        if (body == null || body.reason() == null || body.reason().trim().isEmpty()) {
+            throw new BadRequestException("A reason is required for an allocation adjustment");
+        }
+
+        LeaveAllocationRequest adjustment = new LeaveAllocationRequest();
+        adjustment.setEmployee(source.getEmployee());
+        adjustment.setSourceRequest(source);
+        adjustment.setRequestedDate(LocalDate.now());
+        adjustment.setDescription(body.reason().trim());
+        adjustment.setStatus(LeaveAllocationRequest.AllocationStatus.REQUESTED);
+        adjustment.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.ACTIVE);
+        if (Boolean.TRUE.equals(body.cancel())) {
+            adjustment.setAllocationAction(LeaveAllocationRequest.AllocationAction.CANCEL);
+            adjustment.setLeaveType(source.getLeaveType());
+            adjustment.setRequestedDays(0d);
+        } else {
+            if (body.requestedDays() == null || body.requestedDays() < 0d) {
+                throw new BadRequestException("Adjusted days must be zero or greater");
+            }
+            if (body.leaveTypeId() == null) throw new BadRequestException("Leave type is required");
+            adjustment.setAllocationAction(LeaveAllocationRequest.AllocationAction.AMEND);
+            adjustment.setLeaveType(leaveTypeRepository.getReferenceById(body.leaveTypeId()));
+            adjustment.setRequestedDays(body.requestedDays());
+        }
+        return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(adjustment)));
     }
 
     @PostMapping("/allocation-requests/{id}/approve")
@@ -572,19 +614,19 @@ public class LeaveController {
     public ResponseEntity<LeaveAllocationRequestDTO> approveAllocationRequest(@PathVariable Long id) {
         LeaveAllocationRequest req = allocationRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
+        assertAllocationAccess(req);
+        if (req.getStatus() != LeaveAllocationRequest.AllocationStatus.REQUESTED) {
+            throw new BadRequestException("Only requested allocations can be approved");
+        }
+        if (req.getAllocationAction() == LeaveAllocationRequest.AllocationAction.AMEND
+                || req.getAllocationAction() == LeaveAllocationRequest.AllocationAction.CANCEL) {
+            approveAllocationAdjustment(req);
+            return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
+        }
         req.setStatus(LeaveAllocationRequest.AllocationStatus.APPROVED);
-        AvailableLeave al = availableLeaveRepository
-                .findByEmployeeIdAndLeaveTypeId(req.getEmployee().getId(), req.getLeaveType().getId())
-                .orElseGet(() -> {
-                    AvailableLeave n = new AvailableLeave();
-                    n.setEmployee(req.getEmployee());
-                    n.setLeaveType(req.getLeaveType());
-                    n.setAssignedDate(LocalDate.now());
-                    return n;
-                });
-        al.setAvailableDays(al.getAvailableDays() + req.getRequestedDays());
-        al.setTotalLeaveDays(al.getTotalLeaveDays() + req.getRequestedDays());
-        availableLeaveRepository.save(al);
+        double grantedDays = req.getRequestedDays() == null ? 0d : req.getRequestedDays();
+        applyAllocationDelta(req.getEmployee(), req.getLeaveType(), grantedDays);
+        req.setAppliedDays(grantedDays);
         return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
@@ -597,10 +639,71 @@ public class LeaveController {
             @RequestBody(required = false) RejectLeaveRequest body) {
         LeaveAllocationRequest req = allocationRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
+        assertAllocationAccess(req);
+        if (req.getStatus() != LeaveAllocationRequest.AllocationStatus.REQUESTED) {
+            throw new BadRequestException("Only requested allocations can be rejected");
+        }
         req.setStatus(LeaveAllocationRequest.AllocationStatus.REJECTED);
         req.setRejectReason(body != null ? body.reason() : null);
         return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
+
+    /** Applies an approved amendment/cancellation atomically and preserves its source record. */
+    private void approveAllocationAdjustment(LeaveAllocationRequest adjustment) {
+        LeaveAllocationRequest source = adjustment.getSourceRequest();
+        if (source == null || source.getStatus() != LeaveAllocationRequest.AllocationStatus.APPROVED
+                || (source.getLifecycleStatus() != null && source.getLifecycleStatus() != LeaveAllocationRequest.LifecycleStatus.ACTIVE)) {
+            throw new BadRequestException("The original allocation is no longer available for adjustment");
+        }
+        double sourceDays = source.getAppliedDays() != null ? source.getAppliedDays()
+                : (source.getRequestedDays() == null ? 0d : source.getRequestedDays());
+        double replacementDays = adjustment.getAllocationAction() == LeaveAllocationRequest.AllocationAction.CANCEL
+                ? 0d : adjustment.getRequestedDays();
+
+        // Reversal happens first. A used portion cannot be silently removed: the request
+        // remains pending until HR submits a valid adjustment for the remaining balance.
+        applyAllocationDelta(source.getEmployee(), source.getLeaveType(), -sourceDays);
+        if (replacementDays > 0d) {
+            applyAllocationDelta(adjustment.getEmployee(), adjustment.getLeaveType(), replacementDays);
+        }
+        source.setLifecycleStatus(adjustment.getAllocationAction() == LeaveAllocationRequest.AllocationAction.CANCEL
+                ? LeaveAllocationRequest.LifecycleStatus.CANCELLED
+                : LeaveAllocationRequest.LifecycleStatus.SUPERSEDED);
+        allocationRequestRepository.save(source);
+        adjustment.setStatus(LeaveAllocationRequest.AllocationStatus.APPROVED);
+        adjustment.setAppliedDays(replacementDays);
+    }
+
+    private void applyAllocationDelta(Employee employee, LeaveType leaveType, double delta) {
+        AvailableLeave balance = availableLeaveRepository
+                .findByEmployeeIdAndLeaveTypeId(employee.getId(), leaveType.getId())
+                .orElseGet(() -> {
+                    AvailableLeave created = new AvailableLeave();
+                    created.setEmployee(employee);
+                    created.setLeaveType(leaveType);
+                    created.setAssignedDate(LocalDate.now());
+                    created.setAvailableDays(0d);
+                    created.setTotalLeaveDays(0d);
+                    return created;
+                });
+        double available = balance.getAvailableDays() == null ? 0d : balance.getAvailableDays();
+        if (available + delta < -0.00001d) {
+            throw new BadRequestException("This allocation cannot be reduced because some of its leave days have already been used");
+        }
+        balance.setAvailableDays(available + delta);
+        availableLeaveRepository.save(balance);
+    }
+
+    private void assertAllocationAccess(LeaveAllocationRequest request) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        Long companyId = request.getEmployee() != null && request.getEmployee().getCompany() != null
+                ? request.getEmployee().getCompany().getId() : null;
+        if (scope != null && companyId != null && !scope.canAccess(companyId)) {
+            throw new AccessDeniedException("You do not have access to this leave allocation");
+        }
+    }
+
+    public record AllocationAdjustmentRequest(Long leaveTypeId, Double requestedDays, Boolean cancel, String reason) {}
 
     // ─── Leave Restrictions ───────────────────────────────────────────────────
 
