@@ -463,7 +463,7 @@ export default function CheckInScreen() {
           <PunchPill isClockedIn={isClockedIn} onPress={submit} loading={loading || locating} />
         </View>
 
-        <Card style={styles.quickStatsCard}>
+        <Card style={[styles.quickStatsCard, styles.flatCard]}>
           <View style={styles.statsRow}>
             <Stat label="Check In" value={displayTime(todayRecord?.checkIn, clock?.checkIn)} icon="log-in-outline" tone="success" />
             <View style={styles.statDivider} />
@@ -473,7 +473,7 @@ export default function CheckInScreen() {
           </View>
         </Card>
 
-        <Card style={styles.activityCard}>
+        <Card style={[styles.activityCard, styles.flatCard]}>
           <View style={styles.activityHeader}>
             <View>
               <Text style={styles.cardTitle}>Today's punch history</Text>
@@ -504,7 +504,7 @@ export default function CheckInScreen() {
           </View>
         )}
 
-        <Card style={styles.monthCard}>
+        <Card style={[styles.monthCard, styles.flatCard]}>
           <View style={styles.monthHead}>
             <View style={styles.geoCopy}>
               <Text style={styles.cardTitle}>Attendance This Month</Text>
@@ -651,6 +651,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sidebar,
     paddingHorizontal: 20,
     paddingBottom: 10,
+    // Keep the fixed header above scroll content on Android; otherwise elevated
+    // cards can briefly paint through it while the list is moving.
+    zIndex: 20,
+    elevation: 20,
   },
   heroLocationRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 6},
   heroLocationIcon: {marginTop: 2},
@@ -683,11 +687,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginHorizontal: 16,
     marginTop: -30,
-    shadowColor: colors.sidebar,
-    shadowOffset: {width: 0, height: 10},
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   clockCardTime: {color: colors.text, fontSize: 24, fontFamily: fonts.bold, fontVariant: ['tabular-nums']},
   clockCardDate: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 3},
@@ -724,6 +728,7 @@ const styles = StyleSheet.create({
 
   quickStatsCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 18, shadowOpacity: 0.06, elevation: 2},
   activityCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 14, shadowOpacity: 0.04, elevation: 1},
+  flatCard: {shadowOpacity: 0, shadowRadius: 0, elevation: 0, borderColor: colors.border},
   activityHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8},
   activityCount: {backgroundColor: colors.primaryLight, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5},
   activityCountText: {color: colors.primary, fontSize: 11, fontFamily: fonts.semibold},

@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import {api} from '../api/client';
@@ -146,10 +147,10 @@ export default function NotificationsScreen({onBack}: {onBack: () => void}) {
         style={styles.scroller}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
-      <Card style={styles.summaryCard}>
-        <View>
-          <Text style={styles.summaryLabel}>Unread</Text>
-          <Text style={styles.summaryValue}>{unreadCount}</Text>
+      <View style={styles.summaryBar}>
+        <View style={styles.unreadSummary}>
+          <Icon name="notifications-outline" size={16} color={colors.primary} />
+          <Text style={styles.unreadSummaryText}>{unreadCount} unread</Text>
         </View>
         <View style={styles.summaryActions}>
           <Pressable disabled={!unreadCount} onPress={markAllRead} style={[styles.summaryButton, !unreadCount && styles.disabledAction]}>
@@ -159,7 +160,7 @@ export default function NotificationsScreen({onBack}: {onBack: () => void}) {
             <Text style={styles.summaryButtonDangerText}>Clear all</Text>
           </Pressable>
         </View>
-      </Card>
+      </View>
 
       <View style={styles.toolbar}>
         <View style={styles.filters}>
@@ -204,22 +205,19 @@ const styles = StyleSheet.create({
   titleWrap: {flex: 1},
   title: {color: colors.text, fontSize: 22, fontWeight: '900'},
   subtitle: {color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 2},
-  summaryCard: {
-    minHeight: 88,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+  summaryBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowOpacity: 0.04,
+    marginBottom: 10,
+    minHeight: 32,
   },
-  summaryLabel: {color: colors.muted, fontSize: 12, fontWeight: '900', textTransform: 'uppercase'},
-  summaryValue: {color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 3},
-  summaryActions: {alignItems: 'flex-end', gap: 8},
-  summaryButton: {borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 12, paddingVertical: 7},
+  unreadSummary: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  unreadSummaryText: {color: colors.textMid, fontSize: 13, fontWeight: '900'},
+  summaryActions: {flexDirection: 'row', alignItems: 'center', gap: 7},
+  summaryButton: {borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 6},
   summaryButtonText: {color: colors.primary, fontSize: 12, fontWeight: '900'},
-  summaryButtonDanger: {borderRadius: 999, backgroundColor: colors.dangerLight, paddingHorizontal: 12, paddingVertical: 7},
+  summaryButtonDanger: {borderRadius: 999, backgroundColor: colors.dangerLight, paddingHorizontal: 10, paddingVertical: 6},
   summaryButtonDangerText: {color: colors.danger, fontSize: 12, fontWeight: '900'},
   disabledAction: {opacity: 0.45},
   toolbar: {marginBottom: 12},

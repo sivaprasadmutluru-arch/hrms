@@ -121,7 +121,10 @@ export const api = {
   leaveTypes: () => request<any[]>('/ess/leave-types'),
   leaveBalance: () => request<any[]>('/ess/my-balance'),
   myPayslips: () => request<any[]>('/ess/my-payslips'),
-  holidays: () => request<any[]>('/leave/holidays'),
+  // The leave calendar endpoint requires the active company as a query parameter.
+  // Keep the company header for tenant resolution, and send this explicit value for
+  // the controller contract so an employee's calendar does not silently appear empty.
+  holidays: () => request<any[]>(`/leave/holidays${queryString({companyId})}`),
   applyLeave: (params: {leaveTypeId: number | string; startDate: string; endDate: string; reason?: string; leaveDuration?: string}) =>
     request<any>(`/ess/apply-leave${queryString({
       leaveTypeId: params.leaveTypeId,

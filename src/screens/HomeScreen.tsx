@@ -5,6 +5,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -292,7 +293,7 @@ function FeatureTile({
   );
 }
 
-function PageHeader({active, onBack}: {active: ModuleKey; onBack: () => void}) {
+function PageHeader({active, onBack, onApplyLeave, onApplyLoan}: {active: ModuleKey; onBack: () => void; onApplyLeave?: () => void; onApplyLoan?: () => void}) {
   const page = moduleInfo[active];
   return (
       <View style={styles.pageHeader}>
@@ -303,6 +304,12 @@ function PageHeader({active, onBack}: {active: ModuleKey; onBack: () => void}) {
           <Text style={styles.pageTitle}>{page.label}</Text>
           <Text style={styles.pageSubtitle}>{page.subtitle}</Text>
         </View>
+        {((active === 'leave' && onApplyLeave) || (active === 'loans' && onApplyLoan)) && (
+          <Pressable onPress={active === 'leave' ? onApplyLeave : onApplyLoan} style={styles.applyLeaveHeaderButton}>
+            <Icon name="add-outline" size={16} color={colors.white} />
+            <Text style={styles.applyLeaveHeaderText}>Apply</Text>
+          </Pressable>
+        )}
       </View>
   );
 }
@@ -348,7 +355,7 @@ function CalendarDateField({label, value, onChange}: {label: string; value: stri
   return (
     <>
       <Text style={styles.inputLabel}>{label}</Text>
-      <Pressable onPress={openPicker} style={({pressed}) => [styles.datePickerButton, pressed && styles.pressed]}>
+      <Pressable onPress={openPicker} style={styles.datePickerButton}>
         <Text style={[styles.datePickerValue, !value && styles.datePickerPlaceholder]}>{value || 'Select date'}</Text>
         <Icon name="calendar-outline" size={18} color={colors.primary} />
       </Pressable>
@@ -960,7 +967,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           <FeatureTile icon="cash-outline" label="Loans" description="Apply and track loan requests" tone="purple" onPress={() => setActive('loans')} />
         </View>
 
-        <Card style={styles.panel}>
+        <Card style={[styles.panel, styles.attendanceSummaryCard]}>
           <SectionTitle title="Today Attendance" subtitle="Current status for your workday" icon="radio-outline" />
           <FieldRow label="Status" value={clock?.online ? 'Online at work' : 'Not checked in'} />
           <FieldRow label="Check In" value={timeText(clock?.checkIn)} />
@@ -1112,17 +1119,6 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   function renderLeave() {
     return (
       <>
-        <Pressable onPress={() => setActive('leaveRequest')} style={({pressed}) => [styles.requestLeaveCta, pressed && styles.pressed]}>
-          <View style={styles.requestLeaveCtaIcon}>
-            <Icon name="add-circle" size={22} color={colors.white} />
-          </View>
-          <View style={styles.requestLeaveCtaCopy}>
-            <Text style={styles.requestLeaveCtaTitle}>Request Leave</Text>
-            <Text style={styles.requestLeaveCtaSub}>Check balance & submit a new application</Text>
-          </View>
-          <Icon name="chevron-forward-outline" size={18} color={colors.white} />
-        </Pressable>
-
         <Card style={styles.panel}>
           <SectionTitle
             title="Leave History"
@@ -1251,17 +1247,6 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   function renderLoans() {
     return (
       <>
-        <Pressable onPress={() => setLoanModalVisible(true)} style={({pressed}) => [styles.requestLeaveCta, pressed && styles.pressed]}>
-          <View style={styles.requestLeaveCtaIcon}>
-            <Icon name="add-circle" size={22} color={colors.white} />
-          </View>
-          <View style={styles.requestLeaveCtaCopy}>
-            <Text style={styles.requestLeaveCtaTitle}>Apply Loan</Text>
-            <Text style={styles.requestLeaveCtaSub}>Submit a loan, advance, or fine request</Text>
-          </View>
-          <Icon name="chevron-forward-outline" size={18} color={colors.white} />
-        </Pressable>
-
         <Card style={styles.panel}>
           <SectionTitle
             title="Loan History"
@@ -1289,11 +1274,12 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   }
 
   function renderHolidays() {
+    const displayedHolidays = upcomingHolidays.length ? upcomingHolidays : holidays.slice(0, 10);
     return (
-      <Card style={styles.panel}>
-        <SectionTitle title="Holidays" subtitle="Company holiday calendar" icon="sparkles-outline" />
-        {(upcomingHolidays.length ? upcomingHolidays : holidays.slice(0, 10)).length ? (
-          (upcomingHolidays.length ? upcomingHolidays : holidays.slice(0, 10)).map(item => (
+      <>
+        {displayedHolidays.length ? (
+          <View style={styles.holidayList}>
+          {displayedHolidays.map(item => (
             <RecordCard
               key={String(field(item, ['id', 'holidayId', 'holidayDate', 'date']))}
               title={field(item, ['holidayName', 'name', 'description'], 'Holiday')}
@@ -1301,10 +1287,17 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
               meta={field(item, ['type', 'branchName', 'companyName'], '')}
             />
           ))
+          }</View>
         ) : (
-          <Empty title="No Holidays Available" text="Company holidays will appear here once published." icon="sparkles-outline" />
+          <View style={styles.holidayEmpty}>
+            <View style={styles.holidayEmptyIcon}>
+              <Icon name="calendar-clear-outline" size={30} color={colors.primary} />
+            </View>
+            <Text style={styles.holidayEmptyTitle}>No published holidays</Text>
+            <Text style={styles.holidayEmptyText}>Your company has not added holidays to its calendar yet.</Text>
+          </View>
         )}
-      </Card>
+      </>
     );
   }
 
@@ -1327,6 +1320,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       renderActiveModule()
     ) : active === 'overview' ? (
       <View className="flex-1 bg-background" style={styles.screen}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.sidebar} />
         <View style={[styles.fixedHomeHeader, {paddingTop: insets.top + 12}]}>
           <View style={styles.topBar}>
             <View style={styles.headerSpacer} />
@@ -1361,8 +1355,14 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       </View>
     ) : (
     <View className="flex-1 bg-background" style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       <View style={[styles.moduleHeaderWrap, {paddingTop: insets.top + 10}]}>
-        <PageHeader active={active} onBack={() => setActive(active === 'leaveRequest' ? 'leave' : 'overview')} />
+        <PageHeader
+          active={active}
+          onBack={() => setActive(active === 'leaveRequest' ? 'leave' : 'overview')}
+          onApplyLeave={active === 'leave' ? () => setActive('leaveRequest') : undefined}
+          onApplyLoan={active === 'loans' ? () => setLoanModalVisible(true) : undefined}
+        />
       </View>
 
       <ScrollView
@@ -1439,6 +1439,8 @@ const styles = StyleSheet.create({
   pageTitleWrap: {flex: 1},
   pageTitle: {color: colors.text, fontSize: 20, fontFamily: fonts.bold},
   pageSubtitle: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
+  applyLeaveHeaderButton: {minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, backgroundColor: colors.primary, paddingHorizontal: 10},
+  applyLeaveHeaderText: {color: colors.white, fontSize: 12, fontFamily: fonts.bold},
   featureGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14},
   featureTile: {
     width: '48%',
@@ -1482,6 +1484,7 @@ const styles = StyleSheet.create({
   clearFilterButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 16, marginBottom: 14, borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 7},
   clearFilterText: {color: colors.primary, fontSize: 12, fontWeight: '900'},
   panel: {padding: 0, marginBottom: 12, overflow: 'hidden'},
+  attendanceSummaryCard: {shadowOpacity: 0, shadowRadius: 0, elevation: 0, borderColor: colors.border},
   sectionHead: {flexDirection: 'row', alignItems: 'center', gap: 11, padding: 16, paddingBottom: 10},
   sectionIcon: {width: 38, height: 38, borderRadius: 13, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center'},
   sectionCopy: {flex: 1},
@@ -1501,6 +1504,11 @@ const styles = StyleSheet.create({
   emptyTitle: {color: colors.text, fontSize: 16, fontWeight: '900', textAlign: 'center'},
   emptyText: {color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '700', textAlign: 'center', marginTop: 5},
   plainList: {marginTop: 4},
+  holidayList: {paddingTop: 8},
+  holidayEmpty: {marginTop: 24, alignItems: 'center', paddingHorizontal: 28, paddingVertical: 34, borderRadius: 18, borderWidth: 1, borderColor: colors.glassBorder, backgroundColor: colors.white},
+  holidayEmptyIcon: {width: 58, height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight, marginBottom: 14},
+  holidayEmptyTitle: {color: colors.text, fontSize: 17, fontFamily: fonts.bold, textAlign: 'center'},
+  holidayEmptyText: {color: colors.muted, fontSize: 13, lineHeight: 19, fontFamily: fonts.medium, textAlign: 'center', marginTop: 6},
   record: {marginHorizontal: 16, marginBottom: 10, padding: 13, shadowOpacity: 0.04, elevation: 1},
   recordTop: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10},
   recordText: {flex: 1},
@@ -1518,7 +1526,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: colors.primary,
+    // Use an explicit brand surface here. This shared Leave/Loan CTA must never
+    // inherit a pale background while retaining its white icon and labels.
+    backgroundColor: '#5B5BF7',
+    borderWidth: 1,
+    borderColor: '#4F46E5',
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,

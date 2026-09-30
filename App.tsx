@@ -67,7 +67,7 @@ function Shell() {
 
   return (
     <View style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.sidebar} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       <View style={styles.content}>
         {tab === 'home' && <HomeScreen onRootChange={setHomeAtRoot} />}
         {tab === 'admin' && showAdmin && <AdminScreen />}
