@@ -9,6 +9,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import {API_BASE_URL, API_MEDIA_BASE_URL, api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
+import {fonts} from '../theme/typography';
 import {dateText, employeeName, initials, money} from '../utils/format';
 
 type EditForm = {
@@ -314,7 +315,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-background" style={styles.screen}>
       <View style={[styles.fixedHeader, {paddingTop: insets.top + 12}]}>
         <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Profile</Text>
@@ -489,7 +490,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerSpacer: {width: 72, height: 34},
-  headerTitle: {color: colors.white, fontSize: 15, fontWeight: '900'},
+  headerTitle: {color: colors.white, fontSize: 16, fontFamily: fonts.semibold},
   hero: {
     backgroundColor: colors.sidebar,
     borderRadius: 12,
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
   editButtonText: {color: colors.white, fontSize: 12, fontWeight: '900'},
   pressed: {opacity: 0.72},
   heroLabel: {color: '#C7D2FE', fontSize: 10, fontWeight: '900', textTransform: 'uppercase'},
-  name: {color: colors.surface, fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 4},
+  name: {color: colors.surface, fontSize: 20, lineHeight: 27, fontFamily: fonts.bold, marginTop: 4},
   role: {color: '#E0E7FF', fontSize: 13, fontWeight: '800', marginTop: 2},
   company: {color: '#C7D2FE', fontSize: 13, fontWeight: '700', marginTop: 2},
   heroStats: {flexDirection: 'row', gap: 8, marginTop: 14},
@@ -554,7 +555,7 @@ const styles = StyleSheet.create({
   orgLogoText: {color: colors.primary, fontSize: 17, fontWeight: '900'},
   orgCopy: {flex: 1},
   orgLabel: {color: colors.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase'},
-  orgName: {color: colors.text, fontSize: 18, lineHeight: 23, fontWeight: '900', marginTop: 2},
+  orgName: {color: colors.text, fontSize: 18, lineHeight: 23, fontFamily: fonts.bold, marginTop: 2},
   orgSub: {color: colors.textMid, fontSize: 12, fontWeight: '800', marginTop: 2},
   orgDetails: {flexDirection: 'row', gap: 8},
   orgContact: {
@@ -596,7 +597,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
   },
   sectionCopy: {flex: 1},
-  sectionTitle: {color: colors.text, fontSize: 15, fontWeight: '900'},
+  sectionTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.semibold},
   sectionSub: {color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 1},
   payGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingBottom: 16},
   emptyText: {color: colors.muted, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 16},

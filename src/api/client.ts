@@ -109,6 +109,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   myAttendance: (params?: Record<string, any>) => request<any[]>(`/ess/my-attendance${queryString(params)}`),
+  myAttendanceActivities: (date?: string) => request<any[]>(`/ess/my-attendance/activities${queryString({date})}`),
   attendanceFullView: (params?: Record<string, any>) => request<any>(`/ess/my-attendance/full-view${queryString(params)}`),
   myRegularisationRequests: () => request<any[]>('/attendance/regularisation/my'),
   submitRegularisationRequest: (data: Record<string, any>) =>
@@ -121,9 +122,22 @@ export const api = {
   leaveBalance: () => request<any[]>('/ess/my-balance'),
   myPayslips: () => request<any[]>('/ess/my-payslips'),
   holidays: () => request<any[]>('/leave/holidays'),
-  applyLeave: (params: Record<string, any>) =>
-    request<any>(`/ess/apply-leave${queryString(params)}`, {
+  applyLeave: (params: {leaveTypeId: number | string; startDate: string; endDate: string; reason?: string; leaveDuration?: string}) =>
+    request<any>(`/ess/apply-leave${queryString({
+      leaveTypeId: params.leaveTypeId,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      leaveDuration: params.leaveDuration,
+      // The ESS API calls this field description. Keep the mobile form's
+      // clearer "reason" label, but send the contract the backend accepts.
+      description: params.reason,
+    })}`, {
       method: 'POST',
+    }),
+  forgotPassword: (email: string) =>
+    request<{message: string}>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({email}),
     }),
   notifications: (params?: Record<string, any>) => request<any>(`/notifications${queryString(params)}`),
   unreadNotifications: () => request<any>('/notifications/unread-count'),

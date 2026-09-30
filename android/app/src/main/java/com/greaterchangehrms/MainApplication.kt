@@ -1,4 +1,4 @@
-package com.hrmsmobile
+package com.greaterchangehrms
 
 import android.app.Application
 import com.facebook.react.PackageList

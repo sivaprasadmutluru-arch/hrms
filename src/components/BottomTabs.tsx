@@ -27,15 +27,15 @@ export default function BottomTabs({
   const tabs = showAdmin ? [baseTabs[0], adminTab, baseTabs[1], baseTabs[2]] : baseTabs;
 
   return (
-    <View style={styles.wrap}>
+    <View className="h-[88px] flex-row items-center justify-around border-t border-glassBorder bg-white/95 px-2.5 pb-4 pt-2" style={styles.wrap}>
       {tabs.map(tab => {
         const selected = active === tab.key;
         return (
-          <Pressable key={tab.key} onPress={() => onChange(tab.key)} style={styles.item}>
+          <Pressable key={tab.key} onPress={() => onChange(tab.key)} className="flex-1 items-center justify-center" style={styles.item}>
             <View style={[styles.iconShell, selected && styles.iconShellActive]}>
               <Icon name={(selected ? tab.activeIcon : tab.icon) as any} size={22} color={selected ? colors.surface : colors.muted} />
             </View>
-            <Text style={[styles.label, selected && styles.labelActive]}>{tab.label}</Text>
+            <Text className={`text-xs ${selected ? 'font-semibold text-primaryDark' : 'font-medium text-textMuted'}`} style={styles.label}>{tab.label}</Text>
           </Pressable>
         );
       })}
@@ -45,16 +45,11 @@ export default function BottomTabs({
 
 const styles = StyleSheet.create({
   wrap: {
-    height: 92,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    paddingTop: 9,
-    paddingBottom: 19,
-    paddingHorizontal: 10,
+    shadowColor: colors.sidebar,
+    shadowOffset: {width: 0, height: -8},
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 12,
   },
   item: {
     flex: 1,
@@ -63,22 +58,29 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   iconShell: {
-    width: 38,
-    height: 28,
-    borderRadius: 14,
+    width: 42,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconShellActive: {
     backgroundColor: colors.primary,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    marginTop: -27,
+    borderWidth: 4,
+    borderColor: colors.surface,
+    shadowColor: colors.primaryDark,
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 10,
   },
   label: {
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
+    lineHeight: 16,
   },
   labelActive: {
-    color: colors.primaryDark,
   },
 });

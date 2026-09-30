@@ -1,5 +1,6 @@
+import './global.css';
 import React, {useEffect, useState} from 'react';
-import {SafeAreaView, StatusBar, StyleSheet, View} from 'react-native';
+import {SafeAreaView, StatusBar, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import BootSplash from 'react-native-bootsplash';
 import BottomTabs, {AvailableTabKey} from './src/components/BottomTabs';
@@ -12,6 +13,13 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import {colors} from './src/theme/colors';
 import {captureCurrentLocation} from './src/utils/location';
 import {isAdminRole, userRoles} from './src/utils/roles';
+import {fonts} from './src/theme/typography';
+
+// Keep typography consistent across legacy and newly styled screens.
+const AppText = Text as typeof Text & {defaultProps?: Record<string, unknown>};
+const AppTextInput = TextInput as typeof TextInput & {defaultProps?: Record<string, unknown>};
+AppText.defaultProps = {...AppText.defaultProps, style: [{fontFamily: fonts.regular}, AppText.defaultProps?.style]};
+AppTextInput.defaultProps = {...AppTextInput.defaultProps, style: [{fontFamily: fonts.regular}, AppTextInput.defaultProps?.style]};
 
 function Shell() {
   const {booting, token, user, profile} = useAuth();

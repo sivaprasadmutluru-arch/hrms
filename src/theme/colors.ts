@@ -20,9 +20,13 @@ export const colors = {
   purpleLight: '#F3E8FF',
 
   // Surfaces
-  bg: '#F3F4F6',
+  bg: '#F5F5FF',
   surface: '#FFFFFF',
   card: '#FFFFFF',
+  glass: 'rgba(255, 255, 255, 0.90)',
+  glassStrong: 'rgba(255, 255, 255, 0.96)',
+  glassBorder: 'rgba(99, 102, 241, 0.16)',
+  glow: 'rgba(139, 92, 246, 0.12)',
 
   // Text
   text: '#111827',
@@ -39,7 +43,7 @@ export const colors = {
   black: '#000000',
 
   // Compatibility aliases used across the app.
-  background: '#F3F4F6',
+  background: '#F5F5FF',
   surfaceAlt: '#F9FAFB',
   ink: '#111827',
   inkSoft: '#374151',

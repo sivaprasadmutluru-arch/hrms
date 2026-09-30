@@ -20,6 +20,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
+import {fonts} from '../theme/typography';
 import {dateText, employeeName, money, timeText, workDuration} from '../utils/format';
 import HelpdeskScreen from './HelpdeskScreen';
 import NotificationsScreen from './NotificationsScreen';
@@ -274,7 +275,10 @@ function FeatureTile({
   }[tone];
 
   return (
-    <Pressable onPress={onPress} style={({pressed}) => [styles.featureTile, pressed && styles.pressed]}>
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl border border-glassBorder bg-white p-4"
+      style={({pressed}) => [styles.featureTile, pressed && styles.pressed]}>
       <View style={[styles.featureIcon, {backgroundColor: palette[0]}]}>
         <Icon name={icon as any} size={19} color={palette[1]} />
       </View>
@@ -1322,7 +1326,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     active === 'notifications' || active === 'helpdesk' ? (
       renderActiveModule()
     ) : active === 'overview' ? (
-      <View style={styles.screen}>
+      <View className="flex-1 bg-background" style={styles.screen}>
         <View style={[styles.fixedHomeHeader, {paddingTop: insets.top + 12}]}>
           <View style={styles.topBar}>
             <View style={styles.headerSpacer} />
@@ -1356,7 +1360,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         </ScrollView>
       </View>
     ) : (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-background" style={styles.screen}>
       <View style={[styles.moduleHeaderWrap, {paddingTop: insets.top + 10}]}>
         <PageHeader active={active} onBack={() => setActive(active === 'leaveRequest' ? 'leave' : 'overview')} />
       </View>
@@ -1395,7 +1399,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   topBar: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  appTitle: {color: colors.white, fontSize: 13, fontWeight: '900'},
+  appTitle: {color: colors.white, fontSize: 13, fontFamily: fonts.bold},
   headerActions: {flexDirection: 'row', gap: 8},
   headerSpacer: {width: 64, height: 28},
   headerIconButton: {
@@ -1407,12 +1411,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
   welcomeBlock: {marginTop: 0},
-  welcomeLabel: {color: '#C7D2FE', fontSize: 12, fontWeight: '800'},
-  welcomeName: {color: colors.white, fontSize: 22, fontWeight: '900', marginTop: 4},
-  welcomeCompany: {color: '#E0E7FF', fontSize: 14, fontWeight: '800', marginTop: 4},
+  welcomeLabel: {color: '#C7D2FE', fontSize: 12, fontFamily: fonts.semibold},
+  welcomeName: {color: colors.white, fontSize: 20, fontFamily: fonts.bold, marginTop: 4},
+  welcomeCompany: {color: '#E0E7FF', fontSize: 14, fontFamily: fonts.semibold, marginTop: 4},
   offline: {color: colors.warning, backgroundColor: colors.warningLight, padding: 11, borderRadius: 12, marginBottom: 12, fontWeight: '800'},
   modulesHead: {marginBottom: 10},
-  modulesTitle: {color: colors.text, fontSize: 17, fontWeight: '900'},
+  modulesTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.bold},
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1433,29 +1437,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
   },
   pageTitleWrap: {flex: 1},
-  pageTitle: {color: colors.text, fontSize: 22, fontWeight: '900'},
-  pageSubtitle: {color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 2},
+  pageTitle: {color: colors.text, fontSize: 20, fontFamily: fonts.bold},
+  pageSubtitle: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
   featureGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14},
   featureTile: {
     width: '48%',
-    minHeight: 128,
+    minHeight: 142,
     backgroundColor: colors.white,
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 13,
+    borderColor: colors.glassBorder,
+    padding: 16,
+    shadowColor: colors.sidebar,
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    elevation: 4,
   },
   pressed: {opacity: 0.72},
   featureIcon: {width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center'},
-  featureLabel: {color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 11},
-  featureDesc: {color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 3},
+  featureLabel: {color: colors.text, fontSize: 14, fontFamily: fonts.semibold, marginTop: 11},
+  featureDesc: {color: colors.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 3},
   openRow: {flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 12},
   openText: {fontSize: 11, fontWeight: '900'},
   metricsRow: {flexDirection: 'row', gap: 12, marginBottom: 12},
   metric: {flex: 1, minHeight: 116},
   metricIcon: {width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 10},
-  metricLabel: {color: colors.muted, fontSize: 11, fontWeight: '900', textTransform: 'uppercase'},
-  metricValue: {color: colors.text, fontSize: 18, fontWeight: '900', marginTop: 5},
+  metricLabel: {color: colors.muted, fontSize: 12, fontFamily: fonts.semibold, textTransform: 'uppercase'},
+  metricValue: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 5},
   filterCard: {padding: 0, marginBottom: 12, overflow: 'hidden', borderRadius: 12},
   dateFilterRow: {flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 12},
   dateFilterField: {flex: 1},
@@ -1476,7 +1485,7 @@ const styles = StyleSheet.create({
   sectionHead: {flexDirection: 'row', alignItems: 'center', gap: 11, padding: 16, paddingBottom: 10},
   sectionIcon: {width: 38, height: 38, borderRadius: 13, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center'},
   sectionCopy: {flex: 1},
-  sectionTitle: {color: colors.text, fontSize: 17, fontWeight: '900'},
+  sectionTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.bold},
   sectionSub: {color: colors.muted, marginTop: 2, fontWeight: '600'},
   emptyState: {alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 28},
   emptyStatePage: {minHeight: 430, paddingTop: 48, paddingBottom: 80},

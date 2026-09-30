@@ -211,7 +211,7 @@ function logoUrl(path?: string) {
 
 function AdminModuleCard({module, onPress}: {module: AdminModule; onPress: () => void}) {
   return (
-    <Pressable onPress={onPress} style={({pressed}) => [styles.moduleCard, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} style={styles.moduleCard}>
       <View style={styles.moduleIcon}>
         <Icon name={module.icon as any} size={19} color={colors.primary} />
       </View>
@@ -442,7 +442,7 @@ export default function AdminScreen() {
     } finally {
       setLoadingRecords(false);
     }
-  }, [activePage, roles]);
+  }, [activePage, roles, user?.companyId]);
 
   useEffect(() => {
     setSearch('');
@@ -568,7 +568,7 @@ export default function AdminScreen() {
       activePage,
     );
     return (
-      <View style={styles.screen}>
+      <View className="flex-1 bg-background" style={styles.screen}>
         <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setSelectedRecord(null)} style={styles.backButton}>
             <Icon name="chevron-back-outline" size={22} color={colors.primary} />
@@ -588,7 +588,7 @@ export default function AdminScreen() {
 
   if (activeModule && activePage === 'Assign Role') {
     return (
-      <View style={styles.screen}>
+      <View className="flex-1 bg-background" style={styles.screen}>
         <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActivePage('')} style={styles.backButton}>
             <Icon name="chevron-back-outline" size={22} color={colors.primary} />
@@ -715,7 +715,7 @@ export default function AdminScreen() {
 
   if (activeModule && activePage) {
     return (
-      <View style={styles.screen}>
+      <View className="flex-1 bg-background" style={styles.screen}>
         <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActivePage('')} style={styles.backButton}>
             <Icon name="chevron-back-outline" size={22} color={colors.primary} />
@@ -824,7 +824,7 @@ export default function AdminScreen() {
 
   if (activeModule) {
     return (
-      <View style={styles.screen}>
+      <View className="flex-1 bg-background" style={styles.screen}>
         <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActiveModule(null)} style={styles.backButton}>
             <Icon name="chevron-back-outline" size={22} color={colors.primary} />
@@ -859,7 +859,7 @@ export default function AdminScreen() {
               </View>
             </View>
             {activeModule.pages.map(page => (
-              <Pressable key={page} onPress={() => setActivePage(page)} style={({pressed}) => [styles.pageRow, pressed && styles.pressed]}>
+              <Pressable key={page} onPress={() => setActivePage(page)} style={styles.pageRow}>
                 <View style={styles.pageRowIcon}>
                   <Icon name="document-text-outline" size={17} color={colors.primary} />
                 </View>
@@ -877,7 +877,7 @@ export default function AdminScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-background" style={styles.screen}>
       <View style={[styles.header, {paddingTop: insets.top + 12}]}>
         <Text style={styles.headerEyebrow}>Role Based Access</Text>
         <Text style={styles.headerTitle}>Admin Console</Text>
@@ -934,22 +934,41 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
   headerEyebrow: {color: '#C7D2FE', fontSize: 11, fontWeight: '900', textTransform: 'uppercase'},
-  headerTitle: {color: colors.white, fontSize: 24, lineHeight: 30, fontWeight: '900', marginTop: 5},
-  headerSub: {color: '#E0E7FF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4},
+  headerTitle: {color: colors.white, fontSize: 22, lineHeight: 27, fontWeight: '800', marginTop: 4},
+  headerSub: {color: '#E0E7FF', fontSize: 12, lineHeight: 17, fontWeight: '600', marginTop: 3},
   roleWrap: {flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12},
   rolePill: {borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 10, paddingVertical: 6},
   rolePillText: {color: colors.white, fontSize: 10, fontWeight: '900'},
   content: {padding: 14, paddingBottom: 28},
   summaryRow: {flexDirection: 'row', gap: 10, marginBottom: 10},
-  summaryCard: {flex: 1, minHeight: 82, justifyContent: 'center', alignItems: 'center'},
+  summaryCard: {
+    flex: 1,
+    minHeight: 74,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
   summaryValue: {color: colors.text, fontSize: 26, fontWeight: '900'},
   summaryLabel: {color: colors.muted, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', marginTop: 4},
-  groupCard: {padding: 0, marginBottom: 10, borderRadius: 12, overflow: 'hidden'},
-  groupHead: {flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingBottom: 10},
+  groupCard: {
+    padding: 0,
+    marginBottom: 10,
+    borderRadius: 10,
+    borderWidth: 0,
+    overflow: 'hidden',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  groupHead: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 11},
   groupIcon: {width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   groupCopy: {flex: 1},
-  groupTitle: {color: colors.text, fontSize: 16, fontWeight: '900'},
-  groupSub: {color: colors.muted, fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 2},
+  groupTitle: {color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '800'},
+  groupSub: {color: colors.muted, fontSize: 11, lineHeight: 15, fontWeight: '600', marginTop: 1},
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1059,19 +1078,19 @@ const styles = StyleSheet.create({
   dataMeta: {color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 4},
   pressed: {opacity: 0.72},
   moduleCard: {
-    minHeight: 66,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   moduleIcon: {width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   moduleCopy: {flex: 1},
-  moduleTitle: {color: colors.text, fontSize: 14, fontWeight: '900'},
-  moduleSub: {color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: '700', marginTop: 2},
+  moduleTitle: {color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '800'},
+  moduleSub: {color: colors.muted, fontSize: 10, lineHeight: 14, fontWeight: '600', marginTop: 1},
   pageRow: {
     minHeight: 64,
     flexDirection: 'row',

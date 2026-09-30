@@ -21,11 +21,12 @@ export default function PrimaryButton({title, onPress, loading, disabled, varian
         outline && styles.outline,
         variant === 'danger' && styles.danger,
         (pressed || disabled || loading) && styles.dim,
-      ]}>
+      ]}
+      className="min-h-[52px] items-center justify-center rounded-2xl bg-primary px-[18px]">
       {loading ? (
         <ActivityIndicator color={outline ? colors.primary : colors.surface} />
       ) : (
-        <Text style={[styles.text, outline && styles.outlineText]}>{title}</Text>
+        <Text className="font-semibold text-[15px] text-white" style={outline && styles.outlineText}>{title}</Text>
       )}
     </Pressable>
   );
@@ -33,12 +34,11 @@ export default function PrimaryButton({title, onPress, loading, disabled, varian
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 52,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 18,
+    shadowColor: colors.primaryDark,
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 5,
   },
   outline: {
     backgroundColor: colors.surface,
@@ -50,11 +50,6 @@ const styles = StyleSheet.create({
   },
   dim: {
     opacity: 0.68,
-  },
-  text: {
-    color: colors.surface,
-    fontSize: 15,
-    fontWeight: '800',
   },
   outlineText: {
     color: colors.primary,

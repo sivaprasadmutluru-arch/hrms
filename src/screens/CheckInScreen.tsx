@@ -8,6 +8,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
+import {fonts} from '../theme/typography';
 import {captureCurrentLocation, Position, reverseGeocode} from '../utils/location';
 import {dateText, employeeName, workDuration} from '../utils/format';
 
@@ -187,6 +188,7 @@ export default function CheckInScreen() {
   const {user, profile} = useAuth();
   const [clock, setClock] = useState<any>(null);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [todayActivities, setTodayActivities] = useState<any[]>([]);
   const [workInfo, setWorkInfo] = useState<any>(null);
   const [geofence, setGeofence] = useState<any>(null);
   const [geofenceCheck, setGeofenceCheck] = useState<any>(null);
@@ -208,9 +210,10 @@ export default function CheckInScreen() {
 
   const loadStatus = useCallback(async () => {
     setMessage('');
-    const [clockRes, attendanceRes, workRes, geoRes] = await Promise.allSettled([
+    const [clockRes, attendanceRes, activitiesRes, workRes, geoRes] = await Promise.allSettled([
       api.clockStatus(),
       api.myAttendance({page: 0, size: 10, sort: 'attendanceDate,desc'}),
+      api.myAttendanceActivities(todayKey()),
       api.workInfo(),
       api.geoFencing(),
     ]);
@@ -222,6 +225,9 @@ export default function CheckInScreen() {
     }
     if (attendanceRes.status === 'fulfilled') {
       setAttendance(asArray(attendanceRes.value));
+    }
+    if (activitiesRes.status === 'fulfilled') {
+      setTodayActivities(asArray(activitiesRes.value));
     }
     if (workRes.status === 'fulfilled') {
       setWorkInfo(workRes.value);
@@ -426,7 +432,7 @@ export default function CheckInScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-background" style={styles.screen}>
       <View style={[styles.heroBackdrop, {height: (heroHeight || 220) + (stickyHeaderHeight || insets.top + 50)}]} pointerEvents="none" />
       <ScrollView
         style={styles.scroller}
@@ -467,6 +473,30 @@ export default function CheckInScreen() {
           </View>
         </Card>
 
+        <Card style={styles.activityCard}>
+          <View style={styles.activityHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Today's punch history</Text>
+              <Text style={styles.cardSub}>Every mobile or biometric clock event</Text>
+            </View>
+            <View style={styles.activityCount}>
+              <Text style={styles.activityCountText}>{todayActivities.length} event{todayActivities.length === 1 ? '' : 's'}</Text>
+            </View>
+          </View>
+          {todayActivities.length ? todayActivities.map((activity, index) => (
+            <View key={String(activity.id || index)} style={styles.activityRow}>
+              <View style={[styles.activityDot, activity.clockOut ? styles.activityDotComplete : styles.activityDotOpen]} />
+              <View style={styles.activityTimes}>
+                <Text style={styles.activityTime}>In {displayTime(activity.clockIn, activity.inDatetime)}</Text>
+                <Text style={styles.activityTime}>Out {displayTime(activity.clockOut, activity.outDatetime)}</Text>
+              </View>
+              <Text style={styles.activityStatus}>{activity.clockOut ? 'Completed' : 'Open'}</Text>
+            </View>
+          )) : (
+            <Text style={styles.activityEmpty}>No punches recorded yet today.</Text>
+          )}
+        </Card>
+
         {!!message && (
           <View style={[styles.messageBanner, isSuccessMessage ? styles.messageSuccess : styles.messageError]}>
             <Icon name={isSuccessMessage ? 'checkmark-circle' : 'alert-circle'} size={16} color={isSuccessMessage ? colors.success : colors.danger} />
@@ -495,15 +525,18 @@ export default function CheckInScreen() {
             <ActivityIndicator color={colors.primary} style={styles.monthLoading} />
           ) : (
             <View style={styles.monthStatsRow}>
-              <View style={[styles.monthStatCard, {backgroundColor: colors.successLight}]}>
+              <View style={[styles.monthStatCard, {borderColor: 'rgba(16,185,129,0.24)'}]}>
+                <View style={[styles.monthStatAccent, {backgroundColor: colors.success}]} />
                 <Text style={[styles.monthStatValue, {color: colors.success}]}>{String(monthSummary.present).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Present</Text>
               </View>
-              <View style={[styles.monthStatCard, {backgroundColor: colors.dangerLight}]}>
+              <View style={[styles.monthStatCard, {borderColor: 'rgba(239,68,68,0.22)'}]}>
+                <View style={[styles.monthStatAccent, {backgroundColor: colors.danger}]} />
                 <Text style={[styles.monthStatValue, {color: colors.danger}]}>{String(monthSummary.absent).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Absent</Text>
               </View>
-              <View style={[styles.monthStatCard, {backgroundColor: colors.warningLight}]}>
+              <View style={[styles.monthStatCard, {borderColor: 'rgba(245,158,11,0.26)'}]}>
+                <View style={[styles.monthStatAccent, {backgroundColor: colors.warning}]} />
                 <Text style={[styles.monthStatValue, {color: colors.warning}]}>{String(monthSummary.late).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Late In</Text>
               </View>
@@ -621,8 +654,8 @@ const styles = StyleSheet.create({
   },
   heroLocationRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 6},
   heroLocationIcon: {marginTop: 2},
-  heroLocationText: {flex: 1, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '700', lineHeight: 16},
-  heroWelcome: {color: colors.white, fontSize: 22, fontWeight: '900', marginTop: 10},
+  heroLocationText: {flex: 1, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: fonts.medium, lineHeight: 16},
+  heroWelcome: {color: colors.white, fontSize: 20, fontFamily: fonts.bold, marginTop: 10},
   heroChipRow: {flexDirection: 'row', gap: 8, marginTop: 14},
   heroChip: {
     flexDirection: 'row',
@@ -638,7 +671,7 @@ const styles = StyleSheet.create({
   heroChipDot: {width: 6, height: 6, borderRadius: 3},
   heroChipDotOn: {backgroundColor: colors.success},
   heroChipDotOff: {backgroundColor: 'rgba(255,255,255,0.6)'},
-  heroChipText: {color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.3},
+  heroChipText: {color: colors.white, fontSize: 11, fontFamily: fonts.semibold, letterSpacing: 0.2},
 
   clockCard: {
     flexDirection: 'row',
@@ -650,14 +683,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginHorizontal: 16,
     marginTop: -30,
-    shadowColor: '#101828',
+    shadowColor: colors.sidebar,
     shadowOffset: {width: 0, height: 10},
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
   },
-  clockCardTime: {color: colors.text, fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums']},
-  clockCardDate: {color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 3},
+  clockCardTime: {color: colors.text, fontSize: 24, fontFamily: fonts.bold, fontVariant: ['tabular-nums']},
+  clockCardDate: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 3},
 
   punchPill: {
     flexDirection: 'row',
@@ -670,7 +703,7 @@ const styles = StyleSheet.create({
   punchPillIn: {backgroundColor: colors.primary},
   punchPillOut: {backgroundColor: colors.danger},
   punchPillPressed: {opacity: 0.85},
-  punchPillText: {color: colors.white, fontSize: 13, fontWeight: '900'},
+  punchPillText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
 
   messageBanner: {
     flexDirection: 'row',
@@ -689,30 +722,52 @@ const styles = StyleSheet.create({
   messageTextSuccess: {color: colors.success},
   messageTextError: {color: colors.danger},
 
-  quickStatsCard: {padding: 14, borderRadius: 16, marginHorizontal: 16, marginTop: 18},
+  quickStatsCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 18, shadowOpacity: 0.06, elevation: 2},
+  activityCard: {padding: 14, borderRadius: 18, marginHorizontal: 16, marginTop: 14, shadowOpacity: 0.04, elevation: 1},
+  activityHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8},
+  activityCount: {backgroundColor: colors.primaryLight, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5},
+  activityCountText: {color: colors.primary, fontSize: 11, fontFamily: fonts.semibold},
+  activityRow: {flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 11},
+  activityDot: {width: 9, height: 9, borderRadius: 9},
+  activityDotComplete: {backgroundColor: colors.success},
+  activityDotOpen: {backgroundColor: colors.warning},
+  activityTimes: {flex: 1, flexDirection: 'row', gap: 12},
+  activityTime: {color: colors.text, fontSize: 12, fontFamily: fonts.semibold},
+  activityStatus: {color: colors.muted, fontSize: 11, fontFamily: fonts.medium},
+  activityEmpty: {color: colors.muted, fontSize: 12, paddingTop: 2},
   cardHead: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14},
   cardIcon: {width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
-  cardTitle: {color: colors.text, fontSize: 16, fontWeight: '900'},
-  cardSub: {color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 2},
+  cardTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.bold},
+  cardSub: {color: colors.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 2},
 
   statsRow: {flexDirection: 'row', alignItems: 'flex-start'},
   statCol: {flex: 1, alignItems: 'center', paddingHorizontal: 4},
   statDivider: {width: 1, backgroundColor: colors.border, marginTop: 4, alignSelf: 'stretch'},
   statIcon: {width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8},
-  statValue: {color: colors.text, fontSize: 13, fontWeight: '900'},
-  statLabel: {color: colors.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', marginTop: 3},
+  statValue: {color: colors.text, fontSize: 14, fontFamily: fonts.semibold},
+  statLabel: {color: colors.muted, fontSize: 10, fontFamily: fonts.medium, textTransform: 'uppercase', marginTop: 4},
 
-  monthCard: {padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 16},
+  monthCard: {padding: 16, borderRadius: 18, marginHorizontal: 16, marginTop: 16, shadowOpacity: 0.06, elevation: 2},
   monthHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16},
   geoCopy: {flex: 1},
   monthPicker: {flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 4, paddingVertical: 4},
   monthArrow: {width: 24, height: 24, alignItems: 'center', justifyContent: 'center'},
-  monthPickerText: {color: colors.text, fontSize: 12, fontWeight: '900', minWidth: 60, textAlign: 'center'},
+  monthPickerText: {color: colors.text, fontSize: 12, fontFamily: fonts.semibold, minWidth: 60, textAlign: 'center'},
   monthLoading: {paddingVertical: 20},
   monthStatsRow: {flexDirection: 'row', gap: 10},
-  monthStatCard: {flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center'},
-  monthStatValue: {fontSize: 22, fontWeight: '900'},
-  monthStatLabel: {color: colors.textMid, fontSize: 11, fontWeight: '800', marginTop: 4},
+  monthStatCard: {
+    flex: 1,
+    minHeight: 94,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: colors.white,
+    paddingVertical: 13,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  monthStatAccent: {position: 'absolute', top: 0, left: 18, right: 18, height: 3, borderRadius: 999},
+  monthStatValue: {fontSize: 20, fontFamily: fonts.bold},
+  monthStatLabel: {color: colors.textMid, fontSize: 12, fontFamily: fonts.medium, marginTop: 5},
   plusRequestButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -726,7 +781,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
-  plusRequestText: {color: colors.primary, fontSize: 13, fontWeight: '900'},
+  plusRequestText: {color: colors.primary, fontSize: 13, fontFamily: fonts.semibold},
 
   geofenceCard: {padding: 14, borderRadius: 16, marginHorizontal: 16, marginTop: 16},
   geoIconActive: {backgroundColor: colors.successLight},

@@ -1,3 +1,94 @@
-import Ionicons from '@react-native-vector-icons/ionicons/static';
+import React from 'react';
+import Feather from 'react-native-vector-icons/Feather';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-export default Ionicons;
+const featherNames: Record<string, string> = {
+  ellipse: 'circle',
+  'create-outline': 'edit-3',
+  'camera-outline': 'camera',
+  'chevron-forward-outline': 'chevron-right',
+  'chevron-forward': 'chevron-right',
+  'chevron-back-outline': 'chevron-left',
+  'chevron-back': 'chevron-left',
+  'chevron-down-outline': 'chevron-down',
+  'chevron-up-outline': 'chevron-up',
+  'business-outline': 'briefcase',
+  'receipt-outline': 'credit-card',
+  'pulse-outline': 'activity',
+  'git-branch-outline': 'git-branch',
+  'people-outline': 'users',
+  'settings-outline': 'settings',
+  'briefcase-outline': 'briefcase',
+  'planet-outline': 'globe',
+  'git-network-outline': 'git-branch',
+  'id-card-outline': 'credit-card',
+  'share-social-outline': 'share-2',
+  'layers-outline': 'layers',
+  'airplane-outline': 'send',
+  'document-attach-outline': 'paperclip',
+  'book-outline': 'book-open',
+  'wallet-outline': 'credit-card',
+  'speedometer-outline': 'activity',
+  'cash-outline': 'dollar-sign',
+  'calculator-outline': 'grid',
+  'card-outline': 'credit-card',
+  'trophy-outline': 'award',
+  'person-add-outline': 'user-plus',
+  'swap-horizontal-outline': 'repeat',
+  'ribbon-outline': 'award',
+  'star-outline': 'star',
+  'apps-outline': 'grid',
+  'cube-outline': 'box',
+  'construct-outline': 'tool',
+  'bar-chart-outline': 'bar-chart-2',
+  'close-outline': 'x',
+  'checkmark-outline': 'check',
+  'checkmark-circle': 'check-circle',
+  'checkmark-circle-outline': 'check-circle',
+  'list-outline': 'list',
+  'search-outline': 'search',
+  'alert-circle-outline': 'alert-circle',
+  'folder-open-outline': 'folder',
+  'albums-outline': 'layers',
+  'document-text-outline': 'file-text',
+  'mail-outline': 'mail',
+  'lock-closed-outline': 'lock',
+  'eye-outline': 'eye',
+  'eye-off-outline': 'eye-off',
+  'arrow-forward-outline': 'arrow-right',
+  'calendar-outline': 'calendar',
+  'time-outline': 'clock',
+  'add-circle': 'plus-circle',
+  add: 'plus',
+  'add-outline': 'plus',
+  'cloud-upload-outline': 'upload-cloud',
+  'notifications-outline': 'bell',
+  notifications: 'bell',
+  'notifications-off-outline': 'bell-off',
+  'help-outline': 'help-circle',
+  'help-buoy-outline': 'life-buoy',
+  'log-out-outline': 'log-out',
+  'log-in-outline': 'log-in',
+  'location-outline': 'map-pin',
+  location: 'map-pin',
+  'trash-outline': 'trash-2',
+  'home-outline': 'home',
+  home: 'home',
+  'person-outline': 'user',
+  person: 'user',
+};
+
+const materialNames: Record<string, string> = {
+  'finger-print-outline': 'fingerprint',
+  'finger-print': 'fingerprint',
+  'shield-checkmark-outline': 'shield-check-outline',
+  'shield-checkmark': 'shield-check',
+};
+
+export default function Icon({name, ...props}: any) {
+  if (materialNames[name]) {
+    return <MaterialCommunityIcons name={materialNames[name]} {...props} />;
+  }
+  const featherName = featherNames[name] || String(name).replace(/-outline$/, '');
+  return <Feather name={featherName} {...props} />;
+}
