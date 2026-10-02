@@ -477,10 +477,11 @@ function LeaveRequestForm({
 }
 
 function LeaveBalanceCard({item}: {item: any}) {
-  const available = Number(field(item, ['availableDays', 'balance', 'available', 'remaining', 'days'], 0)) || 0;
   const used = Number(field(item, ['usedDays', 'used', 'consumedDays'], 0)) || 0;
-  const fallbackTotal = available + used;
+  const rawAvailable = Number(field(item, ['availableDays', 'balance', 'available', 'remaining', 'days'], 0)) || 0;
+  const fallbackTotal = rawAvailable + used;
   const total = Number(field(item, ['totalLeaveDays', 'totalDays', 'total'], fallbackTotal)) || fallbackTotal;
+  const available = total > 0 ? Math.max(0, total - used) : rawAvailable;
   const ratio = total > 0 ? Math.min(1, Math.max(0, used / total)) : 0;
   const fillTone = available <= 0 && total > 0 ? colors.danger : ratio >= 0.7 ? colors.warning : colors.primary;
 
