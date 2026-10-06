@@ -9,8 +9,10 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
@@ -22,6 +24,8 @@ import {useAuth} from '../context/AuthContext';
 
 export default function LoginScreen() {
   const {signIn} = useAuth();
+  const {width} = useWindowDimensions();
+  const isTablet = width >= 768;
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -74,33 +78,35 @@ export default function LoginScreen() {
     <View className="flex-1 bg-background">
       <StatusBar barStyle="light-content" backgroundColor="#312E81" />
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={{flexGrow: 1}} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <LinearGradient
             colors={['#312E81', '#6366F1', '#8B5CF6']}
             start={{x: 0, y: 0}}
             end={{x: 1, y: 1}}
-            style={{paddingTop: 72, paddingHorizontal: 24, paddingBottom: 88}}>
-            <View className="h-12 flex-row items-center self-start rounded-xl bg-white px-3">
-              <Image
-                source={require('../../assets/brand/greaterchange-mark-transparent-1024.png')}
-                className="h-9 w-9"
-                style={{width: 36, height: 36}}
-                resizeMode="contain"
-              />
-              <Text className="ml-2 font-extrabold text-base tracking-[0.5px] text-textPrimary">GRECHA.AI</Text>
-            </View>
+            style={[styles.hero, isTablet && styles.heroTablet]}>
+            <View style={[styles.heroInner, isTablet && styles.heroInnerTablet]}>
+              <View className="h-12 flex-row items-center self-start rounded-xl bg-white px-3">
+                <Image
+                  source={require('../../assets/brand/greaterchange-mark-transparent-1024.png')}
+                  className="h-9 w-9"
+                  style={{width: 36, height: 36}}
+                  resizeMode="contain"
+                />
+                <Text className="ml-2 font-extrabold text-base tracking-[0.5px] text-textPrimary">GRECHA.AI</Text>
+              </View>
 
-            <Text className="mt-5 font-bold text-2xl text-white">HR Management</Text>
-            <Text className="mt-1 font-semibold text-xs tracking-[2px] text-white/70">EMPLOYEE MOBILE</Text>
+              <Text className="mt-5 font-bold text-2xl text-white">HR Management</Text>
+              <Text className="mt-1 font-semibold text-xs tracking-[2px] text-white/70">EMPLOYEE MOBILE</Text>
 
-            <View className="mt-6 border-l-[3px] border-white pl-3">
-              <Text className="font-medium text-base leading-6 text-white">
-                Empowering People.{`\n`}Simplifying Work.
-              </Text>
+              <View className="mt-6 border-l-[3px] border-white pl-3">
+                <Text className="font-medium text-base leading-6 text-white">
+                  Empowering People.{`\n`}Simplifying Work.
+                </Text>
+              </View>
             </View>
           </LinearGradient>
 
-          <View className="-mt-10 flex-1 rounded-t-[32px] bg-white px-6 pt-8">
+          <View style={[styles.formPanel, isTablet && styles.formPanelTablet]}>
             <Text className="text-center font-bold text-2xl text-textPrimary">Welcome Back</Text>
             <Text className="mt-2 text-center font-regular text-sm text-textSecondary">
               Sign in to access your employee workspace
@@ -163,30 +169,30 @@ export default function LoginScreen() {
             </Pressable>
 
             <Pressable
-              className="mt-6 h-14 overflow-hidden rounded-2xl"
+              style={styles.primaryButton}
               onPress={submit}
               disabled={loading}>
               <LinearGradient
                 colors={['#4F46E5', '#6366F1', '#8B5CF6']}
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 0}}
-                className="absolute inset-0 flex-row items-center justify-center rounded-2xl">
+                style={styles.primaryButtonFill}>
                 {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <>
-                    <Text className="mr-2 font-semibold text-base text-white">Sign In</Text>
+                  <View style={styles.buttonContent}>
+                    <Text style={styles.primaryButtonText}>Sign In</Text>
                     <Feather name="arrow-right" size={18} color="#FFFFFF" />
-                  </>
+                  </View>
                 )}
               </LinearGradient>
             </Pressable>
 
             <Pressable
-              className="mt-3 h-14 flex-row items-center justify-center rounded-2xl border-[1.5px] border-primary"
+              style={styles.secondaryButton}
               onPress={() => Alert.alert('Biometric Login', 'Biometric login will be available soon.')}>
               <MaterialCommunityIcons name="fingerprint" size={21} color="#4F46E5" />
-              <Text className="ml-2 font-semibold text-base text-primaryDark">Login with Biometric</Text>
+              <Text style={styles.secondaryButtonText}>Login with Biometric</Text>
             </Pressable>
 
             <View className="mt-8 mb-6 flex-row items-center justify-center">
@@ -233,3 +239,95 @@ export default function LoginScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+  },
+  hero: {
+    paddingBottom: 88,
+    paddingHorizontal: 24,
+    paddingTop: 72,
+  },
+  heroTablet: {
+    marginHorizontal: 44,
+    marginTop: 44,
+    paddingBottom: 150,
+    paddingHorizontal: 48,
+    paddingTop: 86,
+  },
+  heroInner: {},
+  heroInnerTablet: {
+    alignSelf: 'center',
+    maxWidth: 760,
+    width: '100%',
+  },
+  formPanel: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    flex: 1,
+    marginTop: -40,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+  },
+  formPanelTablet: {
+    alignSelf: 'center',
+    borderRadius: 32,
+    flex: 0,
+    marginTop: 32,
+    maxWidth: 760,
+    paddingBottom: 34,
+    paddingHorizontal: 32,
+    paddingTop: 36,
+    width: '100%',
+  },
+  primaryButton: {
+    alignSelf: 'stretch',
+    backgroundColor: '#6366F1',
+    height: 56,
+    marginTop: 24,
+    overflow: 'hidden',
+    borderRadius: 16,
+    shadowColor: '#4F46E5',
+    shadowOffset: {width: 0, height: 10},
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  primaryButtonFill: {
+    alignItems: 'center',
+    borderRadius: 16,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  buttonContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  secondaryButton: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#6366F1',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    height: 56,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  secondaryButtonText: {
+    color: '#4338CA',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+});
