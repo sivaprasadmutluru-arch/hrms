@@ -62,7 +62,7 @@ public class LeaveAllocationRequest extends BaseEntity {
     private LifecycleStatus lifecycleStatus = LifecycleStatus.ACTIVE;
 
     public enum AllocationStatus {
-        REQUESTED, APPROVED, REJECTED
+        REQUESTED, APPROVED, REJECTED, CANCELLED
     }
 
     public enum AllocationAction { GRANT, AMEND, CANCEL }

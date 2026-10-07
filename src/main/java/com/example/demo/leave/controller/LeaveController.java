@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -99,8 +100,9 @@ public class LeaveController {
     @Operation(summary = "List all leave requests (company-scoped)")
     public ResponseEntity<Page<LeaveRequestDTO>> listRequests(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestParam(required = false) Integer year) {
-        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year).map(r -> LeaveMapper.toDTO(r, leaveService.reviewAllowed(r.getId()))));
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) LeaveRequest.LeaveStatus status) {
+        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year, status).map(r -> LeaveMapper.toDTO(r, leaveService.reviewAllowed(r.getId()))));
     }
 
     @DeleteMapping("/requests/{id}")
@@ -258,14 +260,25 @@ public class LeaveController {
         return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.approve(id, approverId)));
     }
 
-    @PostMapping("/requests/{id}/reject")
+    @PostMapping(value = "/requests/{id}/reject", consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('leave:view') and @leaveService.reviewAllowed(#id)")
     @Transactional
-    @Operation(summary = "Reject leave request")
-    public ResponseEntity<LeaveRequestDTO> reject(@PathVariable Long id,
+    @Operation(summary = "Reject leave request (JSON)")
+    public ResponseEntity<LeaveRequestDTO> rejectJson(@PathVariable Long id,
                                                    @RequestBody(required = false) RejectLeaveRequest body) {
         String reason = body != null ? body.reason() : null;
         return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.reject(id, reason)));
+    }
+
+    @PostMapping(value = "/requests/{id}/reject", consumes = {MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
+    @PreAuthorize("hasAuthority('leave:view') and @leaveService.reviewAllowed(#id)")
+    @Transactional
+    @Operation(summary = "Reject leave request (Form / Any)")
+    public ResponseEntity<LeaveRequestDTO> rejectForm(@PathVariable Long id,
+                                                   @RequestParam(required = false) String reason,
+                                                   jakarta.servlet.http.HttpServletRequest request) {
+        String finalReason = reason != null ? reason : request.getParameter("reason");
+        return ResponseEntity.ok(LeaveMapper.toDTO(leaveService.reject(id, finalReason)));
     }
 
     @PostMapping("/requests/{id}/cancel")
@@ -630,13 +643,53 @@ public class LeaveController {
         return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
-    @PostMapping("/allocation-requests/{id}/reject")
+    @PostMapping("/allocation-requests/{id}/cancel")
+    @PreAuthorize("hasAuthority('leave:approve') or hasAuthority('leave:create')")
+    @Transactional
+    @Operation(summary = "Cancel a leave allocation request (direct cancel, restores balance if approved)")
+    public ResponseEntity<LeaveAllocationRequestDTO> cancelAllocationRequest(@PathVariable Long id) {
+        LeaveAllocationRequest req = allocationRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
+        assertAllocationAccess(req);
+        if (req.getStatus() == LeaveAllocationRequest.AllocationStatus.CANCELLED) {
+            throw new BadRequestException("Leave allocation request is already cancelled");
+        }
+        if (req.getStatus() == LeaveAllocationRequest.AllocationStatus.APPROVED) {
+            double days = req.getAppliedDays() != null ? req.getAppliedDays()
+                    : (req.getRequestedDays() != null ? req.getRequestedDays() : 0.0);
+            if (days > 0d) {
+                applyAllocationDelta(req.getEmployee(), req.getLeaveType(), -days);
+            }
+        }
+        req.setStatus(LeaveAllocationRequest.AllocationStatus.CANCELLED);
+        req.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.CANCELLED);
+        LeaveAllocationRequest saved = allocationRequestRepository.save(req);
+        return ResponseEntity.ok(LeaveMapper.toDTO(saved));
+    }
+
+    @PostMapping(value = "/allocation-requests/{id}/reject", consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('leave:approve')")
     @Transactional
-    @Operation(summary = "Reject a leave allocation request")
-    public ResponseEntity<LeaveAllocationRequestDTO> rejectAllocationRequest(
+    @Operation(summary = "Reject a leave allocation request (JSON)")
+    public ResponseEntity<LeaveAllocationRequestDTO> rejectAllocationRequestJson(
             @PathVariable Long id,
             @RequestBody(required = false) RejectLeaveRequest body) {
+        return doRejectAllocation(id, body != null ? body.reason() : null);
+    }
+
+    @PostMapping(value = "/allocation-requests/{id}/reject", consumes = {MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
+    @PreAuthorize("hasAuthority('leave:approve')")
+    @Transactional
+    @Operation(summary = "Reject a leave allocation request (Form / Any)")
+    public ResponseEntity<LeaveAllocationRequestDTO> rejectAllocationRequestForm(
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason,
+            jakarta.servlet.http.HttpServletRequest request) {
+        String finalReason = reason != null ? reason : request.getParameter("reason");
+        return doRejectAllocation(id, finalReason);
+    }
+
+    private ResponseEntity<LeaveAllocationRequestDTO> doRejectAllocation(Long id, String reason) {
         LeaveAllocationRequest req = allocationRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveAllocationRequest", id));
         assertAllocationAccess(req);
@@ -644,7 +697,7 @@ public class LeaveController {
             throw new BadRequestException("Only requested allocations can be rejected");
         }
         req.setStatus(LeaveAllocationRequest.AllocationStatus.REJECTED);
-        req.setRejectReason(body != null ? body.reason() : null);
+        req.setRejectReason(reason);
         return ResponseEntity.ok(LeaveMapper.toDTO(allocationRequestRepository.save(req)));
     }
 
@@ -666,11 +719,16 @@ public class LeaveController {
         if (replacementDays > 0d) {
             applyAllocationDelta(adjustment.getEmployee(), adjustment.getLeaveType(), replacementDays);
         }
-        source.setLifecycleStatus(adjustment.getAllocationAction() == LeaveAllocationRequest.AllocationAction.CANCEL
-                ? LeaveAllocationRequest.LifecycleStatus.CANCELLED
-                : LeaveAllocationRequest.LifecycleStatus.SUPERSEDED);
+        if (adjustment.getAllocationAction() == LeaveAllocationRequest.AllocationAction.CANCEL) {
+            source.setStatus(LeaveAllocationRequest.AllocationStatus.CANCELLED);
+            source.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.CANCELLED);
+            adjustment.setStatus(LeaveAllocationRequest.AllocationStatus.CANCELLED);
+            adjustment.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.CANCELLED);
+        } else {
+            source.setLifecycleStatus(LeaveAllocationRequest.LifecycleStatus.SUPERSEDED);
+            adjustment.setStatus(LeaveAllocationRequest.AllocationStatus.APPROVED);
+        }
         allocationRequestRepository.save(source);
-        adjustment.setStatus(LeaveAllocationRequest.AllocationStatus.APPROVED);
         adjustment.setAppliedDays(replacementDays);
     }
 

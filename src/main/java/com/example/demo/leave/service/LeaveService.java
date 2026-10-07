@@ -109,11 +109,16 @@ public class LeaveService {
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable) {
-        return getAllRequests(pageable, null);
+        return getAllRequests(pageable, null, null);
     }
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year) {
+        return getAllRequests(pageable, year, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year, LeaveRequest.LeaveStatus status) {
         // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
         // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<LeaveRequest> spec = ScopeFilter.byEmployeeDepartment();
@@ -121,6 +126,10 @@ public class LeaveService {
         if (year != null) {
             Specification<LeaveRequest> yearRange = yearSpecification(year);
             spec = spec == null ? yearRange : spec.and(yearRange);
+        }
+        if (status != null) {
+            Specification<LeaveRequest> statusSpec = (root, query, cb) -> cb.equal(root.get("status"), status);
+            spec = spec == null ? statusSpec : spec.and(statusSpec);
         }
         Specification<LeaveRequest> pendingFirst = (root, query, cb) -> {
             if (query != null && query.getResultType() != Long.class && query.getResultType() != long.class) {
