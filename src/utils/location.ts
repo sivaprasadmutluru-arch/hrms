@@ -41,8 +41,17 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=16`,
-      {headers: {Accept: 'application/json', 'Accept-Language': 'en'}},
+      {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'en',
+          // Nominatim rejects anonymous clients intermittently. Identify the app
+          // so a failed reverse lookup is handled predictably by the UI.
+          'User-Agent': 'Grecha-HRMS-Mobile/1.0',
+        },
+      },
     );
+    if (!response.ok) return null;
     const data = await response.json();
     return data?.display_name || null;
   } catch {

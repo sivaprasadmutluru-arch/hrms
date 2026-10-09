@@ -76,6 +76,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({usernameOrEmail, password}),
     }),
+  forgotPassword: (email: string) =>
+    request<{message: string}>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({email}),
+    }),
   me: () => request<any>('/ess/me'),
   myCompanyInfo: () => request<any>('/companies/mine'),
   adminList: (path: string, params?: Record<string, any>) => request<any>(`${path}${queryString(params)}`),

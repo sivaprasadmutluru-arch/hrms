@@ -26,7 +26,7 @@ export default function PrimaryButton({title, onPress, loading, disabled, varian
       {loading ? (
         <ActivityIndicator color={outline ? colors.primary : colors.surface} />
       ) : (
-        <Text className="font-semibold text-[15px] text-white" style={outline && styles.outlineText}>{title}</Text>
+        <Text numberOfLines={1} style={[styles.text, outline && styles.outlineText]}>{title}</Text>
       )}
     </Pressable>
   );
@@ -35,15 +35,15 @@ export default function PrimaryButton({title, onPress, loading, disabled, varian
 const styles = StyleSheet.create({
   button: {
     shadowColor: colors.primaryDark,
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 5,
+    shadowOffset: {width: 0, height: 3},
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 2,
   },
   outline: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.borderDark,
   },
   danger: {
     backgroundColor: colors.danger,
@@ -51,7 +51,15 @@ const styles = StyleSheet.create({
   dim: {
     opacity: 0.68,
   },
+  text: {
+    color: colors.surface,
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
   outlineText: {
-    color: colors.primary,
+    color: colors.textMid,
   },
 });

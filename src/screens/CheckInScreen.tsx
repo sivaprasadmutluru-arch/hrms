@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -194,6 +194,8 @@ export default function CheckInScreen() {
   const [geofenceCheck, setGeofenceCheck] = useState<any>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
+  const addressRequestId = useRef(0);
   const [locating, setLocating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -304,7 +306,9 @@ export default function CheckInScreen() {
   const locationLabel = resolvedAddress
     ? resolvedAddress
     : position
-      ? 'Fetching address…'
+      ? resolvingAddress
+        ? 'Fetching address…'
+        : `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`
       : 'Location unavailable';
 
   const monthLabel = monthCursor.toLocaleDateString(undefined, {month: 'short', year: 'numeric'});
@@ -335,7 +339,17 @@ export default function CheckInScreen() {
       const current = await captureCurrentLocation();
       setPosition(current);
       setResolvedAddress(null);
-      reverseGeocode(current.coords.latitude, current.coords.longitude).then(setResolvedAddress);
+      const requestId = ++addressRequestId.current;
+      setResolvingAddress(true);
+      void reverseGeocode(current.coords.latitude, current.coords.longitude)
+        .then(address => {
+          // Ignore stale lookups from an earlier GPS refresh. Without this guard,
+          // a late failed response could clear a successfully resolved address.
+          if (requestId === addressRequestId.current) setResolvedAddress(address);
+        })
+        .finally(() => {
+          if (requestId === addressRequestId.current) setResolvingAddress(false);
+        });
       await validateGeofence(current, {throwWhenBlocked: false});
       return current;
     } finally {

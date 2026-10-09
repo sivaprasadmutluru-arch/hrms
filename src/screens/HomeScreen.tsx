@@ -98,7 +98,7 @@ function statusTone(status?: string) {
   if (text.includes('reject') || text.includes('absent') || text.includes('cancel')) {
     return {bg: colors.dangerLight, fg: colors.danger};
   }
-  if (text.includes('pending') || text.includes('late')) {
+  if (text.includes('pending') || text.includes('late') || text.includes('irregular')) {
     return {bg: colors.warningLight, fg: colors.warning};
   }
   return {bg: colors.primaryLight, fg: colors.primary};
@@ -166,6 +166,33 @@ function attendanceTime(record: any) {
   const value = field(record, ['attendanceDate', 'date', 'createdAt'], '');
   const time = value ? new Date(value).getTime() : 0;
   return Number.isNaN(time) ? 0 : time;
+}
+
+function relativeAttendanceDay(record: any) {
+  const date = String(field(record, ['attendanceDate', 'date', 'createdAt'], '')).slice(0, 10);
+  const today = todayKey();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', {timeZone: 'Asia/Dubai'});
+  if (date === today) return 'Today';
+  if (date === yesterday) return 'Yesterday';
+  return 'Earlier';
+}
+
+function attendanceLocation(record: any, kind: 'in' | 'out') {
+  const address = kind === 'in'
+    ? field(record, ['checkInAddress', 'checkInLocation'], '')
+    : field(record, ['checkOutAddress', 'checkOutLocation'], '');
+  if (address && address !== '-') return String(address);
+
+  const latitude = kind === 'in'
+    ? field(record, ['checkInLatitude', 'latitude'], '')
+    : field(record, ['checkOutLatitude'], '');
+  const longitude = kind === 'in'
+    ? field(record, ['checkInLongitude', 'longitude'], '')
+    : field(record, ['checkOutLongitude'], '');
+  if (latitude !== '' && latitude !== '-' && longitude !== '' && longitude !== '-') {
+    return `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
+  }
+  return 'Not recorded';
 }
 
 function hoursWorked(record: any, clock?: any) {
@@ -251,6 +278,67 @@ function RecordCard({title, subtitle, meta, status, children}: {title: string; s
       {!!meta && <Text style={styles.recordMeta}>{meta}</Text>}
       {children}
     </Card>
+  );
+}
+
+function AttendanceEntry({record, onRegularise}: {record: any; onRegularise: (record: any) => void}) {
+  const status = field(record, ['displayStatus', 'status', 'attendanceStatus'], '');
+  const checkIn = timeText(field(record, ['checkIn', 'checkInTime', 'inTime']));
+  const checkOut = timeText(field(record, ['checkOut', 'checkOutTime', 'outTime']));
+
+  return (
+    <View style={styles.attendanceEntry}>
+      <View style={styles.attendanceEntryHead}>
+        <View style={styles.attendanceDateWrap}>
+          <Text style={styles.attendanceDate}>{dateText(field(record, ['attendanceDate', 'date', 'createdAt'], ''))}</Text>
+          <Text style={styles.attendanceHours}>{hoursWorked(record)} worked</Text>
+        </View>
+        <Pill text={status} />
+      </View>
+
+      <View style={styles.attendanceTimes}>
+        <View style={styles.attendanceTimeColumn}>
+          <Text style={styles.attendanceTimeLabel}>CHECK IN</Text>
+          <Text style={styles.attendanceTimeValue}>{checkIn}</Text>
+        </View>
+        <View style={styles.attendanceTimeDivider} />
+        <View style={styles.attendanceTimeColumn}>
+          <Text style={styles.attendanceTimeLabel}>CHECK OUT</Text>
+          <Text style={styles.attendanceTimeValue}>{checkOut}</Text>
+        </View>
+        <View style={styles.attendanceTimeDivider} />
+        <View style={styles.attendanceTimeColumn}>
+          <Text style={styles.attendanceTimeLabel}>STATUS</Text>
+          <Text style={styles.attendanceTimeValue} numberOfLines={1}>{regularisationLabel(record)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.attendanceLocations}>
+        <View style={styles.attendanceLocationRow}>
+          <Icon name="location-outline" size={15} color={colors.success} />
+          <View style={styles.attendanceLocationCopy}>
+            <Text style={styles.attendanceLocationLabel}>IN LOCATION</Text>
+            <Text style={styles.attendanceLocationValue} numberOfLines={2}>{attendanceLocation(record, 'in')}</Text>
+          </View>
+        </View>
+        <View style={styles.attendanceLocationRow}>
+          <Icon name="location-outline" size={15} color={colors.primary} />
+          <View style={styles.attendanceLocationCopy}>
+            <Text style={styles.attendanceLocationLabel}>OUT LOCATION</Text>
+            <Text style={styles.attendanceLocationValue} numberOfLines={2}>{attendanceLocation(record, 'out')}</Text>
+          </View>
+        </View>
+      </View>
+
+      {canRequestRegularisation(record) ? (
+        <Pressable onPress={() => onRegularise(record)} style={({pressed}) => [styles.attendanceRegulariseLink, pressed && styles.pressed]}>
+          <Icon name="create-outline" size={15} color={colors.warning} />
+          <Text style={styles.attendanceRegulariseText}>Request regularisation</Text>
+        </Pressable>
+      ) : record.attendanceStatus === 'IRREGULAR' ? (
+        <Text style={styles.attendanceRequestState}>{regularisationLabel(record)}</Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -819,6 +907,22 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     return [...records].sort((a, b) => attendanceTime(b) - attendanceTime(a));
   }, [attendance, attendanceFrom, attendanceTo]);
 
+  const attendanceSections = useMemo(() => {
+    if (attendanceFrom || attendanceTo) {
+      return [{title: 'Filtered results', records: filteredAttendance}];
+    }
+
+    const grouped = new Map<string, any[]>([
+      ['Today', []],
+      ['Yesterday', []],
+      ['Earlier', []],
+    ]);
+    filteredAttendance.forEach(record => grouped.get(relativeAttendanceDay(record))?.push(record));
+    return Array.from(grouped.entries())
+      .filter(([, records]) => records.length)
+      .map(([title, records]) => ({title, records}));
+  }, [filteredAttendance, attendanceFrom, attendanceTo]);
+
   const todayRecord = useMemo(
     () => attendance.find(item => item?.attendanceDate === todayKey()) || null,
     [attendance],
@@ -990,8 +1094,16 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   function renderAttendance() {
     return (
       <>
-        <Card style={styles.filterCard}>
-          <SectionTitle title="Date Filter" subtitle="Track attendance by back dates" icon="calendar-outline" />
+        <View style={styles.attendanceFilter}>
+          <View style={styles.attendanceFilterHead}>
+            <View style={styles.attendanceFilterIcon}>
+              <Icon name="calendar-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.attendanceFilterCopy}>
+              <Text style={styles.attendanceFilterTitle}>Find a date</Text>
+              <Text style={styles.attendanceFilterSub}>Use a date range to view attendance history</Text>
+            </View>
+          </View>
           <View style={styles.dateFilterRow}>
             <View style={styles.dateFilterField}>
               <Text style={styles.dateFilterLabel}>From</Text>
@@ -1025,49 +1137,34 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
               <Text style={styles.clearFilterText}>Clear filter</Text>
             </Pressable>
           )}
-        </Card>
+        </View>
 
-        <Card style={styles.panel}>
-          <SectionTitle
-            title="Attendance History"
-            subtitle={`${filteredAttendance.length} record${filteredAttendance.length === 1 ? '' : 's'} found`}
-            icon="list-outline"
-          />
-          {filteredAttendance.length ? (
-            filteredAttendance.map(item => (
-              <RecordCard
-                key={String(field(item, ['id', 'attendanceDate', 'date']))}
-                title={dateText(field(item, ['attendanceDate', 'date', 'createdAt'], ''))}
-                subtitle={`In ${timeText(field(item, ['checkIn', 'checkInTime', 'inTime']))} | Out ${timeText(field(item, ['checkOut', 'checkOutTime', 'outTime']))}`}
-                meta={`Hours ${hoursWorked(item)}`}
-                status={field(item, ['displayStatus', 'status', 'attendanceStatus'], '')}>
-                {canRequestRegularisation(item) ? (
-                  <Pressable onPress={() => openRegularisationRequest(item)} style={({pressed}) => [styles.regulariseButton, pressed && styles.pressed]}>
-                    <Icon name="create-outline" size={16} color={colors.white} />
-                    <Text style={styles.regulariseButtonText}>Request regularisation</Text>
-                  </Pressable>
-                ) : item.attendanceStatus === 'IRREGULAR' ? (
-                  <View style={styles.regularisationStatusPill}>
-                    <Icon
-                      name={item.regularisationStatus === 'HAS_PENDING' ? 'time-outline' : 'checkmark-circle-outline'}
-                      size={14}
-                      color={item.regularisationStatus === 'HAS_PENDING' ? colors.warning : colors.success}
-                    />
-                    <Text
-                      style={[
-                        styles.regularisationStatusText,
-                        {color: item.regularisationStatus === 'HAS_PENDING' ? colors.warning : colors.success},
-                      ]}>
-                      {regularisationLabel(item)}
-                    </Text>
-                  </View>
-                ) : null}
-              </RecordCard>
-            ))
-          ) : (
-            <Empty title="No Attendance Records" text="Try changing the date range to view older attendance." icon="calendar-clear-outline" />
-          )}
-        </Card>
+        <View style={styles.attendanceHistoryHead}>
+          <View>
+            <Text style={styles.attendanceHistoryTitle}>Attendance</Text>
+            <Text style={styles.attendanceHistorySub}>{filteredAttendance.length} record{filteredAttendance.length === 1 ? '' : 's'} found</Text>
+          </View>
+          {(attendanceFrom || attendanceTo) && <Pill text="Filtered" />}
+        </View>
+
+        {filteredAttendance.length ? (
+          attendanceSections.map(section => (
+            <View style={styles.attendanceSection} key={section.title}>
+              <Text style={styles.attendanceSectionTitle}>{section.title}</Text>
+              <View style={styles.attendanceList}>
+                {section.records.map(item => (
+                  <AttendanceEntry
+                    key={String(field(item, ['id', 'attendanceDate', 'date']))}
+                    record={item}
+                    onRegularise={openRegularisationRequest}
+                  />
+                ))}
+              </View>
+            </View>
+          ))
+        ) : (
+          <Empty title="No Attendance Records" text="Try changing the date range to view older attendance." icon="calendar-clear-outline" />
+        )}
 
         {renderRegularisationModal()}
       </>
@@ -1468,8 +1565,14 @@ const styles = StyleSheet.create({
   metricIcon: {width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 10},
   metricLabel: {color: colors.muted, fontSize: 12, fontFamily: fonts.semibold, textTransform: 'uppercase'},
   metricValue: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 5},
+  attendanceFilter: {marginBottom: 20, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.border},
+  attendanceFilterHead: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12},
+  attendanceFilterIcon: {width: 34, height: 34, borderRadius: 10, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center'},
+  attendanceFilterCopy: {flex: 1},
+  attendanceFilterTitle: {color: colors.text, fontSize: 15, fontWeight: '900'},
+  attendanceFilterSub: {color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 2},
   filterCard: {padding: 0, marginBottom: 12, overflow: 'hidden', borderRadius: 12},
-  dateFilterRow: {flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 12},
+  dateFilterRow: {flexDirection: 'row', gap: 10, paddingBottom: 12},
   dateFilterField: {flex: 1},
   dateFilterLabel: {color: colors.textMid, fontSize: 12, fontWeight: '900', marginBottom: 7},
   dateFilterInput: {
@@ -1482,8 +1585,32 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     backgroundColor: colors.surfaceAlt,
   },
-  clearFilterButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 16, marginBottom: 14, borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 7},
+  clearFilterButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14, borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 7},
   clearFilterText: {color: colors.primary, fontSize: 12, fontWeight: '900'},
+  attendanceHistoryHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14},
+  attendanceHistoryTitle: {color: colors.text, fontSize: 18, fontWeight: '900'},
+  attendanceHistorySub: {color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 3},
+  attendanceSection: {marginBottom: 22},
+  attendanceSectionTitle: {color: colors.textMid, fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8},
+  attendanceList: {backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 14, overflow: 'hidden'},
+  attendanceEntry: {paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border},
+  attendanceEntryHead: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10},
+  attendanceDateWrap: {flex: 1},
+  attendanceDate: {color: colors.text, fontSize: 15, fontWeight: '900'},
+  attendanceHours: {color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 3},
+  attendanceTimes: {flexDirection: 'row', alignItems: 'stretch', marginTop: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border},
+  attendanceTimeColumn: {flex: 1, minWidth: 0},
+  attendanceTimeDivider: {width: 1, backgroundColor: colors.border, marginHorizontal: 9},
+  attendanceTimeLabel: {color: colors.subtle, fontSize: 9, fontWeight: '900', letterSpacing: 0.4},
+  attendanceTimeValue: {color: colors.text, fontSize: 12, fontWeight: '800', marginTop: 4},
+  attendanceLocations: {gap: 8, marginTop: 12},
+  attendanceLocationRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 7},
+  attendanceLocationCopy: {flex: 1},
+  attendanceLocationLabel: {color: colors.subtle, fontSize: 9, fontWeight: '900', letterSpacing: 0.4},
+  attendanceLocationValue: {color: colors.textMid, fontSize: 12, fontWeight: '700', lineHeight: 17, marginTop: 2},
+  attendanceRegulariseLink: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12},
+  attendanceRegulariseText: {color: colors.warning, fontSize: 12, fontWeight: '900'},
+  attendanceRequestState: {color: colors.warning, fontSize: 12, fontWeight: '800', marginTop: 12},
   panel: {padding: 0, marginBottom: 12, overflow: 'hidden'},
   attendanceSummaryCard: {shadowOpacity: 0, shadowRadius: 0, elevation: 0, borderColor: colors.border},
   sectionHead: {flexDirection: 'row', alignItems: 'center', gap: 11, padding: 16, paddingBottom: 10},
