@@ -8,6 +8,7 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * Represents a company within an organization.
@@ -80,6 +81,20 @@ public class Company extends BaseEntity {
     @Column(name = "schema_ready", nullable = false)
     @org.hibernate.annotations.ColumnDefault("true")
     private boolean schemaReady = true;
+
+    /**
+     * Archival is deliberately distinct from deactivation.  An archived company and
+     * every record in its tenant schema remain intact and can be restored by a
+     * platform administrator; no business data is deleted as part of this action.
+     */
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
+    @Column(name = "archived_by")
+    private String archivedBy;
+
+    @Column(name = "archive_reason", columnDefinition = "TEXT")
+    private String archiveReason;
 
     @JsonIgnore
     @OneToMany(mappedBy = "parentCompany", cascade = CascadeType.ALL)

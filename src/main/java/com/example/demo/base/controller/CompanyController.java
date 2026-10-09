@@ -175,10 +175,19 @@ public class CompanyController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Delete a company and all its data (Prabha Tech only)")
-    public ResponseEntity<Map<String, String>> delete(@PathVariable Long id) {
-        companyService.delete(id);
-        return ResponseEntity.ok(Map.of("message", "Company deleted"));
+    @Operation(summary = "Archive a company and preserve all data for restore (Prabha Tech only)")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable Long id,
+                                                       @RequestBody(required = false) Map<String, String> body) {
+        companyService.archive(id, body == null ? null : body.get("reason"));
+        return ResponseEntity.ok(Map.of("message", "Company archived. All data has been retained and can be restored."));
+    }
+
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Restore an archived company and its branches")
+    public ResponseEntity<Map<String, String>> restore(@PathVariable Long id) {
+        companyService.restore(id);
+        return ResponseEntity.ok(Map.of("message", "Company restored"));
     }
 
     @PostMapping("/{id}/logo")

@@ -10,6 +10,7 @@ import com.example.demo.auth.repository.UserGroupRepository;
 import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.service.AuthService;
 import com.example.demo.auth.service.UserRoleService;
+import com.example.demo.audit.AuditService;
 import com.example.demo.base.dto.CompanyRequest;
 import com.example.demo.base.entity.Company;
 import com.example.demo.base.entity.Organization;
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -58,6 +60,7 @@ public class CompanyService {
     private CompanyService self;
 
     private final CompanyRepository companyRepository;
+    private final AuditService auditService;
     private final OrganizationRepository organizationRepository;
     private final SchemaProvisioningService schemaProvisioningService;
     private final TenantProvisioningService tenantProvisioningService;
@@ -250,55 +253,60 @@ public class CompanyService {
     }
 
     /**
-     * Hard-deletes a company and all dependent records.
-     * If the target is a Head Office, all its branches are deleted first (FK order).
+     * Archives a company rather than destroying it.  The old implementation deleted
+     * tenant data, public records and role assignments before deleting the company
+     * row.  That made a successful response irreversible and made recovery depend on
+     * an external database restore.  Archiving keeps every record and only removes the
+     * company from operational lists and sign-in access.
      */
     @Transactional
     public void delete(Long id) {
+        archive(id, null);
+    }
+
+    @Transactional
+    public void archive(Long id, String reason) {
         Company company = companyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+        List<Company> affected = new ArrayList<>();
+        if (company.isHeadOffice()) affected.addAll(companyRepository.findByParentCompanyId(id));
+        affected.add(company);
 
-        List<Company> toDelete = new ArrayList<>();
-        if (company.isHeadOffice()) {
-            toDelete.addAll(companyRepository.findByParentCompanyId(id)); // branches first
+        LocalDateTime archivedAt = LocalDateTime.now();
+        String actor = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication() != null
+                ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()
+                : "system";
+        for (Company target : affected) {
+            target.setActive(false);
+            target.setStatus(Company.CompanyStatus.INACTIVE);
+            target.setArchivedAt(archivedAt);
+            target.setArchivedBy(actor);
+            target.setArchiveReason(reason);
         }
-        toDelete.add(company);
+        companyRepository.saveAll(affected);
+        auditService.log("COMPANY", id, "ARCHIVED", company.getName(),
+                java.util.Map.of("reason", reason == null ? "" : reason, "affectedCompanyIds",
+                        affected.stream().map(Company::getId).toList()));
+    }
 
-        List<Long> companyIds = toDelete.stream().map(Company::getId).collect(Collectors.toList());
-
-        // Delete all tenant-schema data for these companies before removing the company rows.
-        // Without this, FK constraints from tenant tables (departments, employees, etc.)
-        // to public.companies prevent the DELETE.
-        String schemaName = company.isHeadOffice()
-                ? company.getSchemaName()
-                : (company.getParentCompanyId() != null
-                        ? companyRepository.findById(company.getParentCompanyId())
-                                .map(Company::getSchemaName).orElse(null)
-                        : null);
-        if (schemaName != null && !schemaName.isBlank()) {
-            schemaProvisioningService.cleanupTenantDataForCompanies(schemaName, companyIds);
+    @Transactional
+    public void restore(Long id) {
+        Company company = companyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+        List<Company> affected = new ArrayList<>();
+        if (company.isHeadOffice()) affected.addAll(companyRepository.findByParentCompanyId(id));
+        affected.add(company);
+        for (Company target : affected) {
+            target.setActive(true);
+            target.setStatus(Company.CompanyStatus.ACTIVE);
+            target.setArchivedAt(null);
+            target.setArchivedBy(null);
+            target.setArchiveReason(null);
         }
-
-        crossBranchAccessGrantRepository.deleteAllInBatch(
-                crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
-
-        var groups = userGroupRepository.findByCompanyIdIn(companyIds);
-        groups.forEach(g -> g.setCompany(null));
-        userGroupRepository.saveAll(groups);
-
-        userRoleRepository.deleteAllInBatch(
-                userRoleRepository.findByCompanyIdIn(companyIds));
-
-        // Delete all public-schema rows that reference these companies (contracts, payslips,
-        // attendance, leave, etc.) — same dynamic JDBC cleanup used for org deletion.
-        schemaProvisioningService.cleanupPublicSchemaDataForCompanies(companyIds);
-
-        // Delete branches before head office to satisfy FK constraints
-        List<Company> branches = toDelete.stream().filter(Company::isBranch).collect(Collectors.toList());
-        companyRepository.deleteAllInBatch(branches);
-        companyRepository.deleteById(id);
-
-        entityManager.clear();
+        companyRepository.saveAll(affected);
+        auditService.log("COMPANY", id, "RESTORED", null,
+                java.util.Map.of("restoredCompanyIds", affected.stream().map(Company::getId).toList()));
     }
 
     /**
