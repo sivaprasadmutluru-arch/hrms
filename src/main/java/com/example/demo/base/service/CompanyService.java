@@ -61,6 +61,12 @@ public class CompanyService {
 
     private final CompanyRepository companyRepository;
     private final AuditService auditService;
+
+    @Transactional(readOnly = true)
+    public Company getById(Long id) {
+        return companyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+    }
     private final OrganizationRepository organizationRepository;
     private final SchemaProvisioningService schemaProvisioningService;
     private final TenantProvisioningService tenantProvisioningService;
@@ -307,6 +313,42 @@ public class CompanyService {
         companyRepository.saveAll(affected);
         auditService.log("COMPANY", id, "RESTORED", null,
                 java.util.Map.of("restoredCompanyIds", affected.stream().map(Company::getId).toList()));
+    }
+
+    /**
+     * Irreversible live-data purge. This is intentionally separate from archive and
+     * may only be exposed to a Platform Super Admin. Database backups and host audit
+     * logs are retained under their own retention policy; they are not silently
+     * destroyed by an application request.
+     */
+    @Transactional
+    public void purgePermanently(Long id) {
+        Company company = companyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+        String companyName = company.getName();
+        List<Company> toPurge = new ArrayList<>();
+        if (company.isHeadOffice()) toPurge.addAll(companyRepository.findByParentCompanyId(id));
+        toPurge.add(company);
+        List<Long> companyIds = toPurge.stream().map(Company::getId).collect(Collectors.toList());
+
+        String schemaName = company.isHeadOffice() ? company.getSchemaName()
+                : (company.getParentCompanyId() == null ? null
+                : companyRepository.findById(company.getParentCompanyId()).map(Company::getSchemaName).orElse(null));
+        if (schemaName != null && !schemaName.isBlank()) {
+            schemaProvisioningService.cleanupTenantDataForCompanies(schemaName, companyIds);
+        }
+        crossBranchAccessGrantRepository.deleteAllInBatch(
+                crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
+        var groups = userGroupRepository.findByCompanyIdIn(companyIds);
+        groups.forEach(group -> group.setCompany(null));
+        userGroupRepository.saveAll(groups);
+        userRoleRepository.deleteAllInBatch(userRoleRepository.findByCompanyIdIn(companyIds));
+        schemaProvisioningService.cleanupPublicSchemaDataForCompanies(companyIds);
+        companyRepository.deleteAllInBatch(toPurge.stream().filter(Company::isBranch).toList());
+        companyRepository.deleteById(id);
+        entityManager.clear();
+        auditService.log("COMPANY", id, "PURGED", companyName,
+                java.util.Map.of("purgedCompanyIds", companyIds));
     }
 
     /**

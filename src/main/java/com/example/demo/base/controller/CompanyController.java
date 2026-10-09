@@ -190,6 +190,20 @@ public class CompanyController {
         return ResponseEntity.ok(Map.of("message", "Company restored"));
     }
 
+    @DeleteMapping("/{id}/permanent")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently purge a company and its live HRMS data. Irreversible.")
+    public ResponseEntity<Map<String, String>> purgePermanently(@PathVariable Long id,
+                                                                  @RequestParam String confirmName) {
+        Company company = companyService.getById(id);
+        if (!company.getName().equals(confirmName)) {
+            throw new com.example.demo.common.exception.BadRequestException(
+                    "Type the exact company name to permanently purge it");
+        }
+        companyService.purgePermanently(id);
+        return ResponseEntity.ok(Map.of("message", "Company permanently purged from live HRMS data"));
+    }
+
     @PostMapping("/{id}/logo")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Operation(summary = "Upload logo for a Head Office or Branch")
