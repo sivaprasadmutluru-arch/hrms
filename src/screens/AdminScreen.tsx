@@ -933,14 +933,30 @@ export default function AdminScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.summaryRow}>
           <Card style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{visibleGroups.length}</Text>
-            <Text style={styles.summaryLabel}>Sections</Text>
+            <Text style={styles.summaryValue}>{accessibleCompanies.length || 1}</Text>
+            <Text style={styles.summaryLabel}>Companies</Text>
           </Card>
           <Card style={styles.summaryCard}>
             <Text style={styles.summaryValue}>{moduleCount}</Text>
-            <Text style={styles.summaryLabel}>Modules</Text>
+            <Text style={styles.summaryLabel}>Admin tools</Text>
           </Card>
         </View>
+
+        <Card style={styles.quickCard}>
+          <Text style={styles.quickTitle}>Quick actions</Text>
+          <Text style={styles.quickSub}>Open the tasks most often needed from a phone.</Text>
+          <View style={styles.quickGrid}>
+            {['Employees', 'Attendance', 'Leave', 'Roles'].map(title => {
+              const module = visibleGroups.flatMap(group => group.modules).find(item => item.title === title);
+              return module ? (
+                <Pressable key={title} onPress={() => setActiveModule(module)} style={styles.quickAction}>
+                  <Icon name={module.icon as any} size={18} color={colors.primary} />
+                  <Text style={styles.quickActionText}>{title}</Text>
+                </Pressable>
+              ) : null;
+            })}
+          </View>
+        </Card>
 
         {visibleGroups.map(group => (
           <Card key={group.title} style={styles.groupCard}>
@@ -990,6 +1006,12 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   summaryValue: {color: colors.text, fontSize: 26, fontWeight: '900'},
+  quickCard: {padding: 14, marginBottom: 10, borderRadius: 12},
+  quickTitle: {color: colors.text, fontSize: 16, fontWeight: '800'},
+  quickSub: {color: colors.muted, fontSize: 12, marginTop: 3},
+  quickGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12},
+  quickAction: {width: '48%', minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10, backgroundColor: colors.surfaceAlt},
+  quickActionText: {color: colors.textMid, fontSize: 12, fontWeight: '800'},
   summaryLabel: {color: colors.muted, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', marginTop: 4},
   groupCard: {
     padding: 0,
