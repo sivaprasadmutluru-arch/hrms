@@ -83,7 +83,11 @@ export const api = {
     }),
   me: () => request<any>('/ess/me'),
   myCompanyInfo: () => request<any>('/companies/mine'),
-  adminList: (path: string, params?: Record<string, any>) => request<any>(`${path}${queryString(params)}`),
+  adminList: (path: string, params?: Record<string, any>, filterCompanyId?: number | string | null) =>
+    request<any>(`${path}${queryString(params)}`, {
+      headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {},
+    }),
+  accessibleCompanies: () => request<any[]>('/companies/accessible'),
   approveLeaveRequest: (id: number | string) => request<any>(`/leave/requests/${id}/approve`, {method: 'POST'}),
   rejectLeaveRequest: (id: number | string, reason?: string) =>
     request<any>(`/leave/requests/${id}/reject`, {method: 'POST', body: JSON.stringify({reason})}),

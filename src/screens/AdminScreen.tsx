@@ -398,6 +398,8 @@ export default function AdminScreen() {
   const [recordsError, setRecordsError] = useState('');
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState('All');
+  const [accessibleCompanies, setAccessibleCompanies] = useState<any[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | string>('all');
   const [actionBusyId, setActionBusyId] = useState<string | number | null>(null);
   const [actionError, setActionError] = useState('');
   const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
@@ -421,6 +423,10 @@ export default function AdminScreen() {
   );
   const moduleCount = visibleGroups.reduce((total, group) => total + group.modules.length, 0);
 
+  useEffect(() => {
+    api.accessibleCompanies().then(setAccessibleCompanies).catch(() => setAccessibleCompanies([]));
+  }, []);
+
   const loadPage = useCallback(async () => {
     if (!activePage || activePage === 'Assign Role') return;
     const endpoint = activePage === 'Employees' && roles.includes(ROLES.PLATFORM_SUPER_ADMIN) ? '/employees/global' : PAGE_ENDPOINTS[activePage];
@@ -438,15 +444,15 @@ export default function AdminScreen() {
         sort: 'id,desc',
         // A handful of dashboard-style endpoints (e.g. attendance/payroll dashboards) require a
         // companyId; harmless to send everywhere else since Spring ignores unknown params.
-        companyId: user?.companyId,
-      });
+        companyId: selectedCompanyId === 'all' ? undefined : selectedCompanyId,
+      }, selectedCompanyId === 'all' ? null : selectedCompanyId);
       setRecords(asArray(result));
     } catch (err: any) {
       setRecordsError(err?.message || 'Unable to load records.');
     } finally {
       setLoadingRecords(false);
     }
-  }, [activePage, roles, user?.companyId]);
+  }, [activePage, roles, selectedCompanyId]);
 
   useEffect(() => {
     setSearch('');
@@ -749,6 +755,26 @@ export default function AdminScreen() {
               </View>
             </View>
           </Card>
+
+          {accessibleCompanies.length > 1 && (
+            <Card style={styles.filterCard}>
+              <Text style={styles.scopeLabel}>Monitoring company</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.companyFilterRow}>
+                <Pressable onPress={() => setSelectedCompanyId('all')} style={[styles.companyChip, selectedCompanyId === 'all' && styles.companyChipActive]}>
+                  <Text style={[styles.companyChipText, selectedCompanyId === 'all' && styles.companyChipTextActive]}>All access</Text>
+                </Pressable>
+                {accessibleCompanies.map(company => {
+                  const companyId = company?.id;
+                  const selected = selectedCompanyId === companyId;
+                  return (
+                    <Pressable key={String(companyId)} onPress={() => setSelectedCompanyId(companyId)} style={[styles.companyChip, selected && styles.companyChipActive]}>
+                      <Text style={[styles.companyChipText, selected && styles.companyChipTextActive]} numberOfLines={1}>{company?.name || `Company ${companyId}`}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Card>
+          )}
 
           {activePage === 'Employees' && (
             <Card style={styles.filterCard}>
@@ -1115,6 +1141,7 @@ const styles = StyleSheet.create({
   pageRowUnavailable: {opacity: 0.58},
   pageRowIcon: {width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   webOnly: {color: colors.muted, backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '800'},
+  scopeLabel: {color: colors.textMid, fontSize: 12, fontWeight: '800', marginBottom: 8},
   error: {
     color: colors.danger,
     backgroundColor: colors.dangerSoft,
