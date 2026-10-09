@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
 import {dateText, employeeName, initials, money} from '../utils/format';
+import {disableBiometricLogin, enableBiometricLogin, isBiometricLoginEnabled, supportedBiometry} from '../utils/biometrics';
 
 type EditForm = {
   phone: string;
@@ -194,6 +195,10 @@ export default function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoVersion, setPhotoVersion] = useState(Date.now());
   const [form, setForm] = useState<EditForm>(emptyForm);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [biometricModalOpen, setBiometricModalOpen] = useState(false);
+  const [biometricPassword, setBiometricPassword] = useState('');
   const currency = profile?.currencySymbol || '';
   const profilePhotoUrl = photoUrl(profile);
   const avatarSource = profilePhotoUrl ? `${profilePhotoUrl}${profilePhotoUrl.includes('?') ? '&' : '?'}_t=${photoVersion}` : null;
@@ -236,6 +241,10 @@ export default function ProfileScreen() {
       setForm(formFromProfile(profile));
     }
   }, [editing, profile]);
+
+  useEffect(() => {
+    isBiometricLoginEnabled().then(setBiometricEnabled).catch(() => setBiometricEnabled(false));
+  }, []);
 
   async function refresh() {
     setRefreshing(true);
@@ -311,6 +320,54 @@ export default function ProfileScreen() {
       }
     } finally {
       setUploadingPhoto(false);
+    }
+  }
+
+  async function requestBiometricEnable() {
+    try {
+      const available = await supportedBiometry();
+      if (!available) {
+        Alert.alert('Biometric login', 'Fingerprint or Face ID is not available on this device.');
+        return;
+      }
+      setBiometricPassword('');
+      setBiometricModalOpen(true);
+    } catch {
+      Alert.alert('Biometric login', 'Unable to check device biometric support.');
+    }
+  }
+
+  async function confirmBiometricEnable() {
+    const username = user?.email || user?.username || profile?.email;
+    if (!username || !biometricPassword) {
+      Alert.alert('Biometric login', 'Enter your current password to enable biometric login.');
+      return;
+    }
+    setBiometricLoading(true);
+    try {
+      // Verify the current password before placing it in the device keychain.
+      await api.login(username, biometricPassword);
+      await enableBiometricLogin({username, password: biometricPassword});
+      setBiometricEnabled(true);
+      setBiometricModalOpen(false);
+      setBiometricPassword('');
+      Alert.alert('Biometric login enabled', 'You can now use your device biometric to sign in securely.');
+    } catch (err: any) {
+      Alert.alert('Biometric login', err.message || 'Unable to enable biometric login.');
+    } finally {
+      setBiometricLoading(false);
+    }
+  }
+
+  async function turnOffBiometricLogin() {
+    setBiometricLoading(true);
+    try {
+      await disableBiometricLogin();
+      setBiometricEnabled(false);
+    } catch (err: any) {
+      Alert.alert('Biometric login', err.message || 'Unable to turn off biometric login.');
+    } finally {
+      setBiometricLoading(false);
     }
   }
 
@@ -469,10 +526,53 @@ export default function ProfileScreen() {
         )}
         </Section>
 
+        <Section title="Sign-in security" subtitle="Use this device to sign in faster" icon="finger-print-outline">
+          <View style={styles.securityRow}>
+            <View style={styles.securityCopy}>
+              <Text style={styles.securityTitle}>Biometric login</Text>
+              <Text style={styles.securityText}>
+                {biometricEnabled ? 'Fingerprint or Face ID is enabled on this device.' : 'Enable fingerprint or Face ID after confirming your password.'}
+              </Text>
+            </View>
+            <Pressable
+              disabled={biometricLoading}
+              onPress={biometricEnabled ? turnOffBiometricLogin : requestBiometricEnable}
+              style={({pressed}) => [styles.securityButton, biometricEnabled && styles.securityButtonEnabled, (pressed || biometricLoading) && styles.pressed]}>
+              {biometricLoading ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.securityButtonText}>{biometricEnabled ? 'Turn off' : 'Enable'}</Text>}
+            </Pressable>
+          </View>
+        </Section>
+
         <View style={styles.logout}>
           <PrimaryButton title="Sign Out" variant="danger" onPress={signOut} />
         </View>
       </ScrollView>
+
+      <Modal visible={biometricModalOpen} transparent animationType="fade" onRequestClose={() => setBiometricModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Enable biometric login</Text>
+            <Text style={styles.modalText}>Confirm your current password once. It will be encrypted in your device’s secure storage and protected by fingerprint or Face ID.</Text>
+            <TextInput
+              value={biometricPassword}
+              onChangeText={setBiometricPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              placeholder="Current password"
+              placeholderTextColor={colors.subtle}
+              style={styles.modalInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setBiometricModalOpen(false)} disabled={biometricLoading} style={styles.modalCancel}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={confirmBiometricEnable} disabled={biometricLoading} style={styles.modalConfirm}>
+                {biometricLoading ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.modalConfirmText}>Enable</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -630,4 +730,21 @@ const styles = StyleSheet.create({
   col: {flex: 1},
   saveAction: {paddingHorizontal: 16, paddingBottom: 16},
   logout: {marginTop: 4},
+  securityRow: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingBottom: 14},
+  securityCopy: {flex: 1},
+  securityTitle: {color: colors.text, fontSize: 14, fontFamily: fonts.semibold},
+  securityText: {color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3},
+  securityButton: {minWidth: 72, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 10},
+  securityButtonEnabled: {backgroundColor: colors.danger},
+  securityButtonText: {color: colors.white, fontSize: 12, fontFamily: fonts.semibold},
+  modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.48)', justifyContent: 'center', padding: 22},
+  modalCard: {backgroundColor: colors.white, borderRadius: 18, padding: 20},
+  modalTitle: {color: colors.text, fontSize: 18, fontFamily: fonts.bold},
+  modalText: {color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 8},
+  modalInput: {borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceAlt, color: colors.text, borderRadius: 10, height: 48, marginTop: 18, paddingHorizontal: 12},
+  modalActions: {flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18},
+  modalCancel: {height: 42, justifyContent: 'center', paddingHorizontal: 14},
+  modalCancelText: {color: colors.textMid, fontSize: 13, fontFamily: fonts.semibold},
+  modalConfirm: {height: 42, minWidth: 82, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14},
+  modalConfirmText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
 });

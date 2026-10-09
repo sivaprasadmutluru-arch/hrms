@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Feather from 'react-native-vector-icons/Feather';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
+import {biometricCredentials, isBiometricLoginEnabled, supportedBiometry} from '../utils/biometrics';
 
 export default function LoginScreen() {
   const {signIn} = useAuth();
@@ -34,6 +35,14 @@ export default function LoginScreen() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+
+  useEffect(() => {
+    Promise.all([supportedBiometry(), isBiometricLoginEnabled()])
+      .then(([biometry, enabled]) => setBiometricReady(Boolean(biometry && enabled)))
+      .catch(() => setBiometricReady(false));
+  }, []);
 
   async function submit() {
     if (!usernameOrEmail.trim() || !password) {
@@ -70,6 +79,22 @@ export default function LoginScreen() {
       Alert.alert('Unable to send reset link', err.message || 'Please contact your HR administrator.');
     } finally {
       setResetting(false);
+    }
+  }
+
+  async function signInWithBiometrics() {
+    setError('');
+    setBiometricLoading(true);
+    try {
+      const credentials = await biometricCredentials();
+      if (!credentials) {
+        return;
+      }
+      await signIn(credentials.username, credentials.password, true);
+    } catch (err: any) {
+      setError(err.message || 'Biometric sign-in could not be completed. Use your password instead.');
+    } finally {
+      setBiometricLoading(false);
     }
   }
 
@@ -187,6 +212,22 @@ export default function LoginScreen() {
               </LinearGradient>
             </Pressable>
 
+            {biometricReady && (
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={signInWithBiometrics}
+                disabled={biometricLoading}>
+                {biometricLoading ? (
+                  <ActivityIndicator color="#4F46E5" />
+                ) : (
+                  <>
+                    <Feather name="fingerprint" size={21} color="#4F46E5" />
+                    <Text style={styles.secondaryButtonText}>Sign in with biometric</Text>
+                  </>
+                )}
+              </Pressable>
+            )}
+
             <View className="mt-8 mb-6 flex-row items-center justify-center">
               <Text className="font-regular text-xs text-textPlaceholder">Version 1.0.0</Text>
               <Text className="mx-2 font-regular text-xs text-textPlaceholder">|</Text>
@@ -303,5 +344,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginRight: 8,
+  },
+  secondaryButton: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#6366F1',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    height: 52,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  secondaryButtonText: {
+    color: '#4338CA',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 10,
   },
 });
