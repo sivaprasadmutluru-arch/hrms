@@ -80,6 +80,21 @@ public class CompanyController {
 
     // ---- Any authenticated user ----
 
+    @GetMapping("/accessible")
+    @Operation(summary = "List companies available to the current user's access scope")
+    public ResponseEntity<List<Company>> getAccessibleCompanies() {
+        var scope = AccessScopeContext.get();
+        if (scope == null) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (scope.hasUnrestrictedAccess()) {
+            return ResponseEntity.ok(companyRepository.findAllActivePublic());
+        }
+        return ResponseEntity.ok(companyRepository.findAllById(scope.getAccessibleCompanyIds()).stream()
+                .filter(company -> company.getStatus() == Company.CompanyStatus.ACTIVE)
+                .toList());
+    }
+
     @GetMapping("/mine")
     @Operation(summary = "Get the current user's own company (available to all authenticated users)")
     public ResponseEntity<Company> getMine() {
