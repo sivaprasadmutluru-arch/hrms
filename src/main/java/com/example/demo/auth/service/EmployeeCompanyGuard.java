@@ -18,8 +18,18 @@ public class EmployeeCompanyGuard {
 
     public Set<Long> linkedCompanies(Long userId) {
         Set<Long> result = new HashSet<>();
-        for (String schema : jdbc.queryForList("SELECT DISTINCT schema_name FROM public.companies WHERE schema_name IS NOT NULL AND schema_name <> ''", String.class)) {
+        // Do not let a retired tenant, or a legacy tenant schema predating the
+        // employee/company association, block authentication for every user.
+        for (String schema : jdbc.queryForList("SELECT DISTINCT schema_name FROM public.companies WHERE is_active = true AND schema_name IS NOT NULL AND schema_name <> ''", String.class)) {
             if (!schema.matches("[a-zA-Z_][a-zA-Z0-9_]*")) throw new BadRequestException("Invalid company schema configuration");
+            Integer requiredColumns = jdbc.queryForObject(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'employees' AND column_name IN ('user_id', 'company_id')",
+                    Integer.class, schema);
+            if (requiredColumns == null || requiredColumns != 2) {
+                // A legacy schema is not a valid source for current account links.
+                // Its data remains untouched and is handled by the schema migration path.
+                continue;
+            }
             result.addAll(jdbc.queryForList("SELECT company_id FROM \"" + schema + "\".employees WHERE user_id = ? AND is_active = true", Long.class, userId));
         }
         return result;
