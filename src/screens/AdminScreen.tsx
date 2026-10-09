@@ -167,6 +167,10 @@ const PAGE_ENDPOINTS: Record<string, string> = {
   Surveys: '/recruitment/survey-templates',
 };
 
+function isMobileAdminPage(page: string) {
+  return page === 'Assign Role' || Boolean(PAGE_ENDPOINTS[page]);
+}
+
 function asArray(value: any) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.content)) return value.content;
@@ -858,18 +862,25 @@ export default function AdminScreen() {
                 <Text style={styles.groupSub}>Website features available under this module</Text>
               </View>
             </View>
-            {activeModule.pages.map(page => (
-              <Pressable key={page} onPress={() => setActivePage(page)} style={styles.pageRow}>
+            {activeModule.pages.map(page => {
+              const integrated = isMobileAdminPage(page);
+              return (
+              <Pressable
+                key={page}
+                disabled={!integrated}
+                onPress={() => setActivePage(page)}
+                style={[styles.pageRow, !integrated && styles.pageRowUnavailable]}>
                 <View style={styles.pageRowIcon}>
-                  <Icon name="document-text-outline" size={17} color={colors.primary} />
+                  <Icon name={integrated ? 'document-text-outline' : 'desktop-outline'} size={17} color={integrated ? colors.primary : colors.subtle} />
                 </View>
                 <View style={styles.moduleCopy}>
                   <Text style={styles.moduleTitle}>{page}</Text>
-                  <Text style={styles.moduleSub}>Open and manage {page.toLowerCase()}</Text>
+                  <Text style={styles.moduleSub}>{integrated ? `Open and manage ${page.toLowerCase()}` : 'Available in the web portal'}</Text>
                 </View>
-                <Icon name="chevron-forward-outline" size={18} color={colors.subtle} />
+                {integrated ? <Icon name="chevron-forward-outline" size={18} color={colors.subtle} /> : <Text style={styles.webOnly}>Web</Text>}
               </Pressable>
-            ))}
+              );
+            })}
           </Card>
         </ScrollView>
       </View>
@@ -1101,7 +1112,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  pageRowUnavailable: {opacity: 0.58},
   pageRowIcon: {width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
+  webOnly: {color: colors.muted, backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '800'},
   error: {
     color: colors.danger,
     backgroundColor: colors.dangerSoft,
