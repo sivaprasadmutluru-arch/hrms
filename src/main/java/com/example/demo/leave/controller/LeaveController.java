@@ -129,7 +129,7 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "Export all accessible leave requests as Excel")
     public void exportRequests(HttpServletResponse response) throws IOException {
-        List<LeaveRequest> requests = leaveService.getAllRequests(Pageable.unpaged(), null, true).getContent();
+        List<LeaveRequest> requests = leaveService.getAllRequests(Pageable.unpaged(), null, null, true).getContent();
 
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=leave_requests.xlsx");
