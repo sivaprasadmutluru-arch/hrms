@@ -79,6 +79,35 @@ class LeaveSchedulerTest {
         return new LeaveScheduler(availableLeaveRepository, leaveTypeRepository, leaveAccrualService, companyRepository);
     }
 
+    @Test
+    void startupCatchesUpWithoutWaitingForMidnight() {
+        Company healthy = company(2L, "healthy_tenant");
+        when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(healthy));
+        scheduler().onApplicationReady();
+        verify(leaveAccrualService).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth());
+    }
+
+    @Test
+    void periodicCatchUpWaitsForApplicationReadyAndThenRetries() {
+        LeaveScheduler scheduler = scheduler();
+        scheduler.periodicAccrualCatchUp();
+        verifyNoInteractions(companyRepository, leaveAccrualService);
+        Company healthy = company(2L, "healthy_tenant");
+        when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(healthy));
+        scheduler.onApplicationReady();
+        scheduler.periodicAccrualCatchUp();
+        verify(leaveAccrualService, times(2)).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth());
+    }
+
+    @Test
+    void catchUpRestoresExistingTenantContext() {
+        TenantContext.setTenant("original_tenant");
+        Company healthy = company(2L, "healthy_tenant");
+        when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(healthy));
+        scheduler().runMonthlyAccrualCatchUp(LocalDate.of(2026, 9, 8));
+        assertEquals("original_tenant", TenantContext.getTenant());
+    }
+
     private Company company(Long id, String schema) {
         Company company = mock(Company.class);
         when(company.getSchemaName()).thenReturn(schema);

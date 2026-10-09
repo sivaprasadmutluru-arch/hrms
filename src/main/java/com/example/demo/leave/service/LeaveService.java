@@ -214,9 +214,7 @@ public class LeaveService {
     public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
                                     LocalDate endDate, String description, Long companyId,
                                     LeaveRequest.LeaveDuration leaveDuration) {
-        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
-            throw new BadRequestException("End date must be on or after start date");
-        }
+        validateApplicationDates(startDate, endDate, LocalDate.now());
         LeaveRequest.LeaveDuration duration = leaveDuration == null
                 ? LeaveRequest.LeaveDuration.FULL_DAY : leaveDuration;
         LeaveType leaveType = leaveTypeRepository.findById(leaveTypeId)
@@ -288,6 +286,17 @@ public class LeaveService {
     }
 
     // ─── Approve / Reject / Cancel ────────────────────────────────────────────
+
+    static void validateApplicationDates(LocalDate startDate, LocalDate endDate, LocalDate today) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new BadRequestException("End date must be on or after start date");
+        }
+        LocalDate earliestDate = today.minusMonths(2);
+        if (startDate.isBefore(earliestDate)) {
+            throw new BadRequestException("Leave can only be applied up to 2 months in the past. "
+                    + "Start date must be on or after " + earliestDate);
+        }
+    }
 
     @Transactional
     public LeaveRequest approve(Long requestId, Long approverUserId) {

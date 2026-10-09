@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -30,6 +32,20 @@ public class LeaveScheduler {
     private final LeaveTypeRepository leaveTypeRepository;
     private final LeaveAccrualService leaveAccrualService;
     private final CompanyRepository companyRepository;
+    private volatile boolean ready;
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        ready = true;
+        monthEndAccrual();
+    }
+
+    // Local installations may be off at midnight. Retry while the application is running.
+    @Scheduled(fixedDelayString = "${leave.accrual.catch-up-ms:3600000}",
+            initialDelayString = "${leave.accrual.catch-up-ms:3600000}")
+    public void periodicAccrualCatchUp() {
+        if (ready) monthEndAccrual();
+    }
 
     /**
      * Runs daily at midnight and posts the previous month's accrual in every tenant.
@@ -38,11 +54,12 @@ public class LeaveScheduler {
      * cannot credit an employee twice for the same month.
      */
     @Scheduled(cron = "0 0 0 * * *")
-    public void monthEndAccrual() {
+    public synchronized void monthEndAccrual() {
         runMonthlyAccrualCatchUp(LocalDate.now());
     }
 
     void runMonthlyAccrualCatchUp(LocalDate today) {
+        String previousTenant = TenantContext.getTenant();
         LocalDate monthEnd = YearMonth.from(today).minusMonths(1).atEndOfMonth();
         List<Company> tenants = companyRepository.findAllHeadOfficesActivePublic();
         log.info("[LeaveScheduler] Processing accrual date={} across {} tenants", monthEnd, tenants.size());
@@ -62,7 +79,7 @@ public class LeaveScheduler {
                 // One tenant must not prevent accrual processing for every other company.
                 log.error("[LeaveScheduler] Accrual failed for tenant={} accrualDate={}", schema, monthEnd, ex);
             } finally {
-                TenantContext.clear();
+                TenantContext.setTenant(previousTenant);
             }
         }
     }
