@@ -49,6 +49,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -223,7 +224,9 @@ public class EmployeeService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EmployeeResponse doCreate(EmployeeRequest req) {
         log.info("[create] email={} companyId={}", req.getEmail(), req.getCompanyId());
-        if (req.getEmail() != null && employeeRepository.findByEmail(req.getEmail()).isPresent()) {
+        String normalizedEmail = normalizeEmail(req.getEmail());
+        req.setEmail(normalizedEmail);
+        if (normalizedEmail != null && employeeRepository.findFirstByNormalizedEmail(normalizedEmail).isPresent()) {
             throw new BadRequestException("Employee with this email already exists");
         }
         // A manually-entered Employee/Badge ID must be unique — badge_id has a DB-level
@@ -231,7 +234,7 @@ public class EmployeeService {
         // constraint-violation error instead of a clear message. A blank one is left
         // alone here; it gets auto-generated further down.
         if (req.getBadgeId() != null && !req.getBadgeId().isBlank()
-                && employeeRepository.findByBadgeId(req.getBadgeId().trim()).isPresent()) {
+                && employeeRepository.findFirstByNormalizedBadgeId(req.getBadgeId().trim()).isPresent()) {
             throw new BadRequestException("Employee ID '" + req.getBadgeId().trim() + "' is already in use");
         }
 
@@ -351,9 +354,44 @@ public class EmployeeService {
     public Map<String, Object> bulkImport(List<EmployeeRequest> requests) {
         int success = 0;
         List<Map<String, String>> failures = new ArrayList<>();
+        if (requests == null || requests.isEmpty()) {
+            return Map.of("totalRows", 0, "successCount", 0, "failureCount", 0, "failures", failures);
+        }
+
+        // Importing a spreadsheet is a batch operation, so perform identity checks
+        // before creating any row.  A blank email used to bypass duplicate detection,
+        // then a re-upload received a freshly generated badge ID and created another
+        // employee.  Imports now require a stable identity and reject both spreadsheet
+        // duplicates and existing archived/active employee records.
+        Long companyId = requests.get(0).getCompanyId();
+        if (companyId == null || requests.stream().anyMatch(req -> !companyId.equals(req.getCompanyId()))) {
+            throw new BadRequestException("All imported employees must belong to one selected company");
+        }
+        resolveTenantForCompany(companyId);
+        Map<Integer, String> preflightFailures = new HashMap<>();
+        Map<String, Integer> rowsByIdentity = new HashMap<>();
+        for (int i = 0; i < requests.size(); i++) {
+            EmployeeRequest req = requests.get(i);
+            String email = normalizeEmail(req.getEmail());
+            String badgeId = normalizeIdentifier(req.getBadgeId());
+            req.setEmail(email);
+            req.setBadgeId(badgeId);
+
+            if (email == null && badgeId == null) {
+                preflightFailures.put(i, "Email or Employee ID is required for import duplicate protection");
+                continue;
+            }
+            String conflict = findImportIdentityConflict(email, badgeId, rowsByIdentity, i + 2);
+            if (conflict != null) {
+                preflightFailures.put(i, conflict);
+            }
+        }
         for (int i = 0; i < requests.size(); i++) {
             EmployeeRequest req = requests.get(i);
             try {
+                if (preflightFailures.containsKey(i)) {
+                    throw new BadRequestException(preflightFailures.get(i));
+                }
                 log.info("[bulkImport] row {} — creating employee: firstName={} email={} companyId={}",
                         i + 2, req.getFirstName(), req.getEmail(), req.getCompanyId());
                 self.create(req);
@@ -374,6 +412,31 @@ public class EmployeeService {
         result.put("failureCount", failures.size());
         result.put("failures", failures);
         return result;
+    }
+
+    private String findImportIdentityConflict(String email, String badgeId,
+                                              Map<String, Integer> rowsByIdentity, int spreadsheetRow) {
+        if (email != null) {
+            String emailKey = "email:" + email;
+            Integer priorRow = rowsByIdentity.putIfAbsent(emailKey, spreadsheetRow);
+            if (priorRow != null) return "Duplicate email in this spreadsheet (also on row " + priorRow + ")";
+            if (employeeRepository.findFirstByNormalizedEmail(email).isPresent()) {
+                return "An employee with this email already exists; restore or update that employee instead";
+            }
+        }
+        if (badgeId != null) {
+            String badgeKey = "badge:" + badgeId.toLowerCase(Locale.ROOT);
+            Integer priorRow = rowsByIdentity.putIfAbsent(badgeKey, spreadsheetRow);
+            if (priorRow != null) return "Duplicate Employee ID in this spreadsheet (also on row " + priorRow + ")";
+            if (employeeRepository.findFirstByNormalizedBadgeId(badgeId).isPresent()) {
+                return "Employee ID '" + badgeId + "' is already in use";
+            }
+        }
+        return null;
+    }
+
+    private String normalizeIdentifier(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Contract createDefaultContract(Employee emp, EmployeeRequest req) {
