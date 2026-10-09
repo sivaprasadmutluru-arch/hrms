@@ -21,6 +21,15 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
             Long employeeId, Long leaveTypeId, LocalDate startDate, LocalDate endDate,
             LeaveRequest.LeaveStatus status);
 
+    @Query("SELECT CASE WHEN COUNT(lr) > 0 THEN true ELSE false END FROM LeaveRequest lr " +
+           "WHERE lr.employee.id = :employeeId AND lr.leaveType.id = :leaveTypeId " +
+           "AND lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
+           "AND lr.startDate <= :endDate AND lr.endDate >= :startDate")
+    boolean existsApprovedOverlap(@Param("employeeId") Long employeeId,
+                                  @Param("leaveTypeId") Long leaveTypeId,
+                                  @Param("startDate") LocalDate startDate,
+                                  @Param("endDate") LocalDate endDate);
+
     @Query("SELECT lr FROM LeaveRequest lr WHERE lr.company.id = :companyId " +
            "AND lr.status = com.example.demo.leave.entity.LeaveRequest.LeaveStatus.APPROVED " +
            "AND lr.startDate <= :endDate AND lr.endDate >= :startDate")

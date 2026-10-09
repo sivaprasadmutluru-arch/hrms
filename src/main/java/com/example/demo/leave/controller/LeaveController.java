@@ -52,11 +52,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -1395,6 +1397,7 @@ public class LeaveController {
         int imported = 0;
         int failed = 0;
         List<String> errors = new ArrayList<>();
+        Set<String> spreadsheetAllocationKeys = new HashSet<>();
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -1460,6 +1463,13 @@ public class LeaveController {
                     int year = (yearRaw != null && !yearRaw.isBlank())
                             ? (int) Double.parseDouble(yearRaw.trim())
                             : LocalDate.now().getYear();
+
+                    String allocationKey = employee.getId() + ":" + leaveType.getId() + ":" + year;
+                    if (!spreadsheetAllocationKeys.add(allocationKey)) {
+                        failed++;
+                        errors.add("Row " + (i + 1) + ": duplicate allocation in this spreadsheet for employee, leave type and year");
+                        continue;
+                    }
 
                     // Total days
                     String totalRaw = getColValue(row, colIndex, "total days", "total_leave_days", "days");
@@ -1631,6 +1641,7 @@ public class LeaveController {
         int skipped = 0;
         int failed = 0;
         List<String> errors = new ArrayList<>();
+        Set<String> spreadsheetRequestKeys = new HashSet<>();
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
             for (Sheet sheet : workbook) {
@@ -1686,12 +1697,26 @@ public class LeaveController {
                         }
                         if (days <= 0) throw new BadRequestException("duration must be greater than zero");
 
+                        String requestKey = currentEmployee.getId() + ":" + leaveType.getId()
+                                + ":" + startDate + ":" + endDate;
+                        if (!spreadsheetRequestKeys.add(requestKey)) {
+                            duplicates++;
+                            continue;
+                        }
+
                         boolean exists = leaveRequestRepository
                                 .existsByEmployeeIdAndLeaveTypeIdAndStartDateAndEndDateAndStatus(
                                         currentEmployee.getId(), leaveType.getId(), startDate, endDate,
                                         LeaveRequest.LeaveStatus.APPROVED);
                         if (exists) {
                             duplicates++;
+                            continue;
+                        }
+                        if (leaveRequestRepository.existsApprovedOverlap(
+                                currentEmployee.getId(), leaveType.getId(), startDate, endDate)) {
+                            failed++;
+                            errors.add("Sheet '" + sheetName + "', row " + (rowIndex + 1)
+                                    + ": overlaps an existing approved leave request");
                             continue;
                         }
 
@@ -1888,7 +1913,9 @@ public class LeaveController {
             throw new BadRequestException("X-Company-Id header is required to import holidays");
         }
         int imported = 0;
+        int duplicates = 0;
         List<String> errors = new ArrayList<>();
+        Set<String> spreadsheetHolidayKeys = new HashSet<>();
         try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -1923,6 +1950,13 @@ public class LeaveController {
                         recurring = "true".equals(recurringVal) || "yes".equals(recurringVal);
                     }
 
+                    String holidayKey = name.trim().toLowerCase(Locale.ROOT) + ":" + startDate + ":" + endDate + ":" + recurring;
+                    if (!spreadsheetHolidayKeys.add(holidayKey)
+                            || holidayRepository.findDuplicateForImport(companyId, name, startDate, endDate, recurring).isPresent()) {
+                        duplicates++;
+                        continue;
+                    }
+
                     Holiday holiday = new Holiday();
                     holiday.setName(name);
                     holiday.setStartDate(startDate);
@@ -1938,6 +1972,7 @@ public class LeaveController {
         }
         Map<String, Object> result = new HashMap<>();
         result.put("imported", imported);
+        result.put("duplicates", duplicates);
         result.put("errors", errors);
         return ResponseEntity.ok(result);
     }
