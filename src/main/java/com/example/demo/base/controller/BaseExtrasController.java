@@ -4,6 +4,7 @@ import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.base.entity.*;
 import com.example.demo.base.repository.*;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -394,8 +395,14 @@ public class BaseExtrasController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     public ResponseEntity<ShiftSchedule> createShiftSchedule(@RequestBody ShiftSchedule s) {
-        if (s.getCompany() != null && s.getCompany().getId() != null)
-            s.setCompany(companyRepository.getReferenceById(s.getCompany().getId()));
+        // The interceptor resolves this from X-Company-Id before the controller
+        // runs. Never trust a client-supplied company here: a multi-company admin
+        // can have a different profile company than the company selected in the UI.
+        Long activeCompanyId = CompanyContext.get();
+        if (activeCompanyId == null) {
+            throw new IllegalArgumentException("Select a company before creating a shift schedule");
+        }
+        s.setCompany(companyRepository.getReferenceById(activeCompanyId));
         return ResponseEntity.ok(shiftScheduleRepository.save(s));
     }
 

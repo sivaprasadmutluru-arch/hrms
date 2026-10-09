@@ -5,9 +5,12 @@ import com.example.demo.base.entity.AnnouncementComment;
 import com.example.demo.base.repository.AnnouncementCommentRepository;
 import com.example.demo.base.repository.AnnouncementRepository;
 import com.example.demo.base.repository.CompanyRepository;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.notification.entity.Notification;
+import com.example.demo.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,8 @@ public class AnnouncementController {
     private final AnnouncementCommentRepository commentRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
+    private final NotificationService notificationService;
+    private final EmailService emailService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('announcements:view')")
@@ -50,7 +55,9 @@ public class AnnouncementController {
         if (announcement.getCreatedBy() != null && announcement.getCreatedBy().getId() != null) {
             announcement.setCreatedBy(employeeRepository.getReferenceById(announcement.getCreatedBy().getId()));
         }
-        return ResponseEntity.ok(announcementRepository.save(announcement));
+        Announcement saved = announcementRepository.save(announcement);
+        notifyAllActiveEmployees(saved);
+        return ResponseEntity.ok(saved);
     }
 
     @PutMapping("/{id}")
@@ -92,5 +99,23 @@ public class AnnouncementController {
             comment.setEmployee(employeeRepository.getReferenceById(comment.getEmployee().getId()));
         }
         return ResponseEntity.ok(commentRepository.save(comment));
+    }
+
+    /** A published announcement is a company-wide communication, not merely a dashboard row. */
+    private void notifyAllActiveEmployees(Announcement announcement) {
+        if (announcement.getCompany() == null || announcement.getCompany().getId() == null) return;
+        String message = announcement.getDescription() == null ? "" : announcement.getDescription();
+        employeeRepository.findByCompanyId(announcement.getCompany().getId()).stream()
+                .filter(employee -> employee.isActive() && employee.getUser() != null)
+                .forEach(employee -> {
+                    notificationService.send(employee.getUser().getId(), announcement.getTitle(), message,
+                            Notification.NotificationType.GENERAL, "ANNOUNCEMENT", announcement.getId(), announcement.getCompany());
+                    if (employee.getEmail() != null && !employee.getEmail().isBlank()) {
+                        String html = "<h2>" + announcement.getTitle() + "</h2><p>"
+                                + message.replace("\n", "<br>") + "</p>";
+                        emailService.sendEmail(announcement.getCompany().getId(), employee.getEmail(),
+                                announcement.getTitle(), html, employee);
+                    }
+                });
     }
 }

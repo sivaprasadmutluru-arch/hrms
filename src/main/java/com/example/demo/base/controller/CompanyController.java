@@ -6,6 +6,8 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.base.service.CompanyService;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.tenant.TenantProvisioningService;
+import com.example.demo.common.tenant.TenantProvisioningStatusResponse;
 import com.example.demo.employee.repository.EmployeeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +31,7 @@ public class CompanyController {
     private final CompanyService companyService;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
+    private final TenantProvisioningService tenantProvisioningService;
 
     // ---- Prabha Tech (Platform Super Admin) endpoints ----
 
@@ -59,6 +62,20 @@ public class CompanyController {
     @Operation(summary = "Create a Head Office for a client organization (Prabha Tech only)")
     public ResponseEntity<Company> createHeadOffice(@Valid @RequestBody CompanyRequest request) {
         return ResponseEntity.ok(companyService.createHeadOffice(request));
+    }
+
+    @GetMapping("/{companyId}/provisioning-status")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Get durable tenant workspace provisioning status")
+    public ResponseEntity<TenantProvisioningStatusResponse> provisioningStatus(@PathVariable Long companyId) {
+        return ResponseEntity.ok(tenantProvisioningService.getStatus(companyId));
+    }
+
+    @PostMapping("/{companyId}/provisioning-retry")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Retry a failed tenant workspace provisioning job now")
+    public ResponseEntity<TenantProvisioningStatusResponse> retryProvisioning(@PathVariable Long companyId) {
+        return ResponseEntity.ok(tenantProvisioningService.retryNow(companyId));
     }
 
     // ---- Any authenticated user ----

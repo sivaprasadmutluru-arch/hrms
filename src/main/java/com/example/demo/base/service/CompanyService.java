@@ -21,6 +21,7 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.tenant.SchemaProvisioningService;
 import com.example.demo.common.tenant.TenantContext;
+import com.example.demo.common.tenant.TenantProvisioningService;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import jakarta.persistence.EntityManager;
@@ -50,11 +51,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CompanyService {
 
-    // Self-reference through Spring proxy: createHeadOffice() is intentionally NOT
-    // @Transactional so each of its phases commits and releases its connection
-    // separately (see createHeadOffice's javadoc) — calling through the proxy is what
-    // makes each self.xxx() call actually start its own transaction instead of just
-    // continuing whatever's already open (or none, here).
+    // Self-reference is retained for the small public-data phases below.  Tenant DDL
+    // is never invoked from this service or its HTTP request.
     @org.springframework.context.annotation.Lazy
     @org.springframework.beans.factory.annotation.Autowired
     private CompanyService self;
@@ -62,6 +60,7 @@ public class CompanyService {
     private final CompanyRepository companyRepository;
     private final OrganizationRepository organizationRepository;
     private final SchemaProvisioningService schemaProvisioningService;
+    private final TenantProvisioningService tenantProvisioningService;
     private final AuthService authService;
     private final UserRoleService userRoleService;
     private final EmployeeRepository employeeRepository;
@@ -74,38 +73,18 @@ public class CompanyService {
     private EntityManager entityManager;
 
     /**
-     * Creates a new Head Office company for an organization.
-     * Only Prabha Tech (Platform Super Admin) can call this.
-     *
-     * Intentionally NOT @Transactional at this level, and deliberately split into three
-     * separate self-proxied phases below. Schema provisioning (DDL creating ~100 tables)
-     * can take several seconds; if the whole flow ran as one transaction, that DDL would
-     * run while still holding the connection — and any locks it holds, including on
-     * unique indexes shared with public.organizations — open the entire time. A second
-     * org-creation request arriving during that window would then block on those locks
-     * and fail with "canceling statement due to lock timeout" once Postgres's
-     * lock_timeout elapsed (exactly what happened in production after an earlier fix
-     * made this synchronous within one transaction to solve a different bug — the admin
-     * Employee record landing in the wrong schema). Each phase now commits and releases
-     * its connection before the next one starts, so nothing stays open across the DDL.
+     * Creates all short-lived public records atomically, then leaves the long-running
+     * tenant DDL to the durable provisioning worker.  A failed validation, identity or
+     * role assignment rolls this transaction back; it cannot leave a visible account
+     * with only some of its public records written.
      */
+    @Transactional
     public Company createHeadOffice(CompanyRequest request) {
         Company headOffice = self.createHeadOfficeRecord(request);
-        String schemaName = headOffice.getSchemaName();
-        try {
-            schemaProvisioningService.provisionSchema(schemaName);
-        } catch (Exception e) {
-            // The organization and its Head Office row already exist and are committed —
-            // don't fail org creation over this. schemaReady stays false, so
-            // EmployeeService rejects employee create/import against it with a clear
-            // message until someone re-provisions (see OrganizationService
-            // #provisionOrganizationForCompany) rather than every row failing with a raw
-            // SQL error. No admin Employee is created below either, for the same reason.
-            log.error("[createHeadOffice] Schema provisioning failed for '{}' (org={}, company={}): {}",
-                    schemaName, request.getOrganizationId(), headOffice.getId(), e.getMessage(), e);
-            return headOffice;
-        }
-        self.activateHeadOfficeAndCreateAdmin(headOffice.getId(), schemaName, request);
+        Long initialAdminUserId = self.createInitialAdminAccess(headOffice.getId(), request);
+        // Account creation is intentionally quick. DDL never runs in this HTTP
+        // request; the committed job owns the complete tenant setup lifecycle.
+        tenantProvisioningService.enqueue(headOffice.getId(), initialAdminUserId);
         return headOffice;
     }
 
@@ -139,18 +118,13 @@ public class CompanyService {
     }
 
     @Transactional
-    public void activateHeadOfficeAndCreateAdmin(Long companyId, String schemaName, CompanyRequest request) {
+    public Long createInitialAdminAccess(Long companyId, CompanyRequest request) {
         Company headOffice = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
-        headOffice.setSchemaReady(true);
-        headOffice = companyRepository.save(headOffice);
 
-        // Switch into the new org's schema for the rest of this transaction so the admin
-        // Employee record below is written to the correct place. User/Role/UserRole are
-        // pinned to schema="public" explicitly, so this doesn't affect them.
-        TenantContext.setTenant(schemaName);
-
-        // Create the enterprise admin user and assign ENTERPRISE_ADMIN + ENTERPRISE scope
+        // Public identity and role assignment do not depend on tenant DDL. The
+        // tenant employee profile is created by TenantProvisioningService only
+        // after the workspace passes provisioning validation.
         if (request.getAdminUsername() != null && !request.getAdminUsername().isBlank()
                 && request.getAdminPassword() != null && !request.getAdminPassword().isBlank()) {
             RegisterRequest reg = new RegisterRequest();
@@ -158,6 +132,8 @@ public class CompanyService {
             reg.setEmail(request.getAdminEmail() != null && !request.getAdminEmail().isBlank()
                     ? request.getAdminEmail() : request.getAdminUsername());
             reg.setPassword(request.getAdminPassword());
+            reg.setFirstName(request.getAdminFirstName());
+            reg.setLastName(request.getAdminLastName());
             User adminUser = authService.register(reg);
 
             AssignRoleRequest roleReq = new AssignRoleRequest();
@@ -166,19 +142,9 @@ public class CompanyService {
             roleReq.setCompanyId(headOffice.getId());
             roleReq.setAccessScope(UserRole.AccessScope.ENTERPRISE);
             userRoleService.assignRole(roleReq);
-
-            // Create an Employee profile so the admin gets an employeeId
-            Employee adminEmployee = new Employee();
-            String firstName = (request.getAdminFirstName() != null && !request.getAdminFirstName().isBlank())
-                    ? request.getAdminFirstName() : request.getAdminUsername();
-            adminEmployee.setFirstName(firstName);
-            adminEmployee.setLastName(request.getAdminLastName());
-            adminEmployee.setWorkEmail(request.getAdminUsername());
-            adminEmployee.setCompany(headOffice);
-            adminEmployee.setUser(adminUser);
-            adminEmployee.setDateJoining(LocalDate.now());
-            employeeRepository.save(adminEmployee);
+            return adminUser.getId();
         }
+        return null;
     }
 
     /**

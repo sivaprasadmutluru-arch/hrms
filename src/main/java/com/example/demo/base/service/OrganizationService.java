@@ -111,16 +111,11 @@ public class OrganizationService {
     }
 
     /**
-     * Intentionally NOT @Transactional at this level (unlike before). companyService
-     * .createHeadOffice() internally provisions a brand-new tenant schema — DDL that
-     * creates ~100 tables and can take several seconds. If this whole method were one
-     * transaction, that DDL would run while still holding the connection (and locks)
-     * from the organizations/companies row inserts open the entire time; a second
-     * org-creation request arriving during that window would then block on those locks
-     * and fail with "canceling statement due to lock timeout" once Postgres's
-     * lock_timeout elapsed — exactly what happened in production. Each phase below now
-     * commits and releases its connection before the next one starts.
+     * Atomically creates the public organization, head office, administrator identity,
+     * role and durable provisioning job.  The tenant schema is deliberately not built
+     * here, so this transaction remains short and cannot be held open during DDL.
      */
+    @Transactional
     public CreateOrganizationResponse createOrganization(CreateOrganizationRequest request) {
         Organization organization = new Organization();
         organization.setName(request.getName());
@@ -170,7 +165,7 @@ public class OrganizationService {
 
         Company headOffice = companyService.createHeadOffice(hoRequest);
 
-        return new CreateOrganizationResponse(savedOrg, headOffice.getId());
+        return new CreateOrganizationResponse(savedOrg, headOffice.getId(), headOffice.isSchemaReady());
     }
 
     @Transactional

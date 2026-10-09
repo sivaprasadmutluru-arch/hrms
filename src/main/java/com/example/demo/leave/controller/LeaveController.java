@@ -101,8 +101,10 @@ public class LeaveController {
     public ResponseEntity<Page<LeaveRequestDTO>> listRequests(
             @PageableDefault(size = 20) Pageable pageable,
             @RequestParam(required = false) Integer year,
-            @RequestParam(required = false) LeaveRequest.LeaveStatus status) {
-        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year, status).map(r -> LeaveMapper.toDTO(r, leaveService.reviewAllowed(r.getId()))));
+            @RequestParam(required = false) LeaveRequest.LeaveStatus status,
+            @RequestParam(defaultValue = "false") boolean includeCancelled) {
+        return ResponseEntity.ok(leaveService.getAllRequests(pageable, year, status, includeCancelled)
+                .map(r -> LeaveMapper.toDTO(r, leaveService.reviewAllowed(r.getId()))));
     }
 
     @DeleteMapping("/requests/{id}")
@@ -127,7 +129,7 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "Export all accessible leave requests as Excel")
     public void exportRequests(HttpServletResponse response) throws IOException {
-        List<LeaveRequest> requests = leaveService.getAllRequests(Pageable.unpaged()).getContent();
+        List<LeaveRequest> requests = leaveService.getAllRequests(Pageable.unpaged(), null, true).getContent();
 
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=leave_requests.xlsx");
@@ -551,7 +553,8 @@ public class LeaveController {
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
     @Operation(summary = "List leave allocation requests (company-scoped)")
-    public ResponseEntity<List<LeaveAllocationRequestDTO>> listAllocationRequests() {
+    public ResponseEntity<List<LeaveAllocationRequestDTO>> listAllocationRequests(
+            @RequestParam(defaultValue = "false") boolean includeHistory) {
         // LeaveAllocationRequest reaches company THROUGH employee (it has no direct company field),
         // so we must use byEmployeeCompany() — byEmployee()/byCompany() would try root.get("company")
         // and throw "Could not resolve attribute 'company'".
@@ -559,6 +562,10 @@ public class LeaveController {
         List<LeaveAllocationRequest> result = spec != null
                 ? allocationRequestRepository.findAll(spec)
                 : allocationRequestRepository.findAll();
+        if (!includeHistory) {
+            result = result.stream().filter(r -> r.getLifecycleStatus() == null
+                    || r.getLifecycleStatus() == LeaveAllocationRequest.LifecycleStatus.ACTIVE).toList();
+        }
         return ResponseEntity.ok(result.stream().map(LeaveMapper::toDTO).toList());
     }
 

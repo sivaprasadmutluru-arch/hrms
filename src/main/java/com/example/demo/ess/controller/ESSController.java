@@ -242,7 +242,9 @@ public class ESSController {
     public ResponseEntity<List<LeaveRequestDTO>> myLeave(Authentication auth) {
         Employee emp = resolveEmployee(auth);
         List<LeaveRequestDTO> dtos = leaveRequestRepository.findByEmployeeId(emp.getId())
-                .stream().map(LeaveMapper::toDTO).toList();
+                .stream()
+                .filter(request -> request.getStatus() != LeaveRequest.LeaveStatus.CANCELLED)
+                .map(LeaveMapper::toDTO).toList();
         return ResponseEntity.ok(dtos);
     }
 

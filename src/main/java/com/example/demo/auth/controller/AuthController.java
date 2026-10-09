@@ -105,9 +105,9 @@ public class AuthController {
         response.put("employeeId", employeeId);
         response.put("firstName", firstName);
         response.put("photoPath", photoPath);
-        response.put("mustChangePassword", userRepository.findById(principal.getId())
-                .map(com.example.demo.auth.entity.User::isMustChangePassword)
-                .orElse(false));
+        var user = userRepository.findById(principal.getId()).orElse(null);
+        response.put("mustChangePassword", user != null && user.isMustChangePassword());
+        response.put("quickStartTourCompleted", user != null && user.isQuickStartTourCompleted());
         return ResponseEntity.ok(response);
     }
 
@@ -146,6 +146,16 @@ public class AuthController {
                                                               @RequestBody Map<String, String> body) {
         authService.changePassword(user.getId(), body.get("currentPassword"), body.get("newPassword"));
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+    }
+
+    @PostMapping("/quick-start-tour/complete")
+    @Operation(summary = "Mark the optional Quick Start Tour as completed or skipped")
+    public ResponseEntity<Map<String, Boolean>> completeQuickStartTour(@AuthenticationPrincipal UserPrincipal principal) {
+        var user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new com.example.demo.common.exception.ResourceNotFoundException("User", principal.getId()));
+        user.setQuickStartTourCompleted(true);
+        userRepository.save(user);
+        return ResponseEntity.ok(Map.of("quickStartTourCompleted", true));
     }
 
     @PostMapping("/admin/reset-password/{userId}")

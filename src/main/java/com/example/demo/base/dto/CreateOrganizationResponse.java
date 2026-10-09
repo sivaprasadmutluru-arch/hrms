@@ -17,4 +17,5 @@ import lombok.Getter;
 public class CreateOrganizationResponse {
     private Organization organization;
     private Long headOfficeCompanyId;
+    private boolean headOfficeSchemaReady;
 }

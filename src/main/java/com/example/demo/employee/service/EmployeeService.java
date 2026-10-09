@@ -10,6 +10,7 @@ import com.example.demo.auth.service.AuthService;
 import com.example.demo.auth.service.UserRoleService;
 import com.example.demo.base.entity.*;
 import com.example.demo.base.repository.*;
+import com.example.demo.base.service.EmailService;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.context.AccessScopeContext;
@@ -78,6 +79,7 @@ public class EmployeeService {
     private final FileUploadService fileUploadService;
     private final EmployeeWorkInformationRepository workInfoRepository;
     private final ReportingManagerService reportingManagers;
+    private final EmailService emailService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -268,6 +270,7 @@ public class EmployeeService {
         }
 
         // Auto-create a linked user account if email is provided
+        boolean newUserAccount = false;
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
             boolean[] isNewUser = {false};
             log.info("[create] looking up user by email={}", req.getEmail());
@@ -290,6 +293,7 @@ public class EmployeeService {
             if (isNewUser[0]) {
                 user.setMustChangePassword(true);
                 user = userRepository.save(user);
+                newUserAccount = true;
             }
             employeeCompanyGuard.validateEmployment(user.getId(), req.getCompanyId());
             emp.setUser(user);
@@ -322,6 +326,16 @@ public class EmployeeService {
         log.info("[create] saved employee id={}, creating contract & workInfo", saved.getId());
         Contract contract = createDefaultContract(saved, req);
         createDefaultWorkInfo(saved);
+        if (newUserAccount && saved.getEmail() != null && !saved.getEmail().isBlank()) {
+            emailService.ensureOnboardingTemplates(company);
+            emailService.sendFromTemplate(company.getId(), EmailService.EMPLOYEE_ACCOUNT_CREATED_TEMPLATE,
+                    saved.getEmail(), Map.of(
+                            "recipientName", saved.getFirstName() == null ? "there" : saved.getFirstName(),
+                            "companyName", company.getName(),
+                            "username", saved.getUser().getUsername(),
+                            "loginUrl", "https://grecha.ai/login",
+                            "passwordResetUrl", "https://grecha.ai/forgot-password"), saved);
+        }
         log.info("[create] done for employee id={}", saved.getId());
         return responseWithManager(saved, contract);
     }

@@ -109,16 +109,18 @@ public class LeaveService {
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable) {
-        return getAllRequests(pageable, null, null);
+        return getAllRequests(pageable, null, null, false);
     }
 
     @Transactional(readOnly = true)
     public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year) {
-        return getAllRequests(pageable, year, null);
+        return getAllRequests(pageable, year, null, false);
     }
 
     @Transactional(readOnly = true)
-    public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year, LeaveRequest.LeaveStatus status) {
+    public Page<LeaveRequest> getAllRequests(Pageable pageable, Integer year,
+                                               LeaveRequest.LeaveStatus status,
+                                               boolean includeCancelled) {
         // NOTE: byEmployeeDepartment() honors the X-Filter-Company-Id header (topbar branch
         // switcher) centrally via ScopeFilter.applyBranchFilter.
         Specification<LeaveRequest> spec = ScopeFilter.byEmployeeDepartment();
@@ -130,6 +132,12 @@ public class LeaveService {
         if (status != null) {
             Specification<LeaveRequest> statusSpec = (root, query, cb) -> cb.equal(root.get("status"), status);
             spec = spec == null ? statusSpec : spec.and(statusSpec);
+        }
+        if (!includeCancelled) {
+            Specification<LeaveRequest> activeRequests = (root, query, cb) -> cb.or(
+                    cb.isNull(root.get("status")),
+                    cb.notEqual(root.get("status"), LeaveRequest.LeaveStatus.CANCELLED));
+            spec = spec == null ? activeRequests : spec.and(activeRequests);
         }
         Specification<LeaveRequest> pendingFirst = (root, query, cb) -> {
             if (query != null && query.getResultType() != Long.class && query.getResultType() != long.class) {
@@ -164,14 +172,12 @@ public class LeaveService {
     private int leaveTypeOrder(LeaveType leaveType) {
         String name = leaveType == null || leaveType.getName() == null
                 ? "" : leaveType.getName().trim().toLowerCase(java.util.Locale.ROOT);
-        return switch (name) {
-            case "annual leave" -> 0;
-            case "sick leave" -> 1;
-            case "compassionate leave" -> 2;
-            case "paternity leave" -> 3;
-            case "maternity leave" -> 4;
-            default -> 10;
-        };
+        if (name.contains("annual")) return 0;
+        if (name.contains("sick")) return 1;
+        if (name.contains("compassionate")) return 2;
+        if (name.contains("paternity")) return 3;
+        if (name.contains("maternity")) return 4;
+        return 10;
     }
 
     @Transactional(readOnly = true)

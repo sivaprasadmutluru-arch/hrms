@@ -3,6 +3,7 @@ package com.example.demo.base.service;
 import com.example.demo.base.entity.DynamicEmailConfig;
 import com.example.demo.base.entity.EmailLog;
 import com.example.demo.base.entity.MailTemplate;
+import com.example.demo.base.entity.Company;
 import com.example.demo.base.repository.DynamicEmailConfigRepository;
 import com.example.demo.base.repository.EmailLogRepository;
 import com.example.demo.base.repository.MailTemplateRepository;
@@ -29,9 +30,38 @@ import java.util.regex.Pattern;
 @Slf4j
 public class EmailService {
 
+    public static final String ACCOUNT_READY_TEMPLATE = "ACCOUNT_READY";
+    public static final String EMPLOYEE_ACCOUNT_CREATED_TEMPLATE = "EMPLOYEE_ACCOUNT_CREATED";
+
     private final DynamicEmailConfigRepository emailConfigRepository;
     private final EmailLogRepository emailLogRepository;
     private final MailTemplateRepository mailTemplateRepository;
+
+    /** Creates editable defaults once per tenant; never overwrites a client's custom copy. */
+    @Transactional
+    public void ensureOnboardingTemplates(Company company) {
+        ensureTemplate(company, ACCOUNT_READY_TEMPLATE, "Account ready", "Your {{companyName}} workspace is ready",
+                "<p>Hello {{recipientName}},</p><p>Your <strong>{{companyName}}</strong> GRECHA.AI workspace is ready.</p>"
+                        + "<p>You can sign in at <a href=\"{{loginUrl}}\">GRECHA.AI</a> using <strong>{{username}}</strong>.</p>"
+                        + "<p>For security, use <a href=\"{{passwordResetUrl}}\">Forgot password</a> to set or reset your password.</p>");
+        ensureTemplate(company, EMPLOYEE_ACCOUNT_CREATED_TEMPLATE, "Employee account created", "Your GRECHA.AI employee account is ready",
+                "<p>Hello {{recipientName}},</p><p>Your employee account for <strong>{{companyName}}</strong> has been created.</p>"
+                        + "<p>Username: <strong>{{username}}</strong></p><p>Set your password securely using "
+                        + "<a href=\"{{passwordResetUrl}}\">Forgot password</a>, then sign in at <a href=\"{{loginUrl}}\">GRECHA.AI</a>.</p>");
+    }
+
+    private void ensureTemplate(Company company, String type, String title, String subject, String body) {
+        boolean exists = mailTemplateRepository.findByCompanyId(company.getId()).stream()
+                .anyMatch(template -> type.equals(template.getTemplateType()));
+        if (exists) return;
+        MailTemplate template = new MailTemplate();
+        template.setCompany(company);
+        template.setTemplateType(type);
+        template.setTitle(title);
+        template.setSubject(subject);
+        template.setBody(body);
+        mailTemplateRepository.save(template);
+    }
 
     /**
      * Send an email using the per-company SMTP configuration.
