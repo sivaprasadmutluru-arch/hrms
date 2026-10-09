@@ -285,7 +285,7 @@ public class EmployeeService {
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
             boolean[] isNewUser = {false};
             log.info("[create] looking up user by email={}", req.getEmail());
-            User user = userRepository.findByEmail(req.getEmail()).orElseGet(() -> {
+            User user = userRepository.findByNormalizedEmail(req.getEmail()).orElseGet(() -> {
                 isNewUser[0] = true;
                 log.info("[create] user not found, registering new user for email={}", req.getEmail());
                 RegisterRequest reg = new RegisterRequest();

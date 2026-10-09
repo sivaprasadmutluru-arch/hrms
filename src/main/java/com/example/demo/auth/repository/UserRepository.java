@@ -15,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
     Optional<User> findByUsername(String username);
     Optional<User> findByEmail(String email);
+    @Query("select u from User u where lower(trim(u.email)) = lower(trim(:email))")
+    Optional<User> findByNormalizedEmail(@Param("email") String email);
     Optional<User> findByUsernameOrEmail(String username, String email);
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);
