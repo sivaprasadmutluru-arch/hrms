@@ -345,84 +345,94 @@ public class EmployeeController {
         try (Workbook wb = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = wb.getSheetAt(0);
             log.info("[importEmployees] sheet rows={}", sheet.getLastRowNum());
-            for (int i = 2; i <= sheet.getLastRowNum(); i++) { // row 0=headers, row 1=hints, data starts at row 2
+            Row headerRow = sheet.getRow(sheet.getFirstRowNum());
+            if (headerRow == null) {
+                throw new BadRequestException("Employee import file has no header row");
+            }
+            Map<String, Integer> columns = employeeImportColumns(headerRow);
+            if (!columns.containsKey("firstname")) {
+                throw new BadRequestException("Employee import file must include a First Name column");
+            }
+            if (!columns.containsKey("email") && !columns.containsKey("employeeid") && !columns.containsKey("badgeid")) {
+                throw new BadRequestException("Employee import file must include Email or Employee ID for duplicate protection");
+            }
+
+            for (int i = headerRow.getRowNum() + 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                String firstName = getCellStr(row, 0);
+                String firstName = getImportCell(row, columns, "first name", "first_name", "firstname");
                 if (firstName == null || firstName.isBlank()) continue;
 
-                // Columns: 0=FirstName 1=LastName 2=Email 3=Phone 4=Gender
-                //          5=Department 6=JobPosition 7=Shift 8=WageType 9=EmployeeType
-                //          10=Location 11=DateJoining 12=BasicSalary 13=HousingAllowance
-                //          14=TransportAllowance 15=OtherAllowance 16=TotalSalary
-                //          17=SalaryPerHour(skip) 18=ContractEndDate 19=EmployeeId
+                // Resolve values by their named header, not a fixed column number. Clients
+                // often use a version of the template without the decorative hint row or
+                // rearrange optional columns; positional parsing silently shifted data.
                 EmployeeRequest req = new EmployeeRequest();
                 req.setFirstName(firstName);
-                req.setLastName(getCellStr(row, 1));
-                req.setEmail(getCellStr(row, 2));
-                String phone = getCellStr(row, 3);
+                req.setLastName(getImportCell(row, columns, "last name", "last_name", "lastname"));
+                req.setEmail(getImportCell(row, columns, "email", "email*"));
+                String phone = getImportCell(row, columns, "phone", "phone*");
                 req.setPhone(phone);
                 req.setPassword(phone);
                 req.setCompanyId(companyId);
 
-                String genderStr = getCellStr(row, 4);
+                String genderStr = getImportCell(row, columns, "gender");
                 if (genderStr != null && !genderStr.isBlank()) {
                     try { req.setGender(Employee.Gender.valueOf(genderStr.trim().toUpperCase())); }
                     catch (IllegalArgumentException ignored) {}
                 }
 
-                String deptName = getCellStr(row, 5);
+                String deptName = getImportCell(row, columns, "department");
                 if (deptName != null && !deptName.isBlank()) {
                     departments.stream().filter(d -> deptName.trim().equalsIgnoreCase(d.getName()))
                             .findFirst().ifPresent(d -> req.setDepartmentId(d.getId()));
                 }
 
-                String jobPosName = getCellStr(row, 6);
+                String jobPosName = getImportCell(row, columns, "job position", "job_position", "jobposition");
                 if (jobPosName != null && !jobPosName.isBlank()) {
                     jobPositions.stream().filter(jp -> jobPosName.trim().equalsIgnoreCase(jp.getName()))
                             .findFirst().ifPresent(jp -> req.setJobPositionId(jp.getId()));
                 }
 
-                String shiftName = getCellStr(row, 7);
+                String shiftName = getImportCell(row, columns, "shift");
                 if (shiftName != null && !shiftName.isBlank()) {
                     shifts.stream().filter(s -> shiftName.trim().equalsIgnoreCase(s.getName()))
                             .findFirst().ifPresent(s -> req.setShiftId(s.getId()));
                 }
 
-                String wageTypeStr = getCellStr(row, 8);
+                String wageTypeStr = getImportCell(row, columns, "wage type", "wage_type", "wagetype");
                 if (wageTypeStr != null && !wageTypeStr.isBlank()) {
                     try { req.setWageType(Contract.WageType.valueOf(wageTypeStr.trim().toUpperCase())); }
                     catch (IllegalArgumentException ignored) {}
                 }
 
-                String empTypeStr = getCellStr(row, 9);
+                String empTypeStr = getImportCell(row, columns, "employee type", "employee_type", "employeetype");
                 if (empTypeStr != null && !empTypeStr.isBlank()) {
                     try { req.setEmployeeType(Employee.EmployeeType.valueOf(empTypeStr.trim().toUpperCase())); }
                     catch (IllegalArgumentException ignored) {}
                 }
 
-                req.setCity(getCellStr(row, 10));
+                req.setCity(getImportCell(row, columns, "location", "city"));
 
-                String dateJoiningStr = getCellStr(row, 11);
+                String dateJoiningStr = getImportCell(row, columns, "date of joining", "date_joining", "datejoining");
                 if (dateJoiningStr != null && !dateJoiningStr.isBlank()) {
                     try { req.setDateJoining(LocalDate.parse(dateJoiningStr.trim())); } catch (Exception ignored) {}
                 }
 
-                req.setBasicPay(getCellDecimal(row, 12));
-                req.setHousingAllowance(getCellDecimal(row, 13));
-                req.setTransportAllowance(getCellDecimal(row, 14));
-                req.setOtherAllowance(getCellDecimal(row, 15));
-                req.setTotalSalary(getCellDecimal(row, 16));
-                req.setSalaryPerHour(getCellDecimal(row, 17));
+                req.setBasicPay(getImportDecimal(row, columns, "basic salary", "basic_salary", "basicsalary"));
+                req.setHousingAllowance(getImportDecimal(row, columns, "housing allowance", "housing_allowance", "housingallowance"));
+                req.setTransportAllowance(getImportDecimal(row, columns, "transport allowance", "transport_allowance", "transportallowance"));
+                req.setOtherAllowance(getImportDecimal(row, columns, "other allowance", "other_allowance", "otherallowance"));
+                req.setTotalSalary(getImportDecimal(row, columns, "total salary", "total_salary", "totalsalary"));
+                req.setSalaryPerHour(getImportDecimal(row, columns, "salary per hour", "salary_per_hour", "salaryperhour"));
 
-                String contractEndStr = getCellStr(row, 18);
+                String contractEndStr = getImportCell(row, columns, "contract end date", "contract_end_date", "contractenddate");
                 if (contractEndStr != null && !contractEndStr.isBlank()) {
                     try { req.setContractEndDate(LocalDate.parse(contractEndStr.trim())); } catch (Exception ignored) {}
                 }
 
                 // Optional manual Employee ID — left blank, EmployeeService auto-generates one
                 // (same fallback the single "New Employee" form uses).
-                String employeeIdStr = getCellStr(row, 19);
+                String employeeIdStr = getImportCell(row, columns, "employee id", "employee_id", "employeeid", "badge id", "badge_id", "badgeid");
                 if (employeeIdStr != null && !employeeIdStr.isBlank()) {
                     req.setBadgeId(employeeIdStr.trim());
                 }
@@ -479,6 +489,37 @@ public class EmployeeController {
             }
             default -> null;
         };
+    }
+
+    private Map<String, Integer> employeeImportColumns(Row headerRow) {
+        Map<String, Integer> columns = new HashMap<>();
+        for (int column = 0; column < headerRow.getLastCellNum(); column++) {
+            String label = getCellStr(headerRow, column);
+            if (label != null && !label.isBlank()) {
+                columns.put(normalizeImportHeader(label), column);
+            }
+        }
+        return columns;
+    }
+
+    private String getImportCell(Row row, Map<String, Integer> columns, String... headers) {
+        for (String header : headers) {
+            Integer column = columns.get(normalizeImportHeader(header));
+            if (column != null) return getCellStr(row, column);
+        }
+        return null;
+    }
+
+    private java.math.BigDecimal getImportDecimal(Row row, Map<String, Integer> columns, String... headers) {
+        for (String header : headers) {
+            Integer column = columns.get(normalizeImportHeader(header));
+            if (column != null) return getCellDecimal(row, column);
+        }
+        return null;
+    }
+
+    private String normalizeImportHeader(String value) {
+        return value == null ? "" : value.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
     }
 
     private java.math.BigDecimal getCellDecimal(Row row, int col) {
