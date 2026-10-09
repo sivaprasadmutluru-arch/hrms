@@ -93,6 +93,11 @@ public class EmployeeService {
      */
     @Transactional(readOnly = true)
     public Page<EmployeeResponse> getAll(Pageable pageable, Long filterByCompanyId) {
+        return getAll(pageable, filterByCompanyId, true);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<EmployeeResponse> getAll(Pageable pageable, Long filterByCompanyId, boolean active) {
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
 
         // SELF scope: return only the employee record linked to the current user
@@ -121,6 +126,9 @@ public class EmployeeService {
                     cb.equal(root.get("company").get("id"), compId);
             spec = spec != null ? spec.and(companyFilter) : companyFilter;
         }
+
+        Specification<Employee> activeFilter = (root, query, cb) -> cb.equal(root.get("isActive"), active);
+        spec = spec != null ? spec.and(activeFilter) : activeFilter;
 
         Page<Employee> page = spec != null
                 ? employeeRepository.findAll(spec, pageable)
@@ -529,6 +537,18 @@ public class EmployeeService {
     public void doDelete(Long id) {
         Employee emp = findEmployee(id);
         emp.setActive(false);
+        employeeRepository.save(emp);
+    }
+
+    public void restore(Long id, Long companyId) {
+        resolveTenantForCompany(companyId);
+        self.doRestore(id);
+    }
+
+    @Transactional
+    public void doRestore(Long id) {
+        Employee emp = findEmployee(id);
+        emp.setActive(true);
         employeeRepository.save(emp);
     }
 

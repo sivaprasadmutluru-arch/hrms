@@ -78,6 +78,7 @@ public class EmployeeController {
     @Operation(summary = "List all employees (company-scoped)")
     public ResponseEntity<Page<EmployeeResponse>> list(
             @RequestParam(required = false) Long filterByCompanyId,
+            @RequestParam(defaultValue = "false") boolean archived,
             @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
             @AuthenticationPrincipal UserPrincipal currentUser,
             @PageableDefault(size = 20) Pageable pageable) {
@@ -96,7 +97,7 @@ public class EmployeeController {
             }
             throw new BadRequestException("X-Company-Id header is required for employee listing");
         }
-        return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId));
+        return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId, !archived));
     }
 
     @GetMapping("/online-status")
@@ -123,8 +124,10 @@ public class EmployeeController {
     @GetMapping("/global")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
     @Operation(summary = "List ALL employees across every organization (Super Admin only)")
-    public ResponseEntity<Page<EmployeeResponse>> listGlobal(@PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable));
+    public ResponseEntity<Page<EmployeeResponse>> listGlobal(
+            @RequestParam(defaultValue = "false") boolean archived,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable, !archived));
     }
 
     @GetMapping("/assigned")
@@ -132,8 +135,9 @@ public class EmployeeController {
     @Operation(summary = "List employees across the caller's assigned companies only")
     public ResponseEntity<Page<EmployeeResponse>> listAssigned(
             @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(defaultValue = "false") boolean archived,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable));
+        return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable, !archived));
     }
 
     @GetMapping("/{id}")
@@ -166,7 +170,25 @@ public class EmployeeController {
     public ResponseEntity<Map<String, String>> delete(@PathVariable Long id,
                                                         @RequestParam(required = false) Long companyId) {
         employeeService.delete(id, companyId);
-        return ResponseEntity.ok(Map.of("message", "Employee deactivated"));
+        return ResponseEntity.ok(Map.of("message", "Employee archived"));
+    }
+
+    @PostMapping("/{id}/archive")
+    @PreAuthorize("hasAuthority('employee:delete')")
+    @Operation(summary = "Archive an employee while preserving all HR records")
+    public ResponseEntity<Map<String, String>> archive(@PathVariable Long id,
+                                                         @RequestParam(required = false) Long companyId) {
+        employeeService.delete(id, companyId);
+        return ResponseEntity.ok(Map.of("message", "Employee archived"));
+    }
+
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasAuthority('employee:edit')")
+    @Operation(summary = "Restore an archived employee")
+    public ResponseEntity<Map<String, String>> restore(@PathVariable Long id,
+                                                         @RequestParam(required = false) Long companyId) {
+        employeeService.restore(id, companyId);
+        return ResponseEntity.ok(Map.of("message", "Employee restored"));
     }
 
     @DeleteMapping("/{id}/permanent")

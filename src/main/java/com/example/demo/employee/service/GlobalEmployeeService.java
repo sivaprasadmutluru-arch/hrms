@@ -49,6 +49,10 @@ public class GlobalEmployeeService {
      * Only callable by PLATFORM_SUPER_ADMIN — enforced at the controller layer.
      */
     public Page<EmployeeResponse> getAllAcrossOrgs(Pageable pageable) {
+        return getAllAcrossOrgs(pageable, true);
+    }
+
+    public Page<EmployeeResponse> getAllAcrossOrgs(Pageable pageable, boolean active) {
         List<String> schemas = jdbcTemplate.queryForList(SCHEMA_QUERY, String.class)
                 .stream()
                 .filter(s -> SAFE_SCHEMA.matcher(s).matches())
@@ -58,7 +62,7 @@ public class GlobalEmployeeService {
             return Page.empty(pageable);
         }
 
-        String unionSql = buildUnionSql(schemas);
+        String unionSql = buildUnionSql(schemas, active);
 
         // Deduplicate: if the same employee exists in multiple schemas (e.g. data integrity
         // issues in dev), keep only the first occurrence per (company_id, id) pair.
@@ -89,16 +93,20 @@ public class GlobalEmployeeService {
      * caller's assignments, never all tenants on the platform.
      */
     public Page<EmployeeResponse> getAllAcrossAssignedOrgs(Long userId, Pageable pageable) {
+        return getAllAcrossAssignedOrgs(userId, pageable, true);
+    }
+
+    public Page<EmployeeResponse> getAllAcrossAssignedOrgs(Long userId, Pageable pageable, boolean active) {
         List<Long> assignedCompanyIds = userRoleRepository.findByUserId(userId).stream()
                 .filter(role -> role.isEffectiveOn(LocalDate.now()))
                 .map(role -> role.getCompany() == null ? null : role.getCompany().getId())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();
-        return getAllAcrossCompanyIds(assignedCompanyIds, pageable);
+        return getAllAcrossCompanyIds(assignedCompanyIds, pageable, active);
     }
 
-    private Page<EmployeeResponse> getAllAcrossCompanyIds(List<Long> companyIds, Pageable pageable) {
+    private Page<EmployeeResponse> getAllAcrossCompanyIds(List<Long> companyIds, Pageable pageable, boolean active) {
         if (companyIds == null || companyIds.isEmpty()) {
             return Page.empty(pageable);
         }
@@ -120,11 +128,11 @@ public class GlobalEmployeeService {
         if (schemas.isEmpty()) {
             return Page.empty(pageable);
         }
-        return pageAcrossSchemas(schemas, pageable);
+        return pageAcrossSchemas(schemas, pageable, active);
     }
 
-    private Page<EmployeeResponse> pageAcrossSchemas(List<String> schemas, Pageable pageable) {
-        String unionSql = buildUnionSql(schemas);
+    private Page<EmployeeResponse> pageAcrossSchemas(List<String> schemas, Pageable pageable, boolean active) {
+        String unionSql = buildUnionSql(schemas, active);
 
         String dedupedSql =
                 "SELECT * FROM (" +
@@ -175,13 +183,13 @@ public class GlobalEmployeeService {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private String buildUnionSql(List<String> schemas) {
+    private String buildUnionSql(List<String> schemas, boolean active) {
         return schemas.stream()
-                .map(this::selectForSchema)
+                .map(schema -> selectForSchema(schema, active))
                 .collect(Collectors.joining(" UNION ALL "));
     }
 
-    private String selectForSchema(String schema) {
+    private String selectForSchema(String schema, boolean active) {
         return "SELECT " +
                 "e.id, e.badge_id, e.employee_first_name, e.employee_last_name, " +
                 "e.email, e.work_email, e.phone, e.work_phone, e.gender, " +
@@ -201,7 +209,8 @@ public class GlobalEmployeeService {
                 "LEFT JOIN public.organizations o ON o.id = c.organization_id " +
                 "LEFT JOIN " + schema + ".departments d ON d.id = e.department_id " +
                 "LEFT JOIN " + schema + ".job_positions jp ON jp.id = e.job_position_id " +
-                "LEFT JOIN " + schema + ".job_roles jr ON jr.id = e.job_role_id";
+                "LEFT JOIN " + schema + ".job_roles jr ON jr.id = e.job_role_id " +
+                "WHERE e.is_active = " + (active ? "true" : "false");
     }
 
     private EmployeeResponse mapRow(ResultSet rs) throws SQLException {
