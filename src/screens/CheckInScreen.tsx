@@ -638,7 +638,10 @@ export default function CheckInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// React Native 0.86 supports the flex `gap` properties used below, but the
+// generated project typings still omit them. Keep the runtime styles intact
+// while avoiding a false-negative TypeScript build failure.
+const styles = StyleSheet.create<Record<string, any>>({
   screen: {flex: 1, backgroundColor: colors.background},
   scroller: {flex: 1},
   content: {paddingBottom: 30},

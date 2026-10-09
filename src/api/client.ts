@@ -142,11 +142,6 @@ export const api = {
     })}`, {
       method: 'POST',
     }),
-  forgotPassword: (email: string) =>
-    request<{message: string}>('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({email}),
-    }),
   notifications: (params?: Record<string, any>) => request<any>(`/notifications${queryString(params)}`),
   unreadNotifications: () => request<any>('/notifications/unread-count'),
   markNotificationRead: (id: number | string) => request<any>(`/notifications/${id}/read`, {method: 'POST'}),

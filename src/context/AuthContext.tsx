@@ -7,7 +7,7 @@ type AuthValue = {
   token: string | null;
   user: LoginResponse | null;
   profile: any;
-  signIn: (usernameOrEmail: string, password: string) => Promise<void>;
+  signIn: (usernameOrEmail: string, password: string, remember?: boolean) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<any>;
 };
@@ -19,6 +19,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<LoginResponse | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [persistSession, setPersistSession] = useState(false);
 
   useEffect(() => {
     async function restore() {
@@ -29,6 +30,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           setToken(session.token);
           setUser(session.user);
           setProfile(session.profile || null);
+          setPersistSession(true);
         }
       } finally {
         setBooting(false);
@@ -37,30 +39,38 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     restore();
   }, []);
 
-  const signIn = useCallback(async (usernameOrEmail: string, password: string) => {
+  const signIn = useCallback(async (usernameOrEmail: string, password: string, remember = true) => {
     const login = await api.login(usernameOrEmail, password);
     setApiSession({token: login.token, companyId: login.companyId});
     const employeeProfile = await api.me();
     setToken(login.token);
     setUser(login);
     setProfile(employeeProfile);
-    await saveSession({token: login.token, user: login, profile: employeeProfile});
+    setPersistSession(remember);
+    if (remember) {
+      await saveSession({token: login.token, user: login, profile: employeeProfile});
+    } else {
+      // A visible "Remember me" control must match the actual session behaviour.
+      // The user remains signed in only until the app is closed.
+      await clearSession();
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
     const employeeProfile = await api.me();
     setProfile(employeeProfile);
-    if (token && user) {
+    if (persistSession && token && user) {
       await saveSession({token, user, profile: employeeProfile});
     }
     return employeeProfile;
-  }, [token, user]);
+  }, [persistSession, token, user]);
 
   const signOut = useCallback(async () => {
     setApiSession({});
     setToken(null);
     setUser(null);
     setProfile(null);
+    setPersistSession(false);
     await clearSession();
   }, []);
 

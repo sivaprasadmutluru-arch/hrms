@@ -46,10 +46,10 @@ export default function BottomTabs({
 const styles = StyleSheet.create({
   wrap: {
     shadowColor: colors.sidebar,
-    shadowOffset: {width: 0, height: -8},
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOffset: {width: 0, height: -1},
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
   },
   item: {
     flex: 1,
@@ -66,17 +66,12 @@ const styles = StyleSheet.create({
   },
   iconShellActive: {
     backgroundColor: colors.primary,
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    marginTop: -27,
-    borderWidth: 4,
+    width: 42,
+    height: 34,
+    borderRadius: 17,
+    marginTop: 0,
+    borderWidth: 0,
     borderColor: colors.surface,
-    shadowColor: colors.primaryDark,
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 10,
   },
   label: {
     lineHeight: 16,

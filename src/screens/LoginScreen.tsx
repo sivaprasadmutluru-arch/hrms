@@ -18,7 +18,6 @@ import {
 import NetInfo from '@react-native-community/netinfo';
 import LinearGradient from 'react-native-linear-gradient';
 import Feather from 'react-native-vector-icons/Feather';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 
@@ -48,7 +47,7 @@ export default function LoginScreen() {
       if (!network.isConnected || network.isInternetReachable === false) {
         throw new Error('No internet connection. Please reconnect and try again.');
       }
-      await signIn(usernameOrEmail.trim(), password);
+      await signIn(usernameOrEmail.trim(), password, rememberMe);
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -188,13 +187,6 @@ export default function LoginScreen() {
               </LinearGradient>
             </Pressable>
 
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => Alert.alert('Biometric Login', 'Biometric login will be available soon.')}>
-              <MaterialCommunityIcons name="fingerprint" size={21} color="#4F46E5" />
-              <Text style={styles.secondaryButtonText}>Login with Biometric</Text>
-            </Pressable>
-
             <View className="mt-8 mb-6 flex-row items-center justify-center">
               <Text className="font-regular text-xs text-textPlaceholder">Version 1.0.0</Text>
               <Text className="mx-2 font-regular text-xs text-textPlaceholder">|</Text>
@@ -311,23 +303,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginRight: 8,
-  },
-  secondaryButton: {
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#6366F1',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    height: 56,
-    justifyContent: 'center',
-    marginTop: 14,
-  },
-  secondaryButtonText: {
-    color: '#4338CA',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 10,
   },
 });

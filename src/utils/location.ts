@@ -38,6 +38,10 @@ export async function captureCurrentLocation() {
 }
 
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
+  // Reverse geocoding is optional display data. It must never leave the check-in
+  // header stuck on "Fetching address" when the public geocoder is slow or down.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=16`,
@@ -49,6 +53,7 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
           // so a failed reverse lookup is handled predictably by the UI.
           'User-Agent': 'Grecha-HRMS-Mobile/1.0',
         },
+        signal: controller.signal,
       },
     );
     if (!response.ok) return null;
@@ -56,5 +61,7 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     return data?.display_name || null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }

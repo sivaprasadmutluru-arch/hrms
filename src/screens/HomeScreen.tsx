@@ -946,11 +946,6 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       Alert.alert('Leave Request', 'Please enter start date and end date.');
       return;
     }
-    const today = todayDateKey();
-    if (values.startDate < today || values.endDate < today) {
-      Alert.alert('Leave Request', 'Back-dated leave requests are not allowed.');
-      return;
-    }
     if (values.endDate < values.startDate) {
       Alert.alert('Leave Request', 'End date cannot be before start date.');
       return;

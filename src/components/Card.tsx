@@ -12,10 +12,12 @@ export default function Card({children, style}: {children: React.ReactNode; styl
 
 const styles = StyleSheet.create({
   card: {
+    // Cards are separated by a subtle border; strong shadows made long pages
+    // look layered and caused visible shadow artefacts while scrolling.
     shadowColor: colors.sidebar,
-    shadowOffset: {width: 0, height: 10},
-    shadowOpacity: 0.10,
-    shadowRadius: 22,
-    elevation: 4,
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.035,
+    shadowRadius: 5,
+    elevation: 1,
   },
 });
