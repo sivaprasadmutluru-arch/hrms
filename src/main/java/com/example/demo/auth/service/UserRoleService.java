@@ -340,7 +340,7 @@ public class UserRoleService {
                         && request.getAccessScope() != UserRole.AccessScope.BRANCH)
                     throw new BadRequestException(request.getRoleName() + " requires company-wide or branch scope");
             }
-            case COMPANY_ADMIN, COMPANY_MANAGER -> {
+            case COMPANY_ADMIN, CEO, COMPANY_MANAGER -> {
                 if (request.getAccessScope() != UserRole.AccessScope.ENTERPRISE
                         && request.getAccessScope() != UserRole.AccessScope.HEAD_OFFICE)
                     throw new BadRequestException(request.getRoleName() + " requires company-wide scope");

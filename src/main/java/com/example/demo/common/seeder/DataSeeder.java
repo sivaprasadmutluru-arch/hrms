@@ -138,6 +138,9 @@ public class DataSeeder implements CommandLineRunner {
         createRole(Role.RoleName.COMPANY_ADMIN, "Company Admin",
                 "Company administration within delegated permissions",
                 excludingModules(all, Set.of("organization")));
+        createRole(Role.RoleName.CEO, "Chief Executive Officer",
+                "Executive company-wide access to the assigned Head Office and all of its branches",
+                allPermissions(all));
         createRole(Role.RoleName.COMPANY_MANAGER, "Company Manager",
                 "Company operations and designated approvals without unrestricted role administration",
                 perms(all, "employee:view", "attendance:view", "attendance:approve", "leave:view", "leave:approve",

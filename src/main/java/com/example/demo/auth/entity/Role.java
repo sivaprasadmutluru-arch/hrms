@@ -38,6 +38,8 @@ public class Role extends BaseEntity {
         SUPER_ADMIN,
         ACCOUNT_MANAGER,
         COMPANY_ADMIN,
+        // Executive company role — full access only within the assigned company tree.
+        CEO,
         COMPANY_MANAGER,
         DEPARTMENT_MANAGER,
         HR_MANAGER,

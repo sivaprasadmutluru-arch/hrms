@@ -100,7 +100,7 @@ public class UserPrincipal implements UserDetails {
 
     private static Set<String> roleBaselinePermissions(Role.RoleName roleName) {
         return switch (roleName) {
-            case SUPER_ADMIN, PLATFORM_SUPER_ADMIN, ACCOUNT_MANAGER, COMPANY_ADMIN, ENTERPRISE_ADMIN -> Set.of(
+            case SUPER_ADMIN, PLATFORM_SUPER_ADMIN, ACCOUNT_MANAGER, COMPANY_ADMIN, CEO, ENTERPRISE_ADMIN -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
             case COMPANY_MANAGER, BRANCH_ADMIN -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit");
@@ -117,7 +117,10 @@ public class UserPrincipal implements UserDetails {
         return switch (roleName) {
             // SUPER_ADMIN is company-scoped. Only User.superuser receives PLATFORM_SUPER_ADMIN.
             case SUPER_ADMIN -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
-            case ACCOUNT_MANAGER, COMPANY_ADMIN -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
+            // CEO is a business title with the same company-wide capability as an
+            // Enterprise Admin.  The assignment's company scope is still enforced
+            // by AccessScopeInterceptor, so this never grants cross-company access.
+            case ACCOUNT_MANAGER, COMPANY_ADMIN, CEO -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
             case COMPANY_MANAGER -> Set.of(Role.RoleName.BRANCH_ADMIN);
             case ACCOUNTS_MANAGER -> Set.of(Role.RoleName.ACCOUNTANT);
             default -> Set.of();
