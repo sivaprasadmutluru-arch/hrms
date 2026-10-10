@@ -39,6 +39,7 @@ public class Notification extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
+    public Long getCompanyId() { return company == null ? null : company.getId(); }
 
     public enum NotificationType {
         LEAVE_REQUEST, LEAVE_APPROVED, LEAVE_REJECTED,

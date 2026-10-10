@@ -18,6 +18,7 @@ public class CarrKpi extends BaseEntity {
     @Column(name="target_value", nullable=false, precision=19, scale=4) private BigDecimal targetValue;
     @Column(name="actual_value", nullable=false, precision=19, scale=4) private BigDecimal actualValue = BigDecimal.ZERO;
     @Column(length=40) private String unit;
+    @Column(name="review_frequency", length=40) private String reviewFrequency = "Monthly";
     @Column(nullable=false) private int weight;
     @Column(name="due_date") private LocalDate dueDate;
     @Column(name="data_source", length=300) private String dataSource;

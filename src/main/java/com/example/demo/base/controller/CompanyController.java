@@ -32,6 +32,7 @@ public class CompanyController {
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
     private final TenantProvisioningService tenantProvisioningService;
+    private final com.example.demo.auth.repository.UserRoleRepository userRoleRepository;
 
     // ---- Prabha Tech (Platform Super Admin) endpoints ----
 
@@ -81,18 +82,32 @@ public class CompanyController {
     // ---- Any authenticated user ----
 
     @GetMapping("/accessible")
+    @PreAuthorize("isAuthenticated()")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     @Operation(summary = "List companies available to the current user's access scope")
-    public ResponseEntity<List<Company>> getAccessibleCompanies() {
-        var scope = AccessScopeContext.get();
-        if (scope == null) {
-            return ResponseEntity.ok(List.of());
+    public ResponseEntity<List<Company>> getAccessibleCompanies(org.springframework.security.core.Authentication auth) {
+        // The selector must work before X-Company-Id exists; request scope requires it.
+        var principal = (com.example.demo.auth.security.UserPrincipal) auth.getPrincipal();
+        var available = new java.util.LinkedHashMap<Long, Company>();
+        if (auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"))) {
+            companyRepository.findAllActivePublic().forEach(c -> available.put(c.getId(), c));
+        } else {
+            userRoleRepository.findEffectiveByUserId(principal.getId(), java.time.LocalDate.now(),
+                    com.example.demo.auth.entity.UserRole.AssignmentStatus.ACTIVE).forEach(assignment -> {
+                Company company = assignment.getCompany();
+                if (company == null || !company.isActive() || company.getStatus() != Company.CompanyStatus.ACTIVE) return;
+                available.put(company.getId(), company);
+                var scope = assignment.getAccessScope();
+                if (company.isHeadOffice() && (scope == com.example.demo.auth.entity.UserRole.AccessScope.HEAD_OFFICE
+                        || scope == com.example.demo.auth.entity.UserRole.AccessScope.ENTERPRISE)) {
+                    companyRepository.findByParentCompanyIdAndIsActiveTruePublic(company.getId())
+                            .forEach(branch -> available.put(branch.getId(), branch));
+                }
+            });
         }
-        if (scope.hasUnrestrictedAccess()) {
-            return ResponseEntity.ok(companyRepository.findAllActivePublic());
-        }
-        return ResponseEntity.ok(companyRepository.findAllById(scope.getAccessibleCompanyIds()).stream()
-                .filter(company -> company.getStatus() == Company.CompanyStatus.ACTIVE)
-                .toList());
+        return ResponseEntity.ok(available.values().stream()
+                .filter(c -> c.isActive() && c.getStatus() == Company.CompanyStatus.ACTIVE)
+                .sorted(java.util.Comparator.comparing(Company::getName)).toList());
     }
 
     @GetMapping("/mine")

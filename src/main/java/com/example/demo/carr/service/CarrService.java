@@ -117,7 +117,7 @@ public class CarrService {
         k.setDirection(req.direction()==null?CarrKpi.Direction.INCREASE:req.direction());
         k.setTargetValue(req.targetValue());
         k.setActualValue(req.actualValue()==null?BigDecimal.ZERO:req.actualValue());
-        k.setUnit(req.unit()); k.setWeight(req.weight()); k.setDueDate(req.dueDate());
+        k.setReviewFrequency(req.reviewFrequency()==null?"Monthly":req.reviewFrequency()); k.setUnit(req.unit()); k.setWeight(req.weight()); k.setDueDate(req.dueDate());
         k.setDataSource(req.dataSource()); k.setEvidence(req.evidence()); kpiRepo.save(k);
         audit(c, kpiId==null?"KPI_CREATED":"KPI_UPDATED", k.getName(), auth);
         return recordDto(c);
@@ -152,7 +152,7 @@ public class CarrService {
             x.setPriority(r.priority()==null?"MEDIUM":r.priority()); x.setFrequency(r.frequency()); x.setEvidenceRequired(r.evidenceRequired()); x.setWeight(r.weight()); responsibilityRepo.save(x);
         }
         int total=0;
-        if(req.kpis()!=null) for(KpiRequest k:req.kpis()) { total+=k.weight(); CarrKpi x=new CarrKpi(); x.setCarr(c); x.setName(k.name().trim()); x.setType(k.type()==null?CarrKpi.Type.KPI:k.type()); x.setDirection(k.direction()==null?CarrKpi.Direction.INCREASE:k.direction()); x.setTargetValue(k.targetValue()); x.setActualValue(k.actualValue()==null?BigDecimal.ZERO:k.actualValue()); x.setUnit(k.unit()); x.setWeight(k.weight()); x.setDueDate(k.dueDate()); x.setDataSource(k.dataSource()); x.setEvidence(k.evidence()); kpiRepo.save(x); }
+        if(req.kpis()!=null) for(KpiRequest k:req.kpis()) { total+=k.weight(); CarrKpi x=new CarrKpi(); x.setCarr(c); x.setName(k.name().trim()); x.setType(k.type()==null?CarrKpi.Type.KPI:k.type()); x.setDirection(k.direction()==null?CarrKpi.Direction.INCREASE:k.direction()); x.setTargetValue(k.targetValue()); x.setActualValue(k.actualValue()==null?BigDecimal.ZERO:k.actualValue()); x.setReviewFrequency(k.reviewFrequency()==null?"Monthly":k.reviewFrequency()); x.setUnit(k.unit()); x.setWeight(k.weight()); x.setDueDate(k.dueDate()); x.setDataSource(k.dataSource()); x.setEvidence(k.evidence()); kpiRepo.save(x); }
         if(!Objects.equals(total,0) && total!=100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"KPI weights must total 100");
         if(c.isRewardsEnabled() && req.rewards()!=null) for(RewardRequest reward:req.rewards()) {
             CarrReward x=new CarrReward(); x.setCarr(c); x.setName(reward.name().trim());
@@ -229,7 +229,7 @@ public class CarrService {
     private RecordResponse recordDto(CarrRecord c) {
         List<CarrKpi> ks=kpiRepo.findByCarrIdOrderById(c.getId());
         List<ResponsibilityResponse> responsibilities=responsibilityRepo.findByCarrIdOrderById(c.getId()).stream().map(r->new ResponsibilityResponse(r.getId(),r.getStatement(),r.getAccountableEmployee().getId(),name(r.getAccountableEmployee()),r.getPriority(),r.getFrequency(),r.getEvidenceRequired(),r.getWeight())).toList();
-        List<KpiResponse> kpis=ks.stream().map(k->new KpiResponse(k.getId(),k.getName(),k.getType(),k.getDirection(),k.getTargetValue(),k.getActualValue(),k.getUnit(),k.getWeight(),k.getDueDate(),k.getDataSource(),k.getEvidence(),achievement(k),risk(k))).toList();
+        List<KpiResponse> kpis=ks.stream().map(k->new KpiResponse(k.getId(),k.getName(),k.getType(),k.getDirection(),k.getTargetValue(),k.getActualValue(),k.getUnit(),k.getWeight(),k.getDueDate(),k.getDataSource(),k.getEvidence(),achievement(k),risk(k),k.getReviewFrequency())).toList();
         List<RewardResponse> rewards=rewardRepo.findByCarrIdOrderById(c.getId()).stream().map(r->new RewardResponse(r.getId(),r.getName(),r.getStatus(),r.getDiscussionWith())).toList();
         return new RecordResponse(c.getId(),c.getEmployee().getId(),c.getEmployee().getBadgeId(),name(c.getEmployee()),c.getEmployee().getDepartment()==null?null:c.getEmployee().getDepartment().getName(),c.getTemplate()==null?null:c.getTemplate().getId(),c.getTemplate()==null?null:c.getTemplate().getTitle(),c.getCycle()==null?null:c.getCycle().getId(),c.getCycle()==null?null:c.getCycle().getName(),c.getManager()==null?null:c.getManager().getId(),c.getManager()==null?null:name(c.getManager()),c.getTitle(),c.getPurpose(),c.getIndustry(),c.getRoleLevel(),c.getReportsToTitle(),c.getResponsibleFor(),c.isRewardsEnabled(),c.isRewardsVisibleToEmployee(),c.getStatus(),c.getVersion(),c.getEffectiveFrom(),c.getEffectiveTo(),c.getNextReviewDate(),c.getPublishedAt(),c.getEmployeeAcknowledgedAt(),c.getReviewCompletedAt(),c.getEmployeeReflection(),c.getManagerComments(),responsibilities,kpis,rewards,score(ks),c.getReturnReason());
     }

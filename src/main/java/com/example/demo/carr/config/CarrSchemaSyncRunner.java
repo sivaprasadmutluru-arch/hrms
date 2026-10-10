@@ -23,6 +23,7 @@ public class CarrSchemaSyncRunner implements CommandLineRunner {
             provisioning.provisionSchema(schema);
             if(!schema.matches("[a-zA-Z0-9_]+")) throw new IllegalStateException("Unsafe tenant schema name: "+schema);
             jdbc.execute("ALTER TABLE "+schema+".carr_records " +
+                    "ADD COLUMN IF NOT EXISTS task_record boolean NOT NULL DEFAULT false, " +
                     "ADD COLUMN IF NOT EXISTS industry varchar(255), " +
                     "ADD COLUMN IF NOT EXISTS role_level varchar(255), " +
                     "ADD COLUMN IF NOT EXISTS reports_to_title varchar(255), " +
@@ -33,6 +34,12 @@ public class CarrSchemaSyncRunner implements CommandLineRunner {
                     "ADD COLUMN IF NOT EXISTS review_completed_at timestamp, " +
                     "ADD COLUMN IF NOT EXISTS employee_reflection text, " +
                     "ADD COLUMN IF NOT EXISTS manager_comments text");
+            jdbc.execute("ALTER TABLE "+schema+".carr_kpis ADD COLUMN IF NOT EXISTS review_frequency varchar(40) DEFAULT 'Monthly'");
+            jdbc.execute("ALTER TABLE "+schema+".carr_responsibilities " +
+                    "ADD COLUMN IF NOT EXISTS description text, " +
+                    "ADD COLUMN IF NOT EXISTS due_date date, " +
+                    "ADD COLUMN IF NOT EXISTS task_status varchar(30) NOT NULL DEFAULT 'TODO', " +
+                    "ADD COLUMN IF NOT EXISTS progress integer NOT NULL DEFAULT 0");
             jdbc.execute("CREATE TABLE IF NOT EXISTS "+schema+".carr_rewards (" +
                     "id bigserial PRIMARY KEY, carr_id bigint NOT NULL REFERENCES "+schema+".carr_records(id) ON DELETE CASCADE, " +
                     "name varchar(220) NOT NULL, status varchar(80), discussion_with varchar(80), " +

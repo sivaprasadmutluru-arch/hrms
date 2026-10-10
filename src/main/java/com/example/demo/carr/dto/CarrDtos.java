@@ -20,7 +20,7 @@ public final class CarrDtos {
     public record KpiRequest(Long id, @NotBlank @Size(max=220) String name, CarrKpi.Type type,
                              CarrKpi.Direction direction, @NotNull BigDecimal targetValue,
                              BigDecimal actualValue, String unit, @Min(1) @Max(100) int weight,
-                             LocalDate dueDate, String dataSource, String evidence) {}
+                             LocalDate dueDate, String dataSource, String evidence, @Size(max=40) String reviewFrequency) {}
     public record RecordRequest(@NotNull Long employeeId, Long departmentId, Long templateId, Long cycleId, Long managerId,
                                 @NotBlank @Size(max=180) String title, String purpose,
                                 String industry, String roleLevel, String reportsToTitle, String responsibleFor,
@@ -37,7 +37,7 @@ public final class CarrDtos {
     public record KpiResponse(Long id, String name, CarrKpi.Type type, CarrKpi.Direction direction,
                               BigDecimal targetValue, BigDecimal actualValue, String unit, int weight,
                               LocalDate dueDate, String dataSource, String evidence, BigDecimal achievementPercent,
-                              String riskStatus) {}
+                              String riskStatus, String reviewFrequency) {}
     public record RecordResponse(Long id, Long employeeId, String employeeIdCode, String employeeName,
                                  String department, Long templateId, String templateTitle, Long cycleId,
                                  String cycleName, Long managerId, String managerName, String title, String purpose,

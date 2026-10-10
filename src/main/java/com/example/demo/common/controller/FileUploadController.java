@@ -86,6 +86,10 @@ public class FileUploadController {
     public ResponseEntity<Resource> serveFile(@PathVariable String filePath) throws IOException {
         String relativePath = filePath.startsWith("/") ? filePath.substring(1) : filePath;
         Path resolvedPath = fileUploadService.resolve(relativePath);
+        Path uploadRoot = fileUploadService.resolve("").toAbsolutePath().normalize();
+        Path absolutePath = resolvedPath.toAbsolutePath().normalize();
+        if (!absolutePath.startsWith(uploadRoot) || absolutePath.startsWith(uploadRoot.resolve("carr-private")))
+            return ResponseEntity.status(403).build();
         Resource resource = new UrlResource(resolvedPath.toUri());
         if (!resource.exists() || !resource.isReadable()) {
             return ResponseEntity.notFound().build();

@@ -14,6 +14,8 @@ import java.util.Optional;
 public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSpecificationExecutor<Employee> {
     List<Employee> findByCompanyId(Long companyId);
     List<Employee> findByCompanyIdAndIsActiveTrue(Long companyId);
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"user", "company", "department"})
+    List<Employee> findByCompanyIdInAndIsActiveTrue(List<Long> companyIds);
     List<Employee> findByCompanyIdAndDepartmentIdAndIsActiveTrue(Long companyId, Long departmentId);
     long countByCompanyId(Long companyId);
     long countByCompanyIdAndIsActiveTrue(Long companyId);

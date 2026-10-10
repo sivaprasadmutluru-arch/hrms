@@ -29,6 +29,8 @@ public class CarrRecord extends BaseEntity {
     @Column(name="rewards_visible_to_employee", nullable=false) private boolean rewardsVisibleToEmployee = true;
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=30) private CarrStatus status = CarrStatus.DRAFT;
     @Column(nullable=false) private int version = 1;
+    @org.hibernate.annotations.ColumnDefault("false")
+    @Column(name="task_record", nullable=false) private boolean taskRecord;
     @Column(name="effective_from") private LocalDate effectiveFrom;
     @Column(name="effective_to") private LocalDate effectiveTo;
     @Column(name="next_review_date") private LocalDate nextReviewDate;

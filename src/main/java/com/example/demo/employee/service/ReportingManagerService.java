@@ -18,10 +18,8 @@ public class ReportingManagerService {
     // Existing profiles are authoritative, including an explicitly cleared manager.
     public Employee resolve(Employee employee) {
         if (employee == null) return null;
-        var fromWorkInfo = workInformation.findByEmployeeId(employee.getId())
-                .map(com.example.demo.employee.entity.EmployeeWorkInformation::getReportingManager)
-                .orElse(null);
-        return fromWorkInfo != null ? fromWorkInfo : employee.getReportingManager();
+        var profile = workInformation.findByEmployeeId(employee.getId());
+        return profile.isPresent() ? profile.get().getReportingManager() : employee.getReportingManager();
     }
 
     public Employee validate(Employee employee, Long managerId) {

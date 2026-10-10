@@ -61,6 +61,11 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
+                response.setStatus(401);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"status\":401,\"message\":\"Your session has expired or is invalid. Please sign in again.\"}");
+            }))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/login",
