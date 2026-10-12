@@ -1,0 +1,1 @@
+import{t as e}from"./vendor-react-D_8EL8GL.js";var t=e();function n({children:e,className:n=``,padding:r=!0,onClick:i}){return(0,t.jsx)(`div`,{onClick:i,className:`bg-white rounded-xl shadow-sm border border-gray-100 ${r?`p-6`:``} ${n}`,children:e})}export{n as t};

@@ -186,7 +186,7 @@
 						<id>npm-build</id>
 						<goals><goal>npm</goal></goals>
 						<configuration>
-							<arguments>run build</arguments>
+							<arguments>run build -- --outDir "${project.basedir}/src/main/resources/static"</arguments>
 						</configuration>
 					</execution>
 				</executions>
