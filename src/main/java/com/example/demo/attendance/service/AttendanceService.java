@@ -123,9 +123,12 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public Page<AttendanceResponse> getFullView(Long companyId, LocalDate from, LocalDate to,
                                                 Long departmentId, Long employeeId, String statusFilter, Pageable pageable) {
-        LocalDate today = LocalDate.now();
-        LocalDate start = from != null ? from : today;
-        LocalDate end   = to   != null ? (to.isAfter(today) ? today : to) : today;
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
+        LocalDate end = to != null ? (to.isAfter(today) ? today : to) : today;
+        // A single selected "To" date represents that day.  Previously it
+        // paired that date with today's start date, producing start > end and
+        // an empty result set for every historical one-date filter.
+        LocalDate start = from != null ? from : (to != null ? end : today);
 
         // Read stored attendance first.  Historical punches remain reportable after an
         // employee is made inactive; deactivation stops future work, it must not erase

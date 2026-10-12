@@ -418,6 +418,9 @@ public class LeaveService {
         if (requests.size() != ids.size()) {
             throw new ResourceNotFoundException("One or more leave requests were not found");
         }
+        if (requests.stream().anyMatch(request -> request.getStatus() != LeaveRequest.LeaveStatus.CANCELLED)) {
+            throw new BadRequestException("Only cancelled leave requests can be permanently deleted");
+        }
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         for (LeaveRequest request : requests) {
             Long companyId = request.getCompany().getId();

@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,7 +51,8 @@ public class AttendanceRegularisationService {
             Role.RoleName.PLATFORM_SUPER_ADMIN, Role.RoleName.HR_MANAGER
     );
 
-    private static final int UNRESOLVED_LOOKBACK_DAYS = 30;
+    private static final ZoneId DUBAI_ZONE = ZoneId.of("Asia/Dubai");
+    private static final int REGULARISATION_LOOKBACK_MONTHS = 1;
 
     /** Request types allowed when there is no backing attendance row yet (Absent/On Leave/Holiday/Week Off) —
      *  all of them amount to "I was actually present that day", proven by a check-in time. */
@@ -102,6 +104,7 @@ public class AttendanceRegularisationService {
         if (!att.getEmployee().getId().equals(employee.getId())) {
             throw new BadRequestException("You can only submit requests for your own attendance");
         }
+        validateRequestDate(att.getAttendanceDate(), LocalDate.now(DUBAI_ZONE));
 
         // Block duplicate pending requests
         boolean hasPending = requestRepository.findByAttendanceId(att.getId()).stream()
@@ -144,6 +147,7 @@ public class AttendanceRegularisationService {
         if (req.getAttendanceDate() == null) {
             throw new BadRequestException("Attendance date is required");
         }
+        validateRequestDate(req.getAttendanceDate(), LocalDate.now(DUBAI_ZONE));
         if (!NO_ATTENDANCE_REQUEST_TYPES.contains(requestType)) {
             throw new BadRequestException("This request type requires an existing attendance record");
         }
@@ -326,9 +330,9 @@ public class AttendanceRegularisationService {
     public List<UnresolvedIrregularAttendanceDto> getUnresolvedForEmployee(Long userId) {
         Employee employee = employeeRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee for user", userId));
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(DUBAI_ZONE);
         return attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(
-                        employee.getId(), today.minusDays(UNRESOLVED_LOOKBACK_DAYS), today)
+                        employee.getId(), today.minusMonths(REGULARISATION_LOOKBACK_MONTHS), today)
                 .stream()
                 .filter(a -> a.getAttendanceStatus() == Attendance.AttendanceQualityStatus.IRREGULAR
                         && a.getRegularisationStatus() == Attendance.RegularisationStatus.NONE)
@@ -387,6 +391,20 @@ public class AttendanceRegularisationService {
     private void requireRemarks(String remarks, String message) {
         if (remarks == null || remarks.isBlank()) {
             throw new BadRequestException(message);
+        }
+    }
+
+    /** The correction window is enforced on the server for every client. */
+    static void validateRequestDate(LocalDate requestDate, LocalDate today) {
+        if (requestDate == null) {
+            throw new BadRequestException("Attendance date is required");
+        }
+        if (requestDate.isAfter(today)) {
+            throw new BadRequestException("Attendance regularisation cannot be requested for a future date");
+        }
+        LocalDate earliest = today.minusMonths(REGULARISATION_LOOKBACK_MONTHS);
+        if (requestDate.isBefore(earliest)) {
+            throw new BadRequestException("Attendance regularisation can only be requested up to 1 month in the past");
         }
     }
 

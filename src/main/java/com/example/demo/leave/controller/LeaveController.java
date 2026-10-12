@@ -110,16 +110,16 @@ public class LeaveController {
     }
 
     @DeleteMapping("/requests/{id}")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Operation(summary = "Permanently delete one leave request")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete one cancelled leave request")
     public ResponseEntity<Map<String, Object>> deleteRequest(@PathVariable Long id) {
         int deleted = leaveService.deleteRequests(List.of(id));
         return ResponseEntity.ok(Map.of("message", "Leave request deleted", "deleted", deleted));
     }
 
     @PostMapping("/requests/bulk-delete")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
-    @Operation(summary = "Permanently delete selected leave requests")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete selected cancelled leave requests")
     public ResponseEntity<Map<String, Object>> bulkDeleteRequests(@RequestBody List<Long> ids) {
         int deleted = leaveService.deleteRequests(ids);
         return ResponseEntity.ok(Map.of("message", deleted + " leave request(s) deleted", "deleted", deleted));

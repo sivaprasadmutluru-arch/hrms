@@ -14,6 +14,7 @@ import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
 import com.example.demo.notification.service.NotificationService;
+import com.example.demo.common.exception.BadRequestException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -104,6 +106,18 @@ class AttendanceRegularisationServiceTest {
         when(requestRepository.findById(3L)).thenReturn(Optional.of(request));
 
         assertThrows(AccessDeniedException.class, () -> service.getById(3L));
+    }
+
+    @Test
+    void regularisationAllowsExactlyOneMonthButRejectsOlderAndFutureDates() {
+        LocalDate today = LocalDate.of(2026, 10, 10);
+
+        assertDoesNotThrow(() -> AttendanceRegularisationService.validateRequestDate(
+                LocalDate.of(2026, 9, 10), today));
+        assertThrows(BadRequestException.class, () -> AttendanceRegularisationService.validateRequestDate(
+                LocalDate.of(2026, 9, 9), today));
+        assertThrows(BadRequestException.class, () -> AttendanceRegularisationService.validateRequestDate(
+                LocalDate.of(2026, 10, 11), today));
     }
 
     private AttendanceRegularisationRequest request(

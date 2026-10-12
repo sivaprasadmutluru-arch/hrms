@@ -314,9 +314,17 @@ public class ESSController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         Employee emp = resolveEmployee(auth);
         LocalDate today = LocalDate.now(DUBAI_ZONE);
-        List<Attendance> records = (from != null && to != null)
-                ? attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(emp.getId(), from, to)
-                : attendanceRepository.findByEmployeeId(emp.getId());
+        // A partial range must still be a real filter. Previously, supplying only
+        // one date silently returned every record, which made the mobile date
+        // filter look broken. Clamp future end dates and complete the other side
+        // of the range predictably.
+        LocalDate end = to != null ? (to.isAfter(today) ? today : to) : today;
+        LocalDate start = from != null ? from : (to != null ? to : null);
+        List<Attendance> records = start == null
+                ? attendanceRepository.findByEmployeeId(emp.getId())
+                : (end.isBefore(start)
+                    ? List.of()
+                    : attendanceRepository.findByEmployeeIdAndAttendanceDateBetween(emp.getId(), start, end));
 
         List<AttendanceActivity> todayActivities = attendanceActivityRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today);
         AttendanceActivity active = todayActivities.stream()

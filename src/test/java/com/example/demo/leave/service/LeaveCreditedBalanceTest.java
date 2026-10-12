@@ -35,6 +35,7 @@ class LeaveCreditedBalanceTest {
         assertEquals(6.0, remaining);
         var dto = LeaveMapper.toDTO(b,35.0);
         assertEquals(remaining,dto.totalLeaveDays()-dto.usedDays());
+        assertEquals(remaining, dto.remainingDays());
         assertTrue(remaining >= 2.0);
     }
     @Test void futureNoCarryoverStillClearsCreditAtReset() {
