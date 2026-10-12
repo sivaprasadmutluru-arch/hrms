@@ -77,6 +77,23 @@ const featherNames: Record<string, string> = {
   home: 'home',
   'person-outline': 'user',
   person: 'user',
+  'shield-outline': 'shield',
+  'grid-outline': 'grid',
+  'help-circle-outline': 'help-circle',
+  'send-outline': 'send',
+  'sparkles-outline': 'star',
+  'checkmark-done-outline': 'check-square',
+  'radio-outline': 'radio',
+  'stopwatch-outline': 'clock',
+  analytics: 'bar-chart-2',
+  'paper-plane': 'send',
+  'document-text': 'file-text',
+  time: 'clock',
+  sunny: 'sun',
+  megaphone: 'megaphone',
+  'megaphone-outline': 'megaphone',
+  wallet: 'credit-card',
+  'arrow-forward': 'arrow-right',
 };
 
 const materialNames: Record<string, string> = {
@@ -90,6 +107,10 @@ export default function Icon({name, ...props}: any) {
   if (materialNames[name]) {
     return <MaterialCommunityIcons name={materialNames[name]} {...props} />;
   }
-  const featherName = featherNames[name] || String(name).replace(/-outline$/, '');
+  const candidate = featherNames[name] || String(name).replace(/-outline$/, '');
+  // Never pass an unknown glyph to the icon font: Android renders it as a
+  // question mark. This keeps every unsupported future name on a standard,
+  // readable fallback while named mappings above provide the intended icon.
+  const featherName = (Feather as any).hasIcon?.(candidate) ? candidate : 'help-circle';
   return <Feather name={featherName} {...props} />;
 }

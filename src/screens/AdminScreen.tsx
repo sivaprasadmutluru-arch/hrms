@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import LinearGradient from 'react-native-linear-gradient';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import {API_BASE_URL, api} from '../api/client';
@@ -579,15 +580,15 @@ export default function AdminScreen() {
     );
     return (
       <View className="flex-1 bg-background" style={styles.screen}>
-        <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
+        <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setSelectedRecord(null)} style={styles.backButton}>
-            <Icon name="chevron-back-outline" size={22} color={colors.primary} />
+            <Icon name="chevron-back-outline" size={22} color={colors.white} />
           </Pressable>
           <View style={styles.pageTitleWrap}>
             <Text style={styles.pageTitle} numberOfLines={1}>{recordTitle}</Text>
             <Text style={styles.pageSubtitle}>{activePage}</Text>
           </View>
-        </View>
+        </LinearGradient>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <RecordDetail item={selectedRecord} page={activePage} />
@@ -599,15 +600,15 @@ export default function AdminScreen() {
   if (activeModule && activePage === 'Assign Role') {
     return (
       <View className="flex-1 bg-background" style={styles.screen}>
-        <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
+        <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActivePage('')} style={styles.backButton}>
-            <Icon name="chevron-back-outline" size={22} color={colors.primary} />
+            <Icon name="chevron-back-outline" size={22} color={colors.white} />
           </Pressable>
           <View style={styles.pageTitleWrap}>
             <Text style={styles.pageTitle}>Assign Role</Text>
             <Text style={styles.pageSubtitle}>{activeModule.title}</Text>
           </View>
-        </View>
+        </LinearGradient>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Card style={styles.filterCard}>
@@ -726,15 +727,15 @@ export default function AdminScreen() {
   if (activeModule && activePage) {
     return (
       <View className="flex-1 bg-background" style={styles.screen}>
-        <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
+        <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActivePage('')} style={styles.backButton}>
-            <Icon name="chevron-back-outline" size={22} color={colors.primary} />
+            <Icon name="chevron-back-outline" size={22} color={colors.white} />
           </Pressable>
           <View style={styles.pageTitleWrap}>
             <Text style={styles.pageTitle}>{activePage}</Text>
             <Text style={styles.pageSubtitle}>{activeModule.title}</Text>
           </View>
-        </View>
+        </LinearGradient>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -855,15 +856,15 @@ export default function AdminScreen() {
   if (activeModule) {
     return (
       <View className="flex-1 bg-background" style={styles.screen}>
-        <View style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
+        <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.pageHeader, {paddingTop: insets.top + 10}]}>
           <Pressable onPress={() => setActiveModule(null)} style={styles.backButton}>
-            <Icon name="chevron-back-outline" size={22} color={colors.primary} />
+            <Icon name="chevron-back-outline" size={22} color={colors.white} />
           </Pressable>
           <View style={styles.pageTitleWrap}>
             <Text style={styles.pageTitle}>{activeModule.title}</Text>
             <Text style={styles.pageSubtitle}>{activeModule.subtitle}</Text>
           </View>
-        </View>
+        </LinearGradient>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Card style={styles.detailHero}>
@@ -915,7 +916,7 @@ export default function AdminScreen() {
 
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <View style={[styles.header, {paddingTop: insets.top + 12}]}>
+      <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.header, {paddingTop: insets.top + 12}]}>
         <Text style={styles.headerEyebrow}>Role Based Access</Text>
         <Text style={styles.headerTitle}>Admin Console</Text>
         <Text style={styles.headerSub}>
@@ -928,7 +929,7 @@ export default function AdminScreen() {
             </View>
           ))}
         </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.summaryRow}>
@@ -982,7 +983,6 @@ export default function AdminScreen() {
 const styles = StyleSheet.create({
   screen: {flex: 1, backgroundColor: colors.background},
   header: {
-    backgroundColor: colors.sidebar,
     paddingHorizontal: 16,
     paddingBottom: 18,
   },
@@ -1034,9 +1034,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   backButton: {
     width: 40,
@@ -1044,11 +1041,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primaryLight,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   pageTitleWrap: {flex: 1},
-  pageTitle: {color: colors.text, fontSize: 22, lineHeight: 27, fontWeight: '900'},
-  pageSubtitle: {color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 2},
+  pageTitle: {color: colors.white, fontSize: 22, lineHeight: 27, fontWeight: '900'},
+  pageSubtitle: {color: '#E0E7FF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 2},
   detailHero: {padding: 16, marginBottom: 10, borderRadius: 12},
   detailIcon: {width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   detailTitle: {color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: '900', marginTop: 12},

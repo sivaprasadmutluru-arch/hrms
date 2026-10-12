@@ -127,6 +127,10 @@ export const api = {
       body: JSON.stringify(data),
     }),
   myLeave: () => request<any[]>('/ess/my-leave'),
+  announcements: () => request<any[]>('/announcements'),
+  carrMyTasks: () => request<any[]>('/carr/tasks?mine=true'),
+  updateCarrTaskProgress: (id: number | string, data: Record<string, any>) =>
+    request<any>(`/carr/tasks/${id}/progress`, {method: 'PATCH', body: JSON.stringify(data)}),
   leaveTypes: () => request<any[]>('/ess/leave-types'),
   leaveBalance: () => request<any[]>('/ess/my-balance'),
   myPayslips: () => request<any[]>('/ess/my-payslips'),

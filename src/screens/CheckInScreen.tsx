@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import LinearGradient from 'react-native-linear-gradient';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import PrimaryButton from '../components/PrimaryButton';
@@ -447,7 +448,13 @@ export default function CheckInScreen() {
 
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <View style={[styles.heroBackdrop, {height: heroHeight || 220}]} pointerEvents="none" />
+      <LinearGradient
+        colors={['#17134D', '#2B2C91', '#4F46E5']}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
+        style={[styles.heroBackdrop, {height: heroHeight || 220}]}
+        pointerEvents="none"
+      />
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={styles.content}
@@ -626,14 +633,17 @@ export default function CheckInScreen() {
         </View>
       </Modal>
 
-      <View
+      <LinearGradient
+        colors={['#17134D', '#2B2C91', '#4F46E5']}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
         style={styles.stickyLocationHeader}
         onLayout={event => setStickyHeaderHeight(event.nativeEvent.layout.height)}>
         <View style={[styles.heroLocationRow, {paddingTop: insets.top + 12}]}>
           <Icon name="location" size={13} color="rgba(255,255,255,0.85)" style={styles.heroLocationIcon} />
           <Text style={styles.heroLocationText} numberOfLines={2}>{locationLabel}</Text>
         </View>
-      </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -650,11 +660,10 @@ const styles = StyleSheet.create<Record<string, any>>({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.sidebar,
   },
 
   hero: {
-    backgroundColor: colors.sidebar,
+    backgroundColor: 'transparent',
     paddingHorizontal: 20,
     paddingBottom: 28,
   },
@@ -663,7 +672,6 @@ const styles = StyleSheet.create<Record<string, any>>({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.sidebar,
     paddingHorizontal: 20,
     paddingBottom: 10,
     // Keep the fixed header above scroll content on Android; otherwise elevated

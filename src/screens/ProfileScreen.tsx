@@ -3,6 +3,7 @@ import {ActivityIndicator, Alert, Image, Modal, Pressable, RefreshControl, Scrol
 import NetInfo from '@react-native-community/netinfo';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import LinearGradient from 'react-native-linear-gradient';
 import Card from '../components/Card';
 import Icon from '../components/Icon';
 import PrimaryButton from '../components/PrimaryButton';
@@ -199,6 +200,8 @@ export default function ProfileScreen() {
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [biometricModalOpen, setBiometricModalOpen] = useState(false);
   const [biometricPassword, setBiometricPassword] = useState('');
+  const [signOutModalOpen, setSignOutModalOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const currency = profile?.currencySymbol || '';
   const profilePhotoUrl = photoUrl(profile);
   const avatarSource = profilePhotoUrl ? `${profilePhotoUrl}${profilePhotoUrl.includes('?') ? '&' : '?'}_t=${photoVersion}` : null;
@@ -371,22 +374,32 @@ export default function ProfileScreen() {
     }
   }
 
+  async function confirmSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+      setSignOutModalOpen(false);
+    }
+  }
+
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <View style={[styles.fixedHeader, {paddingTop: insets.top + 12}]}>
+      <LinearGradient colors={['#1E1B4B', '#3730A3', '#6366F1']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.fixedHeader, {paddingTop: insets.top + 12}]}>
         <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Profile</Text>
         <Pressable onPress={editing ? () => setEditing(false) : startEdit} style={styles.editButton}>
           <Icon name={editing ? 'close-outline' : 'create-outline'} size={16} color={colors.white} />
           <Text style={styles.editButtonText}>{editing ? 'Cancel' : 'Edit'}</Text>
         </Pressable>
-      </View>
+      </LinearGradient>
 
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
-        <View style={styles.hero}>
+        <LinearGradient colors={['#24205E', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={styles.hero}>
           <View style={styles.heroIdentity}>
             <Pressable onPress={changeProfilePhoto} disabled={uploadingPhoto} style={({pressed}) => [styles.avatarWrap, pressed && styles.pressed]}>
               <View style={styles.avatar}>
@@ -415,7 +428,7 @@ export default function ProfileScreen() {
             <MiniStat label="Department" value={profile?.departmentName || workInfo?.departmentName} tone="info" />
             <MiniStat label="Status" value={profile?.isActive === false ? 'Inactive' : 'Active'} tone="success" />
           </View>
-        </View>
+        </LinearGradient>
 
         <Card style={styles.organizationCard}>
           <View style={styles.organizationHead}>
@@ -544,7 +557,7 @@ export default function ProfileScreen() {
         </Section>
 
         <View style={styles.logout}>
-          <PrimaryButton title="Sign Out" variant="danger" onPress={signOut} />
+          <PrimaryButton title="Sign Out" variant="danger" onPress={() => setSignOutModalOpen(true)} />
         </View>
       </ScrollView>
 
@@ -573,6 +586,26 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={signOutModalOpen} transparent animationType="fade" onRequestClose={() => !signingOut && setSignOutModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.signOutModalCard}>
+            <View style={styles.signOutModalIcon}>
+              <Icon name="log-out-outline" size={25} color={colors.danger} />
+            </View>
+            <Text style={styles.signOutModalTitle}>Sign out?</Text>
+            <Text style={styles.signOutModalText}>You will need to enter your credentials again to access your employee workspace.</Text>
+            <View style={styles.signOutModalActions}>
+              <Pressable disabled={signingOut} onPress={() => setSignOutModalOpen(false)} style={({pressed}) => [styles.signOutCancel, (pressed || signingOut) && styles.pressed]}>
+                <Text style={styles.signOutCancelText}>Stay signed in</Text>
+              </Pressable>
+              <Pressable disabled={signingOut} onPress={confirmSignOut} style={({pressed}) => [styles.signOutConfirm, (pressed || signingOut) && styles.pressed]}>
+                {signingOut ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.signOutConfirmText}>Sign out</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -592,7 +625,6 @@ const styles = StyleSheet.create({
   headerSpacer: {width: 72, height: 34},
   headerTitle: {color: colors.white, fontSize: 16, fontFamily: fonts.semibold},
   hero: {
-    backgroundColor: colors.sidebar,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
@@ -747,4 +779,13 @@ const styles = StyleSheet.create({
   modalCancelText: {color: colors.textMid, fontSize: 13, fontFamily: fonts.semibold},
   modalConfirm: {height: 42, minWidth: 82, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14},
   modalConfirmText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
+  signOutModalCard: {backgroundColor: colors.white, borderRadius: 20, padding: 22, alignItems: 'center'},
+  signOutModalIcon: {width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerLight},
+  signOutModalTitle: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 14},
+  signOutModalText: {color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 7},
+  signOutModalActions: {flexDirection: 'row', gap: 10, alignSelf: 'stretch', marginTop: 21},
+  signOutCancel: {flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt},
+  signOutCancelText: {color: colors.textMid, fontSize: 13, fontFamily: fonts.semibold},
+  signOutConfirm: {flex: 1, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.danger},
+  signOutConfirmText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
 });
