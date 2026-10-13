@@ -613,18 +613,24 @@ function LeaveRequestForm({
   leaveTypes,
   selectedLeaveType,
   setSelectedLeaveType,
+  certificate,
+  onPickCertificate,
   onSubmit,
   submitting,
 }: {
   leaveTypes: any[];
   selectedLeaveType: any;
   setSelectedLeaveType: (value: any) => void;
+  certificate: any;
+  onPickCertificate: () => void;
   onSubmit: (values: {startDate: string; endDate: string; reason: string}) => void;
   submitting: boolean;
 }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
+  const sickLeaveSelected = String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], ''))
+    .replace(/[^a-z]/gi, '').toLowerCase() === 'sickleave';
 
   return (
     <Card style={styles.formCard}>
@@ -646,6 +652,17 @@ function LeaveRequestForm({
         })}
       </ScrollView>
       {!leaveTypes.length && <Text style={styles.inlineHelp}>Leave types are not available yet.</Text>}
+
+      {sickLeaveSelected && (
+        <>
+          <Text style={styles.inputLabel}>Sick leave certificate *</Text>
+          <Pressable onPress={onPickCertificate} style={styles.certificatePicker}>
+            <Icon name="document-attach-outline" size={20} color={colors.primary} />
+            <Text style={styles.certificatePickerText}>{certificate?.name || 'Attach certificate (PDF or image)'}</Text>
+          </Pressable>
+          <Text style={styles.inlineHelp}>A certificate is required before the request can be submitted.</Text>
+        </>
+      )}
 
       <CalendarDateField label="Start Date" value={startDate} onChange={setStartDate} />
       <CalendarDateField label="End Date" value={endDate} onChange={setEndDate} />
@@ -991,6 +1008,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [submittingLoan, setSubmittingLoan] = useState(false);
   const [loanModalVisible, setLoanModalVisible] = useState(false);
   const [selectedLeaveType, setSelectedLeaveType] = useState<any>(null);
+  const [sickLeaveCertificate, setSickLeaveCertificate] = useState<any>(null);
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
@@ -1161,6 +1179,12 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       Alert.alert('Leave Request', `Leave can only be applied up to 2 months in the past (from ${earliestLeaveDateKey()}).`);
       return;
     }
+    const sickLeaveSelected = String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], ''))
+      .replace(/[^a-z]/gi, '').toLowerCase() === 'sickleave';
+    if (sickLeaveSelected && !sickLeaveCertificate) {
+      Alert.alert('Sick Leave Certificate', 'Attach the sick leave certificate before submitting.');
+      return;
+    }
 
     setSubmittingLeave(true);
     try {
@@ -1170,8 +1194,10 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         startDate: values.startDate,
         endDate: values.endDate,
         reason: values.reason,
+        certificate: sickLeaveCertificate ? uploadFile(sickLeaveCertificate) : undefined,
       });
       Alert.alert('Leave Request', 'Leave request submitted successfully.');
+      setSickLeaveCertificate(null);
       await load();
       setActive('leave');
     } catch (err: any) {
@@ -1226,6 +1252,17 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       }
     } finally {
       setUploadingDocument(false);
+    }
+  }
+
+  async function chooseSickLeaveCertificate() {
+    try {
+      const [file] = await pick({type: [types.pdf, types.images], allowMultiSelection: false});
+      setSickLeaveCertificate(file);
+    } catch (err: any) {
+      if (!String(err?.message || '').toLowerCase().includes('cancel')) {
+        Alert.alert('Certificate', err.message || 'Unable to select the certificate.');
+      }
     }
   }
 
@@ -1510,6 +1547,8 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           leaveTypes={leaveTypes}
           selectedLeaveType={selectedLeaveType}
           setSelectedLeaveType={setSelectedLeaveType}
+          certificate={sickLeaveCertificate}
+          onPickCertificate={chooseSickLeaveCertificate}
           onSubmit={submitLeave}
           submitting={submittingLeave}
         />
@@ -1970,6 +2009,8 @@ const styles = StyleSheet.create({
   pageSubtitle: {color: '#E0E7FF', fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
   applyLeaveHeaderButton: {minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, backgroundColor: colors.white, paddingHorizontal: 10},
   applyLeaveHeaderText: {color: colors.primary, fontSize: 12, fontFamily: fonts.bold},
+  certificatePicker: {minHeight: 48, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 12, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, backgroundColor: '#F8FAFF'},
+  certificatePickerText: {flex: 1, color: colors.text, fontSize: 13, fontFamily: fonts.medium},
   featureGrid: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, marginBottom: 18},
   featureTile: {
     // Four columns made the copy and action arrow overlap on normal phone

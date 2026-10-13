@@ -139,8 +139,8 @@ export const api = {
   // Keep the company header for tenant resolution, and send this explicit value for
   // the controller contract so an employee's calendar does not silently appear empty.
   holidays: () => request<any[]>(`/leave/holidays${queryString({companyId})}`),
-  applyLeave: (params: {leaveTypeId: number | string; startDate: string; endDate: string; reason?: string; leaveDuration?: string}) =>
-    request<any>(`/ess/apply-leave${queryString({
+  applyLeave: (params: {leaveTypeId: number | string; startDate: string; endDate: string; reason?: string; leaveDuration?: string; certificate?: any}) => {
+    const fields = {
       leaveTypeId: params.leaveTypeId,
       startDate: params.startDate,
       endDate: params.endDate,
@@ -148,9 +148,19 @@ export const api = {
       // The ESS API calls this field description. Keep the mobile form's
       // clearer "reason" label, but send the contract the backend accepts.
       description: params.reason,
-    })}`, {
+    };
+    if (params.certificate) {
+      const formData = new FormData();
+      Object.entries(fields).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') formData.append(key, String(value));
+      });
+      formData.append('certificate', params.certificate);
+      return request<any>('/ess/apply-leave', {method: 'POST', body: formData});
+    }
+    return request<any>(`/ess/apply-leave${queryString(fields)}`, {
       method: 'POST',
-    }),
+    });
+  },
   notifications: (params?: Record<string, any>) => request<any>(`/notifications${queryString(params)}`),
   unreadNotifications: () => request<any>('/notifications/unread-count'),
   markNotificationRead: (id: number | string) => request<any>(`/notifications/${id}/read`, {method: 'POST'}),
