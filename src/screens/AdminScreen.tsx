@@ -191,6 +191,7 @@ function field(item: any, names: string[], fallback = '-') {
 }
 
 const PENDING_STATUSES = new Set(['REQUESTED', 'PENDING']);
+const COMPANY_SCOPED_ADMIN_PAGES = new Set(['Employees', 'Attendance Register', 'Leave Requests', 'Regularisation']);
 
 function isApprovalPage(page: string) {
   return page === 'Leave Requests' || page === 'Regularisation';
@@ -399,6 +400,7 @@ export default function AdminScreen() {
   const [recordsError, setRecordsError] = useState('');
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState('All');
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState('ALL');
   const [accessibleCompanies, setAccessibleCompanies] = useState<any[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | string>('all');
   const [actionBusyId, setActionBusyId] = useState<string | number | null>(null);
@@ -428,6 +430,15 @@ export default function AdminScreen() {
     api.accessibleCompanies().then(setAccessibleCompanies).catch(() => setAccessibleCompanies([]));
   }, []);
 
+  // Employee, attendance, and leave operations must always operate inside one
+  // company context. Do not default these pages to a cross-company aggregate.
+  useEffect(() => {
+    if (!COMPANY_SCOPED_ADMIN_PAGES.has(activePage) || selectedCompanyId !== 'all') return;
+    const currentCompanyId = profile?.companyId || user?.companyId;
+    const selected = accessibleCompanies.find(company => String(company?.id) === String(currentCompanyId)) || accessibleCompanies[0];
+    if (selected?.id != null) setSelectedCompanyId(selected.id);
+  }, [activePage, accessibleCompanies, profile?.companyId, selectedCompanyId, user?.companyId]);
+
   const loadPage = useCallback(async () => {
     if (!activePage || activePage === 'Assign Role') return;
     const endpoint = activePage === 'Employees' && roles.includes(ROLES.PLATFORM_SUPER_ADMIN) ? '/employees/global' : PAGE_ENDPOINTS[activePage];
@@ -441,8 +452,9 @@ export default function AdminScreen() {
     try {
       const result = await api.adminList(endpoint, {
         page: 0,
-        size: activePage === 'Employees' ? 500 : 50,
+        size: activePage === 'Employees' ? 500 : (activePage === 'Leave Requests' || activePage === 'Attendance Register') ? 100 : 50,
         sort: 'id,desc',
+        status: activePage === 'Leave Requests' && leaveStatusFilter !== 'ALL' ? leaveStatusFilter : undefined,
         // A handful of dashboard-style endpoints (e.g. attendance/payroll dashboards) require a
         // companyId; harmless to send everywhere else since Spring ignores unknown params.
         companyId: selectedCompanyId === 'all' ? undefined : selectedCompanyId,
@@ -453,11 +465,12 @@ export default function AdminScreen() {
     } finally {
       setLoadingRecords(false);
     }
-  }, [activePage, roles, selectedCompanyId]);
+  }, [activePage, leaveStatusFilter, roles, selectedCompanyId]);
 
   useEffect(() => {
     setSearch('');
     setCompanyFilter('All');
+    setLeaveStatusFilter('ALL');
     setSelectedRecord(null);
     setUserSearch('');
     setSelectedUser(null);
@@ -496,9 +509,15 @@ export default function AdminScreen() {
     setActionError('');
     try {
       if (activePage === 'Leave Requests') {
-        await (action === 'approve' ? api.approveLeaveRequest(item.id) : api.rejectLeaveRequest(item.id));
+        const filterCompanyId = selectedCompanyId === 'all' ? null : selectedCompanyId;
+        await (action === 'approve'
+          ? api.approveLeaveRequest(item.id, filterCompanyId)
+          : api.rejectLeaveRequest(item.id, undefined, filterCompanyId));
       } else if (activePage === 'Regularisation') {
-        await (action === 'approve' ? api.approveRegularisation(item.id) : api.rejectRegularisation(item.id));
+        const filterCompanyId = selectedCompanyId === 'all' ? null : selectedCompanyId;
+        await (action === 'approve'
+          ? api.approveRegularisation(item.id, undefined, filterCompanyId)
+          : api.rejectRegularisation(item.id, undefined, filterCompanyId));
       }
       await loadPage();
     } catch (err: any) {
@@ -549,11 +568,21 @@ export default function AdminScreen() {
     return ['All', ...Array.from(new Set(names)).sort()];
   }, [records]);
 
+  const selectedCompanyName = useMemo(() => {
+    if (selectedCompanyId === 'all') return 'All accessible companies';
+    const company = accessibleCompanies.find(item => String(item?.id) === String(selectedCompanyId));
+    return company?.name || `Company ${selectedCompanyId}`;
+  }, [accessibleCompanies, selectedCompanyId]);
+
   const visibleRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
     return records.filter(item => {
       const companyName = field(item, ['companyName', 'organizationName'], '');
       if (activePage === 'Employees' && companyFilter !== 'All' && companyName !== companyFilter) {
+        return false;
+      }
+      if (activePage === 'Leave Requests' && leaveStatusFilter !== 'ALL'
+          && String(field(item, ['status'], '')).toUpperCase() !== leaveStatusFilter) {
         return false;
       }
       if (!query) return true;
@@ -570,7 +599,7 @@ export default function AdminScreen() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [activePage, companyFilter, records, search]);
+  }, [activePage, companyFilter, leaveStatusFilter, records, search]);
 
   if (activeModule && activePage && selectedRecord) {
     const recordTitle = field(
@@ -759,11 +788,20 @@ export default function AdminScreen() {
 
           {accessibleCompanies.length > 1 && (
             <Card style={styles.filterCard}>
-              <Text style={styles.scopeLabel}>Monitoring company</Text>
+              <View style={styles.selectedCompanyBanner}>
+                <Icon name="business-outline" size={15} color={colors.primary} />
+                <View style={styles.selectedCompanyCopy}>
+                  <Text style={styles.scopeLabel}>Selected company</Text>
+                  <Text style={styles.selectedCompanyName} numberOfLines={1}>{selectedCompanyName}</Text>
+                </View>
+              </View>
+              <Text style={styles.scopeHint}>Switch company below. Lists and approval actions use this selection.</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.companyFilterRow}>
-                <Pressable onPress={() => setSelectedCompanyId('all')} style={[styles.companyChip, selectedCompanyId === 'all' && styles.companyChipActive]}>
-                  <Text style={[styles.companyChipText, selectedCompanyId === 'all' && styles.companyChipTextActive]}>All access</Text>
-                </Pressable>
+                {!COMPANY_SCOPED_ADMIN_PAGES.has(activePage) && (
+                  <Pressable onPress={() => setSelectedCompanyId('all')} style={[styles.companyChip, selectedCompanyId === 'all' && styles.companyChipActive]}>
+                    <Text style={[styles.companyChipText, selectedCompanyId === 'all' && styles.companyChipTextActive]}>All access</Text>
+                  </Pressable>
+                )}
                 {accessibleCompanies.map(company => {
                   const companyId = company?.id;
                   const selected = selectedCompanyId === companyId;
@@ -802,6 +840,51 @@ export default function AdminScreen() {
               <Text style={styles.resultText}>
                 Showing {visibleRecords.length} of {records.length} employee{records.length === 1 ? '' : 's'}
               </Text>
+            </Card>
+          )}
+
+          {activePage === 'Attendance Register' && (
+            <Card style={styles.filterCard}>
+              <View style={styles.searchBox}>
+                <Icon name="search-outline" size={18} color={colors.muted} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search employee, department, or status..."
+                  placeholderTextColor={colors.subtle}
+                  style={styles.searchInput}
+                />
+              </View>
+              <Text style={styles.resultText}>
+                Showing {visibleRecords.length} attendance record{visibleRecords.length === 1 ? '' : 's'}
+              </Text>
+            </Card>
+          )}
+
+          {activePage === 'Leave Requests' && (
+            <Card style={styles.filterCard}>
+              <View style={styles.searchBox}>
+                <Icon name="search-outline" size={18} color={colors.muted} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search employee, leave type, or reason..."
+                  placeholderTextColor={colors.subtle}
+                  style={styles.searchInput}
+                />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.companyFilterRow}>
+                {['ALL', 'REQUESTED', 'APPROVED', 'REJECTED'].map(status => {
+                  const selected = leaveStatusFilter === status;
+                  const label = status === 'ALL' ? 'All' : status[0] + status.slice(1).toLowerCase();
+                  return (
+                    <Pressable key={status} onPress={() => setLeaveStatusFilter(status)} style={[styles.companyChip, selected && styles.companyChipActive]}>
+                      <Text style={[styles.companyChipText, selected && styles.companyChipTextActive]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Text style={styles.resultText}>Showing {visibleRecords.length} leave request{visibleRecords.length === 1 ? '' : 's'}</Text>
             </Card>
           )}
 
@@ -1160,7 +1243,11 @@ const styles = StyleSheet.create({
   pageRowUnavailable: {opacity: 0.58},
   pageRowIcon: {width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   webOnly: {color: colors.muted, backgroundColor: colors.surfaceAlt, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '800'},
-  scopeLabel: {color: colors.textMid, fontSize: 12, fontWeight: '800', marginBottom: 8},
+  selectedCompanyBanner: {flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10, borderRadius: 10, backgroundColor: colors.primaryLight},
+  selectedCompanyCopy: {flex: 1, minWidth: 0},
+  scopeLabel: {color: colors.primary, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.35},
+  selectedCompanyName: {color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 2},
+  scopeHint: {color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: '600', marginTop: 8},
   error: {
     color: colors.danger,
     backgroundColor: colors.dangerSoft,
@@ -1171,7 +1258,7 @@ const styles = StyleSheet.create({
   },
   statusPill: {alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7},
   statusPillText: {fontSize: 10, fontWeight: '900', textTransform: 'uppercase'},
-  approvalRow: {flexDirection: 'row', gap: 10, marginTop: -4, marginBottom: 10},
+  approvalRow: {flexDirection: 'row', gap: 9, marginTop: -5, marginBottom: 12, padding: 8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white},
   approvalBtn: {
     flex: 1,
     minHeight: 42,
@@ -1181,9 +1268,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  rejectBtn: {backgroundColor: colors.dangerLight, borderWidth: 1, borderColor: colors.danger},
+  rejectBtn: {backgroundColor: colors.white, borderWidth: 1, borderColor: colors.danger},
   rejectBtnText: {color: colors.danger, fontSize: 13, fontWeight: '900'},
-  approveBtn: {backgroundColor: colors.success},
+  approveBtn: {backgroundColor: '#16A34A'},
   approveBtnText: {color: colors.white, fontSize: 13, fontWeight: '900'},
   successCard: {padding: 13, marginBottom: 10, borderRadius: 12, backgroundColor: colors.successLight},
   successCardText: {color: colors.success, fontSize: 13, fontWeight: '800'},

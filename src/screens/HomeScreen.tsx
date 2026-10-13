@@ -105,6 +105,25 @@ function profilePhotoUrl(profile: any) {
   return `${API_MEDIA_BASE_URL}/media/${String(path).replace(/^\//, '')}`;
 }
 
+function payslipLabel(item: any) {
+  const namedPeriod = field(item, ['monthName', 'month', 'payPeriod'], '');
+  if (namedPeriod && namedPeriod !== '-') return String(namedPeriod);
+  const start = field(item, ['startDate'], '');
+  if (start) {
+    const date = new Date(start);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+    }
+  }
+  return 'Payslip';
+}
+
+function payslipNumber(item: any, keys: string[]) {
+  const value = field(item, keys, 0);
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function statusTone(status?: string) {
   const text = String(status || '').toLowerCase();
   if (text.includes('approved') || text.includes('paid') || text.includes('present')) {
@@ -1329,15 +1348,6 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     return (
       <>
         <View style={styles.attendanceFilter}>
-          <View style={styles.attendanceFilterHead}>
-            <View style={styles.attendanceFilterIcon}>
-              <Icon name="calendar-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.attendanceFilterCopy}>
-              <Text style={styles.attendanceFilterTitle}>Find a date</Text>
-              <Text style={styles.attendanceFilterSub}>Use a date range to view attendance history</Text>
-            </View>
-          </View>
           <View style={styles.dateFilterRow}>
             <View style={styles.dateFilterField}>
               <CalendarDateField
@@ -1365,20 +1375,19 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 variant="filter"
               />
             </View>
-            <Pressable
-              onPress={() => {
-                if (!attendanceFrom && !attendanceTo) {
-                  Alert.alert('Attendance', 'Select at least one date to search.');
-                  return;
-                }
-                setAppliedAttendanceFrom(attendanceFrom);
-                setAppliedAttendanceTo(attendanceTo);
-              }}
-              style={({pressed}) => [styles.dateFilterSearch, pressed && styles.pressed]}>
-              <Icon name="search-outline" size={20} color={colors.white} />
-              <Text style={styles.dateFilterSearchText}>Search</Text>
-            </Pressable>
           </View>
+          <Pressable
+            onPress={() => {
+              if (!attendanceFrom && !attendanceTo) {
+                Alert.alert('Attendance', 'Select at least one date to search.');
+                return;
+              }
+              setAppliedAttendanceFrom(attendanceFrom);
+              setAppliedAttendanceTo(attendanceTo);
+            }}
+            style={({pressed}) => [styles.dateFilterSearch, pressed && styles.pressed]}>
+            <Icon name="search-outline" size={18} color={colors.white} />
+          </Pressable>
           {(attendanceFrom || attendanceTo) && (
             <Pressable
               onPress={() => {
@@ -1396,11 +1405,11 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         </View>
 
         <View style={styles.attendanceHistoryHead}>
-          <View>
-            <Text style={styles.attendanceHistoryTitle}>Attendance</Text>
+          <Text style={styles.attendanceHistoryTitle}>Attendance</Text>
+          <View style={styles.attendanceHistoryMeta}>
             <Text style={styles.attendanceHistorySub}>{attendanceLoading ? 'Loading selected dates…' : `${filteredAttendance.length} record${filteredAttendance.length === 1 ? '' : 's'} found`}</Text>
+            {(appliedAttendanceFrom || appliedAttendanceTo) && <Pill text="Filtered" />}
           </View>
-          {(appliedAttendanceFrom || appliedAttendanceTo) && <Pill text="Filtered" />}
         </View>
 
         {filteredAttendance.length ? (
@@ -1515,16 +1524,33 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
 
     return (
       <View style={styles.plainList}>
+        <View style={styles.payslipIntro}>
+          <View style={styles.payslipIntroIcon}><Icon name="receipt-outline" size={21} color={colors.primary} /></View>
+          <View style={styles.payslipIntroCopy}>
+            <Text style={styles.payslipIntroTitle}>Salary slips</Text>
+            <Text style={styles.payslipIntroText}>Open a payslip to see your earnings, deductions and net pay.</Text>
+          </View>
+        </View>
         {payslips.slice(0, 12).map(item => (
           <Pressable key={String(field(item, ['id', 'payrollId', 'month']))} onPress={() => setSelectedPayslip(item)} style={({pressed}) => pressed && styles.pressed}>
-            <RecordCard
-              title={field(item, ['monthName', 'month', 'payPeriod'], 'Payslip')}
-              subtitle={`Gross ${money(field(item, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')}`}
-              meta={`Net ${money(field(item, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}`}
-              status={field(item, ['status', 'paymentStatus'], '')}
-            >
-              <Text style={styles.openPayslipText}>Tap to open payslip</Text>
-            </RecordCard>
+            <Card style={styles.payslipListCard}>
+              <View style={styles.payslipListTop}>
+                <View style={styles.payslipMonthIcon}><Icon name="document-text-outline" size={21} color={colors.primary} /></View>
+                <View style={styles.payslipListCopy}>
+                  <Text style={styles.payslipListTitle}>{payslipLabel(item)}</Text>
+                  <Text style={styles.payslipListPeriod}>{dateText(field(item, ['startDate'], ''))} – {dateText(field(item, ['endDate'], ''))}</Text>
+                </View>
+                <View style={[styles.payslipStatus, {backgroundColor: statusTone(field(item, ['status', 'paymentStatus'], '')).bg}]}>
+                  <Text style={[styles.payslipStatusText, {color: statusTone(field(item, ['status', 'paymentStatus'], '')).fg}]}>{String(field(item, ['status', 'paymentStatus'], '')).replace(/_/g, ' ')}</Text>
+                </View>
+              </View>
+              <View style={styles.payslipListAmounts}>
+                <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Gross pay</Text><Text style={styles.payslipAmountValue}>{money(field(item, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')}</Text></View>
+                <View style={styles.payslipAmountDivider} />
+                <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Net pay</Text><Text style={[styles.payslipAmountValue, styles.payslipNetValue]}>{money(field(item, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
+                <Icon name="chevron-forward" size={19} color={colors.primary} />
+              </View>
+            </Card>
           </Pressable>
         ))}
         <Modal visible={!!selectedPayslip} animationType="slide" transparent onRequestClose={() => setSelectedPayslip(null)}>
@@ -1532,16 +1558,24 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
             <View style={styles.modalHandle} />
             <Pressable onPress={() => setSelectedPayslip(null)} style={styles.modalClose}><Icon name="close-outline" size={20} color={colors.textMid} /></Pressable>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <SectionTitle title={field(selectedPayslip, ['monthName', 'month', 'payPeriod'], 'Payslip')} subtitle="Salary statement" icon="wallet-outline" />
+              <View style={styles.payslipStatementHead}>
+                <View style={styles.payslipStatementIcon}><Icon name="receipt-outline" size={25} color={colors.white} /></View>
+                <Text style={styles.payslipStatementTitle}>{payslipLabel(selectedPayslip)}</Text>
+                <Text style={styles.payslipStatementSub}>Salary statement • {employeeName(profile)}</Text>
+              </View>
               <Card style={styles.payslipDetailCard}>
-                <FieldRow label="Period" value={`${dateText(field(selectedPayslip, ['startDate'], ''))} to ${dateText(field(selectedPayslip, ['endDate'], ''))}`} />
-                <FieldRow label="Basic Pay" value={money(field(selectedPayslip, ['basicPay', 'basicSalary'], ''), profile?.currencySymbol || '')} />
-                <FieldRow label="Allowances" value={money(field(selectedPayslip, ['totalAllowances', 'allowances'], ''), profile?.currencySymbol || '')} />
-                <FieldRow label="Deductions" value={money(field(selectedPayslip, ['totalDeductions', 'deductions'], ''), profile?.currencySymbol || '')} />
-                <FieldRow label="Gross Pay" value={money(field(selectedPayslip, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')} />
-                <FieldRow label="Net Pay" value={money(field(selectedPayslip, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')} />
-                <FieldRow label="Status" value={field(selectedPayslip, ['status', 'paymentStatus'], '')} />
-                <FieldRow label="Pay Date" value={dateText(field(selectedPayslip, ['payDate', 'paymentDate'], ''))} />
+                <View style={styles.payslipPeriodRow}><View><Text style={styles.payslipSectionLabel}>PAY PERIOD</Text><Text style={styles.payslipPeriodText}>{dateText(field(selectedPayslip, ['startDate'], ''))} – {dateText(field(selectedPayslip, ['endDate'], ''))}</Text></View><View style={[styles.payslipStatus, {backgroundColor: statusTone(field(selectedPayslip, ['status', 'paymentStatus'], '')).bg}]}><Text style={[styles.payslipStatusText, {color: statusTone(field(selectedPayslip, ['status', 'paymentStatus'], '')).fg}]}>{String(field(selectedPayslip, ['status', 'paymentStatus'], '')).replace(/_/g, ' ')}</Text></View></View>
+                <View style={styles.payslipDivider} />
+                <Text style={styles.payslipSectionLabel}>EARNINGS</Text>
+                <FieldRow label="Basic pay" value={money(field(selectedPayslip, ['basicPay', 'basicSalary'], ''), profile?.currencySymbol || '')} />
+                {payslipNumber(selectedPayslip, ['housingAllowance']) > 0 && <FieldRow label="Housing allowance" value={money(field(selectedPayslip, ['housingAllowance'], ''), profile?.currencySymbol || '')} />}
+                {payslipNumber(selectedPayslip, ['transportAllowance']) > 0 && <FieldRow label="Transport allowance" value={money(field(selectedPayslip, ['transportAllowance'], ''), profile?.currencySymbol || '')} />}
+                {payslipNumber(selectedPayslip, ['otherAllowance']) > 0 && <FieldRow label="Other allowance" value={money(field(selectedPayslip, ['otherAllowance'], ''), profile?.currencySymbol || '')} />}
+                <FieldRow label="Gross pay" value={money(field(selectedPayslip, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')} />
+                <View style={styles.payslipDivider} />
+                <Text style={styles.payslipSectionLabel}>DEDUCTIONS</Text>
+                <FieldRow label="Total deductions" value={money(field(selectedPayslip, ['deduction', 'totalDeductions', 'deductions'], ''), profile?.currencySymbol || '')} />
+                <View style={styles.payslipNetBlock}><View><Text style={styles.payslipNetLabel}>NET PAY</Text><Text style={styles.payslipNetDate}>Pay date: {dateText(field(selectedPayslip, ['payDate', 'paymentDate'], ''))}</Text></View><Text style={styles.payslipNetAmount}>{money(field(selectedPayslip, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
               </Card>
               <PrimaryButton title="Close" variant="outline" onPress={() => setSelectedPayslip(null)} />
             </ScrollView>
@@ -1949,7 +1983,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     paddingHorizontal: 14,
     paddingTop: 14,
-    paddingBottom: 46,
+    paddingBottom: 14,
     position: 'relative',
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -1959,9 +1993,9 @@ const styles = StyleSheet.create({
   featureIcon: {width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)'},
   featureLabel: {color: colors.text, fontSize: 16, lineHeight: 20, fontFamily: fonts.bold, marginTop: 12},
   featureDesc: {color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: fonts.regular, marginTop: 4},
-  // Anchor the arrow to its own card.  It must not participate in the text
-  // flow, otherwise it appears in the gap between adjacent quick actions.
-  openRow: {position: 'absolute', right: 12, bottom: 12, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
+  // Keep the action separate from the copy. In the top-right it stays clear
+  // of long labels/descriptions on smaller phones.
+  openRow: {position: 'absolute', right: 12, top: 14, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
   openText: {display: 'none'},
   // The overview content has a 12px page inset. Pull only this summary card
   // out by 6px so it reads as the primary full-width panel without touching
@@ -1994,15 +2028,10 @@ const styles = StyleSheet.create({
   metricIcon: {width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 10},
   metricLabel: {color: colors.muted, fontSize: 12, fontFamily: fonts.semibold, textTransform: 'uppercase'},
   metricValue: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 5},
-  attendanceFilter: {marginHorizontal: -10, marginBottom: 24, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 18, backgroundColor: '#F1F2FF', borderBottomWidth: 1, borderBottomColor: '#E3E5FC'},
-  attendanceFilterHead: {flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16},
-  attendanceFilterIcon: {width: 46, height: 46, borderRadius: 15, backgroundColor: '#E8E9FF', alignItems: 'center', justifyContent: 'center'},
-  attendanceFilterCopy: {flex: 1},
-  attendanceFilterTitle: {color: colors.text, fontSize: 20, fontFamily: fonts.bold},
-  attendanceFilterSub: {color: colors.muted, fontSize: 13, fontFamily: fonts.medium, marginTop: 3},
+  attendanceFilter: {marginTop: 16, marginBottom: 24, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white},
   filterCard: {padding: 0, marginBottom: 12, overflow: 'hidden', borderRadius: 12},
-  dateFilterRow: {flexDirection: 'row', alignItems: 'flex-end', gap: 8},
-  dateFilterField: {flex: 1},
+  dateFilterRow: {flexDirection: 'row', alignItems: 'flex-end', gap: 10},
+  dateFilterField: {flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0},
   dateFilterLabel: {color: colors.text, fontSize: 13, fontFamily: fonts.bold, marginBottom: 7},
   dateFilterInput: {
     minHeight: 50,
@@ -2015,47 +2044,47 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   dateFilterButton: {
-    minHeight: 44,
+    minHeight: 48,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     backgroundColor: colors.surfaceAlt,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
   },
-  dateFilterSearch: {width: 68, minHeight: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: colors.primary},
-  dateFilterSearchText: {color: colors.white, fontSize: 10, fontFamily: fonts.bold},
+  dateFilterSearch: {width: 58, height: 58, flexShrink: 0, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
   clearFilterButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12, borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 7},
   clearFilterText: {color: colors.primary, fontSize: 12, fontWeight: '900'},
-  attendanceHistoryHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22},
+  attendanceHistoryHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 22},
   attendanceHistoryTitle: {color: colors.text, fontSize: 24, fontFamily: fonts.bold},
-  attendanceHistorySub: {color: colors.muted, fontSize: 14, fontFamily: fonts.semibold, marginTop: 4},
+  attendanceHistoryMeta: {flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexShrink: 1},
+  attendanceHistorySub: {color: colors.muted, fontSize: 12, fontFamily: fonts.semibold, textAlign: 'right'},
   attendanceSection: {marginBottom: 26},
   attendanceSectionTitle: {color: colors.text, fontSize: 17, fontFamily: fonts.bold, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 11},
   attendanceList: {gap: 12},
-  attendanceEntry: {backgroundColor: colors.white, paddingHorizontal: 15, paddingVertical: 16, borderWidth: 1, borderLeftWidth: 5, borderColor: colors.border, borderRadius: 20},
+  attendanceEntry: {backgroundColor: colors.white, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderLeftWidth: 5, borderColor: colors.border, borderRadius: 17},
   attendanceEntryHead: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10},
   attendanceHeadingGroup: {flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10},
-  attendanceDateIcon: {width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center'},
+  attendanceDateIcon: {width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center'},
   attendanceDateWrap: {flex: 1},
   attendanceDate: {color: colors.text, fontSize: 17, fontFamily: fonts.bold},
   attendanceHours: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 3},
-  attendanceTimes: {flexDirection: 'row', alignItems: 'stretch', marginTop: 15, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border},
+  attendanceTimes: {flexDirection: 'row', alignItems: 'stretch', marginTop: 11, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border},
   attendanceTimeColumn: {flex: 1, minWidth: 0},
-  attendanceMetricIcon: {width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 7},
+  attendanceMetricIcon: {width: 27, height: 27, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 5},
   attendanceTimeDivider: {width: 1, backgroundColor: colors.border, marginHorizontal: 9},
   attendanceTimeLabel: {color: colors.subtle, fontSize: 8, fontFamily: fonts.bold, letterSpacing: 0.35},
-  attendanceTimeValue: {color: colors.text, fontSize: 13, fontFamily: fonts.bold, marginTop: 4},
-  attendanceLocations: {flexDirection: 'row', gap: 10, marginTop: 15, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border},
+  attendanceTimeValue: {color: colors.text, fontSize: 13, fontFamily: fonts.bold, marginTop: 3},
+  attendanceLocations: {flexDirection: 'row', gap: 8, marginTop: 11, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border},
   attendanceLocationRow: {flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 7},
-  attendanceLocationIcon: {width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center'},
+  attendanceLocationIcon: {width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center'},
   attendanceLocationCopy: {flex: 1},
   attendanceLocationLabel: {color: colors.subtle, fontSize: 9, fontWeight: '900', letterSpacing: 0.4},
-  attendanceLocationValue: {color: colors.textMid, fontSize: 12, fontWeight: '700', lineHeight: 17, marginTop: 2},
-  attendanceRegulariseLink: {alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 15, borderRadius: 12, backgroundColor: colors.warningLight, paddingVertical: 11},
+  attendanceLocationValue: {color: colors.textMid, fontSize: 12, fontWeight: '700', lineHeight: 16, marginTop: 1},
+  attendanceRegulariseLink: {alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 11, borderRadius: 11, backgroundColor: colors.warningLight, paddingVertical: 9},
   attendanceRegulariseText: {color: colors.warning, fontSize: 12, fontWeight: '900'},
   attendanceRequestState: {color: colors.warning, fontSize: 12, fontWeight: '800', marginTop: 12},
   panel: {padding: 0, marginBottom: 12, overflow: 'hidden'},
@@ -2232,8 +2261,38 @@ const styles = StyleSheet.create({
   carrOverdue: {color: colors.danger},
   carrDeliverable: {marginTop: 12, color: colors.textMid, fontSize: 13, fontWeight: '800'},
   carrReadOnly: {marginTop: 18, color: colors.muted, fontSize: 13, fontWeight: '700'},
-  openPayslipText: {marginTop: 10, color: colors.primary, fontSize: 12, fontWeight: '900'},
-  payslipDetailCard: {marginBottom: 16},
+  payslipIntro: {flexDirection: 'row', gap: 11, alignItems: 'center', paddingHorizontal: 4, marginBottom: 16},
+  payslipIntroIcon: {width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
+  payslipIntroCopy: {flex: 1},
+  payslipIntroTitle: {color: colors.text, fontSize: 18, fontFamily: fonts.bold},
+  payslipIntroText: {color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: fonts.medium, marginTop: 2},
+  payslipListCard: {marginBottom: 11, padding: 14, borderRadius: 16},
+  payslipListTop: {flexDirection: 'row', alignItems: 'center', gap: 10},
+  payslipMonthIcon: {width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
+  payslipListCopy: {flex: 1, minWidth: 0},
+  payslipListTitle: {color: colors.text, fontSize: 15, fontFamily: fonts.bold},
+  payslipListPeriod: {color: colors.muted, fontSize: 11, fontFamily: fonts.medium, marginTop: 3},
+  payslipStatus: {borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5},
+  payslipStatusText: {fontSize: 9, fontFamily: fonts.bold, textTransform: 'uppercase'},
+  payslipListAmounts: {flexDirection: 'row', alignItems: 'center', marginTop: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border},
+  payslipListAmount: {flex: 1},
+  payslipAmountLabel: {color: colors.muted, fontSize: 10, fontFamily: fonts.semibold, textTransform: 'uppercase'},
+  payslipAmountValue: {color: colors.text, fontSize: 14, fontFamily: fonts.bold, marginTop: 3},
+  payslipNetValue: {color: colors.success},
+  payslipAmountDivider: {height: 30, width: 1, backgroundColor: colors.border, marginHorizontal: 14},
+  payslipStatementHead: {alignItems: 'center', paddingTop: 3, paddingBottom: 18},
+  payslipStatementIcon: {width: 52, height: 52, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, marginBottom: 9},
+  payslipStatementTitle: {color: colors.text, fontSize: 21, fontFamily: fonts.bold, textAlign: 'center'},
+  payslipStatementSub: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, textAlign: 'center', marginTop: 4},
+  payslipDetailCard: {marginBottom: 16, padding: 16},
+  payslipPeriodRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10},
+  payslipSectionLabel: {color: colors.subtle, fontSize: 10, letterSpacing: 0.7, fontFamily: fonts.bold},
+  payslipPeriodText: {color: colors.text, fontSize: 13, fontFamily: fonts.semibold, marginTop: 5},
+  payslipDivider: {height: 1, backgroundColor: colors.border, marginVertical: 15},
+  payslipNetBlock: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 14, padding: 14, borderRadius: 14, backgroundColor: colors.successLight},
+  payslipNetLabel: {color: colors.success, fontSize: 10, letterSpacing: 0.6, fontFamily: fonts.bold},
+  payslipNetDate: {color: colors.textMid, fontSize: 11, fontFamily: fonts.medium, marginTop: 4},
+  payslipNetAmount: {color: colors.success, fontSize: 18, fontFamily: fonts.bold, textAlign: 'right'},
   datePickerButton: {
     minHeight: 48,
     marginHorizontal: 16,

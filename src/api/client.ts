@@ -88,13 +88,14 @@ export const api = {
       headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {},
     }),
   accessibleCompanies: () => request<any[]>('/companies/accessible'),
-  approveLeaveRequest: (id: number | string) => request<any>(`/leave/requests/${id}/approve`, {method: 'POST'}),
-  rejectLeaveRequest: (id: number | string, reason?: string) =>
-    request<any>(`/leave/requests/${id}/reject`, {method: 'POST', body: JSON.stringify({reason})}),
-  approveRegularisation: (id: number | string, remarks?: string) =>
-    request<any>(`/attendance/regularisation/${id}/approve`, {method: 'POST', body: JSON.stringify({remarks})}),
-  rejectRegularisation: (id: number | string, remarks?: string) =>
-    request<any>(`/attendance/regularisation/${id}/reject`, {method: 'POST', body: JSON.stringify({remarks})}),
+  approveLeaveRequest: (id: number | string, filterCompanyId?: number | string | null) =>
+    request<any>(`/leave/requests/${id}/approve`, {method: 'POST', headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {}}),
+  rejectLeaveRequest: (id: number | string, reason?: string, filterCompanyId?: number | string | null) =>
+    request<any>(`/leave/requests/${id}/reject`, {method: 'POST', body: JSON.stringify({reason}), headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {}}),
+  approveRegularisation: (id: number | string, remarks?: string, filterCompanyId?: number | string | null) =>
+    request<any>(`/attendance/regularisation/${id}/approve`, {method: 'POST', body: JSON.stringify({remarks}), headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {}}),
+  rejectRegularisation: (id: number | string, remarks?: string, filterCompanyId?: number | string | null) =>
+    request<any>(`/attendance/regularisation/${id}/reject`, {method: 'POST', body: JSON.stringify({remarks}), headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {}}),
   assignableUsers: () => request<any[]>('/user-roles/users'),
   assignRole: (data: {userId: number | string; roleName: string; companyId: number | string; accessScope: string}) =>
     request<any>('/user-roles/assign', {method: 'POST', body: JSON.stringify(data)}),
