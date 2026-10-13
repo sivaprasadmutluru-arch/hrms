@@ -117,6 +117,8 @@ public class OrganizationService {
      */
     @Transactional
     public CreateOrganizationResponse createOrganization(CreateOrganizationRequest request) {
+        validateInitialAdminCredentials(request);
+
         Organization organization = new Organization();
         organization.setName(request.getName());
         organization.setContactEmail(request.getContactEmail());
@@ -166,6 +168,23 @@ public class OrganizationService {
         Company headOffice = companyService.createHeadOffice(hoRequest);
 
         return new CreateOrganizationResponse(savedOrg, headOffice.getId(), headOffice.isSchemaReady());
+    }
+
+    /**
+     * A newly created organization must have a real, usable first administrator.
+     * Contact details belong to the organization and are not authentication
+     * credentials, so allowing the form to omit admin credentials produced an
+     * organization that no person could log in to manage.
+     */
+    private void validateInitialAdminCredentials(CreateOrganizationRequest request) {
+        boolean hasUsername = request.getAdminUsername() != null && !request.getAdminUsername().isBlank();
+        boolean hasEmail = request.getAdminEmail() != null && !request.getAdminEmail().isBlank();
+        boolean hasPassword = request.getAdminPassword() != null && !request.getAdminPassword().isBlank();
+
+        if (!hasUsername || !hasEmail || !hasPassword) {
+            throw new BadRequestException(
+                    "Enterprise admin username, email, and password are required when creating an organization");
+        }
     }
 
     @Transactional

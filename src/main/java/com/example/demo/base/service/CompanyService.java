@@ -53,6 +53,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CompanyService {
 
+    private static final String INITIAL_ENTERPRISE_ADMIN_REASON =
+            "Initial enterprise administrator provisioned during organization creation";
+
     // Self-reference is retained for the small public-data phases below.  Tenant DDL
     // is never invoked from this service or its HTTP request.
     @org.springframework.context.annotation.Lazy
@@ -150,6 +153,10 @@ public class CompanyService {
             roleReq.setRoleName(Role.RoleName.ENTERPRISE_ADMIN);
             roleReq.setCompanyId(headOffice.getId());
             roleReq.setAccessScope(UserRole.AccessScope.ENTERPRISE);
+            // Role changes require an audit reason. This is a system-generated
+            // first-admin assignment, so it gets a durable, explicit reason
+            // rather than bypassing the validation used for manual grants.
+            roleReq.setReason(INITIAL_ENTERPRISE_ADMIN_REASON);
             userRoleService.assignRole(roleReq);
             return adminUser.getId();
         }
