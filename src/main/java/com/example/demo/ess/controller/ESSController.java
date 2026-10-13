@@ -10,6 +10,8 @@ import com.example.demo.attendance.repository.AttendanceRepository;
 import com.example.demo.attendance.service.AttendanceService;
 import com.example.demo.auth.security.UserPrincipal;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.exception.BadRequestException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.employee.dto.EmployeeResponse;
 import com.example.demo.employee.dto.WorkInfoResponse;
 import com.example.demo.employee.entity.Employee;
@@ -24,9 +26,11 @@ import com.example.demo.leave.dto.AvailableLeaveDTO;
 import com.example.demo.leave.dto.LeaveRequestDTO;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.entity.LeaveType;
+import com.example.demo.leave.entity.LeaveRequestFile;
 import com.example.demo.leave.dto.LeaveMapper;
 import com.example.demo.leave.repository.AvailableLeaveRepository;
 import com.example.demo.leave.repository.LeaveRequestRepository;
+import com.example.demo.leave.repository.LeaveRequestFileRepository;
 import com.example.demo.leave.service.LeaveService;
 import com.example.demo.leave.service.LeavePeriodResolver;
 import com.example.demo.payroll.entity.Contract;
@@ -73,6 +77,7 @@ public class ESSController {
     private final EmployeeRepository employeeRepository;
     private final EmployeeWorkInformationRepository workInfoRepository;
     private final LeaveRequestRepository leaveRequestRepository;
+    private final LeaveRequestFileRepository leaveRequestFileRepository;
     private final AvailableLeaveRepository availableLeaveRepository;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceActivityRepository attendanceActivityRepository;
@@ -83,6 +88,7 @@ public class ESSController {
     private final ProfileEditFeatureRepository profileEditFeatureRepository;
     private final EmployeeBankDetailsRepository bankDetailsRepository;
     private final EmployeeService employeeService;
+    private final FileUploadService fileUploadService;
 
     // ── Profile ──────────────────────────────────────────────────────────────
 
@@ -257,11 +263,31 @@ public class ESSController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false, defaultValue = "FULL_DAY") LeaveRequest.LeaveDuration leaveDuration,
-            @RequestParam(required = false) String description) {
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) MultipartFile certificate) {
         Employee emp = resolveEmployee(auth);
-        LeaveRequest req = leaveService.applyLeave(
-                emp.getId(), leaveTypeId, startDate, endDate, description, emp.getCompany().getId(), leaveDuration);
-        return ResponseEntity.ok(req);
+        String attachmentPath = null;
+        if (certificate != null && !certificate.isEmpty()) {
+            if (certificate.getSize() > 10L * 1024 * 1024) {
+                throw new BadRequestException("The sick leave certificate must be 10 MB or smaller.");
+            }
+            attachmentPath = fileUploadService.store(certificate, "leave-certificates");
+        }
+        try {
+            LeaveRequest req = leaveService.applyLeave(emp.getId(), leaveTypeId, startDate, endDate, description,
+                    emp.getCompany().getId(), leaveDuration, attachmentPath);
+            if (attachmentPath != null) {
+                LeaveRequestFile file = new LeaveRequestFile();
+                file.setLeaveRequest(req);
+                file.setFilePath(attachmentPath);
+                file.setFileName(certificate.getOriginalFilename());
+                leaveRequestFileRepository.save(file);
+            }
+            return ResponseEntity.ok(req);
+        } catch (RuntimeException ex) {
+            fileUploadService.delete(attachmentPath);
+            throw ex;
+        }
     }
 
     // ── Attendance ────────────────────────────────────────────────────────────

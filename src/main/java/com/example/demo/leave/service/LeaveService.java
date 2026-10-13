@@ -7,6 +7,7 @@ import com.example.demo.common.event.LeaveApprovedEvent;
 import com.example.demo.common.event.LeaveRejectedEvent;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
@@ -48,6 +49,7 @@ public class LeaveService {
     private final LeaveRequestConditionApprovalRepository conditionApprovalRepository;
     private final LeaveRequestCommentRepository requestCommentRepository;
     private final LeaveRequestFileRepository requestFileRepository;
+    private final FileUploadService fileUploadService;
     private final com.example.demo.employee.service.ReportingManagerService reportingManagers;
     private final com.example.demo.notification.service.NotificationService notifications;
 
@@ -207,18 +209,29 @@ public class LeaveService {
     public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
                                     LocalDate endDate, String description, Long companyId) {
         return applyLeave(employeeId, leaveTypeId, startDate, endDate, description, companyId,
-                LeaveRequest.LeaveDuration.FULL_DAY);
+                LeaveRequest.LeaveDuration.FULL_DAY, null);
     }
 
     @Transactional
     public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
                                     LocalDate endDate, String description, Long companyId,
                                     LeaveRequest.LeaveDuration leaveDuration) {
+        return applyLeave(employeeId, leaveTypeId, startDate, endDate, description, companyId,
+                leaveDuration, null);
+    }
+
+    @Transactional
+    public LeaveRequest applyLeave(Long employeeId, Long leaveTypeId, LocalDate startDate,
+                                    LocalDate endDate, String description, Long companyId,
+                                    LeaveRequest.LeaveDuration leaveDuration, String attachmentPath) {
         validateApplicationDates(startDate, endDate, LocalDate.now());
         LeaveRequest.LeaveDuration duration = leaveDuration == null
                 ? LeaveRequest.LeaveDuration.FULL_DAY : leaveDuration;
         LeaveType leaveType = leaveTypeRepository.findById(leaveTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveType", leaveTypeId));
+        if (requiresCertificate(leaveType) && !hasStoredCertificate(attachmentPath)) {
+            throw new BadRequestException("A sick leave certificate is required before submitting this leave request.");
+        }
 
         double workingDays = calculateWorkingDays(startDate, endDate, companyId, leaveType, employeeId);
         double days = resolveRequestedDays(workingDays, duration, startDate, endDate);
@@ -264,6 +277,7 @@ public class LeaveService {
         request.setRequestedDays(days);
         request.setLeaveDuration(duration);
         request.setDescription(description);
+        request.setAttachmentPath(attachmentPath == null || attachmentPath.isBlank() ? null : attachmentPath.trim());
         request.setStatus(LeaveRequest.LeaveStatus.REQUESTED);
         request.setCompany(companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId)));
@@ -283,6 +297,25 @@ public class LeaveService {
                     "leave", saved.getId(), saved.getCompany());
         }
         return saved;
+    }
+
+    private boolean requiresCertificate(LeaveType leaveType) {
+        if (Boolean.TRUE.equals(leaveType.getRequireAttachment())) return true;
+        String normalizedName = leaveType.getName() == null ? ""
+                : leaveType.getName().replaceAll("[^a-zA-Z]", "").toLowerCase(java.util.Locale.ROOT);
+        return "sickleave".equals(normalizedName);
+    }
+
+    private boolean hasStoredCertificate(String attachmentPath) {
+        if (attachmentPath == null || attachmentPath.isBlank()
+                || !attachmentPath.replace('\\', '/').startsWith("leave-certificates/")) {
+            return false;
+        }
+        try {
+            return java.nio.file.Files.isRegularFile(fileUploadService.resolve(attachmentPath));
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     // ─── Approve / Reject / Cancel ────────────────────────────────────────────
@@ -489,6 +522,7 @@ public class LeaveService {
 
     @Transactional
     public LeaveType createLeaveType(LeaveType leaveType) {
+        if (isSickLeaveType(leaveType.getName())) leaveType.setRequireAttachment(true);
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (Boolean.TRUE.equals(leaveType.getIsOrganizationWide())) {
             if (scope != null && !scope.hasUnrestrictedAccess()
@@ -529,7 +563,7 @@ public class LeaveService {
         lt.setExcludeHoliday(updated.getExcludeHoliday());
         lt.setExcludeCompanyLeave(updated.getExcludeCompanyLeave());
         lt.setExcludeWeekend(updated.getExcludeWeekend());
-        lt.setRequireAttachment(updated.getRequireAttachment());
+        lt.setRequireAttachment(isSickLeaveType(updated.getName()) || Boolean.TRUE.equals(updated.getRequireAttachment()));
         lt.setLimitLeave(updated.getLimitLeave());
         lt.setIsEncashable(updated.getIsEncashable());
         lt.setAccrualEnabled(updated.getAccrualEnabled());
@@ -544,6 +578,11 @@ public class LeaveService {
                     : employeeTypeRepository.findAllById(ids));
         }
         return leaveTypeRepository.save(lt);
+    }
+
+    private boolean isSickLeaveType(String name) {
+        return name != null && "sickleave".equals(name.replaceAll("[^a-zA-Z]", "")
+                .toLowerCase(java.util.Locale.ROOT));
     }
 
     private void resolveApplicableEmployeeTypes(LeaveType leaveType) {

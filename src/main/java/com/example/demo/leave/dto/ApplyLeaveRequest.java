@@ -10,5 +10,6 @@ public record ApplyLeaveRequest(
         LocalDate endDate,
         LeaveDuration leaveDuration,
         String description,
-        Long companyId
+        Long companyId,
+        String attachmentPath
 ) {}

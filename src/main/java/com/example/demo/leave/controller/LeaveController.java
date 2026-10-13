@@ -4,6 +4,7 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.base.entity.Department;
@@ -93,6 +94,7 @@ public class LeaveController {
     private final DepartmentRepository departmentRepository;
     private final CompanyLeaveRepository companyLeaveRepository;
     private final LeaveRequestRepository leaveRequestRepository;
+    private final FileUploadService fileUploadService;
     private final LeaveAllocationRepository leaveAllocationRepository;
     private final NotificationService notificationService;
 
@@ -252,7 +254,41 @@ public class LeaveController {
 
         return ResponseEntity.ok(LeaveMapper.toDTO(
                 leaveService.applyLeave(targetEmployee.getId(), body.leaveTypeId(), body.startDate(), body.endDate(),
-                        body.description(), targetCompanyId, body.leaveDuration())));
+                        body.description(), targetCompanyId, body.leaveDuration(), body.attachmentPath())));
+    }
+
+    @PostMapping(value = "/apply-with-certificate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('leave:create')")
+    @Operation(summary = "Apply for leave with a supporting certificate")
+    public ResponseEntity<LeaveRequestDTO> applyWithCertificate(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam Long leaveTypeId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "FULL_DAY") LeaveRequest.LeaveDuration leaveDuration,
+            @RequestParam(required = false) String description,
+            @RequestParam("certificate") MultipartFile certificate) {
+        if (certificate == null || certificate.isEmpty()) {
+            throw new BadRequestException("A sick leave certificate is required before submitting this leave request.");
+        }
+        if (certificate.getSize() > 10L * 1024 * 1024) {
+            throw new BadRequestException("The sick leave certificate must be 10 MB or smaller.");
+        }
+        String attachmentPath = fileUploadService.store(certificate, "leave-certificates");
+        try {
+            LeaveRequestDTO request = apply(principal, new ApplyLeaveRequest(employeeId, leaveTypeId, startDate,
+                    endDate, leaveDuration, description, null, attachmentPath)).getBody();
+            LeaveRequestFile file = new LeaveRequestFile();
+            file.setLeaveRequest(leaveService.getRequestById(request.id()));
+            file.setFilePath(attachmentPath);
+            file.setFileName(certificate.getOriginalFilename());
+            leaveRequestFileRepository.save(file);
+            return ResponseEntity.ok(request);
+        } catch (RuntimeException ex) {
+            fileUploadService.delete(attachmentPath);
+            throw ex;
+        }
     }
 
     @PostMapping("/requests/{id}/approve")
