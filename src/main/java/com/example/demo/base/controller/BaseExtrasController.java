@@ -3,7 +3,9 @@ package com.example.demo.base.controller;
 import com.example.demo.auth.repository.UserRepository;
 import com.example.demo.base.entity.*;
 import com.example.demo.base.repository.*;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.common.context.CompanyContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -480,10 +482,11 @@ public class BaseExtrasController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     public ResponseEntity<JobPosition> createJobPosition(@RequestBody JobPosition jp) {
-        if (jp.getCompany() != null && jp.getCompany().getId() != null)
-            jp.setCompany(companyRepository.getReferenceById(jp.getCompany().getId()));
-        if (jp.getDepartment() != null && jp.getDepartment().getId() != null)
-            jp.setDepartment(departmentRepository.getReferenceById(jp.getDepartment().getId()));
+        Company company = requireActiveCompany("job position");
+        Department department = requireDepartmentInCompany(jp.getDepartment(), company.getId());
+        jp.setName(requireName(jp.getName(), "Job position name"));
+        jp.setCompany(company);
+        jp.setDepartment(department);
         return ResponseEntity.ok(jobPositionRepository.save(jp));
     }
 
@@ -493,16 +496,21 @@ public class BaseExtrasController {
     public ResponseEntity<JobPosition> updateJobPosition(@PathVariable Long id, @RequestBody JobPosition updated) {
         JobPosition jp = jobPositionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("JobPosition", id));
-        jp.setName(updated.getName());
-        if (updated.getDepartment() != null && updated.getDepartment().getId() != null)
-            jp.setDepartment(departmentRepository.getReferenceById(updated.getDepartment().getId()));
+        Company company = requireActiveCompany("job position");
+        requireOwnedByActiveCompany(jp.getCompany().getId(), company.getId(), "Job position");
+        jp.setName(requireName(updated.getName(), "Job position name"));
+        jp.setDepartment(requireDepartmentInCompany(updated.getDepartment(), company.getId()));
         return ResponseEntity.ok(jobPositionRepository.save(jp));
     }
 
     @DeleteMapping("/job-positions/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     public ResponseEntity<Map<String, String>> deleteJobPosition(@PathVariable Long id) {
-        jobPositionRepository.deleteById(id);
+        JobPosition jp = jobPositionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("JobPosition", id));
+        Company company = requireActiveCompany("job position");
+        requireOwnedByActiveCompany(jp.getCompany().getId(), company.getId(), "Job position");
+        jobPositionRepository.delete(jp);
         return ResponseEntity.ok(Map.of("message", "Deleted"));
     }
 
@@ -520,10 +528,11 @@ public class BaseExtrasController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     public ResponseEntity<JobRole> createJobRole(@RequestBody JobRole jr) {
-        if (jr.getCompany() != null && jr.getCompany().getId() != null)
-            jr.setCompany(companyRepository.getReferenceById(jr.getCompany().getId()));
-        if (jr.getJobPosition() != null && jr.getJobPosition().getId() != null)
-            jr.setJobPosition(jobPositionRepository.getReferenceById(jr.getJobPosition().getId()));
+        Company company = requireActiveCompany("job role");
+        JobPosition jobPosition = requireJobPositionInCompany(jr.getJobPosition(), company.getId());
+        jr.setName(requireName(jr.getName(), "Job role name"));
+        jr.setCompany(company);
+        jr.setJobPosition(jobPosition);
         return ResponseEntity.ok(jobRoleRepository.save(jr));
     }
 
@@ -533,17 +542,74 @@ public class BaseExtrasController {
     public ResponseEntity<JobRole> updateJobRole(@PathVariable Long id, @RequestBody JobRole updated) {
         JobRole jr = jobRoleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("JobRole", id));
-        jr.setName(updated.getName());
-        if (updated.getJobPosition() != null && updated.getJobPosition().getId() != null)
-            jr.setJobPosition(jobPositionRepository.getReferenceById(updated.getJobPosition().getId()));
+        Company company = requireActiveCompany("job role");
+        requireOwnedByActiveCompany(jr.getCompany().getId(), company.getId(), "Job role");
+        jr.setName(requireName(updated.getName(), "Job role name"));
+        jr.setJobPosition(requireJobPositionInCompany(updated.getJobPosition(), company.getId()));
         return ResponseEntity.ok(jobRoleRepository.save(jr));
     }
 
     @DeleteMapping("/job-roles/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     public ResponseEntity<Map<String, String>> deleteJobRole(@PathVariable Long id) {
-        jobRoleRepository.deleteById(id);
+        JobRole jr = jobRoleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("JobRole", id));
+        Company company = requireActiveCompany("job role");
+        requireOwnedByActiveCompany(jr.getCompany().getId(), company.getId(), "Job role");
+        jobRoleRepository.delete(jr);
         return ResponseEntity.ok(Map.of("message", "Deleted"));
+    }
+
+    /**
+     * Base data is tenant-owned. Resolve the company from the authenticated request
+     * context instead of trusting a company id supplied by a browser or mobile app.
+     */
+    private Company requireActiveCompany(String resource) {
+        // Enterprise admins keep their head-office context in X-Company-Id and
+        // select a branch through X-Filter-Company-Id. For create/update actions,
+        // the selected branch is the actual owner of the record.
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        Long companyId = scope != null && scope.getFilterCompanyId() != null
+                ? scope.getFilterCompanyId()
+                : CompanyContext.get();
+        if (companyId == null) {
+            throw new BadRequestException("Select a company before creating or changing a " + resource);
+        }
+        return companyRepository.findById(companyId)
+                .orElseThrow(() -> new BadRequestException("The selected company no longer exists"));
+    }
+
+    private String requireName(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new BadRequestException(fieldName + " is required");
+        }
+        return value.trim();
+    }
+
+    private Department requireDepartmentInCompany(Department requestDepartment, Long companyId) {
+        if (requestDepartment == null || requestDepartment.getId() == null) {
+            throw new BadRequestException("Select a department before creating or changing a job position");
+        }
+        Department department = departmentRepository.findById(requestDepartment.getId())
+                .orElseThrow(() -> new BadRequestException("Selected department was not found"));
+        requireOwnedByActiveCompany(department.getCompany().getId(), companyId, "Selected department");
+        return department;
+    }
+
+    private JobPosition requireJobPositionInCompany(JobPosition requestJobPosition, Long companyId) {
+        if (requestJobPosition == null || requestJobPosition.getId() == null) {
+            throw new BadRequestException("Select a job position before creating or changing a job role");
+        }
+        JobPosition jobPosition = jobPositionRepository.findById(requestJobPosition.getId())
+                .orElseThrow(() -> new BadRequestException("Selected job position was not found"));
+        requireOwnedByActiveCompany(jobPosition.getCompany().getId(), companyId, "Selected job position");
+        return jobPosition;
+    }
+
+    private void requireOwnedByActiveCompany(Long recordCompanyId, Long activeCompanyId, String resource) {
+        if (!activeCompanyId.equals(recordCompanyId)) {
+            throw new BadRequestException(resource + " does not belong to the selected company");
+        }
     }
 
     // ---- Work Type Request Comments ----
