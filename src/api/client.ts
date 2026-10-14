@@ -21,6 +21,18 @@ export function setApiSession(session: {token?: string | null; companyId?: numbe
   companyId = session.companyId || null;
 }
 
+/**
+ * Native downloads cannot use the JavaScript fetch client.  Keep this small
+ * accessor here so protected file endpoints get exactly the same tenant and
+ * bearer context as normal API calls.
+ */
+export function getAuthenticatedDownloadHeaders(): Record<string, string> {
+  return {
+    ...(token ? {Authorization: `Bearer ${token}`} : {}),
+    ...(companyId ? {'X-Company-Id': String(companyId)} : {}),
+  };
+}
+
 function queryString(params?: Record<string, any>) {
   const search = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -135,6 +147,7 @@ export const api = {
   leaveTypes: () => request<any[]>('/ess/leave-types'),
   leaveBalance: () => request<any[]>('/ess/my-balance'),
   myPayslips: () => request<any[]>('/ess/my-payslips'),
+  payslipPdfUrl: (id: number | string) => `${API_BASE_URL}/payroll/payslips/${id}/pdf`,
   // The leave calendar endpoint requires the active company as a query parameter.
   // Keep the company header for tenant resolution, and send this explicit value for
   // the controller contract so an employee's calendar does not silently appear empty.

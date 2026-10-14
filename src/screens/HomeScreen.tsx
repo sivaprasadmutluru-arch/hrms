@@ -20,7 +20,8 @@ import Card from '../components/Card';
 import FieldRow from '../components/FieldRow';
 import Icon from '../components/Icon';
 import PrimaryButton from '../components/PrimaryButton';
-import {API_MEDIA_BASE_URL, api} from '../api/client';
+import {API_MEDIA_BASE_URL, api, getAuthenticatedDownloadHeaders} from '../api/client';
+import {downloadPayslipPdf} from '../native/PayslipDownload';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
@@ -1616,6 +1617,27 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 <FieldRow label="Total deductions" value={money(field(selectedPayslip, ['deduction', 'totalDeductions', 'deductions'], ''), profile?.currencySymbol || '')} />
                 <View style={styles.payslipNetBlock}><View><Text style={styles.payslipNetLabel}>NET PAY</Text><Text style={styles.payslipNetDate}>Pay date: {dateText(field(selectedPayslip, ['payDate', 'paymentDate'], ''))}</Text></View><Text style={styles.payslipNetAmount}>{money(field(selectedPayslip, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
               </Card>
+              <PrimaryButton
+                title="Download PDF"
+                onPress={async () => {
+                  const id = field(selectedPayslip, ['id', 'payrollId'], '');
+                  if (!id) {
+                    Alert.alert('PDF unavailable', 'This payslip does not have a valid identifier yet.');
+                    return;
+                  }
+                  try {
+                    const result = await downloadPayslipPdf(
+                      api.payslipPdfUrl(id),
+                      `payslip-${id}.pdf`,
+                      getAuthenticatedDownloadHeaders(),
+                    );
+                    Alert.alert('Download started', result);
+                  } catch (error: any) {
+                    Alert.alert('Download failed', error?.message || 'Could not download the payslip PDF.');
+                  }
+                }}
+              />
+              <View style={{height: 10}} />
               <PrimaryButton title="Close" variant="outline" onPress={() => setSelectedPayslip(null)} />
             </ScrollView>
           </View></View>
