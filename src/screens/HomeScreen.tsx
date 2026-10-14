@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Alert,
+  Button,
   Image,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,16 +13,18 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {pick, types} from '@react-native-documents/picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 import Card from '../components/Card';
 import FieldRow from '../components/FieldRow';
 import Icon from '../components/Icon';
 import PrimaryButton from '../components/PrimaryButton';
-import {API_MEDIA_BASE_URL, api, getAuthenticatedDownloadHeaders} from '../api/client';
+import {API_BASE_URL, API_MEDIA_BASE_URL, api, apiAuthHeaders} from '../api/client';
 import {downloadPayslipPdf} from '../native/PayslipDownload';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
@@ -119,6 +123,54 @@ function payslipLabel(item: any) {
   return 'Payslip';
 }
 
+function payslipId(item: any) {
+  return field(item, ['id', 'payslipId', 'paySlipId', 'payrollPayslipId'], '');
+}
+
+function safeFileName(value: string) {
+  const text = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return text || 'payslip';
+}
+
+function mediaUrl(path: any) {
+  if (!path) {
+    return null;
+  }
+  const value = String(path);
+  if (value.startsWith('http')) {
+    return value;
+  }
+  if (value.startsWith('/')) {
+    return `${API_MEDIA_BASE_URL}${value}`;
+  }
+  return `${API_MEDIA_BASE_URL}/media/${value.replace(/^\//, '')}`;
+}
+
+function payslipPdfUrl(item: any) {
+  const directUrl = field(
+    item,
+    ['pdfUrl', 'payslipUrl', 'downloadUrl', 'fileUrl', 'documentUrl', 'attachmentUrl'],
+    '',
+  );
+  if (directUrl && directUrl !== '-') {
+    return mediaUrl(directUrl);
+  }
+
+  const filePath = field(
+    item,
+    ['pdfPath', 'payslipPdfPath', 'filePath', 'documentPath', 'attachmentPath', 'path'],
+    '',
+  );
+  if (filePath && filePath !== '-') {
+    return mediaUrl(filePath);
+  }
+  const id = payslipId(item);
+  if (id && id !== '-') {
+    return api.payslipPdfUrl(id);
+  }
+  return null;
+}
+
 function payslipNumber(item: any, keys: string[]) {
   const value = field(item, keys, 0);
   const numeric = Number(value);
@@ -161,18 +213,6 @@ function leaveStatusGroup(item: any): 'PENDING' | 'APPROVED' | 'REJECTED' | 'CAN
   return 'OTHER';
 }
 
-function leaveMeta(item: any) {
-  const days = field(item, ['requestedDays', 'days', 'totalDays'], '');
-  const reason = field(item, ['reason', 'remarks', 'description'], '');
-  const parts: string[] = [];
-  if (days !== '' && days !== '-') {
-    parts.push(`${days} day${Number(days) === 1 ? '' : 's'}`);
-  }
-  if (reason && reason !== '-') {
-    parts.push(String(reason));
-  }
-  return parts.join('  •  ');
-}
 
 function todayKey() {
   return new Date().toLocaleDateString('en-CA', {timeZone: 'Asia/Dubai'});
@@ -290,16 +330,20 @@ function Metric({label, value, icon, tone = 'primary'}: {label: string; value?: 
 
 function HomeMetric({label, value, icon, tone}: {label: string; value?: any; icon: string; tone: 'success' | 'danger' | 'purple' | 'info'}) {
   const palette = {
-    success: [colors.successLight, colors.success],
-    danger: [colors.dangerLight, colors.danger],
-    purple: [colors.purpleLight, colors.purple],
-    info: [colors.infoLight, colors.info],
+    success: ['#ECFDF5', colors.success],
+    danger: ['#FFF1F2', colors.danger],
+    purple: ['#F5F3FF', colors.purple],
+    info: ['#F0F9FF', colors.info],
   }[tone];
   return (
-    <View style={styles.homeMetric}>
-      <View style={[styles.homeMetricIcon, {backgroundColor: palette[0]}]}><Icon name={icon as any} size={19} color={palette[1]} /></View>
-      <Text style={styles.homeMetricLabel}>{label}</Text>
-      <Text style={styles.homeMetricValue} numberOfLines={1}>{value || '—'}</Text>
+    <View style={styles.homeMetricTile}>
+      <View style={[styles.homeMetricIconWrap, {backgroundColor: palette[0]}]}>
+        <Icon name={icon as any} size={16} color={palette[1]} />
+      </View>
+      <View style={styles.homeMetricTextWrap}>
+        <Text style={styles.homeMetricLabel} numberOfLines={1}>{label}</Text>
+        <Text style={styles.homeMetricValue} numberOfLines={1}>{value || '—'}</Text>
+      </View>
     </View>
   );
 }
@@ -415,62 +459,64 @@ function AttendanceEntry({record, onRegularise}: {record: any; onRegularise: (re
   );
 }
 
-function FeatureTile({
+function QuickActionTile({
   icon,
   label,
-  description,
   tone = 'primary',
   onPress,
 }: {
   icon: string;
   label: string;
-  description: string;
-  tone?: 'primary' | 'success' | 'warning' | 'info' | 'purple';
+  tone?: 'primary' | 'success' | 'warning' | 'info' | 'purple' | 'danger' | 'teal' | 'violet';
   onPress: () => void;
 }) {
   const palette = {
-    primary: ['#FBF7FF', colors.primary, '#E2D5FF'],
-    success: ['#F4FFFA', colors.success, '#BDEFD9'],
-    warning: ['#FFFDF4', colors.warning, '#F8DEAA'],
-    info: ['#F4FAFF', colors.info, '#C8E2FF'],
-    purple: ['#FDF5FF', colors.purple, '#E6CCFF'],
+    primary: ['#EEF2FF', colors.primary],
+    purple: ['#FAF5FF', colors.purple],
+    info: ['#F0F9FF', colors.info],
+    warning: ['#FFFBEB', '#D97706'],
+    success: ['#ECFDF5', colors.success],
+    danger: ['#FFF1F2', colors.danger],
+    teal: ['#F0FDFA', '#0D9488'],
+    violet: ['#F5F3FF', '#7C3AED'],
   }[tone];
 
   return (
     <Pressable
       onPress={onPress}
-      style={({pressed}) => [styles.featureTile, {borderColor: palette[2]}, pressed && styles.pressed]}>
-      <View style={[styles.featureIcon, {backgroundColor: palette[0]}]}>
+      style={({pressed}) => [
+        styles.quickActionTile,
+        pressed && styles.pressed,
+      ]}>
+      <View style={[styles.quickActionIconBox, {backgroundColor: palette[0]}]}>
         <Icon name={icon as any} size={22} color={palette[1]} />
       </View>
-      <Text style={styles.featureLabel}>{label}</Text>
-      <Text style={styles.featureDesc}>{description}</Text>
-      <View style={[styles.openRow, {backgroundColor: palette[1]}]}>
-        <Text style={[styles.openText, {color: colors.white}]}>Open</Text>
-        <Icon name="arrow-forward" size={14} color={colors.white} />
-      </View>
+      <Text style={styles.quickActionLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 function PageHeader({active, onBack, onApplyLeave, onApplyLoan}: {active: ModuleKey; onBack: () => void; onApplyLeave?: () => void; onApplyLoan?: () => void}) {
   const page = moduleInfo[active];
+  const hasHeaderAction = (active === 'leave' && onApplyLeave) || (active === 'loans' && onApplyLoan);
   return (
-      <LinearGradient colors={['#1E1B4B', '#3730A3', '#6366F1']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.pageHeader}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Icon name="chevron-back-outline" size={22} color={colors.white} />
+    <View style={styles.pageHeader}>
+      <Pressable onPress={onBack} style={styles.backButton}>
+        <Icon name="chevron-back-outline" size={22} color={colors.white} />
+      </Pressable>
+      <View style={[styles.pageTitleWrap, !hasHeaderAction && styles.pageTitleWrapFull]}>
+        <Text style={styles.pageTitle} numberOfLines={1}>{page.label}</Text>
+        <Text style={styles.pageSubtitle} numberOfLines={2}>{page.subtitle}</Text>
+      </View>
+      {hasHeaderAction && (
+        <Pressable onPress={active === 'leave' ? onApplyLeave : onApplyLoan} style={styles.applyLeaveHeaderButton}>
+          <Icon name="add-outline" size={16} color={colors.primary} />
+          <Text style={styles.applyLeaveHeaderText} numberOfLines={1}>Apply</Text>
         </Pressable>
-        <View style={styles.pageTitleWrap}>
-          <Text style={styles.pageTitle}>{page.label}</Text>
-          <Text style={styles.pageSubtitle}>{page.subtitle}</Text>
-        </View>
-        {((active === 'leave' && onApplyLeave) || (active === 'loans' && onApplyLoan)) && (
-          <Pressable onPress={active === 'leave' ? onApplyLeave : onApplyLoan} style={styles.applyLeaveHeaderButton}>
-            <Icon name="add-outline" size={16} color={colors.primary} />
-            <Text style={styles.applyLeaveHeaderText}>Apply</Text>
-          </Pressable>
-        )}
-      </LinearGradient>
+      )}
+    </View>
   );
 }
 
@@ -549,7 +595,7 @@ function CalendarDateField({
       <Text style={variant === 'filter' ? styles.dateFilterLabel : styles.inputLabel}>{label}</Text>
       <Pressable onPress={openPicker} style={variant === 'filter' ? styles.dateFilterButton : styles.datePickerButton}>
         <Text style={[styles.datePickerValue, !value && styles.datePickerPlaceholder]}>{value || 'Select date'}</Text>
-        <Icon name="calendar-outline" size={18} color={colors.primary} />
+        <Icon name="calendar-outline" size={variant === 'filter' ? 16 : 18} color={colors.primary} />
       </Pressable>
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
@@ -987,6 +1033,7 @@ function LoanHistoryList({requests}: {requests: any[]}) {
 
 export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: boolean) => void}) {
   const insets = useSafeAreaInsets();
+  const {width: windowWidth} = useWindowDimensions();
   const {user, profile, refreshProfile} = useAuth();
   const [active, setActive] = useState<ModuleKey>('overview');
   const [clock, setClock] = useState<any>(null);
@@ -998,6 +1045,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [leaveBalance, setLeaveBalance] = useState<any[]>([]);
   const [payslips, setPayslips] = useState<any[]>([]);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
+  const [downloadingPayslipId, setDownloadingPayslipId] = useState('');
   const [holidays, setHolidays] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [carrTasks, setCarrTasks] = useState<any[]>([]);
@@ -1160,6 +1208,49 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       await load();
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function openPayslipPdf(item: any) {
+    const url = payslipPdfUrl(item);
+    const id = payslipId(item);
+    if (!url) {
+      Alert.alert(
+        'Payslip PDF not available',
+        'This salary slip does not include enough information to open the generated PDF.',
+      );
+      return;
+    }
+
+    const downloadKey = String(id || field(item, ['month', 'payPeriod', 'startDate'], Date.now()));
+    setDownloadingPayslipId(downloadKey);
+    try {
+      const fileName = `${safeFileName(payslipLabel(item))}-${safeFileName(String(id || 'salary-slip'))}.pdf`;
+      const headers = url.startsWith(API_BASE_URL)
+        ? apiAuthHeaders({Accept: 'application/pdf'})
+        : {Accept: 'application/pdf'};
+      if (Platform.OS === 'android') {
+        const result = await downloadPayslipPdf(url, fileName, headers);
+        Alert.alert('Payslip PDF', result || 'Download started.');
+        return;
+      }
+
+      const path = `${ReactNativeBlobUtil.fs.dirs.DocumentDir}/${fileName}`;
+      const result = await ReactNativeBlobUtil.config({
+        fileCache: true,
+        path,
+        appendExt: 'pdf',
+      }).fetch('GET', url, headers);
+      const status = result.info().status;
+      if (status < 200 || status >= 300) {
+        throw new Error(`Unable to download payslip PDF (${status}).`);
+      }
+
+      ReactNativeBlobUtil.ios.openDocument(result.path());
+    } catch (err: any) {
+      Alert.alert('Payslip PDF', err?.message || 'Unable to open the payslip PDF.');
+    } finally {
+      setDownloadingPayslipId('');
     }
   }
 
@@ -1326,68 +1417,113 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         <View style={styles.homeAttendanceCard}>
           <View style={styles.homeAttendanceTop}>
             <View style={styles.homeAttendanceHeading}>
-              <View style={styles.homeAttendanceIcon}><Icon name="radio-outline" size={24} color={colors.primary} /></View>
+              <View style={styles.homeAttendanceIcon}>
+                <Icon name="finger-print-outline" size={20} color={colors.primary} />
+              </View>
               <View>
-                <Text style={styles.homeAttendanceTitle}>Today Attendance</Text>
-                <Text style={styles.homeAttendanceSub}>Current status for your workday</Text>
+                <Text style={styles.homeAttendanceTitle}>Today's Attendance</Text>
+                <Text style={styles.homeAttendanceSub}>Daily activity & schedule</Text>
               </View>
             </View>
-            <View style={[styles.homeStatusPill, {backgroundColor: clock?.online ? colors.successLight : colors.dangerLight}]}>
-              <View style={[styles.statusDot, {backgroundColor: clock?.online ? colors.success : colors.danger}]} />
-              <Text style={[styles.homeStatusText, {color: clock?.online ? colors.success : colors.danger}]}>{statusText}</Text>
+            <View style={[styles.homeStatusPill, clock?.online ? styles.homeStatusPillOnline : styles.homeStatusPillOffline]}>
+              <View style={[styles.statusDot, clock?.online ? styles.statusDotOnline : styles.statusDotOffline]} />
+              <Text style={[styles.homeStatusText, clock?.online ? styles.homeStatusTextOnline : styles.homeStatusTextOffline]}>{statusText}</Text>
             </View>
           </View>
-          <View style={styles.homeAttendanceMetrics}>
-            <HomeMetric icon="log-in-outline" label="Check In" value={timeText(clock?.checkIn)} tone="success" />
-            <HomeMetric icon="log-out-outline" label="Check Out" value={timeText(clock?.checkOut)} tone="danger" />
-            <HomeMetric icon="stopwatch-outline" label="Hours Worked" value={hoursWorked(todayRecord, clock)} tone="purple" />
-            <HomeMetric icon="calendar-outline" label="Shift" value={profile?.shiftName || workInfo?.shiftName || 'General'} tone="info" />
+          <View style={styles.homeAttendanceMetricsGrid}>
+            <View style={styles.homeMetricRow}>
+              <HomeMetric icon="log-in-outline" label="Check In" value={timeText(clock?.checkIn)} tone="success" />
+              <HomeMetric icon="log-out-outline" label="Check Out" value={timeText(clock?.checkOut)} tone="danger" />
+            </View>
+            <View style={styles.homeMetricRow}>
+              <HomeMetric icon="stopwatch-outline" label="Hours Worked" value={hoursWorked(todayRecord, clock)} tone="purple" />
+              <HomeMetric icon="calendar-outline" label="Shift" value={profile?.shiftName || workInfo?.shiftName || 'General Shift'} tone="info" />
+            </View>
           </View>
         </View>
+
         <View style={styles.modulesHead}>
           <Text style={styles.modulesTitle}>Quick Actions</Text>
           <Pressable onPress={() => setActive('attendance')} style={styles.viewAllLink}>
-            <Text style={styles.viewAllText}>View all</Text><Icon name="chevron-forward-outline" size={17} color={colors.primary} />
+            <Text style={styles.viewAllText}>View all</Text>
+            <Icon name="chevron-forward-outline" size={15} color={colors.primary} />
           </Pressable>
         </View>
-        <View style={styles.featureGrid}>
-          <FeatureTile icon="analytics" label="Attendance" description="Track your attendance" onPress={() => setActive('attendance')} />
-          <FeatureTile icon="paper-plane" label="Leave" description="Manage leave requests" tone="purple" onPress={() => setActive('leave')} />
-          <FeatureTile icon="document-text" label="Documents" description="Employee documents" tone="info" onPress={() => setActive('documents')} />
-          <FeatureTile icon="time" label="Hours" description="Track work hours" tone="warning" onPress={() => setActive('hours')} />
-          <FeatureTile icon="sunny" label="Holidays" description="View holiday calendar" tone="success" onPress={() => setActive('holidays')} />
-          <FeatureTile icon="megaphone" label="Announcements" description="Company news and updates" tone="info" onPress={() => setActive('announcements')} />
-          <FeatureTile icon="checkmark-circle" label="CAR Tasks" description="Responsibilities and progress" tone="primary" onPress={() => setActive('carr')} />
-          <FeatureTile icon="wallet" label="Payslips" description="Salary documents" tone="success" onPress={() => setActive('payslips')} />
+
+        <View style={styles.quickActionsCard}>
+          <View style={styles.quickActionsRow}>
+            <QuickActionTile icon="analytics" label="Attendance" tone="primary" onPress={() => setActive('attendance')} />
+            <QuickActionTile icon="paper-plane" label="Leave" tone="purple" onPress={() => setActive('leave')} />
+            <QuickActionTile icon="document-text-outline" label="Documents" tone="info" onPress={() => setActive('documents')} />
+            <QuickActionTile icon="time" label="Hours" tone="warning" onPress={() => setActive('hours')} />
+          </View>
+          <View style={styles.quickActionsRow}>
+            <QuickActionTile icon="sunny" label="Holidays" tone="success" onPress={() => setActive('holidays')} />
+            <QuickActionTile icon="megaphone-outline" label="Announcements" tone="danger" onPress={() => setActive('announcements')} />
+            <QuickActionTile icon="checkmark-circle" label="CAR Tasks" tone="violet" onPress={() => setActive('carr')} />
+            <QuickActionTile icon="wallet" label="Payslips" tone="teal" onPress={() => setActive('payslips')} />
+          </View>
         </View>
 
         <Pressable onPress={() => setActive('announcements')} style={({pressed}) => [styles.homeAnnouncementCard, pressed && styles.pressed]}>
           <View style={styles.homeAnnouncementHead}>
-            <View style={styles.homeAnnouncementIcon}><Icon name="megaphone-outline" size={23} color={colors.primary} /></View>
+            <View style={styles.homeAnnouncementIcon}>
+              <Icon name="megaphone-outline" size={20} color={colors.primary} />
+            </View>
             <View style={styles.homeAnnouncementCopy}>
               <Text style={styles.homeAnnouncementTitle}>Latest Announcements</Text>
               <Text style={styles.homeAnnouncementSub}>Stay updated with company news</Text>
             </View>
-            <Text style={styles.viewAllText}>View all</Text>
-          </View>
-          <View style={styles.homeAnnouncementBody}>
-            <Icon name="megaphone-outline" size={21} color={colors.primary} />
-            <View style={styles.homeAnnouncementCopy}>
-              <Text style={styles.homeAnnouncementBodyTitle} numberOfLines={1}>{latestAnnouncement ? field(latestAnnouncement, ['title', 'subject'], 'Announcement') : 'No new announcements'}</Text>
-              <Text style={styles.homeAnnouncementBodyText} numberOfLines={2}>{latestAnnouncement ? field(latestAnnouncement, ['description', 'message', 'content'], 'Open to read the update.') : 'You’re all caught up. Check back later for updates.'}</Text>
+            <View style={styles.viewAllRow}>
+              <Text style={styles.viewAllText}>View all</Text>
+              <Icon name="chevron-forward-outline" size={14} color={colors.primary} />
             </View>
           </View>
+          {latestAnnouncement ? (
+            <View style={styles.homeAnnouncementBody}>
+              <View style={styles.homeAnnouncementBodyTop}>
+                <View style={styles.announcementNewBadge}>
+                  <Text style={styles.announcementNewBadgeText}>NEW</Text>
+                </View>
+                <Text style={styles.homeAnnouncementBodyDate}>
+                  {dateText(field(latestAnnouncement, ['createdAt', 'publishedAt'], ''))}
+                </Text>
+              </View>
+              <Text style={styles.homeAnnouncementBodyTitle} numberOfLines={1}>
+                {field(latestAnnouncement, ['title', 'subject'], 'Announcement')}
+              </Text>
+              <Text style={styles.homeAnnouncementBodyText} numberOfLines={2}>
+                {field(latestAnnouncement, ['description', 'message', 'content'], 'Tap to read the update.')}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.homeAnnouncementEmpty}>
+              <View style={styles.homeAnnouncementEmptyIcon}>
+                <Icon name="checkmark-circle-outline" size={22} color={colors.success} />
+              </View>
+              <View style={styles.homeAnnouncementCopy}>
+                <Text style={styles.homeAnnouncementEmptyTitle}>All caught up</Text>
+                <Text style={styles.homeAnnouncementEmptyText}>You have no unread company announcements.</Text>
+              </View>
+            </View>
+          )}
         </Pressable>
       </>
     );
   }
 
   function renderAttendance() {
+    const filterHorizontalPadding = 20;
+    const filterGap = 8;
+    const filterApplyWidth = 84;
+    const filterAvailableWidth = Math.max(0, windowWidth - filterHorizontalPadding);
+    const filterDateFieldWidth = Math.max(108, Math.floor((filterAvailableWidth - filterApplyWidth - filterGap * 2) / 2));
+
     return (
       <>
-        <View style={styles.attendanceFilter}>
+        <View style={styles.attendanceFilterInline}>
           <View style={styles.dateFilterRow}>
-            <View style={styles.dateFilterField}>
+            <View style={[styles.dateFilterField, {width: filterDateFieldWidth}]}>
               <CalendarDateField
                 label="From"
                 value={attendanceFrom}
@@ -1400,7 +1536,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 variant="filter"
               />
             </View>
-            <View style={styles.dateFilterField}>
+            <View style={[styles.dateFilterField, {width: filterDateFieldWidth}]}>
               <CalendarDateField
                 label="To"
                 value={attendanceTo}
@@ -1413,33 +1549,35 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 variant="filter"
               />
             </View>
+            <View style={[styles.dateFilterActionColumn, {width: filterApplyWidth}]}>
+              <Pressable
+                onPress={() => {
+                  setAttendanceFrom('');
+                  setAttendanceTo('');
+                  setAppliedAttendanceFrom('');
+                  setAppliedAttendanceTo('');
+                  load();
+                }}
+                hitSlop={8}
+                style={({pressed}) => [styles.dateFilterClearTextButton, pressed && styles.pressed]}>
+                <Text style={styles.dateFilterClearText}>Clear</Text>
+              </Pressable>
+              <View style={[styles.dateFilterApply, {width: filterApplyWidth}]}>
+                <Button
+                  title="Apply"
+                  color={colors.white}
+                  onPress={() => {
+                    if (!attendanceFrom && !attendanceTo) {
+                      Alert.alert('Attendance', 'Select at least one date to search.');
+                      return;
+                    }
+                    setAppliedAttendanceFrom(attendanceFrom);
+                    setAppliedAttendanceTo(attendanceTo);
+                  }}
+                />
+              </View>
+            </View>
           </View>
-          <Pressable
-            onPress={() => {
-              if (!attendanceFrom && !attendanceTo) {
-                Alert.alert('Attendance', 'Select at least one date to search.');
-                return;
-              }
-              setAppliedAttendanceFrom(attendanceFrom);
-              setAppliedAttendanceTo(attendanceTo);
-            }}
-            style={({pressed}) => [styles.dateFilterSearch, pressed && styles.pressed]}>
-            <Icon name="search-outline" size={18} color={colors.white} />
-          </Pressable>
-          {(attendanceFrom || attendanceTo) && (
-            <Pressable
-              onPress={() => {
-                setAttendanceFrom('');
-                setAttendanceTo('');
-                setAppliedAttendanceFrom('');
-                setAppliedAttendanceTo('');
-                void load();
-              }}
-              style={styles.clearFilterButton}>
-              <Icon name="close-outline" size={15} color={colors.primary} />
-              <Text style={styles.clearFilterText}>Clear filter</Text>
-            </Pressable>
-          )}
         </View>
 
         <View style={styles.attendanceHistoryHead}>
@@ -1568,31 +1706,43 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
           <View style={styles.payslipIntroIcon}><Icon name="receipt-outline" size={21} color={colors.primary} /></View>
           <View style={styles.payslipIntroCopy}>
             <Text style={styles.payslipIntroTitle}>Salary slips</Text>
-            <Text style={styles.payslipIntroText}>Open a payslip to see your earnings, deductions and net pay.</Text>
+            <Text style={styles.payslipIntroText}>Download the official PDF payslip generated by payroll.</Text>
           </View>
         </View>
-        {payslips.slice(0, 12).map(item => (
-          <Pressable key={String(field(item, ['id', 'payrollId', 'month']))} onPress={() => setSelectedPayslip(item)} style={({pressed}) => pressed && styles.pressed}>
-            <Card style={styles.payslipListCard}>
-              <View style={styles.payslipListTop}>
-                <View style={styles.payslipMonthIcon}><Icon name="document-text-outline" size={21} color={colors.primary} /></View>
-                <View style={styles.payslipListCopy}>
-                  <Text style={styles.payslipListTitle}>{payslipLabel(item)}</Text>
-                  <Text style={styles.payslipListPeriod}>{dateText(field(item, ['startDate'], ''))} – {dateText(field(item, ['endDate'], ''))}</Text>
+        {payslips.slice(0, 12).map(item => {
+          const pdfUrl = payslipPdfUrl(item);
+          const downloadKey = String(payslipId(item) || field(item, ['month', 'payPeriod', 'startDate'], ''));
+          const isDownloading = downloadingPayslipId === downloadKey;
+          return (
+            <Pressable
+              key={String(field(item, ['id', 'payrollId', 'month']))}
+              disabled={isDownloading}
+              onPress={() => openPayslipPdf(item)}
+              style={({pressed}) => (pressed || isDownloading) && styles.pressed}>
+              <Card style={styles.payslipListCard}>
+                <View style={styles.payslipListTop}>
+                  <View style={styles.payslipMonthIcon}><Icon name="document-text-outline" size={21} color={colors.primary} /></View>
+                  <View style={styles.payslipListCopy}>
+                    <Text style={styles.payslipListTitle}>{payslipLabel(item)}</Text>
+                    <Text style={styles.payslipListPeriod}>{dateText(field(item, ['startDate'], ''))} – {dateText(field(item, ['endDate'], ''))}</Text>
+                  </View>
+                  <View style={[styles.payslipStatus, {backgroundColor: statusTone(field(item, ['status', 'paymentStatus'], '')).bg}]}>
+                    <Text style={[styles.payslipStatusText, {color: statusTone(field(item, ['status', 'paymentStatus'], '')).fg}]}>{String(field(item, ['status', 'paymentStatus'], '')).replace(/_/g, ' ')}</Text>
+                  </View>
                 </View>
-                <View style={[styles.payslipStatus, {backgroundColor: statusTone(field(item, ['status', 'paymentStatus'], '')).bg}]}>
-                  <Text style={[styles.payslipStatusText, {color: statusTone(field(item, ['status', 'paymentStatus'], '')).fg}]}>{String(field(item, ['status', 'paymentStatus'], '')).replace(/_/g, ' ')}</Text>
+                <View style={styles.payslipListAmounts}>
+                  <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Gross pay</Text><Text style={styles.payslipAmountValue}>{money(field(item, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')}</Text></View>
+                  <View style={styles.payslipAmountDivider} />
+                  <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Net pay</Text><Text style={[styles.payslipAmountValue, styles.payslipNetValue]}>{money(field(item, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
+                  <View style={[styles.payslipPdfChip, !pdfUrl && styles.payslipPdfChipMuted]}>
+                    <Icon name={pdfUrl ? 'download-outline' : 'alert-circle-outline'} size={14} color={pdfUrl ? colors.white : colors.muted} />
+                    <Text style={[styles.payslipPdfChipText, !pdfUrl && styles.payslipPdfChipTextMuted]}>{isDownloading ? 'Opening' : pdfUrl ? 'PDF' : 'No PDF'}</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.payslipListAmounts}>
-                <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Gross pay</Text><Text style={styles.payslipAmountValue}>{money(field(item, ['grossPay', 'grossSalary', 'totalEarnings'], ''), profile?.currencySymbol || '')}</Text></View>
-                <View style={styles.payslipAmountDivider} />
-                <View style={styles.payslipListAmount}><Text style={styles.payslipAmountLabel}>Net pay</Text><Text style={[styles.payslipAmountValue, styles.payslipNetValue]}>{money(field(item, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
-                <Icon name="chevron-forward" size={19} color={colors.primary} />
-              </View>
-            </Card>
-          </Pressable>
-        ))}
+              </Card>
+            </Pressable>
+          );
+        })}
         <Modal visible={!!selectedPayslip} animationType="slide" transparent onRequestClose={() => setSelectedPayslip(null)}>
           <View style={styles.modalOverlay}><View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
@@ -1617,28 +1767,14 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 <FieldRow label="Total deductions" value={money(field(selectedPayslip, ['deduction', 'totalDeductions', 'deductions'], ''), profile?.currencySymbol || '')} />
                 <View style={styles.payslipNetBlock}><View><Text style={styles.payslipNetLabel}>NET PAY</Text><Text style={styles.payslipNetDate}>Pay date: {dateText(field(selectedPayslip, ['payDate', 'paymentDate'], ''))}</Text></View><Text style={styles.payslipNetAmount}>{money(field(selectedPayslip, ['netPay', 'netSalary', 'payableAmount'], ''), profile?.currencySymbol || '')}</Text></View>
               </Card>
-              <PrimaryButton
-                title="Download PDF"
-                onPress={async () => {
-                  const id = field(selectedPayslip, ['id', 'payrollId'], '');
-                  if (!id) {
-                    Alert.alert('PDF unavailable', 'This payslip does not have a valid identifier yet.');
-                    return;
-                  }
-                  try {
-                    const result = await downloadPayslipPdf(
-                      api.payslipPdfUrl(id),
-                      `payslip-${id}.pdf`,
-                      getAuthenticatedDownloadHeaders(),
-                    );
-                    Alert.alert('Download started', result);
-                  } catch (error: any) {
-                    Alert.alert('Download failed', error?.message || 'Could not download the payslip PDF.');
-                  }
-                }}
-              />
-              <View style={{height: 10}} />
-              <PrimaryButton title="Close" variant="outline" onPress={() => setSelectedPayslip(null)} />
+              <View style={styles.payslipModalActions}>
+                <PrimaryButton
+                  title="Open PDF"
+                  loading={selectedPayslip && downloadingPayslipId === String(payslipId(selectedPayslip) || field(selectedPayslip, ['month', 'payPeriod', 'startDate'], ''))}
+                  onPress={() => selectedPayslip && openPayslipPdf(selectedPayslip)}
+                />
+                <PrimaryButton title="Close" variant="outline" onPress={() => setSelectedPayslip(null)} />
+              </View>
             </ScrollView>
           </View></View>
         </Modal>
@@ -1904,43 +2040,63 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       renderActiveModule()
     ) : active === 'overview' ? (
       <View className="flex-1 bg-background" style={styles.screen}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.sidebar} />
-        <LinearGradient colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.homeTopBar, {paddingTop: insets.top + 8}]}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['#151147', '#25268A', '#4338CA']}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={[styles.homeTopBackdrop, {height: insets.top + 215}]}
+        />
+        <View style={[styles.homeWelcomeHero, {paddingTop: insets.top + 8}]}>
           <View style={styles.topBar}>
-            <Text style={styles.appTitle}>HRMS</Text>
+            <View style={styles.brandRow}>
+              <View style={styles.brandIconShell}>
+                <Icon name="business-outline" size={16} color={colors.white} />
+              </View>
+              <View>
+                <Text style={styles.appTitle}>HRMS</Text>
+                <Text style={styles.appSubtitle}>Employee workspace</Text>
+              </View>
+            </View>
             <View style={styles.headerActions}>
-              <Pressable onPress={() => setActive('notifications')} style={styles.headerIconButton}>
-                <Icon name="notifications-outline" size={22} color={colors.white} />
+              <Pressable onPress={() => setActive('notifications')} style={({pressed}) => [styles.headerIconButton, pressed && styles.pressed]}>
+                <Icon name="notifications-outline" size={19} color={colors.white} />
               </Pressable>
-              <Pressable onPress={() => setActive('helpdesk')} style={styles.headerIconButton}>
-                <Icon name="help-circle-outline" size={22} color={colors.white} />
+              <Pressable onPress={() => setActive('helpdesk')} style={({pressed}) => [styles.headerIconButton, pressed && styles.pressed]}>
+                <Icon name="help-circle-outline" size={19} color={colors.white} />
               </Pressable>
             </View>
           </View>
-        </LinearGradient>
-
+        </View>
         <ScrollView
-          style={styles.screen}
+          style={styles.homeScroll}
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
-          <LinearGradient colors={['#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={styles.homeWelcomeHero}>
-            <View style={styles.homeHeroContent}>
-              <View style={styles.welcomeBlock}>
-                <Text style={styles.welcomeLabel}>Welcome back,</Text>
-                <Text style={styles.welcomeName}>{employeeName(profile)}</Text>
-                <Text style={styles.welcomeCompany}>{profile?.companyName || user?.companyName || 'GRECHA HRMS'}</Text>
-              </View>
-              <View style={styles.avatarBlock}>
-                <View style={styles.avatarCircle}>
-                  {homeAvatarUrl ? (
-                    <Image source={{uri: homeAvatarUrl}} style={styles.avatarImage} />
-                  ) : (
-                    <Text style={styles.avatarText}>{employeeName(profile).split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase()}</Text>
-                  )}
-                </View>
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.white} />}>
+          <View style={styles.homeHeroInScroll}>
+            <View style={styles.welcomeBlock}>
+              <Text style={styles.welcomeLabel}>Welcome back,</Text>
+              <Text style={styles.welcomeName} numberOfLines={1}>{employeeName(profile)}</Text>
+              <View style={styles.companyBadge}>
+                <Icon name="business-outline" size={12} color="#C7D2FE" />
+                <Text style={styles.welcomeCompanyText} numberOfLines={1}>
+                  {profile?.companyName || user?.companyName || 'Prabha Technologies'}
+                </Text>
               </View>
             </View>
-          </LinearGradient>
+            <View style={styles.avatarBlock}>
+              <View style={styles.avatarCircle}>
+                {homeAvatarUrl ? (
+                  <Image source={{uri: homeAvatarUrl}} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{employeeName(profile).split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase()}</Text>
+                )}
+              </View>
+            </View>
+          </View>
           {!online && <Text style={styles.offline}>Offline mode: reconnect to refresh HRMS data.</Text>}
 
           {renderOverview()}
@@ -1948,15 +2104,26 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       </View>
     ) : (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.sidebar} />
-      <View style={[styles.moduleHeaderWrap, {paddingTop: insets.top + 10}]}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#1E1B4B', '#3730A3', '#6366F1']}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
+        style={[styles.moduleTopBackdrop, {height: insets.top + 118}]}
+      />
+      <LinearGradient
+        colors={['#1E1B4B', '#3730A3', '#6366F1']}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
+        style={styles.moduleHeaderWrap}>
         <PageHeader
           active={active}
           onBack={() => setActive(active === 'leaveRequest' ? 'leave' : 'overview')}
           onApplyLeave={active === 'leave' ? () => setActive('leaveRequest') : undefined}
           onApplyLoan={active === 'loans' ? () => setLoanModalVisible(true) : undefined}
         />
-      </View>
+      </LinearGradient>
 
       <ScrollView
         style={styles.screen}
@@ -1973,129 +2140,203 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
 
 const styles = StyleSheet.create({
   screen: {flex: 1, backgroundColor: colors.background},
-  // Home uses compact gutters so the cards use the available mobile width.
-  content: {paddingHorizontal: 12, paddingTop: 0, paddingBottom: 30},
-  moduleContent: {paddingHorizontal: 16, paddingTop: 0, paddingBottom: 30},
+  content: {paddingHorizontal: 16, paddingTop: 10, paddingBottom: 32},
+  moduleContent: {paddingHorizontal: 16, paddingTop: 12, paddingBottom: 30},
   compactAttendanceContent: {paddingHorizontal: 10},
-  // The safe-area padding is outside PageHeader. Keep it on the same dark
-  // header colour so the notch/status-bar area is not left white on Android.
-  moduleHeaderWrap: {backgroundColor: colors.sidebar},
-  homeTopBar: {paddingHorizontal: 16, paddingBottom: 10},
-  homeWelcomeHero: {marginHorizontal: -12, marginTop: -1, marginBottom: 12, minHeight: 118, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24},
-  homeHeroContent: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  moduleHeaderWrap: {width: '100%'},
+  moduleTopBackdrop: {position: 'absolute', top: 0, left: 0, right: 0},
+  homeTopBackdrop: {position: 'absolute', top: 0, left: 0, right: 0},
+  homeWelcomeHero: {alignSelf: 'stretch', width: '100%', paddingHorizontal: 16, paddingBottom: 10, zIndex: 1},
+  homeScroll: {flex: 1, backgroundColor: 'transparent'},
+  homeHeroContent: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 30},
+  homeHeroInScroll: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 18},
   topBar: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  appTitle: {color: colors.white, fontSize: 24, fontFamily: fonts.bold},
+  brandRow: {flexDirection: 'row', alignItems: 'center', gap: 9},
+  brandIconShell: {width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center'},
+  appTitle: {color: colors.white, fontSize: 18, fontFamily: fonts.bold, letterSpacing: 0.5},
+  appSubtitle: {color: '#C7D2FE', fontSize: 11, fontFamily: fonts.medium, marginTop: 1},
   headerActions: {flexDirection: 'row', gap: 8},
   headerIconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
-  welcomeBlock: {flex: 1, minWidth: 0, marginTop: 0, marginRight: 10},
-  welcomeLabel: {color: '#D7D9FF', fontSize: 16, fontFamily: fonts.medium},
-  welcomeName: {color: colors.white, fontSize: 27, fontFamily: fonts.bold, marginTop: 3},
+  welcomeBlock: {flex: 1, minWidth: 0, marginRight: 12},
+  welcomeLabel: {color: '#C7D2FE', fontSize: 14, fontFamily: fonts.medium},
+  welcomeName: {color: colors.white, fontSize: 24, lineHeight: 30, fontFamily: fonts.bold, marginTop: 2},
+  companyBadge: {flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, backgroundColor: 'rgba(255,255,255,0.12)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8},
+  welcomeCompanyText: {color: '#F1F3FF', fontSize: 12, fontFamily: fonts.medium},
   welcomeCompany: {color: '#F1F3FF', fontSize: 15, fontFamily: fonts.medium, marginTop: 4},
-  avatarBlock: {alignItems: 'center', justifyContent: 'center', width: 70, height: 70, flexShrink: 0},
-  avatarCircle: {width: 62, height: 62, borderRadius: 31, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.74)'},
+  avatarBlock: {alignItems: 'center', justifyContent: 'center', flexShrink: 0},
+  avatarCircle: {width: 58, height: 58, borderRadius: 29, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.85)'},
   avatarImage: {width: '100%', height: '100%', resizeMode: 'cover'},
-  avatarText: {color: colors.primary, fontSize: 21, fontFamily: fonts.bold},
+  avatarText: {color: colors.primary, fontSize: 20, fontFamily: fonts.bold},
   offline: {color: colors.warning, backgroundColor: colors.warningLight, padding: 11, borderRadius: 12, marginBottom: 12, fontWeight: '800'},
-  modulesHead: {marginTop: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  modulesTitle: {color: colors.text, fontSize: 22, fontFamily: fonts.bold},
-  viewAllLink: {flexDirection: 'row', alignItems: 'center'},
-  viewAllText: {color: colors.primary, fontSize: 14, fontFamily: fonts.semibold},
+  modulesHead: {marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  modulesTitle: {color: colors.text, fontSize: 18, fontFamily: fonts.bold},
+  viewAllLink: {flexDirection: 'row', alignItems: 'center', gap: 3},
+  viewAllText: {color: colors.primary, fontSize: 13, fontFamily: fonts.semibold},
   pageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: colors.sidebar,
+    alignSelf: 'stretch',
+    width: '100%',
+    position: 'relative',
+    height: 166,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    position: 'absolute',
+    left: 20,
+    top: 76,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  pageTitleWrap: {flex: 1},
-  pageTitle: {color: colors.white, fontSize: 20, fontFamily: fonts.bold},
-  pageSubtitle: {color: '#E0E7FF', fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
-  applyLeaveHeaderButton: {minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, backgroundColor: colors.white, paddingHorizontal: 10},
-  applyLeaveHeaderText: {color: colors.primary, fontSize: 12, fontFamily: fonts.bold},
+  pageTitleWrap: {position: 'absolute', left: 84, right: 132, top: 70},
+  pageTitleWrapFull: {right: 20},
+  pageTitle: {color: colors.white, fontSize: 24, lineHeight: 29, fontFamily: fonts.bold},
+  pageSubtitle: {color: '#E0E7FF', fontSize: 15, lineHeight: 20, fontFamily: fonts.medium, marginTop: 6},
+  applyLeaveHeaderButton: {position: 'absolute', right: 20, top: 80, width: 96, height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 12, backgroundColor: colors.white, paddingHorizontal: 10},
+  applyLeaveHeaderText: {color: colors.primary, fontSize: 15, lineHeight: 18, fontFamily: fonts.bold},
   certificatePicker: {minHeight: 48, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 12, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, backgroundColor: '#F8FAFF'},
   certificatePickerText: {flex: 1, color: colors.text, fontSize: 13, fontFamily: fonts.medium},
-  featureGrid: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, marginBottom: 18},
-  featureTile: {
-    // Four columns made the copy and action arrow overlap on normal phone
-    // widths.  Two full cards remain readable and match the intended card UI.
-    flexBasis: '48.5%',
-    maxWidth: '48.5%',
-    minWidth: '48.5%',
-    minHeight: 172,
-    borderRadius: 18,
-    borderWidth: 1.5,
+  quickActionsCard: {
     backgroundColor: colors.white,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 14,
-    position: 'relative',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 6,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#1E1B4B',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+    gap: 16,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-around',
+  },
+  quickActionTile: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  quickActionIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 7,
+  },
+  quickActionLabel: {
+    color: colors.text,
+    fontSize: 11.5,
+    fontFamily: fonts.bold,
+    textAlign: 'center',
   },
   pressed: {opacity: 0.72},
-  featureIcon: {width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)'},
-  featureLabel: {color: colors.text, fontSize: 16, lineHeight: 20, fontFamily: fonts.bold, marginTop: 12},
-  featureDesc: {color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: fonts.regular, marginTop: 4},
-  // Keep the action separate from the copy. In the top-right it stays clear
-  // of long labels/descriptions on smaller phones.
-  openRow: {position: 'absolute', right: 12, top: 14, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
-  openText: {display: 'none'},
-  // The overview content has a 12px page inset. Pull only this summary card
-  // out by 6px so it reads as the primary full-width panel without touching
-  // the spacing of the quick-action cards below it.
-  homeAttendanceCard: {backgroundColor: colors.white, borderRadius: 20, paddingHorizontal: 13, paddingTop: 12, paddingBottom: 11, marginHorizontal: -6, marginTop: 0, borderWidth: 1, borderColor: colors.border, shadowOpacity: 0, shadowRadius: 0, elevation: 0},
-  homeAttendanceTop: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8},
-  homeAttendanceHeading: {flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11},
+  homeAttendanceCard: {
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#1E1B4B',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  homeAttendanceTop: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 14},
+  homeAttendanceHeading: {flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10},
   homeAttendanceIcon: {width: 38, height: 38, borderRadius: 12, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center'},
   homeAttendanceTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.bold},
-  homeAttendanceSub: {color: colors.muted, fontSize: 11, fontFamily: fonts.medium, marginTop: 2},
-  homeStatusPill: {flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999},
-  statusDot: {width: 8, height: 8, borderRadius: 4},
+  homeAttendanceSub: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
+  homeStatusPill: {flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999},
+  homeStatusPillOnline: {backgroundColor: '#ECFDF5'},
+  homeStatusPillOffline: {backgroundColor: '#FFF1F2'},
+  statusDot: {width: 7, height: 7, borderRadius: 3.5},
+  statusDotOnline: {backgroundColor: colors.success},
+  statusDotOffline: {backgroundColor: colors.danger},
   homeStatusText: {fontSize: 12, fontFamily: fonts.bold},
-  homeAttendanceMetrics: {flexDirection: 'row', marginTop: 10},
-  homeMetric: {flex: 1, minWidth: 0, paddingHorizontal: 5, borderRightWidth: 1, borderRightColor: colors.border},
-  homeMetricIcon: {width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 4},
-  homeMetricLabel: {color: colors.muted, fontSize: 9, fontFamily: fonts.semibold},
-  homeMetricValue: {color: colors.text, fontSize: 12, fontFamily: fonts.bold, marginTop: 2},
-  homeAnnouncementCard: {backgroundColor: colors.white, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: 22, padding: 16, marginBottom: 14},
-  homeAnnouncementHead: {flexDirection: 'row', alignItems: 'center', gap: 10},
-  homeAnnouncementIcon: {width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
+  homeStatusTextOnline: {color: colors.success},
+  homeStatusTextOffline: {color: colors.danger},
+  homeAttendanceMetricsGrid: {gap: 9},
+  homeMetricRow: {flexDirection: 'row', gap: 9},
+  homeMetricTile: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  homeMetricIconWrap: {width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center'},
+  homeMetricTextWrap: {flex: 1, minWidth: 0},
+  homeMetricLabel: {color: colors.muted, fontSize: 10, fontFamily: fonts.semibold, textTransform: 'uppercase', letterSpacing: 0.3},
+  homeMetricValue: {color: colors.text, fontSize: 13, fontFamily: fonts.bold, marginTop: 1},
+  homeAnnouncementCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#1E1B4B',
+    shadowOffset: {width: 0, height: 3},
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  homeAnnouncementHead: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12},
+  homeAnnouncementIcon: {width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight},
   homeAnnouncementCopy: {flex: 1, minWidth: 0},
-  homeAnnouncementTitle: {color: colors.text, fontSize: 17, fontFamily: fonts.bold},
-  homeAnnouncementSub: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
-  homeAnnouncementBody: {flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.primaryLight, borderRadius: 16, padding: 14, marginTop: 15},
+  homeAnnouncementTitle: {color: colors.text, fontSize: 16, fontFamily: fonts.bold},
+  homeAnnouncementSub: {color: colors.muted, fontSize: 12, fontFamily: fonts.medium, marginTop: 1},
+  viewAllRow: {flexDirection: 'row', alignItems: 'center', gap: 2},
+  homeAnnouncementBody: {backgroundColor: colors.primaryLight, borderRadius: 14, padding: 13},
+  homeAnnouncementBodyTop: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6},
+  announcementNewBadge: {backgroundColor: colors.primary, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6},
+  announcementNewBadgeText: {color: colors.white, fontSize: 9, fontFamily: fonts.bold, letterSpacing: 0.4},
+  homeAnnouncementBodyDate: {color: colors.muted, fontSize: 11, fontFamily: fonts.medium},
   homeAnnouncementBodyTitle: {color: colors.text, fontSize: 14, fontFamily: fonts.bold},
-  homeAnnouncementBodyText: {color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: fonts.medium, marginTop: 3},
+  homeAnnouncementBodyText: {color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: fonts.regular, marginTop: 3},
+  homeAnnouncementEmpty: {flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 13},
+  homeAnnouncementEmptyIcon: {width: 36, height: 36, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center'},
+  homeAnnouncementEmptyTitle: {color: colors.text, fontSize: 13, fontFamily: fonts.bold},
+  homeAnnouncementEmptyText: {color: colors.muted, fontSize: 11, fontFamily: fonts.regular, marginTop: 1},
   metricsRow: {flexDirection: 'row', gap: 12, marginBottom: 12},
   metric: {flex: 1, minHeight: 116},
   metricIcon: {width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 10},
   metricLabel: {color: colors.muted, fontSize: 12, fontFamily: fonts.semibold, textTransform: 'uppercase'},
   metricValue: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 5},
-  attendanceFilter: {marginTop: 16, marginBottom: 24, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white},
+  attendanceFilter: {marginTop: 16, marginBottom: 18, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white},
+  attendanceFilterInline: {marginTop: 14, marginBottom: 18},
   filterCard: {padding: 0, marginBottom: 12, overflow: 'hidden', borderRadius: 12},
-  dateFilterRow: {flexDirection: 'row', alignItems: 'flex-end', gap: 10},
-  dateFilterField: {flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0},
-  dateFilterLabel: {color: colors.text, fontSize: 13, fontFamily: fonts.bold, marginBottom: 7},
+  dateFilterRow: {width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 8},
+  dateFilterField: {minWidth: 0, flexShrink: 0},
+  dateFilterLabel: {color: colors.textMid, fontSize: 9, fontFamily: fonts.semibold, marginBottom: 2, marginLeft: 8},
   dateFilterInput: {
     minHeight: 50,
     borderWidth: 1,
@@ -2107,19 +2348,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   dateFilterButton: {
-    minHeight: 48,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 9,
-    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    backgroundColor: colors.white,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 6,
+    gap: 4,
   },
+  dateFilterActions: {flexDirection: 'row', gap: 8, marginTop: 10},
   dateFilterSearch: {width: 58, height: 58, flexShrink: 0, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
-  clearFilterButton: {alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12, borderRadius: 999, backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 7},
+  dateFilterActionColumn: {height: 68, flexShrink: 0, alignItems: 'center', justifyContent: 'flex-end'},
+  dateFilterClearTextButton: {alignSelf: 'center', paddingHorizontal: 4, marginBottom: 4},
+  dateFilterClearText: {color: colors.primary, fontSize: 12, lineHeight: 20, fontWeight: '700'},
+  dateFilterApply: {height: 44, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary},
+  dateFilterApplyText: {color: '#FFFFFF', fontSize: 11, lineHeight: 14, fontWeight: '900', textAlign: 'center'},
+  clearFilterButton: {minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 12, backgroundColor: colors.primaryLight, paddingHorizontal: 14},
+  clearFilterButtonDisabled: {opacity: 0.45},
   clearFilterText: {color: colors.primary, fontSize: 12, fontWeight: '900'},
   attendanceHistoryHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 22},
   attendanceHistoryTitle: {color: colors.text, fontSize: 24, fontFamily: fonts.bold},
@@ -2343,6 +2591,10 @@ const styles = StyleSheet.create({
   payslipAmountValue: {color: colors.text, fontSize: 14, fontFamily: fonts.bold, marginTop: 3},
   payslipNetValue: {color: colors.success},
   payslipAmountDivider: {height: 30, width: 1, backgroundColor: colors.border, marginHorizontal: 14},
+  payslipPdfChip: {flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 7},
+  payslipPdfChipMuted: {backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border},
+  payslipPdfChipText: {color: colors.white, fontSize: 10, fontFamily: fonts.bold},
+  payslipPdfChipTextMuted: {color: colors.muted},
   payslipStatementHead: {alignItems: 'center', paddingTop: 3, paddingBottom: 18},
   payslipStatementIcon: {width: 52, height: 52, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, marginBottom: 9},
   payslipStatementTitle: {color: colors.text, fontSize: 21, fontFamily: fonts.bold, textAlign: 'center'},
@@ -2356,6 +2608,7 @@ const styles = StyleSheet.create({
   payslipNetLabel: {color: colors.success, fontSize: 10, letterSpacing: 0.6, fontFamily: fonts.bold},
   payslipNetDate: {color: colors.textMid, fontSize: 11, fontFamily: fonts.medium, marginTop: 4},
   payslipNetAmount: {color: colors.success, fontSize: 18, fontFamily: fonts.bold, textAlign: 'right'},
+  payslipModalActions: {gap: 10},
   datePickerButton: {
     minHeight: 48,
     marginHorizontal: 16,
@@ -2370,7 +2623,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  datePickerValue: {flex: 1, color: colors.text, fontSize: 14, fontWeight: '800'},
+  datePickerValue: {flex: 1, color: colors.text, fontSize: 11, fontWeight: '800'},
   datePickerPlaceholder: {color: colors.subtle},
   modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.5)', justifyContent: 'flex-end'},
   modalSheet: {

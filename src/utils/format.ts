@@ -35,7 +35,7 @@ export function money(value?: number | string | null, symbol = '') {
   return `${symbol}${numeric.toLocaleString(undefined, {maximumFractionDigits: 2})}`;
 }
 
-export function timeText(value?: string | null) {
+export function timeText(value?: string | null, includeSeconds = false) {
   if (!value) {
     return '-';
   }
@@ -65,7 +65,10 @@ export function timeText(value?: string | null) {
   const period = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${displayHour}:${pad(minute)}:${pad(second)} ${period}`;
+  if (includeSeconds) {
+    return `${displayHour}:${pad(minute)}:${pad(second)} ${period}`;
+  }
+  return `${displayHour}:${pad(minute)} ${period}`;
 }
 
 export function dateText(value?: string | null) {

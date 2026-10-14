@@ -47,6 +47,9 @@ const featherNames: Record<string, string> = {
   'checkmark-circle-outline': 'check-circle',
   'list-outline': 'list',
   'search-outline': 'search',
+  'download-outline': 'download',
+  'filter-outline': 'filter',
+  'refresh-outline': 'refresh-cw',
   'alert-circle-outline': 'alert-circle',
   'folder-open-outline': 'folder',
   'albums-outline': 'layers',
@@ -101,6 +104,8 @@ const materialNames: Record<string, string> = {
   'finger-print': 'fingerprint',
   'shield-checkmark-outline': 'shield-check-outline',
   'shield-checkmark': 'shield-check',
+  'megaphone-outline': 'bullhorn-outline',
+  megaphone: 'bullhorn',
 };
 
 export default function Icon({name, ...props}: any) {
