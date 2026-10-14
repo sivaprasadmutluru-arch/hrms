@@ -385,6 +385,11 @@ public class UserRoleService {
     private void validateEmploymentCompanyForCompanyRole(AssignRoleRequest request) {
         if (request.getRoleName() == Role.RoleName.SUPER_ADMIN
                 || request.getRoleName() == Role.RoleName.ACCOUNT_MANAGER
+                // The first Enterprise Admin is provisioned before the tenant
+                // workspace creates its employee profile. Enterprise access is a
+                // company authority, so it must not depend on a prior EMPLOYEE
+                // assignment (which would make organization creation impossible).
+                || request.getRoleName() == Role.RoleName.ENTERPRISE_ADMIN
                 || request.getRoleName() == Role.RoleName.EMPLOYEE) return;
         Long employmentCompanyId = userRoleRepository.findByUserId(request.getUserId()).stream()
                 .filter(ur -> ur.isEffectiveOn(LocalDate.now()))
