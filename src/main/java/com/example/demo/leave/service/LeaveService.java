@@ -523,6 +523,7 @@ public class LeaveService {
     @Transactional
     public LeaveType createLeaveType(LeaveType leaveType) {
         if (isSickLeaveType(leaveType.getName())) leaveType.setRequireAttachment(true);
+        normalizeAccrualPolicy(leaveType);
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (Boolean.TRUE.equals(leaveType.getIsOrganizationWide())) {
             if (scope != null && !scope.hasUnrestrictedAccess()
@@ -568,6 +569,11 @@ public class LeaveService {
         lt.setIsEncashable(updated.getIsEncashable());
         lt.setAccrualEnabled(updated.getAccrualEnabled());
         lt.setMidYearJoinerMode(updated.getMidYearJoinerMode());
+        lt.setAccrualPostingTiming(updated.getAccrualPostingTiming());
+        lt.setAccrualCalculationMethod(updated.getAccrualCalculationMethod());
+        lt.setAccrualPrecision(updated.getAccrualPrecision());
+        lt.setAccrualProrationBasis(updated.getAccrualProrationBasis());
+        normalizeAccrualPolicy(lt);
         lt.setNegativeBalanceAllowed(updated.getNegativeBalanceAllowed());
         lt.setNegativeBalanceLimit(updated.getNegativeBalanceLimit());
         lt.setActive(updated.isActive());
@@ -583,6 +589,13 @@ public class LeaveService {
     private boolean isSickLeaveType(String name) {
         return name != null && "sickleave".equals(name.replaceAll("[^a-zA-Z]", "")
                 .toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private void normalizeAccrualPolicy(LeaveType leaveType) {
+        if (leaveType.getAccrualPostingTiming() == null) leaveType.setAccrualPostingTiming(LeaveType.AccrualPostingTiming.END_OF_MONTH);
+        if (leaveType.getAccrualCalculationMethod() == null) leaveType.setAccrualCalculationMethod(LeaveType.AccrualCalculationMethod.FIXED_MONTHLY);
+        if (leaveType.getAccrualPrecision() == null || leaveType.getAccrualPrecision() < 1 || leaveType.getAccrualPrecision() > 2) leaveType.setAccrualPrecision(1);
+        if (leaveType.getAccrualProrationBasis() == null) leaveType.setAccrualProrationBasis(LeaveType.AccrualProrationBasis.CALENDAR_DAYS);
     }
 
     private void resolveApplicableEmployeeTypes(LeaveType leaveType) {

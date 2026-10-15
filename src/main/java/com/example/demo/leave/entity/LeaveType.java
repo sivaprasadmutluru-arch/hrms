@@ -106,6 +106,25 @@ public class LeaveType extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private MidYearJoinerMode midYearJoinerMode = MidYearJoinerMode.MANUAL;
 
+    /** When the monthly credit becomes available to employees. */
+    @Column(name = "accrual_posting_timing")
+    @Enumerated(EnumType.STRING)
+    private AccrualPostingTiming accrualPostingTiming = AccrualPostingTiming.END_OF_MONTH;
+
+    /** Legacy fixed monthly rounding, or reconcile the 12 monthly credits to the annual entitlement. */
+    @Column(name = "accrual_calculation_method")
+    @Enumerated(EnumType.STRING)
+    private AccrualCalculationMethod accrualCalculationMethod = AccrualCalculationMethod.FIXED_MONTHLY;
+
+    /** Number of decimal places retained for each monthly credit (1 or 2). */
+    @Column(name = "accrual_precision")
+    private Integer accrualPrecision = 1;
+
+    /** Basis used to calculate a new joiner's first partial month. */
+    @Column(name = "accrual_proration_basis")
+    @Enumerated(EnumType.STRING)
+    private AccrualProrationBasis accrualProrationBasis = AccrualProrationBasis.CALENDAR_DAYS;
+
     /** If true, employees can go negative on leave balance */
     @Column(name = "negative_balance_allowed")
     private Boolean negativeBalanceAllowed = false;
@@ -133,4 +152,8 @@ public class LeaveType extends BaseEntity {
     public enum MidYearJoinerMode {
         MANUAL, AUTO_PRORATA
     }
+
+    public enum AccrualPostingTiming { START_OF_MONTH, END_OF_MONTH }
+    public enum AccrualCalculationMethod { FIXED_MONTHLY, ANNUAL_CAP_RECONCILED }
+    public enum AccrualProrationBasis { CALENDAR_DAYS, WORKING_DAYS }
 }

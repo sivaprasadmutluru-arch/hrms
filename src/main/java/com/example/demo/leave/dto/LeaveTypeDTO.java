@@ -4,6 +4,9 @@ import com.example.demo.leave.entity.LeaveType.CarryforwardType;
 import com.example.demo.leave.entity.LeaveType.LeaveValidationType;
 import com.example.demo.leave.entity.LeaveType.MidYearJoinerMode;
 import com.example.demo.leave.entity.LeaveType.PaymentType;
+import com.example.demo.leave.entity.LeaveType.AccrualPostingTiming;
+import com.example.demo.leave.entity.LeaveType.AccrualCalculationMethod;
+import com.example.demo.leave.entity.LeaveType.AccrualProrationBasis;
 
 public record LeaveTypeDTO(
         Long id,
@@ -24,6 +27,10 @@ public record LeaveTypeDTO(
         String resetWeekend,
         Boolean accrualEnabled,
         MidYearJoinerMode midYearJoinerMode,
+        AccrualPostingTiming accrualPostingTiming,
+        AccrualCalculationMethod accrualCalculationMethod,
+        Integer accrualPrecision,
+        AccrualProrationBasis accrualProrationBasis,
         Boolean negativeBalanceAllowed,
         Double negativeBalanceLimit,
         Boolean excludeWeekend,

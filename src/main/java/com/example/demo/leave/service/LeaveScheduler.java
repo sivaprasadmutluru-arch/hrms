@@ -37,14 +37,14 @@ public class LeaveScheduler {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         ready = true;
-        monthEndAccrual();
+        monthlyAccrualCatchUp();
     }
 
     // Local installations may be off at midnight. Retry while the application is running.
     @Scheduled(fixedDelayString = "${leave.accrual.catch-up-ms:3600000}",
             initialDelayString = "${leave.accrual.catch-up-ms:3600000}")
     public void periodicAccrualCatchUp() {
-        if (ready) monthEndAccrual();
+        if (ready) monthlyAccrualCatchUp();
     }
 
     /**
@@ -55,14 +55,19 @@ public class LeaveScheduler {
      */
     @Scheduled(cron = "0 0 0 * * *")
     public synchronized void monthEndAccrual() {
-        runMonthlyAccrualCatchUp(LocalDate.now());
+        monthlyAccrualCatchUp();
     }
 
-    void runMonthlyAccrualCatchUp(LocalDate today) {
+    private void monthlyAccrualCatchUp() {
+        LocalDate today = LocalDate.now();
+        runMonthlyAccrualCatchUp(today.withDayOfMonth(1), LeaveType.AccrualPostingTiming.START_OF_MONTH);
+        runMonthlyAccrualCatchUp(YearMonth.from(today).minusMonths(1).atEndOfMonth(), LeaveType.AccrualPostingTiming.END_OF_MONTH);
+    }
+
+    void runMonthlyAccrualCatchUp(LocalDate accrualPeriod, LeaveType.AccrualPostingTiming timing) {
         String previousTenant = TenantContext.getTenant();
-        LocalDate monthEnd = YearMonth.from(today).minusMonths(1).atEndOfMonth();
         List<Company> tenants = companyRepository.findAllHeadOfficesActivePublic();
-        log.info("[LeaveScheduler] Processing accrual date={} across {} tenants", monthEnd, tenants.size());
+        log.info("[LeaveScheduler] Processing {} accrual date={} across {} tenants", timing, accrualPeriod, tenants.size());
 
         for (Company tenant : tenants) {
             String schema = tenant.getSchemaName();
@@ -73,15 +78,21 @@ public class LeaveScheduler {
 
             try {
                 TenantContext.setTenant(schema);
-                int posted = leaveAccrualService.processMonthlyAccrual(monthEnd);
-                log.info("[LeaveScheduler] Tenant={} accrualDate={} posted={}", schema, monthEnd, posted);
+                int posted = leaveAccrualService.processMonthlyAccrual(accrualPeriod, timing);
+                log.info("[LeaveScheduler] Tenant={} timing={} accrualDate={} posted={}", schema, timing, accrualPeriod, posted);
             } catch (Exception ex) {
                 // One tenant must not prevent accrual processing for every other company.
-                log.error("[LeaveScheduler] Accrual failed for tenant={} accrualDate={}", schema, monthEnd, ex);
+                log.error("[LeaveScheduler] Accrual failed for tenant={} timing={} accrualDate={}", schema, timing, accrualPeriod, ex);
             } finally {
                 TenantContext.setTenant(previousTenant);
             }
         }
+    }
+
+    /** Backwards-compatible catch-up entry point for legacy end-of-month policies. */
+    void runMonthlyAccrualCatchUp(LocalDate today) {
+        runMonthlyAccrualCatchUp(YearMonth.from(today).minusMonths(1).atEndOfMonth(),
+                LeaveType.AccrualPostingTiming.END_OF_MONTH);
     }
 
     @Scheduled(cron = "0 1 0 * * *") // 00:01 daily — runs AFTER monthEndAccrual to avoid reset wiping accrual credit
