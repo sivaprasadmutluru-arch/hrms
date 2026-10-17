@@ -1,6 +1,7 @@
 package com.example.demo.leave.dto;
 
 import com.example.demo.leave.entity.*;
+import org.hibernate.Hibernate;
 
 public final class LeaveMapper {
 
@@ -18,8 +19,12 @@ public final class LeaveMapper {
     }
 
     public static LeaveRequestDTO toDTO(LeaveRequest r, boolean canReview) {
-        String deptName = (r.getEmployee() != null && r.getEmployee().getDepartment() != null)
-                ? r.getEmployee().getDepartment().getName() : null;
+        // Some write endpoints return a request after their service transaction has
+        // completed.  Do not force a lazy Department proxy to initialize while the
+        // response is being built; that turns a successful leave action into a 500.
+        var department = r.getEmployee() != null ? r.getEmployee().getDepartment() : null;
+        String deptName = department != null && Hibernate.isInitialized(department)
+                ? department.getName() : null;
         Long companyId = r.getCompany() != null ? r.getCompany().getId() : null;
         String approvedByName = employeeName(r.getApprovedBy());
         return new LeaveRequestDTO(
@@ -71,6 +76,7 @@ public final class LeaveMapper {
                 lt.getAccrualCalculationMethod(),
                 lt.getAccrualPrecision(),
                 lt.getAccrualProrationBasis(),
+                lt.getAccrualStartDate(),
                 lt.getNegativeBalanceAllowed(),
                 lt.getNegativeBalanceLimit(),
                 lt.getExcludeWeekend(),

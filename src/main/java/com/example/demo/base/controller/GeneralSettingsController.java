@@ -38,6 +38,8 @@ import java.util.Properties;
 @Tag(name = "General Settings")
 public class GeneralSettingsController {
 
+    private static final List<String> MODULE_KEYS = List.of("payslips", "loans", "reimbursements");
+
     private final CompanyDateTimeFormatRepository dateTimeFormatRepository;
     private final DashboardComponentSettingRepository dashboardComponentSettingRepository;
     private final WhiteLabelSettingRepository whiteLabelSettingRepository;
@@ -46,6 +48,41 @@ public class GeneralSettingsController {
     private final HelpdeskTagRepository helpdeskTagRepository;
     private final AuditTagRepository auditTagRepository;
     private final CompanyRepository companyRepository;
+
+    @GetMapping("/module-visibility")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Get company module visibility; modules are enabled by default")
+    public ResponseEntity<Map<String, Boolean>> getModuleVisibility(@RequestParam Long companyId) {
+        Map<String, Boolean> visibility = new java.util.LinkedHashMap<>();
+        MODULE_KEYS.forEach(key -> visibility.put(key, true));
+        dashboardComponentSettingRepository.findByCompanyId(companyId).stream()
+                .filter(setting -> setting.getComponentKey() != null && setting.getComponentKey().startsWith("module:"))
+                .forEach(setting -> visibility.put(setting.getComponentKey().substring("module:".length()), setting.isEnabled()));
+        return ResponseEntity.ok(visibility);
+    }
+
+    @PostMapping("/module-visibility")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @Transactional
+    @Operation(summary = "Save company module visibility")
+    public ResponseEntity<Map<String, Boolean>> saveModuleVisibility(
+            @RequestParam Long companyId, @RequestBody Map<String, Boolean> visibility) {
+        MODULE_KEYS.forEach(key -> {
+            if (!visibility.containsKey(key)) return;
+            DashboardComponentSetting setting = dashboardComponentSettingRepository
+                    .findByCompanyIdAndComponentKey(companyId, "module:" + key)
+                    .orElseGet(() -> {
+                        DashboardComponentSetting created = new DashboardComponentSetting();
+                        created.setCompany(companyRepository.getReferenceById(companyId));
+                        created.setComponentKey("module:" + key);
+                        return created;
+                    });
+            setting.setEnabled(Boolean.TRUE.equals(visibility.get(key)));
+            dashboardComponentSettingRepository.save(setting);
+        });
+        return getModuleVisibility(companyId);
+    }
 
     // ─── Date / Time Format ───────────────────────────────────────────────────
 

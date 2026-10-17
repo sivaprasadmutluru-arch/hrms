@@ -9,6 +9,7 @@ import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.service.FileUploadService;
 import com.example.demo.common.context.AccessScopeContext;
+import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.common.util.ScopeFilter;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
@@ -16,6 +17,8 @@ import com.example.demo.leave.entity.*;
 import com.example.demo.leave.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +32,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -52,6 +57,9 @@ public class LeaveService {
     private final FileUploadService fileUploadService;
     private final com.example.demo.employee.service.ReportingManagerService reportingManagers;
     private final com.example.demo.notification.service.NotificationService notifications;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private boolean isReportingManager(Employee employee, Long userId) {
         if (employee == null || userId == null) return false;
@@ -229,12 +237,11 @@ public class LeaveService {
                 ? LeaveRequest.LeaveDuration.FULL_DAY : leaveDuration;
         LeaveType leaveType = leaveTypeRepository.findById(leaveTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("LeaveType", leaveTypeId));
-        if (requiresCertificate(leaveType) && !hasStoredCertificate(attachmentPath)) {
-            throw new BadRequestException("A sick leave certificate is required before submitting this leave request.");
-        }
-
         double workingDays = calculateWorkingDays(startDate, endDate, companyId, leaveType, employeeId);
         double days = resolveRequestedDays(workingDays, duration, startDate, endDate);
+        if (requiresCertificate(leaveType, days) && !hasStoredCertificate(attachmentPath)) {
+            throw new BadRequestException("A sick leave certificate is required for sick leave longer than two days.");
+        }
 
         // Reject if employee already has an active (pending or approved) request overlapping these dates
         List<LeaveRequest> overlapping = leaveRequestRepository.findActiveOverlapping(employeeId, startDate, endDate);
@@ -299,11 +306,13 @@ public class LeaveService {
         return saved;
     }
 
-    private boolean requiresCertificate(LeaveType leaveType) {
-        if (Boolean.TRUE.equals(leaveType.getRequireAttachment())) return true;
+    private boolean requiresCertificate(LeaveType leaveType, double requestedDays) {
         String normalizedName = leaveType.getName() == null ? ""
                 : leaveType.getName().replaceAll("[^a-zA-Z]", "").toLowerCase(java.util.Locale.ROOT);
-        return "sickleave".equals(normalizedName);
+        // Sick leave needs a certificate only after the first two requested leave days.
+        // Other leave types retain their individually configured attachment requirement.
+        if ("sickleave".equals(normalizedName)) return requestedDays > 2d;
+        return Boolean.TRUE.equals(leaveType.getRequireAttachment());
     }
 
     private boolean hasStoredCertificate(String attachmentPath) {
@@ -436,6 +445,94 @@ public class LeaveService {
         return workingDays;
     }
 
+    private static final List<String> LEAVE_PURGE_TABLES = List.of(
+            "leave_request_files",
+            "leave_request_comments",
+            "leave_request_condition_approvals",
+            "leave_requests",
+            "leave_allocation_request_comments",
+            "leave_allocation_requests",
+            "compensatory_leave_request_comments",
+            "compensatory_leave_attendances",
+            "compensatory_leave_requests",
+            "leave_allocations",
+            "available_leaves",
+            "leave_accrual_logs",
+            "employee_past_leave_restricts"
+    );
+
+    /**
+     * Returns the operational leave data that an authorised administrator can purge.
+     * Leave policies (types, restrictions, holiday and company-leave configuration) are
+     * intentionally not included.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> getPurgeSummary(Long companyId) {
+        validatePurgeScope(companyId);
+        return collectPurgeCounts();
+    }
+
+    /**
+     * Clears operational leave history and balances for the selected company. The
+     * confirmation phrase is a second server-side guard for this irreversible action.
+     */
+    @Transactional
+    public Map<String, Long> purgeOperationalLeaveData(Long companyId, String confirmation) {
+        validatePurgeScope(companyId);
+        if (!"DELETE ALL LEAVE DATA".equals(confirmation)) {
+            throw new BadRequestException("Type DELETE ALL LEAVE DATA to confirm this action.");
+        }
+
+        List<String> storedFiles = requestFileRepository.findAll().stream()
+                .map(LeaveRequestFile::getFilePath)
+                .filter(path -> path != null && !path.isBlank())
+                .toList();
+        Map<String, Long> deleted = collectPurgeCounts();
+        for (String table : LEAVE_PURGE_TABLES) {
+            if (tableExists(table)) {
+                entityManager.createNativeQuery("DELETE FROM " + table).executeUpdate();
+            }
+        }
+        entityManager.flush();
+        storedFiles.forEach(fileUploadService::delete);
+        return deleted;
+    }
+
+    private void validatePurgeScope(Long companyId) {
+        if (companyId == null) {
+            throw new BadRequestException("Select a company before deleting leave data.");
+        }
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope == null || !scope.canAccess(companyId)
+                || !companyId.equals(scope.getCompanyId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Select a company you are authorised to manage before deleting leave data.");
+        }
+        if (TenantContext.DEFAULT_TENANT.equals(TenantContext.getTenant())) {
+            throw new BadRequestException("Leave data deletion is not available in all-companies mode.");
+        }
+    }
+
+    private Map<String, Long> collectPurgeCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String table : LEAVE_PURGE_TABLES) {
+            if (tableExists(table)) {
+                Number count = (Number) entityManager.createNativeQuery("SELECT COUNT(*) FROM " + table)
+                        .getSingleResult();
+                counts.put(table, count.longValue());
+            }
+        }
+        return counts;
+    }
+
+    private boolean tableExists(String table) {
+        return Boolean.TRUE.equals(entityManager.createNativeQuery(
+                        "SELECT EXISTS (SELECT 1 FROM information_schema.tables " +
+                                "WHERE table_schema = current_schema() AND table_name = :table)")
+                .setParameter("table", table)
+                .getSingleResult());
+    }
+
     /** Permanently deletes leave requests visible to the current administrative scope. */
     @Transactional
     public int deleteRequests(List<Long> requestIds) {
@@ -450,9 +547,6 @@ public class LeaveService {
         List<LeaveRequest> requests = leaveRequestRepository.findAllById(ids);
         if (requests.size() != ids.size()) {
             throw new ResourceNotFoundException("One or more leave requests were not found");
-        }
-        if (requests.stream().anyMatch(request -> request.getStatus() != LeaveRequest.LeaveStatus.CANCELLED)) {
-            throw new BadRequestException("Only cancelled leave requests can be permanently deleted");
         }
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         for (LeaveRequest request : requests) {
@@ -573,6 +667,7 @@ public class LeaveService {
         lt.setAccrualCalculationMethod(updated.getAccrualCalculationMethod());
         lt.setAccrualPrecision(updated.getAccrualPrecision());
         lt.setAccrualProrationBasis(updated.getAccrualProrationBasis());
+        lt.setAccrualStartDate(updated.getAccrualStartDate());
         normalizeAccrualPolicy(lt);
         lt.setNegativeBalanceAllowed(updated.getNegativeBalanceAllowed());
         lt.setNegativeBalanceLimit(updated.getNegativeBalanceLimit());

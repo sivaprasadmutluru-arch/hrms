@@ -112,19 +112,41 @@ public class LeaveController {
     }
 
     @DeleteMapping("/requests/{id}")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Permanently delete one cancelled leave request")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete one leave request")
     public ResponseEntity<Map<String, Object>> deleteRequest(@PathVariable Long id) {
         int deleted = leaveService.deleteRequests(List.of(id));
         return ResponseEntity.ok(Map.of("message", "Leave request deleted", "deleted", deleted));
     }
 
     @PostMapping("/requests/bulk-delete")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Permanently delete selected cancelled leave requests")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete selected leave requests")
     public ResponseEntity<Map<String, Object>> bulkDeleteRequests(@RequestBody List<Long> ids) {
         int deleted = leaveService.deleteRequests(ids);
         return ResponseEntity.ok(Map.of("message", deleted + " leave request(s) deleted", "deleted", deleted));
+    }
+
+    @GetMapping("/admin/purge-summary")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Preview operational leave data that can be permanently deleted")
+    public ResponseEntity<Map<String, Long>> getPurgeSummary(@RequestParam Long companyId) {
+        return ResponseEntity.ok(leaveService.getPurgeSummary(companyId));
+    }
+
+    @PostMapping("/admin/purge")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'PLATFORM_SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete all operational leave data for the selected company")
+    public ResponseEntity<Map<String, Object>> purgeLeaveData(
+            @RequestParam Long companyId,
+            @RequestBody Map<String, String> request) {
+        Map<String, Long> deleted = leaveService.purgeOperationalLeaveData(
+                companyId, request == null ? null : request.get("confirmation"));
+        long total = deleted.values().stream().mapToLong(Long::longValue).sum();
+        return ResponseEntity.ok(Map.of(
+                "message", "Operational leave data deleted. Leave types and policy settings were preserved.",
+                "deleted", deleted,
+                "totalDeleted", total));
     }
 
 
@@ -259,6 +281,7 @@ public class LeaveController {
 
     @PostMapping(value = "/apply-with-certificate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('leave:create')")
+    @Transactional
     @Operation(summary = "Apply for leave with a supporting certificate")
     public ResponseEntity<LeaveRequestDTO> applyWithCertificate(
             @AuthenticationPrincipal UserPrincipal principal,
@@ -268,25 +291,25 @@ public class LeaveController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false, defaultValue = "FULL_DAY") LeaveRequest.LeaveDuration leaveDuration,
             @RequestParam(required = false) String description,
-            @RequestParam("certificate") MultipartFile certificate) {
-        if (certificate == null || certificate.isEmpty()) {
-            throw new BadRequestException("A sick leave certificate is required before submitting this leave request.");
-        }
-        if (certificate.getSize() > 10L * 1024 * 1024) {
+            @RequestParam(required = false) MultipartFile certificate) {
+        if (certificate != null && !certificate.isEmpty() && certificate.getSize() > 10L * 1024 * 1024) {
             throw new BadRequestException("The sick leave certificate must be 10 MB or smaller.");
         }
-        String attachmentPath = fileUploadService.store(certificate, "leave-certificates");
+        String attachmentPath = certificate != null && !certificate.isEmpty()
+                ? fileUploadService.store(certificate, "leave-certificates") : null;
         try {
             LeaveRequestDTO request = apply(principal, new ApplyLeaveRequest(employeeId, leaveTypeId, startDate,
                     endDate, leaveDuration, description, null, attachmentPath)).getBody();
             LeaveRequestFile file = new LeaveRequestFile();
-            file.setLeaveRequest(leaveService.getRequestById(request.id()));
-            file.setFilePath(attachmentPath);
-            file.setFileName(certificate.getOriginalFilename());
-            leaveRequestFileRepository.save(file);
+            if (attachmentPath != null) {
+                file.setLeaveRequest(leaveService.getRequestById(request.id()));
+                file.setFilePath(attachmentPath);
+                file.setFileName(certificate.getOriginalFilename());
+                leaveRequestFileRepository.save(file);
+            }
             return ResponseEntity.ok(request);
         } catch (RuntimeException ex) {
-            fileUploadService.delete(attachmentPath);
+            if (attachmentPath != null) fileUploadService.delete(attachmentPath);
             throw ex;
         }
     }

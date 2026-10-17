@@ -54,22 +54,17 @@ public class UserPrincipal implements UserDetails {
 
         List<GrantedAuthority> auths = new ArrayList<>();
 
-        // Add ROLE_ prefix for each role the user has (used with hasRole())
-        // Add permission strings directly (used with hasAuthority())
-        auths.addAll(authoritiesForAssignments(user.getUserRoles().stream()
+        // Role assignments are the single source of truth for authorization.
+        // A current PLATFORM_SUPER_ADMIN assignment grants platform-wide access;
+        // SUPER_ADMIN remains scoped to the companies assigned to that user.
+        // The legacy users.is_superuser flag must not override a revoked, expired,
+        // or missing role assignment.
+        List<UserRole> effectiveAssignments = user.getUserRoles().stream()
                 .filter(ur -> ur.isEffectiveOn(LocalDate.now()))
-                // PLATFORM_SUPER_ADMIN is an account-level capability, represented by
-                // User.superuser. Never let a stale/company-scoped assignment elevate a
-                // normal user to unrestricted platform access.
-                .filter(ur -> ur.getRole().getName() != Role.RoleName.PLATFORM_SUPER_ADMIN
-                        || user.isSuperuser())
-                .toList()));
+                .toList();
+        auths.addAll(authoritiesForAssignments(effectiveAssignments));
 
-        // Platform Super Admin (isSuperuser flag) always gets the top-level role
-        // plus every permission in the system so all hasAuthority() checks pass.
-        if (user.isSuperuser()) {
-            auths.add(new SimpleGrantedAuthority("ROLE_" + Role.RoleName.PLATFORM_SUPER_ADMIN.name()));
-            auths.add(new SimpleGrantedAuthority("ROLE_" + Role.RoleName.SUPER_ADMIN.name()));
+        if (hasEffectivePlatformSuperAdminRole(effectiveAssignments)) {
             allPermissions.forEach(p ->
                     auths.add(new SimpleGrantedAuthority(p.getName())));
         }
@@ -98,6 +93,18 @@ public class UserPrincipal implements UserDetails {
         return result.stream().distinct().collect(Collectors.toList());
     }
 
+    /** True only when the user has a current, active Platform Super Admin assignment. */
+    public static boolean hasEffectivePlatformSuperAdminRole(User user) {
+        return hasEffectivePlatformSuperAdminRole(user.getUserRoles().stream()
+                .filter(ur -> ur.isEffectiveOn(LocalDate.now()))
+                .toList());
+    }
+
+    private static boolean hasEffectivePlatformSuperAdminRole(Collection<UserRole> assignments) {
+        return assignments.stream().anyMatch(ur ->
+                ur.getRole().getName() == Role.RoleName.PLATFORM_SUPER_ADMIN);
+    }
+
     private static Set<String> roleBaselinePermissions(Role.RoleName roleName) {
         return switch (roleName) {
             case SUPER_ADMIN, PLATFORM_SUPER_ADMIN, ACCOUNT_MANAGER, COMPANY_ADMIN, CEO, ENTERPRISE_ADMIN -> Set.of(
@@ -115,7 +122,8 @@ public class UserPrincipal implements UserDetails {
     /** Temporary endpoint compatibility while controllers move from legacy names. */
     private static Set<Role.RoleName> compatibilityAuthorities(Role.RoleName roleName) {
         return switch (roleName) {
-            // SUPER_ADMIN is company-scoped. Only User.superuser receives PLATFORM_SUPER_ADMIN.
+            // SUPER_ADMIN is company-scoped. PLATFORM_SUPER_ADMIN is granted only
+            // by its own active role assignment.
             case SUPER_ADMIN -> Set.of(Role.RoleName.ENTERPRISE_ADMIN);
             // CEO is a business title with the same company-wide capability as an
             // Enterprise Admin.  The assignment's company scope is still enforced

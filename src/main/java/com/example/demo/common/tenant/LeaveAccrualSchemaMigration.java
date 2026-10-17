@@ -28,6 +28,7 @@ public class LeaveAccrualSchemaMigration implements CommandLineRunner {
                 statement.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS accrual_calculation_method varchar(32)");
                 statement.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS accrual_precision integer");
                 statement.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS accrual_proration_basis varchar(32)");
+                statement.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS accrual_start_date date");
             } catch (Exception error) {
                 log.error("Could not add leave accrual policy columns to tenant {}", schema, error);
             }

@@ -125,6 +125,10 @@ public class LeaveType extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private AccrualProrationBasis accrualProrationBasis = AccrualProrationBasis.CALENDAR_DAYS;
 
+    /** First month eligible for automatic credits; null keeps legacy immediate behaviour. */
+    @Column(name = "accrual_start_date")
+    private java.time.LocalDate accrualStartDate;
+
     /** If true, employees can go negative on leave balance */
     @Column(name = "negative_balance_allowed")
     private Boolean negativeBalanceAllowed = false;

@@ -65,6 +65,8 @@ public class LeaveAccrualService {
             LeaveType.AccrualPostingTiming postingTiming = lt.getAccrualPostingTiming() != null
                     ? lt.getAccrualPostingTiming() : LeaveType.AccrualPostingTiming.END_OF_MONTH;
             if (postingTiming != timing) continue;
+            if (lt.getAccrualStartDate() != null
+                    && accrualPeriod.withDayOfMonth(1).isBefore(lt.getAccrualStartDate().withDayOfMonth(1))) continue;
             int precision = lt.getAccrualPrecision() != null && lt.getAccrualPrecision() == 2 ? 2 : 1;
             double monthlyRate = monthlyCredit(lt, accrualPeriod, precision);
             if (monthlyRate <= 0) continue;
@@ -153,11 +155,11 @@ public class LeaveAccrualService {
 
                 totalPosted++;
                 log.info("Accrual posted: employee={} leaveType={} date={} days={} note={}",
-                        empId, lt.getName(), monthEnd, days, note);
+                        empId, lt.getName(), accrualPeriod, days, note);
             }
         }
 
-        log.info("Monthly accrual complete for {}: {} credits posted", monthEnd, totalPosted);
+        log.info("Monthly accrual complete for {}: {} credits posted", accrualPeriod, totalPosted);
         return totalPosted;
     }
 

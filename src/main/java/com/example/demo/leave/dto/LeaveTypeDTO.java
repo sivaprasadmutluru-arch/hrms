@@ -31,6 +31,7 @@ public record LeaveTypeDTO(
         AccrualCalculationMethod accrualCalculationMethod,
         Integer accrualPrecision,
         AccrualProrationBasis accrualProrationBasis,
+        java.time.LocalDate accrualStartDate,
         Boolean negativeBalanceAllowed,
         Double negativeBalanceLimit,
         Boolean excludeWeekend,

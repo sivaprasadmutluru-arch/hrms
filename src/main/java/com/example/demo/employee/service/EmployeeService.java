@@ -81,6 +81,7 @@ public class EmployeeService {
     private final EmployeeWorkInformationRepository workInfoRepository;
     private final ReportingManagerService reportingManagers;
     private final EmailService emailService;
+    private final com.example.demo.leave.service.NewJoinerLeaveEntitlementService newJoinerLeaveEntitlementService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -334,6 +335,7 @@ public class EmployeeService {
 
         log.info("[create] saving employee firstName={} companyId={}", emp.getFirstName(), req.getCompanyId());
         Employee saved = employeeRepository.save(emp);
+        newJoinerLeaveEntitlementService.grantFor(saved);
         log.info("[create] saved employee id={}, creating contract & workInfo", saved.getId());
         Contract contract = createDefaultContract(saved, req);
         createDefaultWorkInfo(saved);

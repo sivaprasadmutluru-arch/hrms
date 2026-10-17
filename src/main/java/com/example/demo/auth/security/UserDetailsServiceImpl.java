@@ -26,9 +26,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         User user = userRepository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
-        // PLATFORM_SUPER_ADMIN gets every permission in the system so that all
-        // hasAuthority() checks pass without requiring explicit role-permission mapping.
-        if (user.isSuperuser()) {
+        // An active Platform Super Admin role gets every permission in the system
+        // so that all hasAuthority() checks pass without requiring explicit
+        // role-permission mapping. Do not rely on the legacy is_superuser flag.
+        if (UserPrincipal.hasEffectivePlatformSuperAdminRole(user)) {
             List<Permission> allPermissions = permissionRepository.findAll();
             return new UserPrincipal(user, allPermissions);
         }
