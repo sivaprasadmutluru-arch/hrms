@@ -195,13 +195,16 @@ function canRequestRegularisation(record: any) {
   const date = String(field(record, ['attendanceDate', 'date'], '')).slice(0, 10);
   const noPendingRequest = !record?.regularisationStatus || record?.regularisationStatus === 'NONE';
   if (!noPendingRequest || !date || date < earliestRegularisationDateKey() || date > todayDateKey()) return false;
-  // Week-offs are non-working days. A virtual row has no attendance id, so it
-  // must be checked before the virtual-row fallback below.
   const dayStatus = String(field(record, ['displayStatus', 'status', 'attendanceStatus'], '')).replace(/[ _-]/g, '').toUpperCase();
-  if (dayStatus === 'WEEKOFF') return false;
-  // Existing records must be irregular. Virtual full-view rows have no id and
-  // represent a missing attendance day, which the API accepts as MISSING_PUNCH.
-  return record?.id ? record?.attendanceStatus === 'IRREGULAR' : true;
+  const attendanceStatus = String(
+    record?.attendanceStatus || record?.displayStatus || record?.status || '',
+  ).toUpperCase().replace(/[ -]/g, '_');
+  const isCorrectable = attendanceStatus === 'IRREGULAR' || attendanceStatus === 'ABSENT';
+  // Week-offs and other scheduled non-working days never need correction.
+  if (['WEEKOFF', 'HOLIDAY', 'LEAVE'].includes(dayStatus)) return false;
+  // An absence is an attendance exception and may be regularised just like an
+  // irregular record. Virtual rows remain missing-punch requests.
+  return record?.id ? isCorrectable : true;
 }
 
 function leaveStatusGroup(item: any): 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'OTHER' {
@@ -291,7 +294,7 @@ function regularisationLabel(record: any) {
   const displayStatus = record?.displayStatus;
   if (status === 'REGULARISED' || attendanceStatus === 'REGULARISED') return 'Regularised';
   if (status === 'HAS_PENDING') return 'Pending';
-  if (attendanceStatus === 'IRREGULAR') return 'Request needed';
+  if (attendanceStatus === 'IRREGULAR' || String(displayStatus).toUpperCase() === 'ABSENT') return 'Request needed';
   if (displayStatus && displayStatus !== 'REGULAR') return String(displayStatus).replace(/_/g, ' ');
   return 'Regular';
 }
@@ -549,7 +552,6 @@ function earliestRegularisationDateKey() {
   const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
   return dateKey(new Date(targetYear, targetMonth, Math.min(today.getDate(), lastDay)));
 }
-
 function parseDateKey(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -1046,6 +1048,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [payslips, setPayslips] = useState<any[]>([]);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const [downloadingPayslipId, setDownloadingPayslipId] = useState('');
+  const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
   const [holidays, setHolidays] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [carrTasks, setCarrTasks] = useState<any[]>([]);
@@ -1148,6 +1151,12 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const activeCompanyId = profile?.companyId || user?.companyId;
+    if (!activeCompanyId) return;
+    api.moduleVisibility(activeCompanyId).then(setModuleVisibility).catch(() => setModuleVisibility({}));
+  }, [profile?.companyId, user?.companyId]);
 
   useEffect(() => {
     onRootChange?.(active === 'overview');
@@ -1461,7 +1470,9 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
             <QuickActionTile icon="sunny" label="Holidays" tone="success" onPress={() => setActive('holidays')} />
             <QuickActionTile icon="megaphone-outline" label="Announcements" tone="danger" onPress={() => setActive('announcements')} />
             <QuickActionTile icon="checkmark-circle" label="CAR Tasks" tone="violet" onPress={() => setActive('carr')} />
-            <QuickActionTile icon="wallet" label="Payslips" tone="teal" onPress={() => setActive('payslips')} />
+            {moduleVisibility.payslips !== false && (
+              <QuickActionTile icon="wallet" label="Payslips" tone="teal" onPress={() => setActive('payslips')} />
+            )}
           </View>
         </View>
 
