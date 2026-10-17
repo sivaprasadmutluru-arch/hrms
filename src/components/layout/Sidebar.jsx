@@ -13,6 +13,7 @@ import Avatar from '../common/Avatar'
 import ConfirmModal from '../common/ConfirmModal'
 import { APP_NAME, API_BASE_URL } from '../../config/constants'
 import { selectPlatformCompanies } from '../../features/platform/platformSlice'
+import api from '../../services/api'
 
 // ─── Collapsible nav groups ────────────────────────────────────────────────────
 
@@ -624,7 +625,7 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState(new Set())
   const location = useLocation()
   const auth = useAuth()
-  const { user, logout, isPlatformAdmin } = auth
+  const { user, logout, isCompanyScopeAdmin } = auth
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const platformCompanies = useSelector(selectPlatformCompanies)
@@ -645,10 +646,10 @@ export default function Sidebar() {
   const selectedCompanyFull = selectedCompanyId
     ? companiesData.find(c => String(c.id) === String(selectedCompanyId))
     : null
-  const displayName = isPlatformAdmin()
+  const displayName = isCompanyScopeAdmin()
     ? (selectedCompanyScope?.name || selectedCompanyFull?.name || APP_NAME)
     : (user?.companyName || APP_NAME)
-  const displayLogoUrl = isPlatformAdmin()
+  const displayLogoUrl = isCompanyScopeAdmin()
     ? (selectedCompanyScope?.logoUrl
         || (selectedCompanyFull?.logoPath ? `/api/files/${selectedCompanyFull.logoPath}` : null))
     : (user?.companyLogoUrl || null)
@@ -656,7 +657,34 @@ export default function Sidebar() {
   const [logoLoadError, setLogoLoadError] = useState(false)
   useEffect(() => { setLogoLoadError(false) }, [displayLogoUrl])
 
-  const sections = getNavSections(auth)
+  const companyIdForModules = selectedCompanyId ?? user?.companyId
+  const [moduleVisibility, setModuleVisibility] = useState({})
+
+  useEffect(() => {
+    if (!companyIdForModules) {
+      setModuleVisibility({})
+      return
+    }
+    let active = true
+    api.get('/settings/module-visibility', { params: { companyId: companyIdForModules } })
+      .then(response => { if (active) setModuleVisibility(response.data || {}) })
+      .catch(() => { if (active) setModuleVisibility({}) })
+    return () => { active = false }
+  }, [companyIdForModules])
+
+  const isModuleVisible = (path) => {
+    if (path === '/payroll/payslips') return moduleVisibility.payslips !== false
+    if (path === '/payroll/loans') return moduleVisibility.loans !== false
+    if (path === '/payroll/reimbursements') return moduleVisibility.reimbursements !== false
+    return true
+  }
+  const sections = getNavSections(auth).map(section => ({
+    ...section,
+    items: section.items.map(item => item.children
+      ? { ...item, children: item.children.filter(child => isModuleVisible(child.to)) }
+      : (isModuleVisible(item.to) ? item : null)
+    ).filter(Boolean).filter(item => !item.children || item.children.length > 0),
+  })).filter(section => section.items.length > 0)
 
   // Auto-expand groups whose child route is active
   useEffect(() => {

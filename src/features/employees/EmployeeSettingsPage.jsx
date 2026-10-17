@@ -198,7 +198,7 @@ export default function EmployeeSettingsPage() {
           <h3 className="text-base font-semibold text-gray-800">General Settings</h3>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="showBadgeId" {...regSettings('showBadgeId')} className="h-4 w-4 text-indigo-600 rounded" />
-            <label htmlFor="showBadgeId" className="text-sm text-gray-700">Show Badge ID on profiles</label>
+            <label htmlFor="showBadgeId" className="text-sm text-gray-700">Show Employee ID on profiles</label>
           </div>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="allowProfileView" {...regSettings('allowProfileView')} className="h-4 w-4 text-indigo-600 rounded" />

@@ -3,12 +3,15 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/common/ProtectedRoute'
+import SecureCarrRoute from './features/carr/SecureCarrRoute'
 
 const LoginPage               = lazy(() => import('./features/auth/LoginPage'))
 const ForgotPasswordPage      = lazy(() => import('./features/auth/ForgotPasswordPage'))
 const ForbiddenPage           = lazy(() => import('./features/auth/ForbiddenPage'))
 const SuspendedPage           = lazy(() => import('./features/auth/SuspendedPage'))
+const PrivacyPolicyPage       = lazy(() => import('./features/legal/PrivacyPolicyPage'))
 const AccountSettingsPage     = lazy(() => import('./features/auth/AccountSettingsPage'))
+const RequiredPasswordChangePage = lazy(() => import('./features/auth/RequiredPasswordChangePage'))
 const GeneralSettingsPage     = lazy(() => import('./features/settings/GeneralSettingsPage'))
 const UserGroupsPage          = lazy(() => import('./features/roles/UserGroupsPage'))
 const ShiftAllocationsPage    = lazy(() => import('./features/attendance/ShiftAllocationsPage'))
@@ -39,6 +42,7 @@ const OffboardingPage         = lazy(() => import('./features/offboarding/Offboa
 const OffboardingPlansPage    = lazy(() => import('./features/offboarding/OffboardingPlansPage'))
 const OffboardingSettingsPage = lazy(() => import('./features/offboarding/OffboardingSettingsPage'))
 const PerformanceCyclesPage   = lazy(() => import('./features/performance/PerformanceCyclesPage'))
+const CarrModulePage          = lazy(() => import('./features/carr/CarrModulePage'))
 const ObjectivesPage          = lazy(() => import('./features/performance/ObjectivesPage'))
 const FeedbackPage            = lazy(() => import('./features/performance/FeedbackPage'))
 const HelpdeskPage            = lazy(() => import('./features/helpdesk/HelpdeskPage'))
@@ -135,8 +139,12 @@ export default function App() {
       <Suspense fallback={<div className="min-h-screen bg-white" />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/change-password-required" element={<RequiredPasswordChangePage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/suspended" element={<SuspendedPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/carr/login" element={<LoginPage />} />
+          <Route path="/carr/*" element={<SecureCarrRoute><ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE']} element={<CarrModulePage />} /></SecureCarrRoute>} />
           <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />

@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchAll, create, update, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
+  fetchAll, create, update, remove, bulkRemove, fetchLeaveTypes, fetchLeaveAllocations, approveLeave, rejectLeave,
+  importHistoricalLeaves,
+  downloadHistoricalLeaveTemplate,
+  exportLeaveRequests,
   cancelLeave, bulkAllocateLeave, annualLeaveReset,
+  exportLeaveAllocations, importLeaveAllocations,
   fetchLeaveRequestComments, addLeaveRequestComment, deleteLeaveRequestComment,
   fetchConditionApprovals, addConditionApproval, approveConditionStep, rejectConditionStep,
   fetchLeaveRequestFiles, uploadLeaveRequestFile, deleteLeaveRequestFile,
@@ -37,9 +41,9 @@ const EMPLOYEE_TABS = ['Requests', 'Assigned Leaves', 'Balance']
 
 export default function LeavePage() {
   const dispatch = useDispatch()
-  const { user, effectiveCompanyId, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
+  const { user, roles, effectiveCompanyId, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const platformAdmin = isPlatformAdmin()
-  const canManage = platformAdmin || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const canManage = platformAdmin || roles.includes('SUPER_ADMIN') || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -66,6 +70,14 @@ export default function LeavePage() {
   // Annual reset modal state
   const [resetModal, setResetModal] = useState({ open: false, year: String(new Date().getFullYear()) })
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, id: null })
+  const [selectedRequestIds, setSelectedRequestIds] = useState(new Set())
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, ids: [] })
+  const [requestDeleting, setRequestDeleting] = useState(false)
+  const [requestYear, setRequestYear] = useState(String(new Date().getFullYear()))
+  const [allocationYear, setAllocationYear] = useState('')
+  const [selectedAllocationIds, setSelectedAllocationIds] = useState(new Set())
+  const [allocationDeleteConfirm, setAllocationDeleteConfirm] = useState({ open: false, ids: [] })
+  const [allocationDeleting, setAllocationDeleting] = useState(false)
 
   // Balance tab edit/delete
   const [balanceEditTarget, setBalanceEditTarget] = useState(null)
@@ -77,6 +89,152 @@ export default function LeavePage() {
   const [requestSearch, setRequestSearch] = useState('')
   const [allocationSearch, setAllocationSearch] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
+  const allocationImportRef = useRef(null)
+  const historicalImportRef = useRef(null)
+  const [allocationImporting, setAllocationImporting] = useState(false)
+  const [historicalImporting, setHistoricalImporting] = useState(false)
+  const [historicalTemplateDownloading, setHistoricalTemplateDownloading] = useState(false)
+  const [requestExporting, setRequestExporting] = useState(false)
+  const [allocationExporting, setAllocationExporting] = useState(false)
+  const [purgeModal, setPurgeModal] = useState(false)
+  const [purgeSummary, setPurgeSummary] = useState(null)
+  const [purgeConfirmation, setPurgeConfirmation] = useState('')
+  const [purgeLoading, setPurgeLoading] = useState(false)
+  const canPurgeLeaveData = platformAdmin || roles.includes('SUPER_ADMIN')
+
+  const requireCompany = () => {
+    if (effectiveCompanyId) return effectiveCompanyId
+    toast.error('Select a company before importing leave data')
+    return null
+  }
+
+  const openPurgeLeaveData = async () => {
+    const companyId = requireCompany()
+    if (!companyId) return
+    setPurgeLoading(true)
+    try {
+      const response = await api.get('/leave/admin/purge-summary', { params: { companyId } })
+      setPurgeSummary(response.data || {})
+      setPurgeConfirmation('')
+      setPurgeModal(true)
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to load leave-data summary')
+    } finally {
+      setPurgeLoading(false)
+    }
+  }
+
+  const confirmPurgeLeaveData = async () => {
+    const companyId = requireCompany()
+    if (!companyId || purgeConfirmation !== 'DELETE ALL LEAVE DATA') return
+    setPurgeLoading(true)
+    try {
+      const response = await api.post('/leave/admin/purge', { confirmation: purgeConfirmation }, { params: { companyId } })
+      toast.success(`${response.data?.totalDeleted || 0} leave records deleted`)
+      setPurgeModal(false)
+      setPurgeSummary(null)
+      await Promise.all([
+        dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) })),
+        dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {})),
+        dispatch(fetchLeaveBalance()),
+      ])
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to delete leave data')
+    } finally {
+      setPurgeLoading(false)
+    }
+  }
+
+  const handleAllocationTemplate = async () => {
+    const companyId = requireCompany()
+    if (!companyId) return
+    setAllocationExporting(true)
+    try {
+      await dispatch(exportLeaveAllocations(companyId)).unwrap()
+      toast.success('Allocation Excel downloaded')
+    } catch (e) {
+      toast.error(e || 'Failed to download allocation Excel')
+    } finally {
+      setAllocationExporting(false)
+    }
+  }
+
+  const handleAllocationImport = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const companyId = requireCompany()
+    if (!companyId) return
+    setAllocationImporting(true)
+    try {
+      const result = await dispatch(importLeaveAllocations({ companyId, file })).unwrap()
+      const imported = result.imported || 0
+      const failed = result.failed || 0
+      if (imported) toast.success(`${imported} leave allocation${imported === 1 ? '' : 's'} imported`)
+      if (failed) toast.error(`${failed} row${failed === 1 ? '' : 's'} failed: ${result.errors?.[0] || 'check the Excel values'}`)
+      if (!imported && !failed) toast('No allocation rows found in the file')
+      await Promise.all([
+        dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {})),
+        dispatch(fetchLeaveBalance()),
+      ])
+    } catch (e) {
+      toast.error(e || 'Failed to import leave allocations')
+    } finally {
+      setAllocationImporting(false)
+    }
+  }
+
+  const handleHistoricalImport = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const companyId = requireCompany()
+    if (!companyId) return
+    setHistoricalImporting(true)
+    try {
+      const result = await dispatch(importHistoricalLeaves({ companyId, file })).unwrap()
+      const imported = result.imported || 0
+      const duplicates = result.duplicates || 0
+      const failed = result.failed || 0
+      const skipped = result.skipped || 0
+      if (imported) toast.success(`${imported} historical leave request${imported === 1 ? '' : 's'} imported`)
+      if (duplicates) toast(`${duplicates} duplicate row${duplicates === 1 ? '' : 's'} skipped`)
+      if (failed) toast.error(`${failed} row${failed === 1 ? '' : 's'} failed: ${result.errors?.[0] || 'check employee IDs and dates'}`)
+      if (!imported && !duplicates && !failed) toast(`No leave rows imported (${skipped} blank row${skipped === 1 ? '' : 's'} skipped)`)
+      await Promise.all([
+        dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) })),
+        dispatch(fetchLeaveBalance()),
+      ])
+    } catch (e) {
+      toast.error(e || 'Failed to import historical leave requests')
+    } finally {
+      setHistoricalImporting(false)
+    }
+  }
+
+  const handleHistoricalTemplateDownload = async () => {
+    setHistoricalTemplateDownloading(true)
+    try {
+      await dispatch(downloadHistoricalLeaveTemplate()).unwrap()
+      toast.success('Sample template downloaded')
+    } catch (e) {
+      toast.error(e || 'Failed to download sample template')
+    } finally {
+      setHistoricalTemplateDownloading(false)
+    }
+  }
+
+  const handleRequestExport = async () => {
+    setRequestExporting(true)
+    try {
+      await dispatch(exportLeaveRequests()).unwrap()
+      toast.success('Leave requests downloaded')
+    } catch (e) {
+      toast.error(e || 'Failed to download leave requests')
+    } finally {
+      setRequestExporting(false)
+    }
+  }
 
   const openBalanceEdit = (a) => {
     setBalanceEditTarget(a)
@@ -130,11 +288,15 @@ export default function LeavePage() {
   const { register: regApproval, handleSubmit: handleApprovalSubmit, reset: resetApproval, formState: { errors: approvalErrors } } = useForm()
 
   useEffect(() => {
-    dispatch(fetchAll({ page: 0, size: 20 }))
+    dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
     dispatch(fetchLeaveTypes())
-    dispatch(fetchLeaveAllocations())
     dispatch(fetchLeaveBalance())
-  }, [dispatch])
+  }, [dispatch, requestYear])
+
+  useEffect(() => {
+    dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {}))
+    setSelectedAllocationIds(new Set())
+  }, [dispatch, allocationYear, effectiveCompanyId])
 
   useEffect(() => {
     if (!canManage) return
@@ -177,7 +339,7 @@ export default function LeavePage() {
   }
 
   const handleApprove = async (id) => {
-    try { await dispatch(approveLeave(id)).unwrap(); toast.success('Approved'); dispatch(fetchAll({ page: 0, size: 20 })) }
+    try { await dispatch(approveLeave(id)).unwrap(); toast.success('Approved'); dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) })) }
     catch (e) { toast.error(e || 'Failed') }
   }
   const handleReject = (id) => {
@@ -188,17 +350,65 @@ export default function LeavePage() {
       await dispatch(rejectLeave({ id: rejectModal.id, reason: rejectModal.reason || undefined })).unwrap()
       toast.success('Rejected')
       setRejectModal({ open: false, id: null, reason: '' })
-      dispatch(fetchAll({ page: 0, size: 20 }))
+      dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
     } catch (e) { toast.error(e || 'Failed') }
   }
 
   const handleCancel = (id) => setConfirmModal({ open: true, action: 'cancel', id })
 
+  const toggleRequest = (id) => setSelectedRequestIds(current => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const requestQuery = requestSearch.trim().toLowerCase()
+  const visibleRequests = requestQuery ? data.filter(request =>
+    (request.employeeName || '').toLowerCase().includes(requestQuery) ||
+    (request.leaveTypeName || '').toLowerCase().includes(requestQuery) ||
+    (request.status || '').toLowerCase().includes(requestQuery) ||
+    (request.departmentName || '').toLowerCase().includes(requestQuery)
+  ) : data
+
+  const toggleAllRequests = () => setSelectedRequestIds(current => {
+    const pageIds = visibleRequests.map(request => request.id)
+    const allSelected = pageIds.length > 0 && pageIds.every(id => current.has(id))
+    const next = new Set(current)
+    pageIds.forEach(id => allSelected ? next.delete(id) : next.add(id))
+    return next
+  })
+
+  useEffect(() => setSelectedRequestIds(new Set()), [effectiveCompanyId, pagination.page, tab, requestSearch])
+
+  const confirmRequestDelete = async () => {
+    const ids = deleteConfirm.ids
+    if (!ids.length) return
+    setRequestDeleting(true)
+    try {
+      let deleted = ids.length
+      if (ids.length === 1) await dispatch(remove(ids[0])).unwrap()
+      else await dispatch(bulkRemove(ids)).unwrap()
+      toast.success(`${deleted} leave request${deleted === 1 ? '' : 's'} deleted`)
+      setSelectedRequestIds(current => {
+        const next = new Set(current); ids.forEach(id => next.delete(id)); return next
+      })
+      setDeleteConfirm({ open: false, ids: [] })
+      await Promise.all([
+        dispatch(fetchAll({ page: pagination.page, size: pagination.size || 20, ...(requestYear ? { year: Number(requestYear) } : {}) })),
+        dispatch(fetchLeaveBalance()),
+      ])
+    } catch (e) {
+      toast.error(e || 'Failed to delete leave request')
+    } finally {
+      setRequestDeleting(false)
+    }
+  }
+
   const onConfirmAction = async () => {
     const { action, id } = confirmModal
     try {
       if (action === 'cancel') {
-        await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20 }))
+        await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
       } else if (action === 'deleteComment') {
         await dispatch(deleteLeaveRequestComment({ requestId: selectedRequest.id, commentId: id })).unwrap()
         dispatch(fetchLeaveRequestComments(selectedRequest.id))
@@ -224,7 +434,7 @@ export default function LeavePage() {
       })).unwrap()
       toast.success('Bulk allocation completed')
       setBulkModal(m => ({ ...m, open: false }))
-      dispatch(fetchLeaveAllocations())
+      dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {}))
     } catch (e) { toast.error(e || 'Bulk allocation failed') }
   }
 
@@ -237,7 +447,7 @@ export default function LeavePage() {
       await dispatch(annualLeaveReset({ companyId: effectiveCompanyId, year: Number(resetModal.year) })).unwrap()
       toast.success(`Annual reset completed for ${resetModal.year}`)
       setResetModal(m => ({ ...m, open: false }))
-      dispatch(fetchLeaveAllocations())
+      dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {}))
     } catch (e) { toast.error(e || 'Annual reset failed') }
   }
 
@@ -274,7 +484,7 @@ export default function LeavePage() {
         toast.success(formData.applyFor === 'employee' ? 'Leave applied for employee' : 'Leave applied')
       }
       setModalOpen(false)
-      dispatch(fetchAll({ page: 0, size: 20 }))
+      dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
     } catch (e) { toast.error(e || 'Error') }
   }
 
@@ -317,6 +527,15 @@ export default function LeavePage() {
   }
 
   const requestColumns = [
+    ...(canManage ? [{
+      id: 'select', enableSorting: false,
+      header: () => <input type="checkbox" aria-label="Select all leave requests on this page"
+        checked={visibleRequests.length > 0 && visibleRequests.every(request => selectedRequestIds.has(request.id))}
+        onChange={toggleAllRequests} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
+      cell: ({ row }) => <input type="checkbox" aria-label={`Select leave request for ${row.original.employeeName || 'employee'}`}
+        checked={selectedRequestIds.has(row.original.id)} onChange={() => toggleRequest(row.original.id)}
+        onClick={event => event.stopPropagation()} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
+    }] : []),
     { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
     { id: 'department', header: 'Department', cell: ({ row }) => row.original.departmentName || '—' },
     { id: 'leaveType', header: 'Type', cell: ({ row }) => row.original.leaveTypeName || '—' },
@@ -332,24 +551,65 @@ export default function LeavePage() {
         {row.original.status === 'REQUESTED' && (
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         )}
-        {row.original.status === 'REQUESTED' && !isEmployee() && <>
+        {row.original.status === 'REQUESTED' && row.original.canReview && <>
           <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
           <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
         </>}
         {(row.original.status === 'REQUESTED' || row.original.status === 'APPROVED') &&
           <Button size="sm" variant="ghost" onClick={() => handleCancel(row.original.id)}>Cancel</Button>
         }
+        {canManage && <Button size="sm" variant="danger"
+          onClick={() => setDeleteConfirm({ open: true, ids: [row.original.id] })}>Delete</Button>}
       </div>
     )},
   ]
 
   const allocationColumns = [
+    ...(canManage ? [{
+      id: 'select', enableSorting: false,
+      header: () => <input type="checkbox" aria-label="Select all visible leave allocations"
+        checked={filteredAllocations.length > 0 && filteredAllocations.every(item => selectedAllocationIds.has(item.id))}
+        onChange={() => setSelectedAllocationIds(current => {
+          const next = new Set(current)
+          const allSelected = filteredAllocations.length > 0 && filteredAllocations.every(item => next.has(item.id))
+          filteredAllocations.forEach(item => allSelected ? next.delete(item.id) : next.add(item.id))
+          return next
+        })} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
+      cell: ({ row }) => <input type="checkbox" aria-label={`Select allocation for ${row.original.employeeName || 'employee'}`}
+        checked={selectedAllocationIds.has(row.original.id)} onChange={() => setSelectedAllocationIds(current => {
+          const next = new Set(current); next.has(row.original.id) ? next.delete(row.original.id) : next.add(row.original.id); return next
+        })} onClick={event => event.stopPropagation()} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
+    }] : []),
     { id: 'employee', header: 'Employee', cell: ({ row }) => row.original.employeeName || '—' },
     { id: 'leaveType', header: 'Type', cell: ({ row }) => row.original.leaveTypeName || '—' },
     { accessorKey: 'totalLeaveDays', header: 'Allocated' },
     { accessorKey: 'availableDays', header: 'Available' },
+    { accessorKey: 'usedDays', header: 'Used' },
+    { accessorKey: 'remainingDays', header: 'Remaining' },
     { accessorKey: 'year', header: 'Year' },
+    ...(canManage ? [{ id: 'actions', header: '', cell: ({ row }) => <Button size="sm" variant="danger" onClick={() => setAllocationDeleteConfirm({ open: true, ids: [row.original.id] })}>Delete</Button> }] : []),
   ]
+
+  const allocationQuery = allocationSearch.trim().toLowerCase()
+  const filteredAllocations = allocationQuery ? leaveAllocations.filter(allocation =>
+    (allocation.employeeName || '').toLowerCase().includes(allocationQuery) ||
+    (allocation.leaveTypeName || '').toLowerCase().includes(allocationQuery)
+  ) : leaveAllocations
+
+  const confirmAllocationDelete = async () => {
+    const ids = allocationDeleteConfirm.ids
+    if (!ids.length) return
+    setAllocationDeleting(true)
+    try {
+      if (ids.length === 1) await api.delete(`/leave/allocations/${ids[0]}`)
+      else await api.post('/leave/allocations/bulk-delete', ids)
+      toast.success(`${ids.length} leave allocation${ids.length === 1 ? '' : 's'} deleted`)
+      setAllocationDeleteConfirm({ open: false, ids: [] })
+      setSelectedAllocationIds(new Set())
+      await Promise.all([dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {})), dispatch(fetchLeaveBalance())])
+    } catch (e) { toast.error(e?.response?.data?.message || 'Failed to delete leave allocation') }
+    finally { setAllocationDeleting(false) }
+  }
 
   const filteredEmployees = employees.filter(employee => {
     const query = employeeSearch.trim().toLowerCase()
@@ -371,12 +631,17 @@ export default function LeavePage() {
   return (
     <div>
       <PageHeader title="Leave Management" subtitle="Requests, types, and allocations"
-        actions={<Button onClick={() => {
+        actions={<div className="flex flex-wrap justify-end gap-2">
+          {canPurgeLeaveData && <Button variant="danger" onClick={openPurgeLeaveData} disabled={purgeLoading}>
+            Delete all leave data
+          </Button>}
+          <Button onClick={() => {
           setEditTarget(null)
           setEmployeeSearch('')
           reset({ applyFor: 'self', employeeId: '', leaveTypeId: '', startDate: '', endDate: '', description: '' })
           setModalOpen(true)
-        }}>+ Apply Leave</Button>} />
+          }}>+ Apply Leave</Button>
+        </div>} />
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {(isEmployee() ? EMPLOYEE_TABS : ALL_TABS).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -386,17 +651,8 @@ export default function LeavePage() {
         ))}
       </div>
       {tab === 'Requests' && (() => {
-        const rq = requestSearch.toLowerCase()
-        const filteredRequests = rq
-          ? data.filter(r =>
-              (r.employeeName || '').toLowerCase().includes(rq) ||
-              (r.leaveTypeName || '').toLowerCase().includes(rq) ||
-              (r.status || '').toLowerCase().includes(rq) ||
-              (r.departmentName || '').toLowerCase().includes(rq)
-            )
-          : data
         return <>
-          <div className="mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <input
               type="text"
               placeholder="Search by employee, type, department or status…"
@@ -404,9 +660,40 @@ export default function LeavePage() {
               onChange={e => setRequestSearch(e.target.value)}
               className="w-full sm:w-96 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+            {canManage && (
+              <div className="flex gap-2">
+                <select aria-label="Filter leave requests by year" value={requestYear}
+                  onChange={event => { setRequestYear(event.target.value); setSelectedRequestIds(new Set()) }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">All years</option>
+                  {Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index).map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+                {selectedRequestIds.size > 0 && (
+                  <Button variant="danger" onClick={() => setDeleteConfirm({ open: true, ids: [...selectedRequestIds] })}>
+                    Delete Selected ({selectedRequestIds.size})
+                  </Button>
+                )}
+                <input
+                  ref={historicalImportRef}
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  onChange={handleHistoricalImport}
+                />
+                <Button variant="secondary" onClick={handleHistoricalTemplateDownload} disabled={historicalTemplateDownloading}>
+                  {historicalTemplateDownloading ? 'Downloading…' : 'Download Sample Template'}
+                </Button>
+                <Button variant="secondary" onClick={handleRequestExport} disabled={requestExporting}>
+                  {requestExporting ? 'Downloading…' : 'Download Leave Requests'}
+                </Button>
+                <Button variant="secondary" onClick={() => historicalImportRef.current?.click()} disabled={historicalImporting}>
+                  {historicalImporting ? 'Uploading…' : 'Upload Old Leaves'}
+                </Button>
+              </div>
+            )}
           </div>
-          <DataTable columns={requestColumns} data={filteredRequests} loading={loading} />
-          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
+          <DataTable columns={requestColumns} data={visibleRequests} loading={loading} />
+          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))} />
         </>
       })()}
       {tab === 'Allocations' && (
@@ -420,19 +707,32 @@ export default function LeavePage() {
               className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <div className="flex gap-2">
+              <select aria-label="Filter leave allocations by year" value={allocationYear} onChange={event => setAllocationYear(event.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">All years</option>
+                {Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index).map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+              {selectedAllocationIds.size > 0 && <Button variant="danger" onClick={() => setAllocationDeleteConfirm({ open: true, ids: [...selectedAllocationIds] })}>Delete Selected ({selectedAllocationIds.size})</Button>}
+              <input
+                ref={allocationImportRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={handleAllocationImport}
+              />
+              <Button variant="secondary" onClick={handleAllocationTemplate} disabled={allocationExporting}>
+                {allocationExporting ? 'Downloading…' : 'Download Allocations'}
+              </Button>
+              <Button variant="secondary" onClick={() => allocationImportRef.current?.click()} disabled={allocationImporting}>
+                {allocationImporting ? 'Uploading…' : 'Upload Excel'}
+              </Button>
               <Button variant="secondary" onClick={handleBulkAllocate}>Bulk Allocate</Button>
               <Button variant="danger" onClick={handleAnnualReset}>Annual Reset</Button>
             </div>
           </div>
           <DataTable
             columns={allocationColumns}
-            data={allocationSearch
-              ? leaveAllocations.filter(a =>
-                  (a.employeeName || '').toLowerCase().includes(allocationSearch.toLowerCase()) ||
-                  (a.leaveTypeName || '').toLowerCase().includes(allocationSearch.toLowerCase())
-                )
-              : leaveAllocations
-            }
+            data={filteredAllocations}
             loading={loading}
           />
         </>
@@ -457,12 +757,12 @@ export default function LeavePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {myAllocations.map((a, i) => {
-                    const used = (a.totalLeaveDays ?? 0) - (a.availableDays ?? 0)
+                    const used = a.usedDays ?? 0
                     return (
                       <tr key={a.id || i} className="hover:bg-gray-50">
                         <td className="py-3 px-4 font-medium text-gray-900">{a.leaveTypeName || '—'}</td>
                         <td className="py-3 px-4 text-gray-600">{a.totalLeaveDays ?? '—'}</td>
-                        <td className="py-3 px-4 text-green-600 font-semibold">{a.availableDays ?? '—'}</td>
+                        <td className="py-3 px-4 text-green-600 font-semibold">{a.remainingDays ?? a.availableDays ?? '—'}</td>
                         <td className="py-3 px-4 text-red-500">{used}</td>
                         <td className="py-3 px-4 text-gray-500">{a.year || '—'}</td>
                       </tr>
@@ -801,6 +1101,56 @@ export default function LeavePage() {
         confirmLabel={confirmModal.action === 'cancel' ? 'Cancel Leave' : 'Delete'}
         loading={loading}
       />
+
+      <ConfirmModal
+        open={deleteConfirm.open}
+        onClose={() => !requestDeleting && setDeleteConfirm({ open: false, ids: [] })}
+        onConfirm={confirmRequestDelete}
+        title={deleteConfirm.ids.length === 1 ? 'Delete Leave Request' : 'Delete Selected Leave Requests'}
+        message={`Permanently delete ${deleteConfirm.ids.length} selected leave request${deleteConfirm.ids.length === 1 ? '' : 's'}? Related comments, approval steps, and attachments will also be removed. This cannot be undone.`}
+        confirmLabel={requestDeleting ? 'Deleting…' : `Delete ${deleteConfirm.ids.length}`}
+        danger
+      />
+
+      <ConfirmModal open={allocationDeleteConfirm.open}
+        onClose={() => !allocationDeleting && setAllocationDeleteConfirm({ open: false, ids: [] })}
+        onConfirm={confirmAllocationDelete}
+        title={allocationDeleteConfirm.ids.length === 1 ? 'Delete Leave Allocation' : 'Delete Selected Allocations'}
+        message={`Permanently delete ${allocationDeleteConfirm.ids.length} selected leave allocation${allocationDeleteConfirm.ids.length === 1 ? '' : 's'}? Existing leave requests will remain. This cannot be undone.`}
+        confirmLabel={allocationDeleting ? 'Deleting…' : `Delete ${allocationDeleteConfirm.ids.length}`} />
+
+      <Modal
+        open={purgeModal}
+        onClose={() => !purgeLoading && setPurgeModal(false)}
+        title="Delete all leave data"
+        footer={<div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setPurgeModal(false)} disabled={purgeLoading}>Cancel</Button>
+          <Button variant="danger" onClick={confirmPurgeLeaveData}
+            disabled={purgeLoading || purgeConfirmation !== 'DELETE ALL LEAVE DATA'}>
+            {purgeLoading ? 'Deleting…' : 'Delete permanently'}
+          </Button>
+        </div>}
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            This permanently deletes leave requests, attachments, approvals, allocations, balances, accrual logs, and employee leave restrictions for the selected company. Leave types, holiday settings, and other policy configuration stay unchanged.
+          </div>
+          {purgeSummary && <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+            <p className="mb-2 font-semibold text-gray-900">Records to delete: {Object.values(purgeSummary).reduce((total, count) => total + Number(count || 0), 0)}</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              {Object.entries(purgeSummary).filter(([, count]) => Number(count) > 0).map(([table, count]) => (
+                <div key={table} className="flex justify-between gap-2"><span>{table.replaceAll('_', ' ')}</span><strong>{count}</strong></div>
+              ))}
+            </div>
+          </div>}
+          <Input
+            label="Type DELETE ALL LEAVE DATA to confirm"
+            value={purgeConfirmation}
+            onChange={event => setPurgeConfirmation(event.target.value)}
+            autoComplete="off"
+          />
+        </div>
+      </Modal>
 
       {/* Balance Edit Modal */}
       <Modal

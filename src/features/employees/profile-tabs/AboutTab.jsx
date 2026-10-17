@@ -21,7 +21,7 @@ export default function AboutTab({ profile }) {
       <Section title="Personal Information">
         <Field label="First Name"      value={profile.firstName} />
         <Field label="Last Name"       value={profile.lastName} />
-        <Field label="Badge ID"        value={profile.badgeId} />
+        <Field label="Employee ID"     value={profile.badgeId} />
         <Field label="Email"           value={profile.email} />
         <Field label="Phone"           value={profile.phone} />
         <Field label="Date of Birth"   value={formatDate(profile.dateOfBirth)} />

@@ -56,6 +56,16 @@ export const remove = createAsyncThunk('employees/remove', async ({ id, companyI
   }
 })
 
+export const setEmployeeActive = createAsyncThunk('employees/setEmployeeActive', async ({ ids, active, companyId }, { rejectWithValue }) => {
+  try {
+    const headers = companyId ? { 'X-Company-Id': companyId } : {}
+    const res = await api.post('/employees/bulk-toggle-active', { ids, active }, { headers })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || `Failed to ${active ? 'activate' : 'deactivate'} employee`)
+  }
+})
+
 // PLATFORM_SUPER_ADMIN only — irreversible, deletes the employee and all dependent records.
 // companyId — see remove() above.
 export const hardDelete = createAsyncThunk('employees/hardDelete', async ({ id, companyId } = {}, { rejectWithValue }) => {

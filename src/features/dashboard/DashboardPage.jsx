@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, memo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import {
@@ -849,6 +850,7 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const dispatch = useDispatch()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager, user, effectiveCompanyId } = useAuth()
   const leave = useSelector(s => s.leave)
@@ -926,6 +928,10 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle={subtitle} />
+      <button onClick={() => navigate('/carr/dashboard')} className="mb-6 flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-500 px-6 py-5 text-left text-white shadow-lg shadow-indigo-200 transition hover:-translate-y-0.5">
+        <div><div className="text-xs font-bold uppercase tracking-[.18em] text-indigo-100">GRECHA.ai Enterprise Module</div><div className="mt-1 text-xl font-black">Open CARR</div><div className="mt-1 text-sm text-indigo-100">Clarity · Accountability · Results · Rewards</div></div>
+        <div className="rounded-xl bg-white/15 px-5 py-3 text-sm font-bold">Launch workspace →</div>
+      </button>
       {/* Welcome + Check-in side by side */}
       <div className="flex flex-col xl:flex-row items-stretch gap-4 mb-6">
         <div className="flex-1 flex"><WelcomeHeader /></div>

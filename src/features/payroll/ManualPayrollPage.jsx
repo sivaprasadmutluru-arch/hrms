@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import {
@@ -10,6 +10,9 @@ import {
   downloadPayslipPdf,
   downloadBulkPayslipsPdf,
   generateBulkPayslips,
+  submitPayslip,
+  confirmPayslip,
+  markPaid,
 } from './payrollSlice'
 import useAuth from '../../hooks/useAuth'
 import {
@@ -44,6 +47,17 @@ function statusColor(status) {
 function fmt(val) {
   const n = parseFloat(val)
   return isNaN(n) ? '0.00' : n.toFixed(2)
+}
+
+function calcGross(edit) {
+  return (edit.basicPay || 0) + (edit.housingAllowance || 0)
+    + (edit.transportAllowance || 0) + (edit.otherAllowance || 0)
+}
+function calcTotalDeductions(edit) {
+  return (edit.deduction || 0) + (edit.leaveDeduction || 0)
+}
+function calcNet(edit) {
+  return calcGross(edit) + (edit.overtime || 0) + (edit.bonus || 0) - calcTotalDeductions(edit)
 }
 
 // Editable number cell — shows value, becomes input on click
@@ -143,13 +157,13 @@ export default function ManualPayrollPage() {
   }, [dispatch, companyId, selectedYear])
 
   // Client-side filter for the selected month
-  const monthPayslips = selectedMonth
+  const monthPayslips = useMemo(() => selectedMonth
     ? allPayslips.filter(p => {
         if (!p.startDate) return false
         const [y, m] = p.startDate.split('-').map(Number)
         return y === selectedYear && m === selectedMonth
       })
-    : []
+    : [], [allPayslips, selectedMonth, selectedYear])
 
   // Initialise local edits when payslips load for the selected month
   useEffect(() => {
@@ -160,7 +174,7 @@ export default function ManualPayrollPage() {
         if (!next[p.id]) {
           // Parse extra fields from payHeadData JSON
           let phd = {}
-          try { phd = p.payHeadData ? JSON.parse(p.payHeadData) : {} } catch (_) {}
+          try { phd = p.payHeadData ? JSON.parse(p.payHeadData) : {} } catch { phd = {} }
           // p.deduction stores TOTAL deductions (including loss_of_pay).
           // We subtract loss_of_pay here so the "Deduction" column shows only the
           // "other deductions" component, and calcTotalDeductions() doesn't double-count it.
@@ -179,23 +193,9 @@ export default function ManualPayrollPage() {
       })
       return next
     })
-  }, [monthPayslips.length, selectedMonth, editsResetKey])
+  }, [monthPayslips, selectedMonth, editsResetKey])
 
   // ── Derived calc ────────────────────────────────────────────────────────────
-
-  function calcGross(edit) {
-    return (edit.basicPay || 0) + (edit.housingAllowance || 0)
-      + (edit.transportAllowance || 0) + (edit.otherAllowance || 0)
-  }
-  function calcTotalAllowances(edit) {
-    return (edit.housingAllowance || 0) + (edit.transportAllowance || 0) + (edit.otherAllowance || 0)
-  }
-  function calcTotalDeductions(edit) {
-    return (edit.deduction || 0) + (edit.leaveDeduction || 0)
-  }
-  function calcNet(edit) {
-    return calcGross(edit) + (edit.overtime || 0) + (edit.bonus || 0) - calcTotalDeductions(edit)
-  }
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -296,8 +296,17 @@ export default function ManualPayrollPage() {
   }, [dispatch, rowEdits])
 
   const handleStatusChange = async (payslip, newStatus) => {
+    if (newStatus === payslip.status) return
     try {
-      await dispatch(inlineEditPayslip({ id: payslip.id, fields: { status: newStatus } })).unwrap()
+      if (payslip.status === 'DRAFT' && newStatus === 'REVIEW_ONGOING') {
+        await dispatch(submitPayslip(payslip.id)).unwrap()
+      } else if (payslip.status === 'REVIEW_ONGOING' && newStatus === 'CONFIRMED') {
+        await dispatch(confirmPayslip(payslip.id)).unwrap()
+      } else if (payslip.status === 'CONFIRMED' && newStatus === 'PAID') {
+        await dispatch(markPaid(payslip.id)).unwrap()
+      } else {
+        throw new Error('Use the next workflow status; paid payslips must be reopened from Payslips.')
+      }
       toast.success(`Status changed to ${statusLabel(newStatus)}`)
     } catch (e) {
       toast.error(e || 'Status change failed')
@@ -730,7 +739,10 @@ export default function ManualPayrollPage() {
                                 statusColor(p.status),
                               ].join(' ')}
                             >
-                              {STATUS_OPTIONS.map(opt => (
+                              {STATUS_OPTIONS.filter((opt, index) => {
+                                const current = STATUS_OPTIONS.findIndex(item => item.value === p.status)
+                                return index === current || index === current + 1
+                              }).map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
                             </select>

@@ -120,6 +120,10 @@ const authSlice = createSlice({
     builder
       .addCase(login.pending, (state) => { state.loading = true; state.error = null })
       .addCase(login.fulfilled, (state, action) => {
+        state.selectedCompanyId = null
+        state.enterpriseBranchFilter = null
+        localStorage.removeItem('selectedCompanyId')
+        localStorage.removeItem('enterpriseBranchFilter')
         state.loading = false
         state.user = action.payload
         state.roles = action.payload.roles || []
@@ -138,6 +142,13 @@ const authSlice = createSlice({
         }
       })
 
+      .addCase(changePassword.fulfilled, (state) => {
+        if (state.user) {
+          state.user = { ...state.user, mustChangePassword: false }
+          localStorage.setItem('user', JSON.stringify(state.user))
+        }
+      })
+
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.roles = action.payload.roles || []
         // Merge companyId, companyName, organizationId and employeeId into user object if backend returns them
@@ -150,6 +161,7 @@ const authSlice = createSlice({
           if (action.payload.firstName !== undefined) updates.firstName = action.payload.firstName
           if (action.payload.companyLogoUrl !== undefined) updates.companyLogoUrl = action.payload.companyLogoUrl
           if (action.payload.photoPath !== undefined) updates.photoPath = action.payload.photoPath
+          if (action.payload.mustChangePassword !== undefined) updates.mustChangePassword = action.payload.mustChangePassword
           if (Object.keys(updates).length > 0) {
             state.user = { ...state.user, ...updates }
             localStorage.setItem('user', JSON.stringify(state.user))

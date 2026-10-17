@@ -70,8 +70,8 @@ function ConnectionBadge({ deviceId, tests, onTest }) {
   }
   if (t.unavailable) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-400 border border-gray-200" title="Test endpoint not available on this backend">
-        <ExclamationTriangleIcon className="h-3.5 w-3.5" /> N/A
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" title={t.detail?.message || 'Waiting for the physical device to contact HRMS'}>
+        <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Waiting for device
       </span>
     )
   }
@@ -167,7 +167,7 @@ export default function BiometricDevicesPage() {
 
   const handleTest = async (id) => {
     const res = await dispatch(testDeviceConnection(id))
-    if (res.payload?.unavailable) toast('Live test not available — relying on push data', { icon: 'ℹ️' })
+    if (res.payload?.unavailable) toast(res.payload?.detail?.message || 'Live test not available — relying on push data', { icon: 'ℹ️' })
     else if (res.payload?.ok) toast.success('Device reachable')
     else toast.error('Device did not respond')
   }

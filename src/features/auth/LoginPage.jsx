@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { ArrowRight, Eye, EyeOff, Globe, Lock, Mail, ShieldCheck } from 'lucide-react'
 import { login, selectAuth } from './authSlice'
@@ -11,17 +11,22 @@ import brandLogo from '../../assets/the-greater-change-logo.png'
 export default function LoginPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { loading, error, isAuthenticated } = useSelector(selectAuth)
+  const location = useLocation()
+  const isCarrLogin = location.pathname === '/carr/login'
+  const destination = location.state?.from || (isCarrLogin ? '/carr/dashboard' : '/dashboard')
+  const { loading, error, isAuthenticated, user } = useSelector(selectAuth)
   const { register, handleSubmit, formState: { errors } } = useForm()
   const [showPassword, setShowPassword] = useState(false)
 
-  useEffect(() => { if (isAuthenticated) navigate('/dashboard', { replace: true }) }, [isAuthenticated, navigate])
+  useEffect(() => {
+    if (isAuthenticated) navigate(user?.mustChangePassword ? '/change-password-required' : destination, { replace: true })
+  }, [isAuthenticated, user?.mustChangePassword, navigate, destination])
 
   const onSubmit = async (data) => {
     const result = await dispatch(login(data))
     if (login.fulfilled.match(result)) {
       toast.success('Welcome back!')
-      navigate('/dashboard')
+      navigate(result.payload.mustChangePassword ? '/change-password-required' : destination, { replace: true })
     } else if (result.payload === 'ORGANIZATION_SUSPENDED') {
       navigate('/suspended', { replace: true })
     } else {
@@ -47,11 +52,11 @@ export default function LoginPage() {
               className="mx-auto h-auto w-[260px] max-w-full object-contain [image-rendering:-webkit-optimize-contrast] xl:w-[300px]"
             />
             <h1 className="mt-5 text-4xl font-black tracking-tight xl:text-[44px]">
-              GRECHA<span className="text-[#5B2ECF]">.AI</span>
+              {isCarrLogin ? 'CARR' : 'GRECHA'}<span className="text-[#5B2ECF]">{isCarrLogin ? ' Enterprise' : '.AI'}</span>
             </h1>
             <div className="mt-2 flex items-center gap-4">
               <div className="h-px flex-1 bg-slate-200" />
-              <p className="text-sm font-semibold tracking-[0.28em] text-[#5B2ECF] xl:text-base">AI HRMS PORTAL</p>
+              <p className="text-sm font-semibold tracking-[0.28em] text-[#5B2ECF] xl:text-base">{isCarrLogin ? 'SECURE CARR PORTAL' : 'AI HRMS PORTAL'}</p>
               <div className="h-px flex-1 bg-slate-200" />
             </div>
           </div>
@@ -136,6 +141,12 @@ export default function LoginPage() {
             <p className="mt-2 text-sm text-slate-500 xl:text-base">
               Powered by <span className="font-semibold text-slate-800">The Greater Change</span>
             </p>
+            <Link
+              to="/privacy-policy"
+              className="mt-2 inline-flex text-sm font-semibold text-[#5B2ECF] underline-offset-4 hover:text-[#43209E] hover:underline"
+            >
+              Privacy Policy
+            </Link>
           </div>
         </section>
       </main>

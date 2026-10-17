@@ -37,6 +37,15 @@ export const assignRole = createAsyncThunk('roles/assignRole', async (data, { re
   }
 })
 
+export const assignRoleToCompanies = createAsyncThunk('roles/assignRoleToCompanies', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/user-roles/assign-multiple', data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to assign role to selected companies')
+  }
+})
+
 export const revokeRole = createAsyncThunk('roles/revokeRole', async ({ userId, roleId, companyId }, { rejectWithValue }) => {
   try {
     await api.delete('/user-roles/revoke', { params: { userId, roleId, companyId } })

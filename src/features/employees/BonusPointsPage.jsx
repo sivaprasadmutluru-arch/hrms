@@ -55,7 +55,7 @@ export default function BonusPointsPage() {
         </div>
       ),
     },
-    { accessorKey: 'badgeId', header: 'Badge ID' },
+    { accessorKey: 'badgeId', header: 'Employee ID' },
     {
       id: 'actions',
       header: '',

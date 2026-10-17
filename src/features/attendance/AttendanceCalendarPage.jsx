@@ -78,7 +78,7 @@ function EmployeePicker({ employees, onSelect }) {
       </div>
       <input
         type="text"
-        placeholder="Search by name or badge ID…"
+        placeholder="Search by name or employee ID…"
         value={search}
         onChange={e => setSearch(e.target.value)}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"

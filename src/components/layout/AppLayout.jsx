@@ -46,6 +46,7 @@ export default function AppLayout() {
   }, [isAuthenticated, user?.companyId, roles])
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.mustChangePassword) return <Navigate to="/change-password-required" replace />
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar />

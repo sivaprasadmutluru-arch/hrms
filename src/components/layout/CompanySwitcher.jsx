@@ -24,7 +24,7 @@ function initials(name = '') {
   return name.trim().charAt(0).toUpperCase() || '?'
 }
 
-export default function CompanySwitcher() {
+export default function CompanySwitcher({ allowAll = true }) {
   const dispatch = useDispatch()
   const companies = useSelector(selectPlatformCompanies)
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
@@ -92,7 +92,7 @@ export default function CompanySwitcher() {
                   : <BuildingOffice2Icon className="h-4 w-4 text-gray-500" />)
             }
             <span className="max-w-[8.5rem] truncate">
-              {selectedCompany?.name || 'All Companies'}
+              {selectedCompany?.name || (allowAll ? 'All Companies' : 'Select company')}
             </span>
             <ChevronDownIcon className={`h-3.5 w-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
           </MenuButton>
@@ -122,21 +122,23 @@ export default function CompanySwitcher() {
             </div>
 
             <div className="max-h-80 overflow-y-auto py-1">
-              {/* All Companies */}
-              <MenuItem>
-                {({ active, close }) => (
-                  <button
-                    onClick={() => handleSelect(null, close)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${active ? 'bg-indigo-50' : ''} ${!selectedCompanyId ? 'text-indigo-700 font-medium' : 'text-gray-700'}`}
-                  >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-violet-500 text-white">
-                      <Squares2X2Icon className="h-4 w-4" />
-                    </span>
-                    <span className="flex-1 text-left">All Companies</span>
-                    {!selectedCompanyId && <CheckIcon className="h-4 w-4 text-indigo-600" />}
-                  </button>
-                )}
-              </MenuItem>
+              {/* Only Platform Super Admin has an unrestricted all-company scope. */}
+              {allowAll && (
+                <MenuItem>
+                  {({ active, close }) => (
+                    <button
+                      onClick={() => handleSelect(null, close)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${active ? 'bg-indigo-50' : ''} ${!selectedCompanyId ? 'text-indigo-700 font-medium' : 'text-gray-700'}`}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-violet-500 text-white">
+                        <Squares2X2Icon className="h-4 w-4" />
+                      </span>
+                      <span className="flex-1 text-left">All Companies</span>
+                      {!selectedCompanyId && <CheckIcon className="h-4 w-4 text-indigo-600" />}
+                    </button>
+                  )}
+                </MenuItem>
+              )}
 
               {!hasAny && (
                 <p className="px-3 py-6 text-center text-sm text-gray-400">

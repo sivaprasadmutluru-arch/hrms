@@ -14,6 +14,13 @@ export default function useAuth() {
 
   // Role predicates — ordered by hierarchy
   const isPlatformAdmin    = () => hasRole(ROLES.PLATFORM_SUPER_ADMIN)
+  // These roles can be assigned against more than one company.  They need the
+  // company scope selector, but only Platform Super Admin is unrestricted.
+  const isCompanyScopeAdmin = () => hasRole(
+    ROLES.PLATFORM_SUPER_ADMIN,
+    ROLES.SUPER_ADMIN,
+    ROLES.ACCOUNT_MANAGER,
+  )
   const isEnterpriseAdmin  = () => hasRole(ROLES.ENTERPRISE_ADMIN)
   const isBranchAdmin      = () => hasRole(ROLES.BRANCH_ADMIN)
   const isHRManager        = () => hasRole(ROLES.HR_MANAGER)
@@ -47,7 +54,7 @@ export default function useAuth() {
   // Enterprise admin: enterpriseBranchFilter (from top nav branch switcher) or head office
   // Others: user's company
   const effectiveCompanyId = (() => {
-    if (roles.includes(ROLES.PLATFORM_SUPER_ADMIN))
+    if (isCompanyScopeAdmin())
       return selectedCompanyId ? Number(selectedCompanyId) : (user?.companyId || null)
     if (roles.includes(ROLES.ENTERPRISE_ADMIN))
       return enterpriseBranchFilter ? Number(enterpriseBranchFilter) : (user?.companyId || null)
@@ -61,6 +68,7 @@ export default function useAuth() {
     effectiveCompanyId,
     hasRole,
     isPlatformAdmin,
+    isCompanyScopeAdmin,
     isEnterpriseAdmin,
     isBranchAdmin,
     isHRManager,

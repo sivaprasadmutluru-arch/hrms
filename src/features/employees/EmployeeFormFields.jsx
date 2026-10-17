@@ -41,7 +41,6 @@ const ACCESS_SCOPE_OPTIONS = [
  * Props:
  *   register, errors  — from react-hook-form
  *   isEdit            — true when editing an existing employee
- *   badgeId           — current badge ID (shown read-only in edit mode)
  *   canSelectCompany  — show company dropdown (platform/enterprise admin)
  *   assignableRoles   — role options for create form
  *   companyOptions, departmentOptions, jobPositionOptions,
@@ -54,7 +53,6 @@ export default function EmployeeFormFields({
   register,
   errors,
   isEdit,
-  badgeId,
   canSelectCompany,
   assignableRoles = [],
   companyOptions = [],
@@ -105,20 +103,13 @@ export default function EmployeeFormFields({
         />
       </div>
 
-      {/* Badge ID — read-only in edit, editable on create */}
+      {/* Employee ID */}
       <div className="grid grid-cols-2 gap-3">
-        {isEdit ? (
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Badge ID</label>
-            <input
-              value={badgeId || '—'}
-              readOnly
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-500 cursor-not-allowed"
-            />
-          </div>
-        ) : (
-          <Input label="Badge ID" placeholder="Auto-generated if left blank" {...register('badgeId')} />
-        )}
+        <Input
+          label="Employee ID"
+          placeholder="Auto-generated if left blank"
+          {...register('badgeId')}
+        />
         <Select
           label="Status"
           options={STATUS_OPTIONS}

@@ -17,8 +17,9 @@ import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 import useCurrency from '../../hooks/useCurrency'
+import api from '../../services/api'
 
-const TABS = ['Email Config', 'Tags', 'Penalty Accounts', 'Currency']
+const TABS = ['Email Config', 'Tags', 'Penalty Accounts', 'Currency', 'Module Visibility']
 const DEDUCT_FROM = ['SALARY', 'LEAVE', 'BONUS']
 
 const COMMON_CURRENCIES = [
@@ -83,6 +84,8 @@ export default function CompanySettingsPage() {
   // Currency tab state
   const [currencyInput, setCurrencyInput] = useState(activeCurrency)
   const [currencySaving, setCurrencySaving] = useState(false)
+  const [moduleVisibility, setModuleVisibility] = useState({ payslips: true, loans: true, reimbursements: true })
+  const [moduleSaving, setModuleSaving] = useState(false)
 
   const emailForm = useForm()
   const { register: regTag, handleSubmit: handleTagSubmit, reset: resetTag, formState: { errors: errTag } } = useForm()
@@ -93,6 +96,9 @@ export default function CompanySettingsPage() {
     dispatch(fetchEmailConfig(companyId))
     dispatch(fetchTags())
     dispatch(fetchPenaltyAccounts())
+    api.get('/settings/module-visibility', { params: { companyId } })
+      .then(response => setModuleVisibility(current => ({ ...current, ...response.data })))
+      .catch(() => setModuleVisibility({ payslips: true, loans: true, reimbursements: true }))
   }, [dispatch, companyId])
 
   useEffect(() => {
@@ -139,6 +145,15 @@ export default function CompanySettingsPage() {
     } finally {
       setCurrencySaving(false)
     }
+  }
+
+  const onSaveModuleVisibility = async () => {
+    try {
+      setModuleSaving(true)
+      await api.post('/settings/module-visibility', moduleVisibility, { params: { companyId } })
+      toast.success('Module visibility saved')
+    } catch (e) { toast.error(e?.response?.data?.message || 'Failed to save module visibility') }
+    finally { setModuleSaving(false) }
   }
 
   const openCreateTag = () => { setEditingTag(null); resetTag({}); setTagModal(true) }
@@ -244,6 +259,19 @@ export default function CompanySettingsPage() {
             </div>
             <div className="flex justify-end"><Button type="submit" disabled={loading}>Save Config</Button></div>
           </form>
+        </div>
+      )}
+
+      {tab === 'Module Visibility' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-xl space-y-4">
+          <div><h3 className="text-base font-semibold text-gray-800">Visible modules</h3><p className="text-sm text-gray-500 mt-1">Hidden modules are removed from web and mobile navigation for this company.</p></div>
+          {[['payslips', 'Payslips'], ['loans', 'Loans'], ['reimbursements', 'Reimbursements']].map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 cursor-pointer">
+              <span className="font-medium text-gray-700">{label}</span>
+              <input type="checkbox" checked={moduleVisibility[key] !== false} onChange={e => setModuleVisibility(value => ({ ...value, [key]: e.target.checked }))} className="h-4 w-4 accent-indigo-600" />
+            </label>
+          ))}
+          <div className="flex justify-end"><Button onClick={onSaveModuleVisibility} disabled={moduleSaving}>{moduleSaving ? 'Saving…' : 'Save visibility'}</Button></div>
         </div>
       )}
 

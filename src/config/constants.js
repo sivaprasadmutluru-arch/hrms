@@ -4,6 +4,8 @@ export const APP_NAME = 'GRECHA.AI'
 
 export const ROLES = {
   PLATFORM_SUPER_ADMIN: 'PLATFORM_SUPER_ADMIN',  // Prabha Tech internal
+  SUPER_ADMIN: 'SUPER_ADMIN',                    // Assigned company-wide access
+  ACCOUNT_MANAGER: 'ACCOUNT_MANAGER',            // May be assigned to multiple companies
   ENTERPRISE_ADMIN: 'ENTERPRISE_ADMIN',            // Head Office / Company Admin
   BRANCH_ADMIN: 'BRANCH_ADMIN',                   // Branch-level admin
   HR_MANAGER: 'HR_MANAGER',                        // HR at head office or branch

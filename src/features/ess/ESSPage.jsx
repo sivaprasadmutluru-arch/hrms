@@ -49,7 +49,7 @@ function ProfileTab({ profile }) {
     ['Email', profile.email],
     ['Work Email', profile.workEmail],
     ['Phone', profile.phone],
-    ['Badge ID', profile.badgeId],
+    ['Employee ID', profile.badgeId],
     ['Department', profile.departmentName],
     ['Job Position', profile.jobPositionName],
     ['Job Role', profile.jobRoleName],

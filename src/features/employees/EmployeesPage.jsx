@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, setEmployeeActive, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
 import { fetchLeavers, selectLeavers, selectLeaversPagination } from '../offboarding/offboardingSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
@@ -63,7 +63,7 @@ const StatCard = memo(function StatCard({ label, value, icon, color }) {
   )
 })
 
-const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canHardDelete, onView, onEdit, onDelete, onHardDelete, isOnline }) {
+const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canHardDelete, onView, onEdit, onToggleActive, onHardDelete, isOnline }) {
   return (
     <div
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
@@ -166,10 +166,10 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
               Edit
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onDelete(employee) }}
-              className="flex-1 py-1.5 text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+              onClick={(e) => { e.stopPropagation(); onToggleActive(employee) }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${employee.isActive ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}
             >
-              Remove
+              {employee.isActive ? 'Deactivate' : 'Activate'}
             </button>
           </div>
         )}
@@ -434,6 +434,18 @@ export default function EmployeesPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
+  const handleToggleActive = async () => {
+    const employee = deleteTarget
+    if (!employee) return
+    const active = !employee.isActive
+    try {
+      await dispatch(setEmployeeActive({ ids: [employee.id], active, companyId: employee.companyId })).unwrap()
+      toast.success(`Employee ${active ? 'activated' : 'deactivated'}`)
+      setDeleteTarget(null)
+      load(0)
+    } catch (e) { toast.error(e || `Failed to ${active ? 'activate' : 'deactivate'} employee`) }
+  }
+
   const handleHardDelete = async () => {
     try {
       await dispatch(hardDelete({ id: hardDeleteTarget.id, companyId: hardDeleteTarget.companyId })).unwrap()
@@ -499,7 +511,7 @@ export default function EmployeesPage() {
         </div>
       ),
     },
-    { accessorKey: 'badgeId', header: 'Badge ID', cell: ({ getValue }) => getValue() || '—' },
+    { accessorKey: 'badgeId', header: 'Employee ID', cell: ({ getValue }) => getValue() || '—' },
     ...(isPlatformAdmin() ? [{ accessorKey: 'organizationName', header: 'Organization', cell: ({ getValue }) => getValue() || '—' }] : []),
     { accessorKey: 'companyName', header: 'Branch / Company' },
     { accessorKey: 'departmentName', header: 'Department' },
@@ -533,7 +545,9 @@ export default function EmployeesPage() {
           {canManage && (
             <>
               <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-              <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Remove</Button>
+              <Button size="sm" variant={row.original.isActive ? 'danger' : 'success'} onClick={() => setDeleteTarget(row.original)}>
+                {row.original.isActive ? 'Deactivate' : 'Activate'}
+              </Button>
             </>
           )}
           {isPlatformAdmin() && (
@@ -550,12 +564,20 @@ export default function EmployeesPage() {
     ? (allBranches[user.companyId] || [])
     : []
 
-  const companyOptions = isEnterpriseAdmin()
+  const baseCompanyOptions = isEnterpriseAdmin()
     ? [
         ...companies.map(c => ({ value: c.id, label: `${c.name} [Head Office]` })),
         ...branchesForEntAdmin.map(b => ({ value: b.id, label: `${b.name} [Branch]` })),
       ]
     : companies.map(c => ({ value: c.id, label: `${c.name} [${c.companyType || c.type || 'Company'}]` }))
+
+  // An edit form must always show the employee's persisted company. If the current
+  // admin's selector was loaded with a narrower company list, a native <select>
+  // otherwise displays its first option, misleading the admin into thinking the
+  // employee belongs to a different company.
+  const companyOptions = editing?.companyId && !baseCompanyOptions.some(option => String(option.value) === String(editing.companyId))
+    ? [{ value: editing.companyId, label: `${editing.companyName || 'Current company'} [Assigned]` }, ...baseCompanyOptions]
+    : baseCompanyOptions
 
   // The single org a bulk import/template download targets — never falls back silently;
   // null here means "no organization is unambiguously selected", which disables both
@@ -697,7 +719,7 @@ export default function EmployeesPage() {
             </svg>
             <input
               type="text"
-              placeholder="Search name, email, badge ID..."
+              placeholder="Search name, email, employee ID..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
@@ -823,7 +845,7 @@ export default function EmployeesPage() {
               isOnline={onlineSet.has(emp.id)}
               onView={(e) => navigate(`/employees/${e.id}${e.companyId ? `?companyId=${e.companyId}` : ''}`)}
               onEdit={openEdit}
-              onDelete={setDeleteTarget}
+              onToggleActive={setDeleteTarget}
               onHardDelete={setHardDeleteTarget}
             />
           ))}
@@ -879,10 +901,12 @@ export default function EmployeesPage() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Remove Employee"
-        message={`Remove "${deleteTarget?.fullName}"? This will deactivate their account.`}
-        confirmLabel="Remove"
+        onConfirm={handleToggleActive}
+        title={deleteTarget?.isActive ? 'Deactivate Employee' : 'Activate Employee'}
+        message={deleteTarget?.isActive
+          ? `Deactivate "${deleteTarget?.fullName}"? They will no longer be able to sign in, while their records remain available.`
+          : `Activate "${deleteTarget?.fullName}"? They will regain access to HRMS.`}
+        confirmLabel={deleteTarget?.isActive ? 'Deactivate' : 'Activate'}
       />
 
       <ConfirmModal

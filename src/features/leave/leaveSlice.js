@@ -118,6 +118,91 @@ export const fetchLeaveAllocations = createAsyncThunk('leave/fetchLeaveAllocatio
   }
 })
 
+export const bulkRemove = createAsyncThunk('leave/bulkRemove', async (ids, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/leave/requests/bulk-delete', ids)
+    return { ids, ...res.data }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete selected leave requests')
+  }
+})
+
+export const importHistoricalLeaves = createAsyncThunk('leave/importHistoricalLeaves', async ({ companyId, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/leave/requests/import-history', formData, {
+      params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to import historical leave requests')
+  }
+})
+
+export const downloadHistoricalLeaveTemplate = createAsyncThunk('leave/downloadHistoricalLeaveTemplate', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/leave/requests/history-template', { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'sample_old_leave_template.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download sample template')
+  }
+})
+
+export const exportLeaveRequests = createAsyncThunk('leave/exportLeaveRequests', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/leave/requests/export', { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'leave_requests.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download leave requests')
+  }
+})
+
+export const exportLeaveAllocations = createAsyncThunk('leave/exportLeaveAllocations', async (companyId, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/leave/export', { params: { companyId }, responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'leave_allocations.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to download allocation template')
+  }
+})
+
+export const importLeaveAllocations = createAsyncThunk('leave/importLeaveAllocations', async ({ companyId, file }, { rejectWithValue }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/leave/import', formData, {
+      params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to import leave allocations')
+  }
+})
+
 export const fetchLeaveBalance = createAsyncThunk('leave/fetchLeaveBalance', async (employeeId, { rejectWithValue }) => {
   try {
     const url = employeeId ? `/leave/balance/employee/${employeeId}` : '/leave/balance'
@@ -582,11 +667,17 @@ const leaveSlice = createSlice({
         if (state.selected?.id === action.payload.id) state.selected = action.payload
       })
       .addCase(update.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(bulkRemove.fulfilled, (state, action) => {
+        const ids = new Set(action.payload.ids)
+        state.data = state.data.filter(item => !ids.has(item.id))
+        state.pagination.total = Math.max(0, state.pagination.total - action.payload.ids.length)
+      })
 
       .addCase(remove.pending, (state) => { state.loading = true; state.error = null })
       .addCase(remove.fulfilled, (state, action) => {
         state.loading = false
         state.data = state.data.filter((item) => item.id !== action.payload)
+        state.pagination.total = Math.max(0, state.pagination.total - 1)
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 

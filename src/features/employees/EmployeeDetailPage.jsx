@@ -130,12 +130,19 @@ export default function EmployeeDetailPage() {
     ? (allBranches[user.companyId] || [])
     : []
 
-  const companyOptions = isEnterpriseAdmin()
+  const baseCompanyOptions = isEnterpriseAdmin()
     ? [
         ...companies.map(c => ({ value: c.id, label: `${c.name} [Head Office]` })),
         ...branchesForEntAdmin.map(b => ({ value: b.id, label: `${b.name} [Branch]` })),
       ]
     : companies.map(c => ({ value: c.id, label: `${c.name} [${c.companyType || c.type || 'Company'}]` }))
+
+  // Ordinary edits cannot transfer an employee across companies. Keeping the selector
+  // limited to the persisted company prevents a filtered options list from submitting
+  // the browser's first visible option as an unintended company change.
+  const companyOptions = profile?.companyId
+    ? [{ value: profile.companyId, label: `${profile.companyName || 'Current company'} [Assigned]` }]
+    : baseCompanyOptions
 
   const departmentOptions       = departments.map(d => ({ value: d.id, label: d.name }))
   const jobPositionOptions      = jobPositions.map(p => ({ value: p.id, label: p.name }))
@@ -149,7 +156,7 @@ export default function EmployeeDetailPage() {
       const payload = {
         ...data,
         badgeId:            profile.badgeId,
-        companyId:          data.companyId          ? Number(data.companyId)          : profile.companyId,
+        companyId:          profile.companyId,
         departmentId:       data.departmentId       ? Number(data.departmentId)       : undefined,
         jobPositionId:      data.jobPositionId      ? Number(data.jobPositionId)      : undefined,
         jobRoleId:          data.jobRoleId          ? Number(data.jobRoleId)          : undefined,
@@ -171,8 +178,8 @@ export default function EmployeeDetailPage() {
       setProfile(res.data)
       setModalOpen(false)
       toast.success('Employee updated')
-    } catch {
-      toast.error('Failed to update employee')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update employee')
     }
   }
 

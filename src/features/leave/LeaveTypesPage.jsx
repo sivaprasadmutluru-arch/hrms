@@ -459,13 +459,16 @@ export default function LeaveTypesPage() {
                 />
 
                 {watch('resetBased') === 'yearly' && (
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <Select label="Reset month" options={RESET_MONTH_OPTIONS} {...register('resetMonth')} />
+                  <div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Select label="Leave year starts in" options={RESET_MONTH_OPTIONS} {...register('resetMonth')} />
+                      </div>
+                      <div className="flex-1">
+                        <Select label="Start day" options={RESET_DAY_OPTIONS} {...register('resetDay')} />
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <Select label="Reset day" options={RESET_DAY_OPTIONS} {...register('resetDay')} />
-                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Example: July 1 means the leave year runs through June 30 of the following year.</p>
                   </div>
                 )}
 

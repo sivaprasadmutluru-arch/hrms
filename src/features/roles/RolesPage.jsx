@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  fetchUserRoles, fetchUsers, registerUser, assignRole, revokeRole,
+  fetchUserRoles, fetchUsers, registerUser, assignRole, assignRoleToCompanies, revokeRole,
   fetchCrossAccess, grantAccess, revokeAccess, selectUsers, selectUserRoles
 } from './rolesSlice'
 import { adminResetPassword } from '../auth/authSlice'
@@ -15,6 +15,7 @@ import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
+import Combobox from '../../components/common/Combobox'
 import { ROLES } from '../../config/constants'
 import { formatDate } from '../../utils/formatters'
 import useAuth from '../../hooks/useAuth'
@@ -28,7 +29,10 @@ const ACCESS_SCOPES = [
 ]
 
 const ASSIGNABLE_ROLES = {
-  PLATFORM_SUPER_ADMIN: Object.values(ROLES),
+  PLATFORM_SUPER_ADMIN: [
+    'SUPER_ADMIN', 'ACCOUNT_MANAGER', 'COMPANY_ADMIN', 'COMPANY_MANAGER',
+    ...Object.values(ROLES),
+  ],
   ENTERPRISE_ADMIN: [ROLES.BRANCH_ADMIN, ROLES.HR_MANAGER, ROLES.ACCOUNTANT, ROLES.DEPARTMENT_MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE],
   BRANCH_ADMIN: [ROLES.HR_MANAGER, ROLES.ACCOUNTANT, ROLES.DEPARTMENT_MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE],
 }
@@ -49,6 +53,7 @@ export default function RolesPage() {
   const [resetTarget, setResetTarget] = useState(null)
   const [resetLoading, setResetLoading] = useState(false)
   const [userSearch, setUserSearch] = useState('')
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState([])
 
   const canManageCrossAccess = isPlatformAdmin() || isEnterpriseAdmin()
   const TABS = [
@@ -64,7 +69,9 @@ export default function RolesPage() {
       ? ASSIGNABLE_ROLES.ENTERPRISE_ADMIN
       : ASSIGNABLE_ROLES.BRANCH_ADMIN
 
-  const { register: regAssign, handleSubmit: handleAssignSubmit, reset: resetAssign } = useForm()
+  const { register: regAssign, handleSubmit: handleAssignSubmit, reset: resetAssign, watch: watchAssign, setValue: setAssignValue, formState: { errors: assignErrors } } = useForm({
+    defaultValues: { accessScope: 'ENTERPRISE', accessLevel: 'FULL' },
+  })
   const { register: regAccess, handleSubmit: handleAccessSubmit, reset: resetAccess } = useForm()
   const { register: regUser, handleSubmit: handleUserSubmit, reset: resetUser, formState: { errors: userErrors } } = useForm()
   const { register: regReset, handleSubmit: handleResetSubmit, reset: resetResetForm, formState: { errors: resetErrors } } = useForm()
@@ -89,14 +96,29 @@ export default function RolesPage() {
 
   const onAssignRole = async (formData) => {
     try {
-      await dispatch(assignRole({
+      const payload = {
         userId: Number(formData.userId),
         roleName: formData.roleName,
-        companyId: Number(formData.companyId),
         accessScope: formData.accessScope,
-      })).unwrap()
-      toast.success('Role assigned')
+        accessLevel: formData.accessLevel || 'FULL',
+        effectiveFrom: formData.effectiveFrom || undefined,
+        expiresOn: formData.expiresOn || undefined,
+        reason: formData.reason?.trim(),
+      }
+      const isMultiCompanyRole = formData.roleName === 'SUPER_ADMIN' || formData.roleName === 'ACCOUNT_MANAGER'
+      if (isMultiCompanyRole) {
+        if (!selectedCompanyIds.length) {
+          toast.error('Select at least one company')
+          return
+        }
+        await dispatch(assignRoleToCompanies({ ...payload, companyIds: selectedCompanyIds })).unwrap()
+        toast.success(`Role assigned to ${selectedCompanyIds.length} compan${selectedCompanyIds.length === 1 ? 'y' : 'ies'}`)
+      } else {
+        await dispatch(assignRole({ ...payload, companyId: Number(formData.companyId) })).unwrap()
+        toast.success('Role assigned')
+      }
       setAssignModal(false)
+      setSelectedCompanyIds([])
       dispatch(fetchUserRoles())
     } catch (e) { toast.error(e || 'Error') }
   }
@@ -186,7 +208,16 @@ export default function RolesPage() {
     { id: 'actions', header: '', cell: ({ row }) => <Button size="sm" variant="danger" onClick={() => onRevokeAccess(row.original)}>Revoke</Button> },
   ]
 
-  const userOptions = users.map(u => ({ value: u.id, label: `${u.username} (${u.email})` }))
+  const userOptions = users.map(u => {
+    const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+    const primaryLabel = fullName || u.username || u.email
+    return {
+      value: u.id,
+      label: primaryLabel,
+      sublabel: [u.username, u.email].filter(Boolean).join(' · '),
+      searchText: `${fullName} ${u.username || ''} ${u.email || ''}`,
+    }
+  })
 
   const branchesForEntAdmin = isEnterpriseAdmin() && user?.companyId
     ? (allBranches[user.companyId] || [])
@@ -200,6 +231,15 @@ export default function RolesPage() {
     : companies.map(c => ({ value: c.id, label: `${c.name} [${c.companyType || c.type || 'Company'}]` }))
 
   const roleOptions = assignableRoles.map(r => ({ value: r, label: r.replace(/_/g, ' ') }))
+  const selectedRole = watchAssign('roleName')
+  const isMultiCompanyRole = selectedRole === 'SUPER_ADMIN' || selectedRole === 'ACCOUNT_MANAGER'
+
+  const toggleSelectedCompany = (companyId) => {
+    const id = Number(companyId)
+    setSelectedCompanyIds(previous => previous.includes(id)
+      ? previous.filter(value => value !== id)
+      : [...previous, id])
+  }
 
   return (
     <div>
@@ -224,7 +264,7 @@ export default function RolesPage() {
       {tab === 'User Roles' && (
         <>
           <div className="flex justify-end mb-4">
-            <Button onClick={() => { resetAssign({}); setAssignModal(true) }}>+ Assign Role</Button>
+            <Button onClick={() => { resetAssign({ accessScope: 'ENTERPRISE', accessLevel: 'FULL' }); setSelectedCompanyIds([]); setAssignModal(true) }}>+ Assign Role</Button>
           </div>
           <DataTable columns={roleColumns} data={userRoles} loading={loading} />
         </>
@@ -333,10 +373,48 @@ export default function RolesPage() {
           </div>
         }>
         <div className="space-y-4">
-          <Select label="User" options={userOptions} {...regAssign('userId', { required: true })} />
-          <Select label="Role" options={roleOptions} {...regAssign('roleName', { required: true })} />
-          <Select label="Company" options={companyOptions} {...regAssign('companyId', { required: true })} />
-          <Select label="Access Scope" options={ACCESS_SCOPES} {...regAssign('accessScope', { required: true })} />
+          <Combobox
+            label="User"
+            options={userOptions}
+            value={watchAssign('userId') || ''}
+            onChange={(value) => setAssignValue('userId', value, { shouldValidate: true })}
+            placeholder="Search employee by name, username, or email..."
+            emptyText="No employees found"
+            error={assignErrors.userId?.message}
+          />
+          <Select label="Role" options={roleOptions} {...regAssign('roleName', { required: 'Role is required' })} error={assignErrors.roleName?.message} />
+
+          {isMultiCompanyRole ? (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Companies <span className="text-red-500">*</span></p>
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                {companyOptions.map(company => (
+                  <label key={company.value} className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedCompanyIds.includes(Number(company.value))}
+                      onChange={() => toggleSelectedCompany(company.value)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>{company.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">Existing assignments are retained; revoked assignments are safely reactivated.</p>
+            </div>
+          ) : (
+            <Select label="Company" options={companyOptions} {...regAssign('companyId', { required: 'Company is required' })} error={assignErrors.companyId?.message} />
+          )}
+
+          <Select label="Access Scope" options={ACCESS_SCOPES} {...regAssign('accessScope', { required: 'Access scope is required' })} error={assignErrors.accessScope?.message} />
+          {selectedRole === 'ACCOUNT_MANAGER' && (
+            <Select label="Access Level" options={[{ value: 'FULL', label: 'Full access' }, { value: 'PARTIAL', label: 'Partial access — payroll excluded' }]} {...regAssign('accessLevel')} />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Effective Date" type="date" {...regAssign('effectiveFrom')} />
+            <Input label="Expiry Date (optional)" type="date" {...regAssign('expiresOn')} />
+          </div>
+          <Input label="Assignment Reason" placeholder="Why is this access being granted?" {...regAssign('reason', { required: 'Assignment reason is required' })} error={assignErrors.reason?.message} />
         </div>
       </Modal>
 

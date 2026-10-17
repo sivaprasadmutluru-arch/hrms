@@ -45,10 +45,15 @@ export const deleteDevice = createAsyncThunk('biometric/deleteDevice', async (id
 
 export const testDeviceConnection = createAsyncThunk('biometric/testConnection', async (id, { rejectWithValue }) => {
   try {
-    // Best-effort connectivity probe. Endpoint may not exist on every backend build,
-    // so we gracefully treat 404 as "unavailable" rather than a hard failure.
     const res = await api.get(`/biometric/devices/${id}/test`, { validateStatus: s => s < 500 })
-    return { id, ok: res.status < 400, detail: res.data }
+    const detail = res.data || {}
+    return {
+      id,
+      ok: detail.online === true,
+      unavailable: detail.testable === false,
+      status: detail.status,
+      detail,
+    }
   } catch (err) {
     const status = err.response?.status
     if (status === 404) return { id, ok: false, unavailable: true }
