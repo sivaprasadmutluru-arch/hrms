@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, BackHandler, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -12,6 +12,9 @@ import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
 import {captureCurrentLocation, Position, reverseGeocode} from '../utils/location';
 import {dateText, employeeName, workDuration} from '../utils/format';
+import AttendanceRecordsScreen from './AttendanceRecordsScreen';
+import AttendanceRegularisationModal from '../components/AttendanceRegularisationModal';
+import {AttendanceCategory, attendanceCounts, loadAttendanceCheckouts} from '../utils/attendanceRecords';
 
 const DEFAULT_REQUEST_TYPE = 'MISSING_PUNCH';
 
@@ -57,6 +60,15 @@ function displayTime(...values: any[]) {
   }
 
   return text;
+}
+
+function punchDate(fallbackDate: string, ...values: any[]) {
+  const value = values.find(item => item);
+  if (!value) return null;
+  // Use the same local date as displayTime for full timestamps. Time-only
+  // responses belong to the attendance day, parsed locally to avoid a UTC shift.
+  const timestamp = values.find(item => item && String(item).includes('T'));
+  return dateText(timestamp ? String(timestamp) : `${fallbackDate}T00:00:00`);
 }
 
 function elapsedSeconds(clock: any, todayRecord: any) {
@@ -134,11 +146,13 @@ const TONE_STYLES = {
 function Stat({
   label,
   value,
+  date,
   icon,
   tone = 'primary',
 }: {
   label: string;
   value?: string | number | null;
+  date?: string | null;
   icon: string;
   tone?: keyof typeof TONE_STYLES;
 }) {
@@ -149,6 +163,7 @@ function Stat({
         <Icon name={icon as any} size={14} color={toneStyle.fg} />
       </View>
       <Text style={styles.statValue} numberOfLines={1}>{value || '-'}</Text>
+      {!!date && <Text style={styles.statDate}>{date}</Text>}
       <Text style={styles.statLabel} numberOfLines={1}>{label}</Text>
     </View>
   );
@@ -184,7 +199,7 @@ function PunchPill({
   );
 }
 
-export default function CheckInScreen() {
+export default function CheckInScreen({onRootChange}: {onRootChange?: (isRoot: boolean) => void}) {
   const insets = useSafeAreaInsets();
   const {user, profile} = useAuth();
   const [clock, setClock] = useState<any>(null);
@@ -205,10 +220,12 @@ export default function CheckInScreen() {
   const [reason, setReason] = useState('');
   const [submittingRegularisation, setSubmittingRegularisation] = useState(false);
   const [, setTick] = useState(0);
-  const [heroHeight, setHeroHeight] = useState(0);
-  const [stickyHeaderHeight, setStickyHeaderHeight] = useState(0);
   const [monthCursor, setMonthCursor] = useState(() => new Date());
-  const [monthSummary, setMonthSummary] = useState({present: 0, absent: 0, late: 0});
+  const [monthRecords, setMonthRecords] = useState<any[]>([]);
+  const [recordsCategory, setRecordsCategory] = useState<AttendanceCategory | null>(null);
+  const [monthError, setMonthError] = useState('');
+  const monthRequestId = useRef(0);
+  const monthSummary = useMemo(() => attendanceCounts(monthRecords), [monthRecords]);
   const [loadingMonth, setLoadingMonth] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -243,22 +260,20 @@ export default function CheckInScreen() {
   }, []);
 
   const loadMonthSummary = useCallback(async (cursor: Date) => {
+    const requestId = ++monthRequestId.current;
     setLoadingMonth(true);
+    setMonthError('');
+    setMonthRecords([]);
     try {
       const {from, to} = monthRange(cursor);
       const res = await api.attendanceFullView({from, to, page: 0, size: 62});
-      const counts = {present: 0, absent: 0, late: 0};
-      asArray(res).forEach((row: any) => {
-        const status = String(row?.displayStatus || '').toUpperCase();
-        if (status === 'REGULAR' || status === 'REGULARISED') counts.present += 1;
-        else if (status === 'IRREGULAR') counts.late += 1;
-        else if (status === 'ABSENT') counts.absent += 1;
-      });
-      setMonthSummary(counts);
-    } catch {
-      setMonthSummary({present: 0, absent: 0, late: 0});
+      if (requestId !== monthRequestId.current) return;
+      const records = await loadAttendanceCheckouts(asArray(res), api.myAttendanceActivities);
+      if (requestId === monthRequestId.current) setMonthRecords(records);
+    } catch (err: any) {
+      if (requestId === monthRequestId.current) setMonthError(err?.message || 'Unable to load monthly attendance.');
     } finally {
-      setLoadingMonth(false);
+      if (requestId === monthRequestId.current) setLoadingMonth(false);
     }
   }, []);
 
@@ -269,6 +284,21 @@ export default function CheckInScreen() {
   useEffect(() => {
     loadMonthSummary(monthCursor);
   }, [monthCursor, loadMonthSummary]);
+
+  useEffect(() => {
+    onRootChange?.(!recordsCategory);
+  }, [recordsCategory, onRootChange]);
+
+  useEffect(() => () => onRootChange?.(true), [onRootChange]);
+
+  useEffect(() => {
+    if (!recordsCategory) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setRecordsCategory(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [recordsCategory]);
 
   useEffect(() => {
     locate({silent: true}).catch(err => setMessage(err.message || 'Location permission is required for attendance.'));
@@ -446,22 +476,29 @@ export default function CheckInScreen() {
     }
   }
 
+  if (recordsCategory) {
+    return <>
+      <AttendanceRecordsScreen category={recordsCategory} month={monthLabel} monthCursor={monthCursor} onMonthChange={setMonthCursor} records={monthRecords} loading={loadingMonth} error={monthError} onCategoryChange={setRecordsCategory} onBack={() => {setSelectedRegularisation(null); setRecordsCategory(null);}} onRefresh={() => loadMonthSummary(monthCursor)} onRegularise={setSelectedRegularisation} />
+      <AttendanceRegularisationModal record={selectedRegularisation} onClose={() => setSelectedRegularisation(null)} onSubmitted={async () => {await Promise.all([loadStatus(), loadMonthSummary(monthCursor)]);}} />
+    </>;
+  }
+
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <LinearGradient
-        colors={['#17134D', '#2B2C91', '#4F46E5']}
-        start={{x: 0, y: 0}}
-        end={{x: 1, y: 0}}
-        style={[styles.heroBackdrop, {height: heroHeight || 220}]}
-        pointerEvents="none"
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#17134D" />
+      <View style={[styles.stickyLocationHeader, {paddingTop: insets.top + 12}]}>
+        <LinearGradient pointerEvents="none" colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={StyleSheet.absoluteFill} />
+        <View style={styles.heroLocationRow}>
+          <Icon name="location" size={13} color="rgba(255,255,255,0.85)" style={styles.heroLocationIcon} />
+          <Text style={styles.heroLocationText} numberOfLines={2}>{locationLabel}</Text>
+        </View>
+      </View>
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
-        <View
-          style={[styles.hero, {paddingTop: (stickyHeaderHeight || insets.top + 50) + 18}]}
-          onLayout={event => setHeroHeight(event.nativeEvent.layout.height)}>
+        <View style={styles.hero}>
+          <LinearGradient pointerEvents="none" colors={['#17134D', '#2B2C91', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={StyleSheet.absoluteFill} />
 
           <Text style={styles.heroWelcome}>Welcome, {employeeName(profile)}</Text>
 
@@ -484,9 +521,9 @@ export default function CheckInScreen() {
 
         <Card style={[styles.quickStatsCard, styles.flatCard]}>
           <View style={styles.statsRow}>
-            <Stat label="Check In" value={displayTime(todayRecord?.checkIn, clock?.checkIn)} icon="log-in-outline" tone="success" />
+            <Stat label="Check In" value={displayTime(todayRecord?.checkIn, clock?.checkIn)} date={punchDate(todayRecord?.attendanceDate || todayKey(), todayRecord?.checkIn, clock?.checkIn)} icon="log-in-outline" tone="success" />
             <View style={styles.statDivider} />
-            <Stat label="Check Out" value={displayTime(todayRecord?.checkOut, clock?.checkOut)} icon="log-out-outline" tone="purple" />
+            <Stat label="Check Out" value={displayTime(todayRecord?.checkOut, clock?.checkOut)} date={punchDate(todayRecord?.attendanceDate || todayKey(), todayRecord?.checkOut, clock?.checkOut)} icon="log-out-outline" tone="purple" />
             <View style={styles.statDivider} />
             <Stat label="Working Hrs" value={workedLabel} icon="timer-outline" tone="info" />
           </View>
@@ -506,8 +543,14 @@ export default function CheckInScreen() {
             <View key={String(activity.id || index)} style={styles.activityRow}>
               <View style={[styles.activityDot, activity.clockOut ? styles.activityDotComplete : styles.activityDotOpen]} />
               <View style={styles.activityTimes}>
-                <Text style={styles.activityTime}>In {displayTime(activity.clockIn, activity.inDatetime)}</Text>
-                <Text style={styles.activityTime}>Out {displayTime(activity.clockOut, activity.outDatetime)}</Text>
+                <View style={styles.activityPunch}>
+                  <Text style={styles.activityTime}>In {displayTime(activity.clockIn, activity.inDatetime)}</Text>
+                  {!!(activity.clockIn || activity.inDatetime) && <Text style={styles.activityDate}>{punchDate(activity.attendanceDate || todayKey(), activity.clockIn, activity.inDatetime)}</Text>}
+                </View>
+                <View style={styles.activityPunch}>
+                  <Text style={styles.activityTime}>Out {displayTime(activity.clockOut, activity.outDatetime)}</Text>
+                  {!!(activity.clockOut || activity.outDatetime) && <Text style={styles.activityDate}>{punchDate(activity.attendanceDate || todayKey(), activity.clockOut, activity.outDatetime)}</Text>}
+                </View>
               </View>
               <Text style={styles.activityStatus}>{activity.clockOut ? 'Completed' : 'Open'}</Text>
             </View>
@@ -544,23 +587,25 @@ export default function CheckInScreen() {
             <ActivityIndicator color={colors.primary} style={styles.monthLoading} />
           ) : (
             <View style={styles.monthStatsRow}>
-              <View style={[styles.monthStatCard, {borderColor: 'rgba(16,185,129,0.24)'}]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`View ${monthSummary.present} present records for ${monthLabel}`} onPress={() => setRecordsCategory('present')} style={[styles.monthStatCard, {borderColor: 'rgba(16,185,129,0.24)'}]}>
                 <View style={[styles.monthStatAccent, {backgroundColor: colors.success}]} />
                 <Text style={[styles.monthStatValue, {color: colors.success}]}>{String(monthSummary.present).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Present</Text>
-              </View>
-              <View style={[styles.monthStatCard, {borderColor: 'rgba(239,68,68,0.22)'}]}>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`View ${monthSummary.absent} absent records for ${monthLabel}`} onPress={() => setRecordsCategory('absent')} style={[styles.monthStatCard, {borderColor: 'rgba(239,68,68,0.22)'}]}>
                 <View style={[styles.monthStatAccent, {backgroundColor: colors.danger}]} />
                 <Text style={[styles.monthStatValue, {color: colors.danger}]}>{String(monthSummary.absent).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Absent</Text>
-              </View>
-              <View style={[styles.monthStatCard, {borderColor: 'rgba(245,158,11,0.26)'}]}>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`View ${monthSummary.late} late in records for ${monthLabel}`} onPress={() => setRecordsCategory('late')} style={[styles.monthStatCard, {borderColor: 'rgba(245,158,11,0.26)'}]}>
                 <View style={[styles.monthStatAccent, {backgroundColor: colors.warning}]} />
                 <Text style={[styles.monthStatValue, {color: colors.warning}]}>{String(monthSummary.late).padStart(2, '0')}</Text>
                 <Text style={styles.monthStatLabel}>Late In</Text>
-              </View>
+              </Pressable>
             </View>
           )}
+
+          {!!monthError && <Pressable accessibilityRole="button" onPress={() => loadMonthSummary(monthCursor)}><Text style={styles.messageTextError}>{monthError} Tap to retry.</Text></Pressable>}
 
           <Pressable onPress={openRequest} style={styles.plusRequestButton}>
             <Icon name="add" size={16} color={colors.primary} />
@@ -633,17 +678,6 @@ export default function CheckInScreen() {
         </View>
       </Modal>
 
-      <LinearGradient
-        colors={['#17134D', '#2B2C91', '#4F46E5']}
-        start={{x: 0, y: 0}}
-        end={{x: 1, y: 0}}
-        style={styles.stickyLocationHeader}
-        onLayout={event => setStickyHeaderHeight(event.nativeEvent.layout.height)}>
-        <View style={[styles.heroLocationRow, {paddingTop: insets.top + 12}]}>
-          <Icon name="location" size={13} color="rgba(255,255,255,0.85)" style={styles.heroLocationIcon} />
-          <Text style={styles.heroLocationText} numberOfLines={2}>{locationLabel}</Text>
-        </View>
-      </LinearGradient>
     </View>
   );
 }
@@ -655,29 +689,16 @@ const styles = StyleSheet.create<Record<string, any>>({
   screen: {flex: 1, backgroundColor: colors.background},
   scroller: {flex: 1},
   content: {paddingBottom: 30},
-  heroBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-
   hero: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#17134D',
     paddingHorizontal: 20,
+    paddingTop: 18,
     paddingBottom: 28,
   },
   stickyLocationHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    backgroundColor: '#17134D',
     paddingHorizontal: 20,
     paddingBottom: 10,
-    // Keep the fixed header above scroll content on Android; otherwise elevated
-    // cards can briefly paint through it while the list is moving.
-    zIndex: 20,
-    elevation: 20,
   },
   heroLocationRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 6},
   heroLocationIcon: {marginTop: 2},
@@ -768,6 +789,8 @@ const styles = StyleSheet.create<Record<string, any>>({
   activityDotComplete: {backgroundColor: colors.success},
   activityDotOpen: {backgroundColor: colors.warning},
   activityTimes: {flex: 1, flexDirection: 'row', gap: 12},
+  activityPunch: {flex: 1},
+  activityDate: {color: colors.muted, fontSize: 10, fontFamily: fonts.medium, marginTop: 3},
   activityTime: {color: colors.text, fontSize: 12, fontFamily: fonts.semibold},
   activityStatus: {color: colors.muted, fontSize: 11, fontFamily: fonts.medium},
   activityEmpty: {color: colors.muted, fontSize: 12, paddingTop: 2},
@@ -781,6 +804,7 @@ const styles = StyleSheet.create<Record<string, any>>({
   statDivider: {width: 1, backgroundColor: colors.border, marginTop: 4, alignSelf: 'stretch'},
   statIcon: {width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8},
   statValue: {color: colors.text, fontSize: 14, fontFamily: fonts.semibold},
+  statDate: {color: colors.muted, fontSize: 10, fontFamily: fonts.medium, marginTop: 3, textAlign: 'center'},
   statLabel: {color: colors.muted, fontSize: 10, fontFamily: fonts.medium, textTransform: 'uppercase', marginTop: 4},
 
   monthCard: {padding: 16, borderRadius: 18, marginHorizontal: 16, marginTop: 16, shadowOpacity: 0.06, elevation: 2},

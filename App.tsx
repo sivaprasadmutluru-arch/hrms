@@ -25,6 +25,7 @@ function Shell() {
   const {booting, token, user, profile} = useAuth();
   const [tab, setTab] = useState<AvailableTabKey>('checkin');
   const [homeAtRoot, setHomeAtRoot] = useState(true);
+  const [checkInAtRoot, setCheckInAtRoot] = useState(true);
   const showAdmin = isAdminRole(userRoles(user, profile));
 
   useEffect(() => {
@@ -71,10 +72,10 @@ function Shell() {
       <View style={styles.content}>
         {tab === 'home' && <HomeScreen onRootChange={setHomeAtRoot} />}
         {tab === 'admin' && showAdmin && <AdminScreen />}
-        {tab === 'checkin' && <CheckInScreen />}
+        {tab === 'checkin' && <CheckInScreen onRootChange={setCheckInAtRoot} />}
         {tab === 'profile' && <ProfileScreen />}
       </View>
-      {(tab !== 'home' || homeAtRoot) && <BottomTabs active={tab} onChange={setTab} showAdmin={showAdmin} />}
+      {(tab !== 'home' || homeAtRoot) && (tab !== 'checkin' || checkInAtRoot) && <BottomTabs active={tab} onChange={setTab} showAdmin={showAdmin} />}
     </View>
   );
 }

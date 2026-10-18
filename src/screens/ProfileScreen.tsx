@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, View} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -386,22 +386,27 @@ export default function ProfileScreen() {
 
   return (
     <View className="flex-1 bg-background" style={styles.screen}>
-      <LinearGradient colors={['#1E1B4B', '#3730A3', '#6366F1']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={[styles.fixedHeader, {paddingTop: insets.top + 12}]}>
-        <View style={styles.headerSpacer} />
-        <Text style={styles.headerTitle}>Profile</Text>
-        <Pressable onPress={editing ? () => setEditing(false) : startEdit} style={styles.editButton}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.sidebar} />
+      <View style={[styles.fixedHeader, {paddingTop: insets.top + 12}]}>
+        <LinearGradient pointerEvents="none" colors={['#1E1B4B', '#3730A3', '#6366F1']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerSubtitle}>Your employee workspace</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Cancel profile editing' : 'Edit profile'} onPress={editing ? () => setEditing(false) : startEdit} style={styles.editButton}>
           <Icon name={editing ? 'close-outline' : 'create-outline'} size={16} color={colors.white} />
           <Text style={styles.editButtonText}>{editing ? 'Cancel' : 'Edit'}</Text>
         </Pressable>
-      </LinearGradient>
+      </View>
 
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
-        <LinearGradient colors={['#24205E', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={styles.hero}>
+        <View style={styles.hero}>
+          <LinearGradient pointerEvents="none" colors={['#24205E', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={StyleSheet.absoluteFill} />
           <View style={styles.heroIdentity}>
-            <Pressable onPress={changeProfilePhoto} disabled={uploadingPhoto} style={({pressed}) => [styles.avatarWrap, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" onPress={changeProfilePhoto} disabled={uploadingPhoto} style={[styles.avatarWrap, uploadingPhoto && styles.pressed]}>
               <View style={styles.avatar}>
                 {uploadingPhoto ? (
                   <ActivityIndicator color={colors.primary} />
@@ -428,7 +433,7 @@ export default function ProfileScreen() {
             <MiniStat label="Department" value={profile?.departmentName || workInfo?.departmentName} tone="info" />
             <MiniStat label="Status" value={profile?.isActive === false ? 'Inactive' : 'Active'} tone="success" />
           </View>
-        </LinearGradient>
+        </View>
 
         <Card style={styles.organizationCard}>
           <View style={styles.organizationHead}>
@@ -542,15 +547,17 @@ export default function ProfileScreen() {
         <Section title="Sign-in security" subtitle="Use this device to sign in faster" icon="finger-print-outline">
           <View style={styles.securityRow}>
             <View style={styles.securityCopy}>
-              <Text style={styles.securityTitle}>Biometric login</Text>
+              <Text style={styles.securityTitle}>Biometric login · {biometricEnabled ? 'Enabled' : 'Not enabled'}</Text>
               <Text style={styles.securityText}>
                 {biometricEnabled ? 'Fingerprint or Face ID is enabled on this device.' : 'Enable fingerprint or Face ID after confirming your password.'}
               </Text>
             </View>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={biometricEnabled ? 'Turn off biometric login' : 'Enable biometric login'}
               disabled={biometricLoading}
               onPress={biometricEnabled ? turnOffBiometricLogin : requestBiometricEnable}
-              style={({pressed}) => [styles.securityButton, biometricEnabled && styles.securityButtonEnabled, (pressed || biometricLoading) && styles.pressed]}>
+              style={[styles.securityButton, biometricEnabled && styles.securityButtonEnabled, biometricLoading && styles.pressed]}>
               {biometricLoading ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.securityButtonText}>{biometricEnabled ? 'Turn off' : 'Enable'}</Text>}
             </Pressable>
           </View>
@@ -579,7 +586,7 @@ export default function ProfileScreen() {
               <Pressable onPress={() => setBiometricModalOpen(false)} disabled={biometricLoading} style={styles.modalCancel}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={confirmBiometricEnable} disabled={biometricLoading} style={styles.modalConfirm}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Confirm enable biometric login" onPress={confirmBiometricEnable} disabled={biometricLoading} style={styles.modalConfirm}>
                 {biometricLoading ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.modalConfirmText}>Enable</Text>}
               </Pressable>
             </View>
@@ -590,16 +597,24 @@ export default function ProfileScreen() {
       <Modal visible={signOutModalOpen} transparent animationType="fade" onRequestClose={() => !signingOut && setSignOutModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.signOutModalCard}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close sign-out dialog"
+              disabled={signingOut}
+              onPress={() => setSignOutModalOpen(false)}
+              style={[styles.signOutModalClose, signingOut && styles.pressed]}>
+              <Icon name="close" size={22} color={colors.textMid} />
+            </Pressable>
             <View style={styles.signOutModalIcon}>
               <Icon name="log-out-outline" size={25} color={colors.danger} />
             </View>
             <Text style={styles.signOutModalTitle}>Sign out?</Text>
             <Text style={styles.signOutModalText}>You will need to enter your credentials again to access your employee workspace.</Text>
             <View style={styles.signOutModalActions}>
-              <Pressable disabled={signingOut} onPress={() => setSignOutModalOpen(false)} style={({pressed}) => [styles.signOutCancel, (pressed || signingOut) && styles.pressed]}>
+              <Pressable accessibilityRole="button" disabled={signingOut} onPress={() => setSignOutModalOpen(false)} style={[styles.signOutCancel, signingOut && styles.pressed]}>
                 <Text style={styles.signOutCancelText}>Stay signed in</Text>
               </Pressable>
-              <Pressable disabled={signingOut} onPress={confirmSignOut} style={({pressed}) => [styles.signOutConfirm, (pressed || signingOut) && styles.pressed]}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={signingOut} onPress={confirmSignOut} style={[styles.signOutConfirm, signingOut && styles.pressed]}>
                 {signingOut ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.signOutConfirmText}>Sign out</Text>}
               </Pressable>
             </View>
@@ -622,12 +637,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerSpacer: {width: 72, height: 34},
-  headerTitle: {color: colors.white, fontSize: 16, fontFamily: fonts.semibold},
+  headerCopy: {flex: 1, paddingRight: 12},
+  headerTitle: {color: colors.white, fontSize: 22, lineHeight: 28, fontFamily: fonts.bold},
+  headerSubtitle: {color: '#C7D2FE', fontSize: 12, fontFamily: fonts.medium, marginTop: 2},
   hero: {
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 12,
+    backgroundColor: '#24205E',
+    overflow: 'hidden',
   },
   heroIdentity: {flexDirection: 'row', alignItems: 'center', gap: 12},
   heroCopy: {flex: 1},
@@ -671,7 +689,7 @@ const styles = StyleSheet.create({
   name: {color: colors.surface, fontSize: 20, lineHeight: 27, fontFamily: fonts.bold, marginTop: 4},
   role: {color: '#E0E7FF', fontSize: 13, fontWeight: '800', marginTop: 2},
   company: {color: '#C7D2FE', fontSize: 13, fontWeight: '700', marginTop: 2},
-  heroStats: {flexDirection: 'row', gap: 8, marginTop: 14},
+  heroStats: {flexDirection: 'row', alignItems: 'stretch', gap: 8, marginTop: 18},
   organizationCard: {padding: 13, marginBottom: 10, borderRadius: 12},
   organizationHead: {flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12},
   orgLogo: {
@@ -766,7 +784,7 @@ const styles = StyleSheet.create({
   securityCopy: {flex: 1},
   securityTitle: {color: colors.text, fontSize: 14, fontFamily: fonts.semibold},
   securityText: {color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3},
-  securityButton: {minWidth: 72, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 10},
+  securityButton: {minWidth: 78, minHeight: 44, flexShrink: 0, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 10},
   securityButtonEnabled: {backgroundColor: colors.danger},
   securityButtonText: {color: colors.white, fontSize: 12, fontFamily: fonts.semibold},
   modalOverlay: {flex: 1, backgroundColor: 'rgba(17,24,39,0.48)', justifyContent: 'center', padding: 22},
@@ -780,6 +798,7 @@ const styles = StyleSheet.create({
   modalConfirm: {height: 42, minWidth: 82, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14},
   modalConfirmText: {color: colors.white, fontSize: 13, fontFamily: fonts.semibold},
   signOutModalCard: {backgroundColor: colors.white, borderRadius: 20, padding: 22, alignItems: 'center'},
+  signOutModalClose: {position: 'absolute', top: 10, right: 10, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt, zIndex: 1},
   signOutModalIcon: {width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerLight},
   signOutModalTitle: {color: colors.text, fontSize: 20, fontFamily: fonts.bold, marginTop: 14},
   signOutModalText: {color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 7},

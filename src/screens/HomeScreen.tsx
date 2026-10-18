@@ -1070,6 +1070,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [regularisationType, setRegularisationType] = useState(REGULARISATION_TYPES[1].value);
   const [regularisationReason, setRegularisationReason] = useState('');
   const [regularisationCheckIn, setRegularisationCheckIn] = useState('09:00');
+  const [regularisationCheckOut, setRegularisationCheckOut] = useState('');
   const [submittingRegularisation, setSubmittingRegularisation] = useState(false);
   const [attendanceFrom, setAttendanceFrom] = useState('');
   const [attendanceTo, setAttendanceTo] = useState('');
@@ -1383,11 +1384,16 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         Alert.alert('Regularisation', 'Enter a valid check-in time in HH:MM format.');
         return;
       }
+      if (isVirtualDate && regularisationCheckOut.trim() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(regularisationCheckOut.trim())) {
+        Alert.alert('Regularisation', 'Enter a valid check-out time in HH:MM format.');
+        return;
+      }
       await api.submitRegularisationRequest(isVirtualDate
         ? {
             attendanceDate: field(regularisationTarget, ['attendanceDate', 'date']),
             requestType: 'MISSING_PUNCH',
             requestedCheckIn: regularisationCheckIn,
+            ...(regularisationCheckOut.trim() ? {requestedCheckOut: regularisationCheckOut.trim()} : {}),
             reason: regularisationReason.trim(),
           }
         : {
@@ -1398,6 +1404,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       setRegularisationTarget(null);
       setRegularisationReason('');
       setRegularisationCheckIn('09:00');
+      setRegularisationCheckOut('');
       setRegularisationType(REGULARISATION_TYPES[1].value);
       await load();
       Alert.alert('Regularisation', 'Request submitted successfully.');
@@ -1412,6 +1419,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
     setRegularisationTarget(record);
     setRegularisationType(record?.id ? REGULARISATION_TYPES[1].value : 'MISSING_PUNCH');
     setRegularisationCheckIn('09:00');
+    setRegularisationCheckOut('');
     setActive('attendance');
   }
 
@@ -1650,6 +1658,8 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
                 <Text style={styles.inlineHelp}>A missing-attendance request will be sent for this date. HR approval is required.</Text>
                 <Text style={styles.inputLabel}>Check-in time</Text>
                 <TextInput value={regularisationCheckIn} onChangeText={setRegularisationCheckIn} placeholder="09:00" placeholderTextColor={colors.subtle} style={styles.input} />
+                <Text style={styles.inputLabel}>Check-out time (optional)</Text>
+                <TextInput accessibilityLabel="Check-out time (optional)" value={regularisationCheckOut} onChangeText={setRegularisationCheckOut} placeholder="17:00" placeholderTextColor={colors.subtle} style={styles.input} />
               </>}
               <Text style={styles.inputLabel}>Reason</Text>
               <TextInput

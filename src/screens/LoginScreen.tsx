@@ -16,14 +16,17 @@ import {
   View,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Feather from 'react-native-vector-icons/Feather';
+import Icon from '../components/Icon';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {biometricCredentials, isBiometricLoginEnabled, supportedBiometry} from '../utils/biometrics';
 
 export default function LoginScreen() {
   const {signIn} = useAuth();
+  const insets = useSafeAreaInsets();
   const {width} = useWindowDimensions();
   const isTablet = width >= 768;
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -39,8 +42,8 @@ export default function LoginScreen() {
   const [biometricLoading, setBiometricLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([supportedBiometry(), isBiometricLoginEnabled()])
-      .then(([biometry, enabled]) => setBiometricReady(Boolean(biometry && enabled)))
+    isBiometricLoginEnabled()
+      .then(enabled => setBiometricReady(Boolean(enabled)))
       .catch(() => setBiometricReady(false));
   }, []);
 
@@ -83,11 +86,20 @@ export default function LoginScreen() {
   }
 
   async function signInWithBiometrics() {
+    if (!biometricReady) {
+      const available = await supportedBiometry().catch(() => null);
+      Alert.alert('Enable biometric sign-in', available
+        ? 'Sign in with your password, then open Profile → Sign-in security → Enable to activate biometric sign-in on this device.'
+        : 'Set up Face ID or fingerprint in your device settings and allow this app to use it. Then sign in with your password and open Profile → Sign-in security → Enable.');
+      return;
+    }
     setError('');
     setBiometricLoading(true);
     try {
       const credentials = await biometricCredentials();
       if (!credentials) {
+        setBiometricReady(false);
+        setError('Biometric sign-in is not enabled. Sign in with your password and enable it from Profile.');
         return;
       }
       await signIn(credentials.username, credentials.password, true);
@@ -103,11 +115,8 @@ export default function LoginScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#312E81" />
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <LinearGradient
-            colors={['#312E81', '#6366F1', '#8B5CF6']}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
-            style={[styles.hero, isTablet && styles.heroTablet]}>
+          <View style={[styles.hero, {paddingTop: insets.top + 24}, isTablet && styles.heroTablet]}>
+            <LinearGradient pointerEvents="none" colors={['#312E81', '#6366F1', '#8B5CF6']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={StyleSheet.absoluteFill} />
             <View style={[styles.heroInner, isTablet && styles.heroInnerTablet]}>
               <View className="h-12 flex-row items-center self-start rounded-xl bg-white px-3">
                 <Image
@@ -128,9 +137,9 @@ export default function LoginScreen() {
                 </Text>
               </View>
             </View>
-          </LinearGradient>
+          </View>
 
-          <View style={[styles.formPanel, isTablet && styles.formPanelTablet]}>
+          <View style={[styles.formPanel, {paddingBottom: insets.bottom + 16}, isTablet && styles.formPanelTablet]}>
             <Text className="text-center font-bold text-2xl text-textPrimary">Welcome Back</Text>
             <Text className="mt-2 text-center font-regular text-sm text-textSecondary">
               Sign in to access your employee workspace
@@ -196,11 +205,8 @@ export default function LoginScreen() {
               style={styles.primaryButton}
               onPress={submit}
               disabled={loading}>
-              <LinearGradient
-                colors={['#4F46E5', '#6366F1', '#8B5CF6']}
-                start={{x: 0, y: 0}}
-                end={{x: 1, y: 0}}
-                style={styles.primaryButtonFill}>
+              <View style={styles.primaryButtonFill}>
+                <LinearGradient pointerEvents="none" colors={['#4F46E5', '#6366F1', '#8B5CF6']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={StyleSheet.absoluteFill} />
                 {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
@@ -209,11 +215,12 @@ export default function LoginScreen() {
                     <Feather name="arrow-right" size={18} color="#FFFFFF" />
                   </View>
                 )}
-              </LinearGradient>
+              </View>
             </Pressable>
 
-            {biometricReady && (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={biometricReady ? 'Sign in with biometric' : 'Enable biometric sign-in'}
                 style={styles.secondaryButton}
                 onPress={signInWithBiometrics}
                 disabled={biometricLoading}>
@@ -221,12 +228,11 @@ export default function LoginScreen() {
                   <ActivityIndicator color="#4F46E5" />
                 ) : (
                   <>
-                    <Feather name="fingerprint" size={21} color="#4F46E5" />
-                    <Text style={styles.secondaryButtonText}>Sign in with biometric</Text>
+                    <Icon name="finger-print-outline" size={21} color="#4F46E5" />
+                    <Text style={styles.secondaryButtonText}>{biometricReady ? 'Sign in with biometric' : 'Enable biometric sign-in'}</Text>
                   </>
                 )}
               </Pressable>
-            )}
 
             <View className="mt-8 mb-6 flex-row items-center justify-center">
               <Text className="font-regular text-xs text-textPlaceholder">Version 1.0.0</Text>
@@ -278,6 +284,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   hero: {
+    backgroundColor: '#312E81',
     paddingBottom: 88,
     paddingHorizontal: 24,
     paddingTop: 72,

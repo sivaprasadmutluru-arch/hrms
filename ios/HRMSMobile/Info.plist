@@ -41,6 +41,8 @@
 	<string>Grecha HRMS can save profile photos when you choose to update them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Grecha HRMS needs access to Photos so you can update your employee profile photo.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Grecha HRMS uses Face ID to securely sign you in when you enable biometric login.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>
