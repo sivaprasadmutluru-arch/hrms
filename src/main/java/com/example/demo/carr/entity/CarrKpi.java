@@ -16,7 +16,10 @@ public class CarrKpi extends BaseEntity {
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=10) private Type type = Type.KPI;
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=15) private Direction direction = Direction.INCREASE;
     @Column(name="target_value", nullable=false, precision=19, scale=4) private BigDecimal targetValue;
-    @Column(name="actual_value", nullable=false, precision=19, scale=4) private BigDecimal actualValue = BigDecimal.ZERO;
+    @Column(name="actual_value", precision=19, scale=4) private BigDecimal actualValue;
+    @Column(name="metric_definition", length=1000) private String metricDefinition;
+    @Column(name="generation_key", length=100) private String generationKey;
+    @Column(name="manually_edited") private boolean manuallyEdited;
     @Column(length=40) private String unit;
     @Column(name="review_frequency", length=40) private String reviewFrequency = "Monthly";
     @Column(nullable=false) private int weight;

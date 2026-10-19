@@ -8,6 +8,9 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
 import java.util.*;
 public interface CarrRecordRepository extends JpaRepository<CarrRecord,Long> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from CarrRecord c where c.id=?1 and c.company.id=?2 and c.taskRecord=false")
+    Optional<CarrRecord> findForUpdate(Long id,Long companyId);
     @EntityGraph(attributePaths={"employee","employee.department","manager","template","cycle"})
     @Query("select c from CarrRecord c where c.company.id=?1 and c.taskRecord=false order by c.updatedAt desc")
     List<CarrRecord> findByCompanyIdOrderByUpdatedAtDesc(Long companyId);

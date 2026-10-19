@@ -38,6 +38,7 @@ public class CarrService {
     private final CompanyRepository companyRepo;
     private final JobRoleRepository jobRoleRepo;
     private final PerformanceCycleRepository cycleRepo;
+    private final CarrKpiEngine kpiEngine;
 
     private Long companyId() {
         Long id = CompanyContext.get();
@@ -94,31 +95,28 @@ public class CarrService {
         if (req.cycleId()!=null && recordRepo.existsByCompanyIdAndEmployeeIdAndCycleIdAndStatusNot(companyId(), emp.getId(), req.cycleId(), CarrStatus.ARCHIVED))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This employee already has an active CARR for the selected cycle");
         CarrRecord c = new CarrRecord(); c.setCompany(company()); c.setEmployee(emp); c.setStatus(CarrStatus.DRAFT);
-        apply(c, req); c = recordRepo.save(c); replaceChildren(c, req); audit(c,"CREATED","CARR created",auth);
+        apply(c, req); c = recordRepo.save(c); replaceChildren(c, req); audit(c,"CREATED","CARR created",auth); audit(c,"KPI_CONFIGURATION_SAVED",kpiAudit(c),auth);
         return recordDto(c);
     }
     @Transactional
     public RecordResponse update(Long id, RecordRequest req, Authentication auth) {
-        CarrRecord c=requireRecord(id); ensureEditable(c); apply(c,req); replaceChildren(c,req); audit(c,"UPDATED","Draft content updated",auth); return recordDto(c);
+        CarrRecord c=requireRecord(id); ensureEditable(c); apply(c,req); replaceChildren(c,req); audit(c,"UPDATED","Draft content updated",auth); audit(c,"KPI_CONFIGURATION_SAVED",kpiAudit(c),auth); return recordDto(c);
     }
     @Transactional
     public RecordResponse saveKpi(Long carrId, Long kpiId, KpiRequest req, Authentication auth) {
         CarrRecord c = requireRecord(carrId); ensureEditable(c);
+        validateKpi(req);
+        if(kpiRepo.findByCarrIdOrderById(c.getId()).stream().anyMatch(x->!Objects.equals(x.getId(),kpiId)&&x.getName().trim().equalsIgnoreCase(req.name().trim())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"A KPI with this name already exists");
         CarrKpi k = kpiId == null ? new CarrKpi() : kpiRepo.findById(kpiId)
                 .filter(x -> Objects.equals(x.getCarr().getId(), c.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("CARR KPI", kpiId));
         if (kpiId == null) k.setCarr(c);
         int otherWeight = kpiRepo.findByCarrIdOrderById(c.getId()).stream()
                 .filter(x -> !Objects.equals(x.getId(), kpiId)).mapToInt(CarrKpi::getWeight).sum();
-        if (otherWeight + req.weight() > 100)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Total KPI/OKR weight cannot exceed 100");
-        k.setName(req.name().trim());
-        k.setType(req.type()==null?CarrKpi.Type.KPI:req.type());
-        k.setDirection(req.direction()==null?CarrKpi.Direction.INCREASE:req.direction());
-        k.setTargetValue(req.targetValue());
-        k.setActualValue(req.actualValue()==null?BigDecimal.ZERO:req.actualValue());
-        k.setReviewFrequency(req.reviewFrequency()==null?"Monthly":req.reviewFrequency()); k.setUnit(req.unit()); k.setWeight(req.weight()); k.setDueDate(req.dueDate());
-        k.setDataSource(req.dataSource()); k.setEvidence(req.evidence()); kpiRepo.save(k);
+        if (otherWeight + req.weight() != 100)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KPI weights must total 100. Save the complete configuration to rebalance weights.");
+        applyKpi(k,req); kpiRepo.save(k);
         audit(c, kpiId==null?"KPI_CREATED":"KPI_UPDATED", k.getName(), auth);
         return recordDto(c);
     }
@@ -127,7 +125,87 @@ public class CarrService {
         CarrRecord c = requireRecord(carrId); ensureEditable(c);
         CarrKpi k = kpiRepo.findById(kpiId).filter(x -> Objects.equals(x.getCarr().getId(), c.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("CARR KPI", kpiId));
+        if(kpiRepo.findByCarrIdOrderById(c.getId()).size()>1)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Remove the KPI in the full configuration and rebalance the remaining weights to 100%");
         String name = k.getName(); kpiRepo.delete(k); audit(c,"KPI_DELETED",name,auth);
+    }
+    @Transactional(readOnly=true)
+    public List<KpiRequest> suggestKpis(KpiSuggestionRequest req) {
+        Employee emp=employee(req.employeeId());
+        if(req.departmentId()!=null && (emp.getDepartment()==null || !req.departmentId().equals(emp.getDepartment().getId())))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Employee does not belong to the selected department");
+        if(req.effectiveFrom()!=null && req.effectiveTo()!=null && req.effectiveTo().isBefore(req.effectiveFrom()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Review end date cannot be before start date");
+        String context="";
+        if(req.templateId()!=null){
+            CarrRoleTemplate t=templateRepo.findByIdAndCompanyId(req.templateId(),companyId()).orElseThrow(()->new ResourceNotFoundException("CARR template",req.templateId()));
+            context=Objects.toString(t.getScope(),"")+" "+Objects.toString(t.getCompetencies(),"");
+        }
+        return kpiEngine.suggest(emp,req,context);
+    }
+    @Transactional
+    public RecordResponse configureKpis(Long id,KpiConfigurationRequest req,Authentication auth) {
+        CarrRecord c=requireRecord(id);ensureEditable(c);
+        if(req.effectiveTo().isBefore(req.effectiveFrom()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Review end date cannot be before start date");
+        c.setEffectiveFrom(req.effectiveFrom());c.setEffectiveTo(req.effectiveTo());c.setNextReviewDate(req.nextReviewDate());
+        replaceKpis(c,req.kpis());
+        audit(c,"KPI_CONFIGURATION_SAVED",kpiAudit(c),auth);
+        return recordDto(c);
+    }
+    @Transactional
+    public RecordResponse refreshKpiActuals(Long id,Authentication auth) {
+        CarrRecord c=requireRecord(id);ensureCanApprove(c,auth);
+        if(c.getStatus()==CarrStatus.ARCHIVED) throw new ResponseStatusException(HttpStatus.CONFLICT,"Archived KPI scores cannot be changed");
+        for(CarrKpi k:kpiRepo.findByCarrIdOrderById(c.getId())) {
+            if(!CarrKpiEngine.AUTOMATIC.contains(Objects.toString(k.getDataSource(),""))) continue;
+            var m=kpiEngine.measure(c.getEmployee(),k.getDataSource(),c.getEffectiveFrom(),c.getEffectiveTo());
+            k.setActualValue(m.actual());k.setEvidence(m.evidence());kpiRepo.save(k);
+        }
+        audit(c,"KPI_SCORES_REFRESHED",kpiAudit(c),auth);
+        return recordDto(c);
+    }
+    private String kpiAudit(CarrRecord c) {
+        String value=kpiRepo.findByCarrIdOrderById(c.getId()).stream().map(k->"#"+k.getId()+" "+k.getName()+": metric="+k.getMetricDefinition()+", direction="+k.getDirection()+", target="+k.getTargetValue()+" "+k.getUnit()+", actual="+k.getActualValue()+", weight="+k.getWeight()+", cycle="+k.getReviewFrequency()+", score="+KpiScoring.score(k)+", source="+k.getDataSource()+", evidence="+k.getEvidence()).reduce((a,b)->a+"; "+b).orElse("No KPIs");
+        return "Employee #"+c.getEmployee().getId()+"; period "+c.getEffectiveFrom()+" to "+c.getEffectiveTo()+"; "+value;
+    }
+    private void validateKpi(KpiRequest k) {
+        if(k.name()==null||k.name().isBlank()||k.targetValue()==null||k.targetValue().signum()<=0||k.unit()==null||k.unit().isBlank()||k.weight()<1||k.weight()>100)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Every KPI needs a name, positive target, unit and weight from 1 to 100");
+        if(k.reviewFrequency()!=null&&!Set.of("Monthly","Quarterly","Annually","Yearly","Half-Yearly").contains(k.reviewFrequency()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid KPI review cycle");
+        if(k.actualValue()!=null&&k.actualValue().signum()<0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Actual values cannot be negative");
+        if(k.actualValue()!=null&&!CarrKpiEngine.AUTOMATIC.contains(Objects.toString(k.dataSource(),""))&&(k.evidence()==null||k.evidence().isBlank()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Provide source evidence for manual actuals");
+        if(CarrKpiEngine.AUTOMATIC.contains(Objects.toString(k.dataSource(),"")) && (!"%".equals(k.unit()) || (k.direction()!=null&&k.direction()!=CarrKpi.Direction.INCREASE)))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Automatic rate metrics must use % and higher-is-better scoring");
+    }
+    private void applyKpi(CarrKpi k,KpiRequest req) {
+        validateKpi(req);
+        k.setName(req.name().trim());k.setType(req.type()==null?CarrKpi.Type.KPI:req.type());k.setDirection(req.direction()==null?CarrKpi.Direction.INCREASE:req.direction());
+        k.setTargetValue(req.targetValue());k.setUnit(req.unit().trim());k.setWeight(req.weight());k.setReviewFrequency(req.reviewFrequency()==null?"Monthly":req.reviewFrequency());
+        k.setDueDate(req.dueDate());k.setMetricDefinition(req.metricDefinition());k.setGenerationKey(req.generationKey());
+        k.setManuallyEdited(k.isManuallyEdited()||Boolean.TRUE.equals(req.manuallyEdited())||req.generationKey()==null);
+        k.setDataSource(req.dataSource()==null?"MANUAL":req.dataSource());
+        if(CarrKpiEngine.AUTOMATIC.contains(k.getDataSource())) {
+            var m=kpiEngine.measure(k.getCarr().getEmployee(),k.getDataSource(),k.getCarr().getEffectiveFrom(),k.getCarr().getEffectiveTo());
+            k.setActualValue(m.actual());k.setEvidence(m.evidence());
+        } else {k.setActualValue(req.actualValue());k.setEvidence(req.evidence());}
+    }
+    private void replaceKpis(CarrRecord c,List<KpiRequest> requested) {
+        if(!requested.isEmpty()&&(c.getEffectiveFrom()==null||c.getEffectiveTo()==null))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose the KPI review start and end dates");
+        if(requested.size()>50)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"At most 50 KPIs can be configured");
+        if(!requested.isEmpty()&&requested.stream().mapToInt(KpiRequest::weight).sum()!=100)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"KPI weights must total exactly 100%");
+        Set<String> names=new HashSet<>();Set<String> keys=new HashSet<>();Set<Long> ids=new HashSet<>();
+        List<CarrKpi> existing=kpiRepo.findByCarrIdOrderById(c.getId());
+        for(KpiRequest req:requested) {
+            validateKpi(req);
+            if(!names.add(req.name().trim().toLowerCase(Locale.ROOT)) || (req.id()!=null&&!ids.add(req.id())) || (req.generationKey()!=null&&!req.generationKey().isBlank()&&!keys.add(req.generationKey())))
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"Duplicate KPI names or identifiers are not allowed");
+            CarrKpi k=req.id()==null?new CarrKpi():existing.stream().filter(x->req.id().equals(x.getId())).findFirst().orElseThrow(()->new ResourceNotFoundException("CARR KPI",req.id()));
+            k.setCarr(c);applyKpi(k,req);kpiRepo.save(k);
+        }
+        kpiRepo.deleteAll(existing.stream().filter(k->!ids.contains(k.getId())).toList());
     }
     private void apply(CarrRecord c, RecordRequest req) {
         c.setEmployee(employee(req.employeeId())); c.setTitle(req.title().trim()); c.setPurpose(req.purpose());
@@ -144,16 +222,13 @@ public class CarrService {
     }
     private void replaceChildren(CarrRecord c, RecordRequest req) {
         responsibilityRepo.deleteAll(responsibilityRepo.findByCarrIdOrderById(c.getId()));
-        kpiRepo.deleteAll(kpiRepo.findByCarrIdOrderById(c.getId()));
         rewardRepo.deleteAll(rewardRepo.findByCarrIdOrderById(c.getId()));
         if(req.responsibilities()!=null) for(ResponsibilityRequest r:req.responsibilities()) {
             CarrResponsibility x=new CarrResponsibility(); x.setCarr(c); x.setStatement(r.statement().trim());
             x.setAccountableEmployee(r.accountableEmployeeId()==null?c.getEmployee():employee(r.accountableEmployeeId()));
             x.setPriority(r.priority()==null?"MEDIUM":r.priority()); x.setFrequency(r.frequency()); x.setEvidenceRequired(r.evidenceRequired()); x.setWeight(r.weight()); responsibilityRepo.save(x);
         }
-        int total=0;
-        if(req.kpis()!=null) for(KpiRequest k:req.kpis()) { total+=k.weight(); CarrKpi x=new CarrKpi(); x.setCarr(c); x.setName(k.name().trim()); x.setType(k.type()==null?CarrKpi.Type.KPI:k.type()); x.setDirection(k.direction()==null?CarrKpi.Direction.INCREASE:k.direction()); x.setTargetValue(k.targetValue()); x.setActualValue(k.actualValue()==null?BigDecimal.ZERO:k.actualValue()); x.setReviewFrequency(k.reviewFrequency()==null?"Monthly":k.reviewFrequency()); x.setUnit(k.unit()); x.setWeight(k.weight()); x.setDueDate(k.dueDate()); x.setDataSource(k.dataSource()); x.setEvidence(k.evidence()); kpiRepo.save(x); }
-        if(!Objects.equals(total,0) && total!=100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"KPI weights must total 100");
+        replaceKpis(c,req.kpis()==null?List.of():req.kpis());
         if(c.isRewardsEnabled() && req.rewards()!=null) for(RewardRequest reward:req.rewards()) {
             CarrReward x=new CarrReward(); x.setCarr(c); x.setName(reward.name().trim());
             x.setStatus(reward.status()==null?"TO_BE_DISCUSSED":reward.status());
@@ -210,17 +285,20 @@ public class CarrService {
     @Transactional
     public RecordResponse updateActual(Long carrId, Long kpiId, ActualValueRequest req, Authentication auth) {
         CarrRecord c = requireRecord(carrId);
+        ensureCanApprove(c,auth);
         if (!Set.of(CarrStatus.APPROVED, CarrStatus.PUBLISHED).contains(c.getStatus()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "KPI actuals can be updated only after approval");
         CarrKpi k = kpiRepo.findById(kpiId).filter(x -> Objects.equals(x.getCarr().getId(), c.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("CARR KPI", kpiId));
+        if(CarrKpiEngine.AUTOMATIC.contains(Objects.toString(k.getDataSource(),"")))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Refresh automatic actuals from source data; switch to manual in a draft to override");
         k.setActualValue(req.actualValue()); k.setEvidence(req.evidence()); kpiRepo.save(k);
-        audit(c, "KPI_ACTUAL_UPDATED", k.getName() + " = " + req.actualValue(), auth);
+        audit(c, "KPI_ACTUAL_UPDATED", k.getName() + " = " + req.actualValue()+"; evidence="+req.evidence()+"; score="+KpiScoring.score(k), auth);
         return recordDto(c);
     }
     private void validateReady(CarrRecord c){List<CarrKpi> ks=kpiRepo.findByCarrIdOrderById(c.getId());if(ks.isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Add at least one KPI before submission");if(ks.stream().mapToInt(CarrKpi::getWeight).sum()!=100)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"KPI weights must total 100");if(responsibilityRepo.findByCarrIdOrderById(c.getId()).isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Add at least one responsibility before submission");}
     private void ensureEditable(CarrRecord c){if(!Set.of(CarrStatus.DRAFT,CarrStatus.RETURNED).contains(c.getStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"Only draft or returned CARR records can be edited");}
-    private CarrRecord requireRecord(Long id){return recordRepo.findByIdAndCompanyId(id,companyId()).orElseThrow(()->new ResourceNotFoundException("CARR",id));}
+    private CarrRecord requireRecord(Long id){return (org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()?recordRepo.findByIdAndCompanyId(id,companyId()):recordRepo.findForUpdate(id,companyId())).orElseThrow(()->new ResourceNotFoundException("CARR",id));}
     @Transactional(readOnly=true) public List<AuditResponse> audit(Long id){requireRecord(id);return auditRepo.findByCarrIdOrderByCreatedAtDesc(id).stream().map(a->new AuditResponse(a.getId(),a.getAction(),a.getActorUserId(),a.getActorEmail(),a.getDetails(),a.getCreatedAt())).toList();}
     private void audit(CarrRecord c,String action,String details,Authentication auth){UserPrincipal p=(UserPrincipal)auth.getPrincipal();CarrAuditEvent a=new CarrAuditEvent();a.setCarr(c);a.setAction(action);a.setActorUserId(p.getId());a.setActorEmail(p.getEmail());a.setDetails(details);auditRepo.save(a);}
 
@@ -229,11 +307,11 @@ public class CarrService {
     private RecordResponse recordDto(CarrRecord c) {
         List<CarrKpi> ks=kpiRepo.findByCarrIdOrderById(c.getId());
         List<ResponsibilityResponse> responsibilities=responsibilityRepo.findByCarrIdOrderById(c.getId()).stream().map(r->new ResponsibilityResponse(r.getId(),r.getStatement(),r.getAccountableEmployee().getId(),name(r.getAccountableEmployee()),r.getPriority(),r.getFrequency(),r.getEvidenceRequired(),r.getWeight())).toList();
-        List<KpiResponse> kpis=ks.stream().map(k->new KpiResponse(k.getId(),k.getName(),k.getType(),k.getDirection(),k.getTargetValue(),k.getActualValue(),k.getUnit(),k.getWeight(),k.getDueDate(),k.getDataSource(),k.getEvidence(),achievement(k),risk(k),k.getReviewFrequency())).toList();
+        List<KpiResponse> kpis=ks.stream().map(k->new KpiResponse(k.getId(),k.getName(),k.getType(),k.getDirection(),k.getTargetValue(),k.getActualValue(),k.getUnit(),k.getWeight(),k.getDueDate(),k.getDataSource(),k.getEvidence(),achievement(k),risk(k),k.getReviewFrequency(),k.getMetricDefinition(),k.getGenerationKey(),k.isManuallyEdited(),KpiScoring.weighted(k))).toList();
         List<RewardResponse> rewards=rewardRepo.findByCarrIdOrderById(c.getId()).stream().map(r->new RewardResponse(r.getId(),r.getName(),r.getStatus(),r.getDiscussionWith())).toList();
         return new RecordResponse(c.getId(),c.getEmployee().getId(),c.getEmployee().getBadgeId(),name(c.getEmployee()),c.getEmployee().getDepartment()==null?null:c.getEmployee().getDepartment().getName(),c.getTemplate()==null?null:c.getTemplate().getId(),c.getTemplate()==null?null:c.getTemplate().getTitle(),c.getCycle()==null?null:c.getCycle().getId(),c.getCycle()==null?null:c.getCycle().getName(),c.getManager()==null?null:c.getManager().getId(),c.getManager()==null?null:name(c.getManager()),c.getTitle(),c.getPurpose(),c.getIndustry(),c.getRoleLevel(),c.getReportsToTitle(),c.getResponsibleFor(),c.isRewardsEnabled(),c.isRewardsVisibleToEmployee(),c.getStatus(),c.getVersion(),c.getEffectiveFrom(),c.getEffectiveTo(),c.getNextReviewDate(),c.getPublishedAt(),c.getEmployeeAcknowledgedAt(),c.getReviewCompletedAt(),c.getEmployeeReflection(),c.getManagerComments(),responsibilities,kpis,rewards,score(ks),c.getReturnReason());
     }
-    private BigDecimal achievement(CarrKpi k){if(k.getTargetValue()==null||k.getTargetValue().compareTo(BigDecimal.ZERO)==0)return BigDecimal.ZERO;BigDecimal v=k.getDirection()==CarrKpi.Direction.DECREASE?k.getTargetValue().divide(k.getActualValue().max(BigDecimal.valueOf(.0001)),4,RoundingMode.HALF_UP):k.getActualValue().divide(k.getTargetValue(),4,RoundingMode.HALF_UP);return v.multiply(BigDecimal.valueOf(100)).min(BigDecimal.valueOf(150)).setScale(1,RoundingMode.HALF_UP);}
-    private String risk(CarrKpi k){BigDecimal a=achievement(k);return a.compareTo(BigDecimal.valueOf(70))<0?"AT_RISK":a.compareTo(BigDecimal.valueOf(100))<0?"ON_TRACK":"ACHIEVED";}
-    private BigDecimal score(List<CarrKpi> ks){return ks.stream().map(k->achievement(k).min(BigDecimal.valueOf(100)).multiply(BigDecimal.valueOf(k.getWeight())).divide(BigDecimal.valueOf(100),2,RoundingMode.HALF_UP)).reduce(BigDecimal.ZERO,BigDecimal::add).setScale(1,RoundingMode.HALF_UP);}
+    private BigDecimal achievement(CarrKpi k){return KpiScoring.score(k);}
+    private String risk(CarrKpi k){BigDecimal a=achievement(k);return a==null?"NOT_SCORED":a.compareTo(BigDecimal.valueOf(70))<0?"AT_RISK":a.compareTo(BigDecimal.valueOf(100))<0?"ON_TRACK":"ACHIEVED";}
+    private BigDecimal score(List<CarrKpi> ks){return KpiScoring.overall(ks);}
 }

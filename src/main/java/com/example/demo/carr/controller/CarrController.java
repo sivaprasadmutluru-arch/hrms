@@ -15,6 +15,14 @@ import java.util.Map;
 @RestController @RequestMapping("/api/carr") @RequiredArgsConstructor
 public class CarrController {
     private final CarrService service;
+    // The application-wide catch-all otherwise converts intentional validation errors into HTTP 500.
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String,Object>> handleValidation(org.springframework.web.server.ResponseStatusException ex){
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("status",ex.getStatusCode().value(),"message",ex.getReason()==null?"Unable to complete this request":ex.getReason()));
+    }
+    @PostMapping("/kpis/suggestions") @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')") public List<KpiRequest> suggestions(@Valid @RequestBody KpiSuggestionRequest r){return service.suggestKpis(r);}
+    @PutMapping("/records/{id}/kpi-configuration") @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')") public RecordResponse configureKpis(@PathVariable Long id,@Valid @RequestBody KpiConfigurationRequest r,Authentication a){return service.configureKpis(id,r,a);}
+    @PostMapping("/records/{id}/kpis/refresh") @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER','MANAGER')") public RecordResponse refreshKpis(@PathVariable Long id,Authentication a){return service.refreshKpiActuals(id,a);}
     @GetMapping("/dashboard") @PreAuthorize("isAuthenticated()") public DashboardResponse dashboard(){return service.dashboard();}
     @GetMapping("/templates") @PreAuthorize("isAuthenticated()") public List<TemplateResponse> templates(){return service.templates();}
     @PostMapping("/templates") @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')") public ResponseEntity<TemplateResponse> createTemplate(@Valid @RequestBody TemplateRequest r,Authentication a){return ResponseEntity.status(HttpStatus.CREATED).body(service.saveTemplate(null,r,a));}

@@ -18,9 +18,11 @@ public final class CarrDtos {
                                         Long accountableEmployeeId, String priority, String frequency,
                                         String evidenceRequired, @Min(0) @Max(100) int weight) {}
     public record KpiRequest(Long id, @NotBlank @Size(max=220) String name, CarrKpi.Type type,
-                             CarrKpi.Direction direction, @NotNull BigDecimal targetValue,
-                             BigDecimal actualValue, String unit, @Min(1) @Max(100) int weight,
-                             LocalDate dueDate, String dataSource, String evidence, @Size(max=40) String reviewFrequency) {}
+                             CarrKpi.Direction direction, @NotNull @DecimalMin("0.0001") @Digits(integer=15,fraction=4) BigDecimal targetValue,
+                             @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal actualValue, @NotBlank @Size(max=40) String unit, @Min(1) @Max(100) int weight,
+                             LocalDate dueDate, @Size(max=300) String dataSource, @Size(max=1000) String evidence,
+                             @Pattern(regexp="Monthly|Quarterly|Annually|Yearly|Half-Yearly") String reviewFrequency,
+                             @Size(max=1000) String metricDefinition, @Size(max=100) String generationKey, Boolean manuallyEdited) {}
     public record RecordRequest(@NotNull Long employeeId, Long departmentId, Long templateId, Long cycleId, Long managerId,
                                 @NotBlank @Size(max=180) String title, String purpose,
                                 String industry, String roleLevel, String reportsToTitle, String responsibleFor,
@@ -37,7 +39,14 @@ public final class CarrDtos {
     public record KpiResponse(Long id, String name, CarrKpi.Type type, CarrKpi.Direction direction,
                               BigDecimal targetValue, BigDecimal actualValue, String unit, int weight,
                               LocalDate dueDate, String dataSource, String evidence, BigDecimal achievementPercent,
-                              String riskStatus, String reviewFrequency) {}
+                              String riskStatus, String reviewFrequency, String metricDefinition,
+                              String generationKey, boolean manuallyEdited, BigDecimal weightedScore) {}
+    public record KpiSuggestionRequest(@NotNull Long employeeId, Long departmentId, Long templateId,
+                                      @NotBlank @Size(max=180) String designation,
+                                      @Size(max=4000) String responsibilities, LocalDate effectiveFrom, LocalDate effectiveTo,
+                                      @Pattern(regexp="Monthly|Quarterly|Annually") String reviewFrequency) {}
+    public record KpiConfigurationRequest(@NotEmpty @Size(max=50) @Valid List<KpiRequest> kpis,
+                                          @NotNull LocalDate effectiveFrom, @NotNull LocalDate effectiveTo, LocalDate nextReviewDate) {}
     public record RecordResponse(Long id, Long employeeId, String employeeIdCode, String employeeName,
                                  String department, Long templateId, String templateTitle, Long cycleId,
                                  String cycleName, Long managerId, String managerName, String title, String purpose,
@@ -50,7 +59,7 @@ public final class CarrDtos {
                                  List<RewardResponse> rewards, BigDecimal resultScore, String returnReason) {}
     public record TransitionRequest(@NotNull CarrStatus status, @Size(max=1000) String comment) {}
     public record ChangeRequest(@NotBlank @Size(max=1000) String comment) {}
-    public record ActualValueRequest(@NotNull BigDecimal actualValue, @Size(max=1000) String evidence) {}
+    public record ActualValueRequest(@NotNull @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal actualValue, @NotBlank @Size(max=1000) String evidence) {}
     public record ReviewRequest(@Size(max=4000) String employeeReflection,
                                 @Size(max=4000) String managerComments, LocalDate nextReviewDate) {}
     public record AuditResponse(Long id, String action, Long actorUserId, String actorEmail,
