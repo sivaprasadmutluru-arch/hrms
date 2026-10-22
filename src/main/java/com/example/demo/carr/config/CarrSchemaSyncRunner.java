@@ -34,6 +34,7 @@ public class CarrSchemaSyncRunner implements CommandLineRunner {
                     "ADD COLUMN IF NOT EXISTS review_completed_at timestamp, " +
                     "ADD COLUMN IF NOT EXISTS employee_reflection text, " +
                     "ADD COLUMN IF NOT EXISTS manager_comments text");
+            jdbc.execute("ALTER TABLE "+schema+".carr_kpis ADD COLUMN IF NOT EXISTS description varchar(1000)");
             jdbc.execute("ALTER TABLE "+schema+".carr_kpis ADD COLUMN IF NOT EXISTS review_frequency varchar(40) DEFAULT 'Monthly'");
             jdbc.execute("ALTER TABLE "+schema+".carr_kpis ADD COLUMN IF NOT EXISTS metric_definition varchar(1000), ADD COLUMN IF NOT EXISTS generation_key varchar(100), ADD COLUMN IF NOT EXISTS manually_edited boolean DEFAULT false");
             jdbc.execute("ALTER TABLE "+schema+".carr_kpis ALTER COLUMN actual_value DROP NOT NULL, ALTER COLUMN actual_value DROP DEFAULT");

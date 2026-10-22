@@ -9,6 +9,7 @@ import java.time.LocalDate;
 
 @Entity @Table(name="carr_kpis") @Getter @Setter
 public class CarrKpi extends BaseEntity {
+    @Transient private String trackingStatus;
     public enum Type { KPI, OKR }
     public enum Direction { INCREASE, DECREASE, MAINTAIN }
     @ManyToOne(fetch=FetchType.LAZY, optional=false) @JoinColumn(name="carr_id", nullable=false) private CarrRecord carr;
@@ -17,8 +18,10 @@ public class CarrKpi extends BaseEntity {
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=15) private Direction direction = Direction.INCREASE;
     @Column(name="target_value", nullable=false, precision=19, scale=4) private BigDecimal targetValue;
     @Column(name="actual_value", precision=19, scale=4) private BigDecimal actualValue;
+    @Column(length=1000) private String description;
     @Column(name="metric_definition", length=1000) private String metricDefinition;
     @Column(name="generation_key", length=100) private String generationKey;
+    @org.hibernate.annotations.ColumnTransformer(read="coalesce(manually_edited, false)")
     @Column(name="manually_edited") private boolean manuallyEdited;
     @Column(length=40) private String unit;
     @Column(name="review_frequency", length=40) private String reviewFrequency = "Monthly";

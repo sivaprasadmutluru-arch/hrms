@@ -22,7 +22,14 @@ public final class CarrDtos {
                              @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal actualValue, @NotBlank @Size(max=40) String unit, @Min(1) @Max(100) int weight,
                              LocalDate dueDate, @Size(max=300) String dataSource, @Size(max=1000) String evidence,
                              @Pattern(regexp="Monthly|Quarterly|Annually|Yearly|Half-Yearly") String reviewFrequency,
-                             @Size(max=1000) String metricDefinition, @Size(max=100) String generationKey, Boolean manuallyEdited) {}
+                             @Size(max=1000) String metricDefinition, @Size(max=100) String generationKey, Boolean manuallyEdited,
+                             @Size(max=1000) String description) {
+        public KpiRequest(Long id,String name,CarrKpi.Type type,CarrKpi.Direction direction,BigDecimal targetValue,
+                          BigDecimal actualValue,String unit,int weight,LocalDate dueDate,String dataSource,String evidence,
+                          String reviewFrequency,String metricDefinition,String generationKey,Boolean manuallyEdited) {
+            this(id,name,type,direction,targetValue,actualValue,unit,weight,dueDate,dataSource,evidence,reviewFrequency,metricDefinition,generationKey,manuallyEdited,null);
+        }
+    }
     public record RecordRequest(@NotNull Long employeeId, Long departmentId, Long templateId, Long cycleId, Long managerId,
                                 @NotBlank @Size(max=180) String title, String purpose,
                                 String industry, String roleLevel, String reportsToTitle, String responsibleFor,
@@ -40,10 +47,12 @@ public final class CarrDtos {
                               BigDecimal targetValue, BigDecimal actualValue, String unit, int weight,
                               LocalDate dueDate, String dataSource, String evidence, BigDecimal achievementPercent,
                               String riskStatus, String reviewFrequency, String metricDefinition,
-                              String generationKey, boolean manuallyEdited, BigDecimal weightedScore) {}
+                              String generationKey, boolean manuallyEdited, BigDecimal weightedScore,
+                              Long employeeId,String employeeName,String designation,String description,
+                              LocalDate startDate,String status) {}
     public record KpiSuggestionRequest(@NotNull Long employeeId, Long departmentId, Long templateId,
                                       @NotBlank @Size(max=180) String designation,
-                                      @Size(max=4000) String responsibilities, LocalDate effectiveFrom, LocalDate effectiveTo,
+                                      @Size(max=4000) String responsibilities, @NotNull LocalDate effectiveFrom, @NotNull LocalDate effectiveTo,
                                       @Pattern(regexp="Monthly|Quarterly|Annually") String reviewFrequency) {}
     public record KpiConfigurationRequest(@NotEmpty @Size(max=50) @Valid List<KpiRequest> kpis,
                                           @NotNull LocalDate effectiveFrom, @NotNull LocalDate effectiveTo, LocalDate nextReviewDate) {}
@@ -56,7 +65,7 @@ public final class CarrDtos {
                                  LocalDate nextReviewDate, LocalDateTime publishedAt, LocalDateTime employeeAcknowledgedAt,
                                  LocalDateTime reviewCompletedAt, String employeeReflection, String managerComments,
                                  List<ResponsibilityResponse> responsibilities, List<KpiResponse> kpis,
-                                 List<RewardResponse> rewards, BigDecimal resultScore, String returnReason) {}
+                                 List<RewardResponse> rewards, BigDecimal resultScore, String returnReason, Long companyId) {}
     public record TransitionRequest(@NotNull CarrStatus status, @Size(max=1000) String comment) {}
     public record ChangeRequest(@NotBlank @Size(max=1000) String comment) {}
     public record ActualValueRequest(@NotNull @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal actualValue, @NotBlank @Size(max=1000) String evidence) {}
