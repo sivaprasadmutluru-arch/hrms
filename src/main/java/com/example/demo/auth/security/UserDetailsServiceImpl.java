@@ -23,7 +23,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByUsernameOrEmail(username, username)
+        User user = userRepository.findForLogin(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
         // An active Platform Super Admin role gets every permission in the system

@@ -134,7 +134,8 @@ public class AuthService {
     /** Allows employee phone-number login without duplicating phone data in the public users table. */
     private String resolveLoginIdentifier(String suppliedIdentifier) {
         String identifier = suppliedIdentifier == null ? "" : suppliedIdentifier.trim();
-        if (userRepository.findByUsernameOrEmail(identifier, identifier).isPresent()) return identifier;
+        var directMatch = userRepository.findForLogin(identifier);
+        if (directMatch.isPresent()) return directMatch.get().getUsername();
 
         String matchedUsername = null;
         for (Company company : companyRepository.findAllHeadOfficesActivePublic().stream()

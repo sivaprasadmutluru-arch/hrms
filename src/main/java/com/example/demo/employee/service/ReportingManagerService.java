@@ -15,6 +15,21 @@ public class ReportingManagerService {
     private final EmployeeRepository employees;
     private final EmployeeWorkInformationRepository workInformation;
 
+    public boolean hasDirectReports(Employee manager) {
+        return !directReports(manager).isEmpty();
+    }
+
+    public java.util.List<Employee> directReports(Employee manager) {
+        if (manager == null || !manager.isActive() || manager.getCompany() == null) return java.util.List.of();
+        return employees.findByCompanyId(manager.getCompany().getId()).stream()
+                .filter(Employee::isActive)
+                .filter(employee -> !employee.getId().equals(manager.getId()))
+                .filter(employee -> {
+                    Employee assigned = resolve(employee);
+                    return assigned != null && assigned.isActive() && assigned.getId().equals(manager.getId());
+                }).toList();
+    }
+
     // Existing profiles are authoritative, including an explicitly cleared manager.
     public Employee resolve(Employee employee) {
         if (employee == null) return null;

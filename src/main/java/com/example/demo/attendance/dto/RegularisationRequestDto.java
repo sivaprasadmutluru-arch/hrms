@@ -14,6 +14,7 @@ import java.time.LocalTime;
 public class RegularisationRequestDto {
 
     private Long id;
+    private boolean canReview;
     private Long attendanceId;
     private LocalDate attendanceDate;
     private Long employeeId;

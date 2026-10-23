@@ -89,8 +89,20 @@ public class ESSController {
     private final EmployeeBankDetailsRepository bankDetailsRepository;
     private final EmployeeService employeeService;
     private final FileUploadService fileUploadService;
+    private final com.example.demo.employee.service.ReportingManagerService reportingManagers;
 
     // ── Profile ──────────────────────────────────────────────────────────────
+
+    @GetMapping("/approval-access")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, Object>> approvalAccess(Authentication auth) {
+        Employee employee = resolveEmployee(auth);
+        List<String> roles = auth.getAuthorities().stream()
+                .map(a -> a.getAuthority()).filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring(5)).distinct().toList();
+        return ResponseEntity.ok(Map.of("roles", roles,
+                "isReportingManager", reportingManagers.hasDirectReports(employee)));
+    }
 
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
