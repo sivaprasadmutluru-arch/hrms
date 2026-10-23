@@ -51,4 +51,21 @@ class CarrKpiConfigurationTest {
         verify(auditRepo).save(argThat(a->a.getAction().equals("KPI_CONFIGURATION_SAVED")&&a.getDetails().contains("period")&&a.getDetails().contains("target=95")));
         verify(responsibilityRepo,never()).deleteAll(anyIterable());
     }
+    @Test void missingMeasurementParametersAndOutOfPeriodDeadlinesAreRejected(){
+        var incomplete=new KpiRequest(null,"Response SLA",CarrKpi.Type.KPI,CarrKpi.Direction.INCREASE,new BigDecimal("95"),null,"%",100,to,"MANUAL",null,"Monthly","Configure SLA response window",null,true);
+        assertThatThrownBy(()->service.configureKpis(40L,config(incomplete),auth("HR_MANAGER"))).hasMessageContaining("measurement rule");
+        var pastDue=new KpiRequest(null,"Delivery",CarrKpi.Type.KPI,CarrKpi.Direction.INCREASE,new BigDecimal("95"),null,"%",100,from.minusDays(1),"MANUAL",null,"Monthly","Accepted / due x 100",null,true);
+        assertThatThrownBy(()->service.configureKpis(40L,config(pastDue),auth("HR_MANAGER"))).hasMessageContaining("deadline");
+        verify(kpiRepo,never()).save(any());
+    }
+    @Test void connectedActualsIgnoreClientSuppliedScoresAndRespectIndividualDeadline(){
+        var existing=new CarrKpi();existing.setId(60L);existing.setCarr(record);existing.setName("Accepted outcome");
+        when(kpiRepo.findByCarrIdOrderById(40L)).thenReturn(List.of(existing));
+        when(engine.measure(eq(employee),eq("CARR_TASK:12"),eq(from),eq(from))).thenReturn(new CarrKpiEngine.Measurement(BigDecimal.ZERO,"No accepted deliverable by cutoff", "IN_PROGRESS"));
+        var request=new KpiRequest(60L,"Accepted outcome",CarrKpi.Type.KPI,CarrKpi.Direction.INCREASE,new BigDecimal("100"),new BigDecimal("99"),"%",100,from,"CARR_TASK:12","Untrusted client observation","Monthly","Accepted = 100%; otherwise 0%","task-12",false,"Deliver agreed payroll integration");
+        var result=service.configureKpis(40L,config(request),auth("HR_MANAGER"));
+        assertThat(result.kpis().getFirst().actualValue()).isEqualByComparingTo("0");assertThat(result.resultScore()).isEqualByComparingTo("0");
+        assertThat(result.kpis().getFirst().employeeId()).isEqualTo(20L);assertThat(result.kpis().getFirst().description()).contains("payroll integration");
+        verify(engine).validateSource(employee,"CARR_TASK:12");
+    }
 }

@@ -15,6 +15,13 @@ import java.util.Map;
 @RestController @RequestMapping("/api/carr") @RequiredArgsConstructor
 public class CarrController {
     private final CarrService service;
+    private final com.example.demo.carr.service.CarrJobTitleCatalog jobTitleCatalog;
+    @GetMapping("/job-titles") @PreAuthorize("isAuthenticated()")
+    public List<com.example.demo.carr.service.CarrJobTitleCatalog.Entry> jobTitles(){
+        Long companyId=com.example.demo.common.context.CompanyContext.get();
+        if(companyId==null) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,"Select a company before viewing job titles");
+        return jobTitleCatalog.list(companyId);
+    }
     // The application-wide catch-all otherwise converts intentional validation errors into HTTP 500.
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public ResponseEntity<Map<String,Object>> handleValidation(org.springframework.web.server.ResponseStatusException ex){
