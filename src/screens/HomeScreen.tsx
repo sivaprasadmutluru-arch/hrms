@@ -704,12 +704,12 @@ function LeaveRequestForm({
 
       {sickLeaveSelected && (
         <>
-          <Text style={styles.inputLabel}>Sick leave certificate *</Text>
+          <Text style={styles.inputLabel}>Sick leave certificate (required for more than one day)</Text>
           <Pressable onPress={onPickCertificate} style={styles.certificatePicker}>
             <Icon name="document-attach-outline" size={20} color={colors.primary} />
             <Text style={styles.certificatePickerText}>{certificate?.name || 'Attach certificate (PDF or image)'}</Text>
           </Pressable>
-          <Text style={styles.inlineHelp}>A certificate is required before the request can be submitted.</Text>
+          <Text style={styles.inlineHelp}>No certificate is needed for one day. For more than one day, attach a certificate. The server checks the applicable leave days.</Text>
         </>
       )}
 
@@ -1281,12 +1281,8 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
       Alert.alert('Leave Request', `Leave can only be applied up to 2 months in the past (from ${earliestLeaveDateKey()}).`);
       return;
     }
-    const sickLeaveSelected = String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], ''))
-      .replace(/[^a-z]/gi, '').toLowerCase() === 'sickleave';
-    if (sickLeaveSelected && !sickLeaveCertificate) {
-      Alert.alert('Sick Leave Certificate', 'Attach the sick leave certificate before submitting.');
-      return;
-    }
+    // The server determines the applicable leave days using company holidays
+    // and week-off rules, and requires a certificate only above one sick day.
 
     setSubmittingLeave(true);
     try {
