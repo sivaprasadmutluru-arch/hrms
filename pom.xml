@@ -123,6 +123,13 @@
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
 
+		<!-- Parse international phone numbers for employee initial passwords. -->
+		<dependency>
+			<groupId>com.googlecode.libphonenumber</groupId>
+			<artifactId>libphonenumber</artifactId>
+			<version>9.0.40</version>
+		</dependency>
+
 		<!-- Apache POI (Excel) -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>

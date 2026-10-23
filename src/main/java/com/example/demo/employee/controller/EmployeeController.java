@@ -372,7 +372,6 @@ public class EmployeeController {
                 req.setEmail(getImportCell(row, columns, "email", "email*"));
                 String phone = getImportCell(row, columns, "phone", "phone*");
                 req.setPhone(phone);
-                req.setPassword(phone);
                 req.setCompanyId(companyId);
 
                 String genderStr = getImportCell(row, columns, "gender");

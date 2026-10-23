@@ -294,9 +294,8 @@ public class EmployeeService {
                         ? req.getPhone().trim()
                         : req.getEmail());
                 reg.setEmail(req.getEmail());
-                reg.setPassword(req.getPassword() != null && !req.getPassword().isBlank()
-                        ? req.getPassword()
-                        : (req.getPhone() != null && !req.getPhone().isBlank() ? req.getPhone() : "hrms@1234"));
+                reg.setPassword(EmployeeInitialPassword.resolve(req.getPassword(), req.getPhone(),
+                        company.getCountry() != null && !company.getCountry().isBlank() ? company.getCountry() : req.getCountry()));
                 reg.setFirstName(req.getFirstName());
                 reg.setLastName(req.getLastName());
                 reg.setCompanyId(null); // role assignment handled explicitly below
