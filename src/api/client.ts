@@ -103,13 +103,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({email}),
     }),
-  me: () => request<any>('/ess/me'),
+  me: async () => {
+    const profile = await request<any>('/ess/me');
+    // Older servers may not expose approval capabilities during a rolling release.
+    const access = await request<any>('/ess/approval-access').catch(() => ({}));
+    return {...profile, ...access};
+  },
   myCompanyInfo: () => request<any>('/companies/mine'),
   adminList: (path: string, params?: Record<string, any>, filterCompanyId?: number | string | null) =>
     request<any>(`${path}${queryString(params)}`, {
       headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {},
     }),
   accessibleCompanies: () => request<any[]>('/companies/accessible'),
+  teamAttendance: (selectedCompanyId: number | string, from: string, to: string) =>
+    request<any[]>(`/team/attendance${queryString({from, to})}`, {
+      headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+    }),
+  teamRegularisations: (selectedCompanyId: number | string) => request<any[]>('/team/regularisation', {
+    headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+  }),
+  decideTeamRegularisation: (id: number | string, action: 'approve' | 'reject', selectedCompanyId: number | string, remarks?: string) =>
+    request<any>(`/team/regularisation/${id}/${action}`, {
+      method: 'POST', body: JSON.stringify({remarks}),
+      headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+    }),
   subscriptionOrganizations: () => request<any>('/organizations'),
   organizationPlanLimits: (organizationId: number | string, selectedCompanyId: number | string) =>
     request<any>(`/organizations/${encodeURIComponent(String(organizationId))}/plan-limits`, {

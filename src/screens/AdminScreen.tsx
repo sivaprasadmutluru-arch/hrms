@@ -7,7 +7,7 @@ import Icon from '../components/Icon';
 import {API_BASE_URL, api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
-import {hasRole, roleLabel, ROLES, userRoles} from '../utils/roles';
+import {canAccessAdmin, canReviewLeave, hasRole, isAdminRole, roleLabel, ROLES, userRoles, usesDirectReportAttendance} from '../utils/roles';
 import {dateText, timeText} from '../utils/format';
 import {loadCompanyOrgChart, ORG_CHILD_KEYS, orgNodeId, orgNodeName, orgNodeRole, orgNodeDepartment, orgNodeCompany} from '../utils/orgChart';
 import {companyDepartments} from '../utils/departments';
@@ -719,7 +719,7 @@ function DataRecord({item, page, onPress, onRegularize}: {item: any; page: strin
                 <Text style={styles.attendanceLocationText} numberOfLines={1}>{attendanceLocation}</Text>
               </View>
             )}
-            {isAttendance && needsRegularisation(item) && (
+            {isAttendance && onRegularize && needsRegularisation(item) && (
               <Pressable onPress={onRegularize} style={({pressed}) => [styles.regularizeMiniButton, pressed && styles.pressed]}>
                 <Icon name="create-outline" size={13} color={colors.warning} />
                 <Text style={styles.regularizeMiniButtonText}>Regularize</Text>
@@ -1174,6 +1174,9 @@ export default function AdminScreen() {
   const [holidayError, setHolidayError] = useState('');
   const [showHolidayCompanyPicker, setShowHolidayCompanyPicker] = useState(false);
   const roles = useMemo(() => userRoles(user, profile), [user, profile]);
+  const teamAttendanceOnly = usesDirectReportAttendance(user, profile);
+  const canReviewRecord = (item: any) => activePage === 'Leave Requests' ? canReviewLeave(item)
+    : isPendingRecord(item) && (!teamAttendanceOnly || item?.canReview === true);
   const canManageEmployeeDocuments = hasRole(roles, [ROLES.ENTERPRISE_ADMIN, ROLES.BRANCH_ADMIN, ROLES.HR_MANAGER]);
   const isAdminDocumentsPage = activePage === 'My Documents' && canManageEmployeeDocuments;
   const isDocumentRequestsPage = activePage === 'Document Requests' && canManageEmployeeDocuments;
@@ -1182,9 +1185,19 @@ export default function AdminScreen() {
     () =>
       ADMIN_GROUPS.map(group => ({
         ...group,
-        modules: group.modules.filter(module => hasRole(roles, module.roles)),
+        modules: group.modules.flatMap(module => {
+          if (module.title === 'Attendance' && teamAttendanceOnly) {
+            return [{...module, subtitle: 'Direct reports attendance and regularisation', pages: ['Attendance Register', 'Regularisation']}];
+          }
+          if (module.title === 'Leave' && canAccessAdmin(user, profile)) {
+            const canManageLeave = hasRole(roles, [ROLES.ENTERPRISE_ADMIN, ROLES.BRANCH_ADMIN, ROLES.HR_MANAGER]);
+            return [{...module, pages: canManageLeave ? module.pages : ['Leave Requests']}];
+          }
+          // Reporting relationships do not grant access to unrelated admin modules.
+          return isAdminRole(roles) && hasRole(roles, module.roles) ? [module] : [];
+        }),
       })).filter(group => group.modules.length),
-    [roles],
+    [roles, user, profile, teamAttendanceOnly],
   );
   const moduleCount = visibleGroups.reduce((total, group) => total + group.modules.length, 0);
 
@@ -1231,6 +1244,16 @@ export default function AdminScreen() {
     }
     setLoadingRecords(true);
     try {
+      if (teamAttendanceOnly && (activePage === 'Attendance Register' || activePage === 'Regularisation')) {
+        const companyId = selectedCompanyId === 'all' ? profile?.companyId || user?.companyId : selectedCompanyId;
+        if (!companyId) throw new Error('Select your company to view your team.');
+        const range = sortedDateRange(attendanceFromDate, attendanceToDate);
+        const result = activePage === 'Attendance Register'
+          ? await api.teamAttendance(companyId, range.from, range.to)
+          : await api.teamRegularisations(companyId);
+        if (requestId === recordsRequest.current) setRecords(result);
+        return;
+      }
       if (isAdminDocumentsPage) {
         if (selectedCompanyId === 'all') return;
         const employees = await loadDocumentEmployees(api.companyEmployees, {id: selectedCompanyId, name: selectedCompanyName});
@@ -1577,7 +1600,7 @@ export default function AdminScreen() {
     } finally {
       if (requestId === recordsRequest.current) setLoadingRecords(false);
     }
-  }, [accessibleCompanies, activePage, attendanceFromDate, attendanceToDate, isAdminDocumentsPage, isDocumentRequestsPage, leaveStatusFilter, profile?.companyId, profile?.companyName, roles, selectedCompanyId, selectedCompanyName, user?.companyId, user?.companyName]);
+  }, [accessibleCompanies, activePage, attendanceFromDate, attendanceToDate, isAdminDocumentsPage, isDocumentRequestsPage, leaveStatusFilter, profile?.companyId, profile?.companyName, roles, selectedCompanyId, selectedCompanyName, user?.companyId, user?.companyName, teamAttendanceOnly]);
 
   useEffect(() => {
     setSearch('');
@@ -1637,6 +1660,7 @@ export default function AdminScreen() {
   }, [loadPage]);
 
   async function handleApprovalAction(item: any, action: 'approve' | 'reject') {
+    if (!canReviewRecord(item)) return;
     if (action === 'reject') {
       openRejectModal(item);
       return;
@@ -1648,7 +1672,8 @@ export default function AdminScreen() {
       if (activePage === 'Leave Requests') {
         await api.approveLeaveRequest(item.id, companyId);
       } else if (activePage === 'Regularisation') {
-        await api.approveRegularisation(item.id, undefined, companyId);
+        if (teamAttendanceOnly) await api.decideTeamRegularisation(item.id, 'approve', companyId, undefined);
+        else await api.approveRegularisation(item.id, undefined, companyId);
       }
       await loadPage();
     } catch (err: any) {
@@ -1666,6 +1691,7 @@ export default function AdminScreen() {
 
   async function submitRejectModal() {
     if (!rejectTarget) return;
+    if (!canReviewRecord(rejectTarget)) return;
     if (!rejectRemarks.trim()) {
       setRejectError('Please enter a rejection reason.');
       return;
@@ -1675,7 +1701,8 @@ export default function AdminScreen() {
     try {
       const companyId = rawField(rejectTarget, ['companyId', 'organizationId', 'company.id', 'organization.id']) || (selectedCompanyId === 'all' ? null : selectedCompanyId);
       if (activePage === 'Regularisation') {
-        await api.rejectRegularisation(rejectTarget.id, rejectRemarks.trim(), companyId);
+        if (teamAttendanceOnly) await api.decideTeamRegularisation(rejectTarget.id, 'reject', companyId, rejectRemarks.trim());
+        else await api.rejectRegularisation(rejectTarget.id, rejectRemarks.trim(), companyId);
       } else if (activePage === 'Leave Requests') {
         await api.rejectLeaveRequest(rejectTarget.id, rejectRemarks.trim(), companyId);
       }
@@ -2676,7 +2703,7 @@ export default function AdminScreen() {
               <EmployeeDocuments key={`${employeeCompanyId}-${employeeId}`} employeeId={employeeId} companyId={employeeCompanyId} />
             </>
           ) : isDocumentRequestsPage ? <DocumentRequestDetail request={selectedRecord} companyId={selectedRecord.companyId} /> : <RecordDetail item={selectedRecord} page={isEmployeeDetail ? 'Employees' : activePage} />}
-          {isApprovalPage(activePage) && isPendingRecord(selectedRecord) && (
+          {isApprovalPage(activePage) && canReviewRecord(selectedRecord) && (
             <ApprovalButtons
               busy={actionBusyId === selectedRecord.id}
               onApprove={() => handleApprovalAction(selectedRecord, 'approve')}
@@ -3237,7 +3264,7 @@ export default function AdminScreen() {
                         item={item}
                         page={activePage}
                         onPress={() => setSelectedRecord(item)}
-                        onRegularize={() => openRegularisationModal(item)}
+                        onRegularize={teamAttendanceOnly ? undefined : () => openRegularisationModal(item)}
                       />
                     );
                   })}
@@ -3254,9 +3281,9 @@ export default function AdminScreen() {
                     item={item}
                     page={isAdminDocumentsPage ? 'Employees' : activePage}
                     onPress={() => setSelectedRecord(item)}
-                    onRegularize={activePage === 'Attendance Register' ? () => openRegularisationModal(item) : undefined}
+                    onRegularize={activePage === 'Attendance Register' && !teamAttendanceOnly ? () => openRegularisationModal(item) : undefined}
                   />
-                  {isApprovalPage(activePage) && isPendingRecord(item) && (
+                  {isApprovalPage(activePage) && canReviewRecord(item) && (
                     <ApprovalButtons
                       busy={actionBusyId === item.id}
                       onApprove={() => handleApprovalAction(item, 'approve')}

@@ -10,8 +10,27 @@ export const ROLES = {
 } as const;
 
 export function userRoles(user: any, profile?: any) {
-  const roles = user?.roles || profile?.roles || [];
-  return Array.isArray(roles) ? roles : [];
+  const roles = profile?.roles ?? user?.roles ?? [];
+  if (!Array.isArray(roles)) return [];
+  const aliases: Record<string, string> = {
+    SUPER_ADMIN: ROLES.ENTERPRISE_ADMIN, ACCOUNT_MANAGER: ROLES.ENTERPRISE_ADMIN,
+    COMPANY_ADMIN: ROLES.ENTERPRISE_ADMIN, CEO: ROLES.ENTERPRISE_ADMIN,
+    COMPANY_MANAGER: ROLES.BRANCH_ADMIN, ACCOUNTS_MANAGER: ROLES.ACCOUNTANT,
+  };
+  return [...new Set(roles.flatMap(role => aliases[role] ? [role, aliases[role]] : [role]))];
+}
+
+export function canAccessAdmin(user: any, profile?: any) {
+  return isAdminRole(userRoles(user, profile)) || profile?.isReportingManager === true;
+}
+
+export function canReviewLeave(item: any) {
+  return item?.canReview === true && ['REQUESTED', 'PENDING'].includes(String(item?.status || '').toUpperCase());
+}
+
+export function usesDirectReportAttendance(user: any, profile?: any) {
+  const roles = userRoles(user, profile);
+  return canAccessAdmin(user, profile) && !hasRole(roles, [ROLES.ENTERPRISE_ADMIN, ROLES.BRANCH_ADMIN, ROLES.HR_MANAGER]);
 }
 
 export function hasRole(roles: string[], allowed: string[]) {

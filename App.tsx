@@ -12,7 +12,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import {colors} from './src/theme/colors';
 import {captureCurrentLocation} from './src/utils/location';
-import {isAdminRole, userRoles} from './src/utils/roles';
+import {canAccessAdmin} from './src/utils/roles';
 import {fonts} from './src/theme/typography';
 
 // Keep typography consistent across legacy and newly styled screens.
@@ -26,7 +26,7 @@ function Shell() {
   const [tab, setTab] = useState<AvailableTabKey>('checkin');
   const [homeAtRoot, setHomeAtRoot] = useState(true);
   const [checkInAtRoot, setCheckInAtRoot] = useState(true);
-  const showAdmin = isAdminRole(userRoles(user, profile));
+  const showAdmin = canAccessAdmin(user, profile);
 
   useEffect(() => {
     if (!booting) {

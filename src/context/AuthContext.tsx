@@ -31,6 +31,14 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           setUser(session.user);
           setProfile(session.profile || null);
           setPersistSession(true);
+          // Refresh server-derived manager capabilities and roles on app restart.
+          try {
+            const freshProfile = await api.me();
+            setProfile(freshProfile);
+            await saveSession({...session, profile: freshProfile});
+          } catch {
+            // Keep the remembered session available when temporarily offline.
+          }
         }
       } finally {
         setBooting(false);
