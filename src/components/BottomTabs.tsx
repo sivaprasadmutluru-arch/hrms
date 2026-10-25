@@ -5,7 +5,7 @@ import {colors} from '../theme/colors';
 
 export type TabKey = 'home' | 'checkin' | 'profile';
 
-export type AvailableTabKey = TabKey | 'admin';
+export type AvailableTabKey = TabKey | 'admin' | 'team';
 
 const baseTabs: Array<{key: AvailableTabKey; label: string; icon: string; activeIcon: string}> = [
   {key: 'home', label: 'Home', icon: 'home-outline', activeIcon: 'home'},
@@ -14,17 +14,20 @@ const baseTabs: Array<{key: AvailableTabKey; label: string; icon: string; active
 ];
 
 const adminTab = {key: 'admin' as AvailableTabKey, label: 'Admin', icon: 'shield-outline', activeIcon: 'shield-checkmark'};
+const teamTab = {key: 'team' as AvailableTabKey, label: 'My Team', icon: 'people-outline', activeIcon: 'people-outline'};
 
 export default function BottomTabs({
   active,
   onChange,
   showAdmin = false,
+  showTeam = false,
 }: {
   active: AvailableTabKey;
   onChange: (tab: AvailableTabKey) => void;
   showAdmin?: boolean;
+  showTeam?: boolean;
 }) {
-  const tabs = showAdmin ? [baseTabs[0], adminTab, baseTabs[1], baseTabs[2]] : baseTabs;
+  const tabs = [baseTabs[0], ...(showAdmin ? [adminTab] : []), ...(showTeam ? [teamTab] : []), baseTabs[1], baseTabs[2]];
 
   return (
     <View className="h-[88px] flex-row items-center justify-around border-t border-glassBorder bg-white/95 px-2.5 pb-4 pt-2" style={styles.wrap}>

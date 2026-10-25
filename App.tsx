@@ -1,6 +1,6 @@
 import './global.css';
 import React, {useEffect, useState} from 'react';
-import {SafeAreaView, StatusBar, StyleSheet, Text, TextInput, View} from 'react-native';
+import {AppState, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import BootSplash from 'react-native-bootsplash';
 import BottomTabs, {AvailableTabKey} from './src/components/BottomTabs';
@@ -10,9 +10,10 @@ import CheckInScreen from './src/screens/CheckInScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import MyTeamScreen from './src/screens/MyTeamScreen';
 import {colors} from './src/theme/colors';
 import {captureCurrentLocation} from './src/utils/location';
-import {canAccessAdmin} from './src/utils/roles';
+import {isAdminRole, userRoles} from './src/utils/roles';
 import {fonts} from './src/theme/typography';
 
 // Keep typography consistent across legacy and newly styled screens.
@@ -22,11 +23,20 @@ AppText.defaultProps = {...AppText.defaultProps, style: [{fontFamily: fonts.regu
 AppTextInput.defaultProps = {...AppTextInput.defaultProps, style: [{fontFamily: fonts.regular}, AppTextInput.defaultProps?.style]};
 
 function Shell() {
-  const {booting, token, user, profile} = useAuth();
+  const {booting, token, user, profile, refreshProfile} = useAuth();
   const [tab, setTab] = useState<AvailableTabKey>('checkin');
   const [homeAtRoot, setHomeAtRoot] = useState(true);
   const [checkInAtRoot, setCheckInAtRoot] = useState(true);
-  const showAdmin = canAccessAdmin(user, profile);
+  const showAdmin = isAdminRole(userRoles(user, profile));
+  const showTeam = profile?.isReportingManager === true;
+
+  useEffect(() => {
+    if (!token) return;
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active') refreshProfile().catch(() => {});
+    });
+    return () => listener.remove();
+  }, [token, refreshProfile]);
 
   useEffect(() => {
     if (!booting) {
@@ -46,7 +56,8 @@ function Shell() {
     if (!showAdmin && tab === 'admin') {
       setTab('home');
     }
-  }, [showAdmin, tab]);
+    if (!showTeam && tab === 'team') setTab('home');
+  }, [showAdmin, showTeam, tab]);
 
   if (booting) {
     return (
@@ -72,10 +83,11 @@ function Shell() {
       <View style={styles.content}>
         {tab === 'home' && <HomeScreen onRootChange={setHomeAtRoot} />}
         {tab === 'admin' && showAdmin && <AdminScreen />}
+        {tab === 'team' && showTeam && <MyTeamScreen />}
         {tab === 'checkin' && <CheckInScreen onRootChange={setCheckInAtRoot} />}
         {tab === 'profile' && <ProfileScreen />}
       </View>
-      {(tab !== 'home' || homeAtRoot) && (tab !== 'checkin' || checkInAtRoot) && <BottomTabs active={tab} onChange={setTab} showAdmin={showAdmin} />}
+      {(tab !== 'home' || homeAtRoot) && (tab !== 'checkin' || checkInAtRoot) && <BottomTabs active={tab} onChange={setTab} showAdmin={showAdmin} showTeam={showTeam} />}
     </View>
   );
 }

@@ -115,6 +115,17 @@ export const api = {
       headers: filterCompanyId ? {'X-Filter-Company-Id': String(filterCompanyId)} : {},
     }),
   accessibleCompanies: () => request<any[]>('/companies/accessible'),
+  teamEmployees: (selectedCompanyId: number | string) => request<any[]>('/team/employees', {
+    headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+  }),
+  teamLeaves: (selectedCompanyId: number | string) => request<any[]>('/team/leaves', {
+    headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+  }),
+  decideTeamLeave: (id: number | string, action: 'approve' | 'reject', selectedCompanyId: number | string, reason?: string) =>
+    request<any>(`/team/leaves/${id}/${action}`, {
+      method: 'POST', body: action === 'reject' ? JSON.stringify({reason}) : undefined,
+      headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+    }),
   teamAttendance: (selectedCompanyId: number | string, from: string, to: string) =>
     request<any[]>(`/team/attendance${queryString({from, to})}`, {
       headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
