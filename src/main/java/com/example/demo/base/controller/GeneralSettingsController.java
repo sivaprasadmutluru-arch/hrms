@@ -63,7 +63,7 @@ public class GeneralSettingsController {
     }
 
     @PostMapping("/module-visibility")
-    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Transactional
     @Operation(summary = "Save company module visibility")
     public ResponseEntity<Map<String, Boolean>> saveModuleVisibility(

@@ -44,6 +44,10 @@ public class ReportingTeamAttendanceService {
         return employee;
     }
 
+    public List<Employee> directReports(Long userId) {
+        return reportingManagers.directReports(manager(userId));
+    }
+
     public List<AttendanceResponse> attendance(Long userId, LocalDate from, LocalDate to) {
         if (from == null || to == null || to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 366)
             throw new BadRequestException("Select an attendance date range of up to one year");

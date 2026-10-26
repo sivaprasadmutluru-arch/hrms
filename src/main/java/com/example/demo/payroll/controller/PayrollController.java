@@ -1880,69 +1880,12 @@ public class PayrollController {
         footer.addCell(fRight);
         doc.add(footer);
 
-        // Signature / stamp section
-        doc.add(new Paragraph(" ", FontFactory.getFont(FontFactory.HELVETICA, 10)));
-        PdfPTable sigTable = new PdfPTable(3); sigTable.setWidthPercentage(100);
-        sigTable.setWidths(new float[]{1f, 1f, 1f}); sigTable.setSpacingBefore(6f);
-        Font fSigLbl = FontFactory.getFont(FontFactory.HELVETICA, 8, GRAY_M);
-        Font fSigLine = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, GRAY);
-        // Employee signature
-        PdfPCell sigEmp = new PdfPCell(); sigEmp.setBorder(Rectangle.NO_BORDER); sigEmp.setPadding(4f);
-        sigEmp.addElement(new Paragraph("________________________________", fSigLine));
-        sigEmp.addElement(new Paragraph("Employee Signature", fSigLbl));
-        sigTable.addCell(sigEmp);
-        // Stamp: real company seal image if the organization has uploaded one, else a text placeholder
-        PdfPCell sigStamp = new PdfPCell(); sigStamp.setBorder(Rectangle.NO_BORDER);
-        sigStamp.setPadding(4f); sigStamp.setHorizontalAlignment(Element.ALIGN_CENTER);
-        sigStamp.setVerticalAlignment(Element.ALIGN_BOTTOM);
-        String stampPath = co != null ? co.getStampPath() : null;
-        boolean stampAdded = false;
-        if (stampPath != null && !stampPath.isBlank()) {
-            try {
-                java.nio.file.Path sp = fileUploadService.resolve(stampPath);
-                if (java.nio.file.Files.exists(sp)) {
-                    com.lowagie.text.Image stampImg = com.lowagie.text.Image.getInstance(sp.toAbsolutePath().toString());
-                    stampImg.scaleToFit(80f, 80f);
-                    stampImg.setAlignment(com.lowagie.text.Image.ALIGN_CENTER);
-                    sigStamp.addElement(stampImg);
-                    stampAdded = true;
-                }
-            } catch (Exception ignored) { /* stamp load failure falls back to placeholder */ }
-        }
-        if (!stampAdded) {
-            PdfPCell placeholder = new PdfPCell(); placeholder.setBorder(Rectangle.BOX); placeholder.setBorderColor(INDIGO_B);
-            placeholder.setBorderWidth(0.5f); placeholder.setPadding(12f); placeholder.setHorizontalAlignment(Element.ALIGN_CENTER);
-            Paragraph stampP = new Paragraph("Company Stamp", fSigLbl); stampP.setAlignment(Element.ALIGN_CENTER);
-            placeholder.addElement(stampP);
-            sigTable.addCell(placeholder);
-        } else {
-            sigTable.addCell(sigStamp);
-        }
-        // Authorized signature: real signature image if uploaded, else a blank line to sign by hand
-        PdfPCell sigAuth = new PdfPCell(); sigAuth.setBorder(Rectangle.NO_BORDER); sigAuth.setPadding(4f);
-        sigAuth.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        String signaturePath = co != null ? co.getSignaturePath() : null;
-        boolean signatureAdded = false;
-        if (signaturePath != null && !signaturePath.isBlank()) {
-            try {
-                java.nio.file.Path gp = fileUploadService.resolve(signaturePath);
-                if (java.nio.file.Files.exists(gp)) {
-                    com.lowagie.text.Image sigImg = com.lowagie.text.Image.getInstance(gp.toAbsolutePath().toString());
-                    sigImg.scaleToFit(110f, 45f);
-                    sigImg.setAlignment(com.lowagie.text.Image.ALIGN_RIGHT);
-                    sigAuth.addElement(sigImg);
-                    signatureAdded = true;
-                }
-            } catch (Exception ignored) { /* signature load failure falls back to blank line */ }
-        }
-        if (!signatureAdded) {
-            Paragraph authLine = new Paragraph("________________________________", fSigLine); authLine.setAlignment(Element.ALIGN_RIGHT);
-            sigAuth.addElement(authLine);
-        }
-        Paragraph authLbl = new Paragraph("Authorized Signature", fSigLbl); authLbl.setAlignment(Element.ALIGN_RIGHT);
-        sigAuth.addElement(authLbl);
-        sigTable.addCell(sigAuth);
-        doc.add(sigTable);
+        Paragraph systemGeneratedNotice = new Paragraph(
+                "This is a system-generated payslip and does not require a signature.",
+                FontFactory.getFont(FontFactory.HELVETICA, 8, GRAY_M));
+        systemGeneratedNotice.setAlignment(Element.ALIGN_CENTER);
+        systemGeneratedNotice.setSpacingBefore(14f);
+        doc.add(systemGeneratedNotice);
 
         doc.close();
     }

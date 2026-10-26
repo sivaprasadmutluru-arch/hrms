@@ -4,14 +4,21 @@ import com.example.demo.leave.entity.LeaveRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long>, JpaSpecificationExecutor<LeaveRequest> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select request from LeaveRequest request where request.id = :id")
+    Optional<LeaveRequest> findByIdForTeamReview(@Param("id") Long id);
+
     List<LeaveRequest> findByEmployeeId(Long employeeId);
     List<LeaveRequest> findByCompanyId(Long companyId);
     List<LeaveRequest> findByCompanyIdAndStatus(Long companyId, LeaveRequest.LeaveStatus status);

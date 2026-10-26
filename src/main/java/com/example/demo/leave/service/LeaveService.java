@@ -240,7 +240,7 @@ public class LeaveService {
         double workingDays = calculateWorkingDays(startDate, endDate, companyId, leaveType, employeeId);
         double days = resolveRequestedDays(workingDays, duration, startDate, endDate);
         if (requiresCertificate(leaveType, days) && !hasStoredCertificate(attachmentPath)) {
-            throw new BadRequestException("A sick leave certificate is required for sick leave longer than two days.");
+            throw new BadRequestException("A supporting certificate is required for sick leave longer than one day or when required by the leave type.");
         }
 
         // Reject if employee already has an active (pending or approved) request overlapping these dates
@@ -306,12 +306,12 @@ public class LeaveService {
         return saved;
     }
 
-    private boolean requiresCertificate(LeaveType leaveType, double requestedDays) {
+    static boolean requiresCertificate(LeaveType leaveType, double requestedDays) {
         String normalizedName = leaveType.getName() == null ? ""
                 : leaveType.getName().replaceAll("[^a-zA-Z]", "").toLowerCase(java.util.Locale.ROOT);
-        // Sick leave needs a certificate only after the first two requested leave days.
+        // Single-day sick leave is exempt, including when the type requires attachments.
         // Other leave types retain their individually configured attachment requirement.
-        if ("sickleave".equals(normalizedName)) return requestedDays > 2d;
+        if ("sickleave".equals(normalizedName)) return requestedDays > 1d;
         return Boolean.TRUE.equals(leaveType.getRequireAttachment());
     }
 
