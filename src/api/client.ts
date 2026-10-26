@@ -264,7 +264,9 @@ export const api = {
   myPayslips: () => request<any[]>('/ess/my-payslips'),
   payslipPdfUrl: (id: number | string) => `${API_BASE_URL}/payroll/payslips/${id}/pdf`,
   moduleVisibility: (selectedCompanyId?: number | string | null) =>
-    request<Record<string, boolean>>(`/settings/module-visibility${queryString({companyId: selectedCompanyId || companyId})}`),
+    request<Record<string, boolean>>(`/settings/module-visibility${queryString({companyId: selectedCompanyId || companyId})}`, {
+      headers: (selectedCompanyId || companyId) ? {'X-Company-Id': String(selectedCompanyId || companyId), 'X-Filter-Company-Id': String(selectedCompanyId || companyId)} : {},
+    }),
   // The leave calendar endpoint requires the active company as a query parameter.
   // Keep the company header for tenant resolution, and send this explicit value for
   // the controller contract so an employee's calendar does not silently appear empty.

@@ -30,6 +30,9 @@ import {useAuth} from '../context/AuthContext';
 import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
 import {dateText, employeeName, money, timeText, workDuration} from '../utils/format';
+import {showLeaveCertificate} from '../utils/leaveCertificate';
+import {moduleIsVisible} from '../utils/moduleVisibility';
+import {useModuleVisibility} from '../utils/useModuleVisibility';
 import HelpdeskScreen from './HelpdeskScreen';
 import NotificationsScreen from './NotificationsScreen';
 
@@ -678,8 +681,9 @@ function LeaveRequestForm({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
-  const sickLeaveSelected = String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], ''))
-    .replace(/[^a-z]/gi, '').toLowerCase() === 'sickleave';
+  const showCertificate = showLeaveCertificate(
+    String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], '')), startDate, endDate,
+  );
 
   return (
     <Card style={styles.formCard}>
@@ -702,7 +706,11 @@ function LeaveRequestForm({
       </ScrollView>
       {!leaveTypes.length && <Text style={styles.inlineHelp}>Leave types are not available yet.</Text>}
 
-      {sickLeaveSelected && (
+      <CalendarDateField label="Start Date" value={startDate} onChange={setStartDate} />
+      <CalendarDateField label="End Date" value={endDate} onChange={setEndDate} />
+      <Text style={styles.inlineHelp}>You can apply for leave up to 2 months in the past.</Text>
+
+      {showCertificate && (
         <>
           <Text style={styles.inputLabel}>Sick leave certificate (required for more than one day)</Text>
           <Pressable onPress={onPickCertificate} style={styles.certificatePicker}>
@@ -713,9 +721,6 @@ function LeaveRequestForm({
         </>
       )}
 
-      <CalendarDateField label="Start Date" value={startDate} onChange={setStartDate} />
-      <CalendarDateField label="End Date" value={endDate} onChange={setEndDate} />
-      <Text style={styles.inlineHelp}>You can apply for leave up to 2 months in the past.</Text>
       <Text style={styles.inputLabel}>Reason</Text>
       <TextInput
         value={reason}
@@ -1048,7 +1053,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   const [payslips, setPayslips] = useState<any[]>([]);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const [downloadingPayslipId, setDownloadingPayslipId] = useState('');
-  const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
+  const {visibility: moduleVisibility, refreshVisibility} = useModuleVisibility(profile?.companyId || user?.companyId);
   const [holidays, setHolidays] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [carrTasks, setCarrTasks] = useState<any[]>([]);
@@ -1154,10 +1159,12 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   }, [load]);
 
   useEffect(() => {
-    const activeCompanyId = profile?.companyId || user?.companyId;
-    if (!activeCompanyId) return;
-    api.moduleVisibility(activeCompanyId).then(setModuleVisibility).catch(() => setModuleVisibility({}));
-  }, [profile?.companyId, user?.companyId]);
+    if (!moduleIsVisible(active, moduleVisibility)) {
+      setActive('overview');
+      setLoanModalVisible(false);
+      setSelectedPayslip(null);
+    }
+  }, [active, moduleVisibility]);
 
   useEffect(() => {
     onRootChange?.(active === 'overview');
@@ -1213,6 +1220,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   );
 
   async function refresh() {
+    await refreshVisibility();
     setRefreshing(true);
     try {
       await load();
@@ -1292,7 +1300,9 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
         startDate: values.startDate,
         endDate: values.endDate,
         reason: values.reason,
-        certificate: sickLeaveCertificate ? uploadFile(sickLeaveCertificate) : undefined,
+        certificate: sickLeaveCertificate && showLeaveCertificate(
+          String(field(selectedLeaveType, ['name', 'leaveTypeName', 'typeName'], '')), values.startDate, values.endDate,
+        ) ? uploadFile(sickLeaveCertificate) : undefined,
       });
       Alert.alert('Leave Request', 'Leave request submitted successfully.');
       setSickLeaveCertificate(null);
@@ -1474,7 +1484,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
             <QuickActionTile icon="sunny" label="Holidays" tone="success" onPress={() => setActive('holidays')} />
             <QuickActionTile icon="megaphone-outline" label="Announcements" tone="danger" onPress={() => setActive('announcements')} />
             <QuickActionTile icon="checkmark-circle" label="CAR Tasks" tone="violet" onPress={() => setActive('carr')} />
-            {moduleVisibility.payslips !== false && (
+            {moduleIsVisible('payslips', moduleVisibility) && (
               <QuickActionTile icon="wallet" label="Payslips" tone="teal" onPress={() => setActive('payslips')} />
             )}
           </View>
@@ -2035,6 +2045,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   }
 
   function renderActiveModule() {
+    if (!moduleIsVisible(active, moduleVisibility)) return null;
     if (active === 'notifications') return <NotificationsScreen onBack={() => setActive('overview')} />;
     if (active === 'helpdesk') return <HelpdeskScreen onBack={() => setActive('overview')} />;
     if (active === 'attendance') return renderAttendance();

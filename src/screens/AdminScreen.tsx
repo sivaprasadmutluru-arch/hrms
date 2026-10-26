@@ -24,6 +24,8 @@ import {SUBSCRIPTION_PAGES} from '../utils/subscriptions';
 import CompanyRoles from '../components/CompanyRoles';
 import {COMPANY_ROLE_PAGES} from '../utils/companyRoles';
 import CompanyLoans from '../components/CompanyLoans';
+import {moduleIsVisible} from '../utils/moduleVisibility';
+import {useModuleVisibility} from '../utils/useModuleVisibility';
 
 type AdminModule = {
   title: string;
@@ -1129,6 +1131,9 @@ export default function AdminScreen() {
   const [accessibleCompanies, setAccessibleCompanies] = useState<any[]>([]);
   const [companiesError, setCompaniesError] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | string>('all');
+  const {visibility: moduleVisibility, refreshVisibility} = useModuleVisibility(
+    selectedCompanyId === 'all' ? (profile?.companyId || user?.companyId) : selectedCompanyId,
+  );
   const [actionBusyId, setActionBusyId] = useState<string | number | null>(null);
   const [actionError, setActionError] = useState('');
   const [attendanceDrilldown, setAttendanceDrilldown] = useState<{key: string; value: any} | null>(null);
@@ -1185,7 +1190,7 @@ export default function AdminScreen() {
     () =>
       ADMIN_GROUPS.map(group => ({
         ...group,
-        modules: group.modules.flatMap(module => {
+        modules: group.modules.map(module => ({...module, pages: module.pages.filter(page => moduleIsVisible(page, moduleVisibility))})).filter(module => module.pages.length).flatMap(module => {
           if (module.title === 'Attendance' && teamAttendanceOnly) {
             return [{...module, subtitle: 'Direct reports attendance and regularisation', pages: ['Attendance Register', 'Regularisation']}];
           }
@@ -1197,8 +1202,17 @@ export default function AdminScreen() {
           return isAdminRole(roles) && hasRole(roles, module.roles) ? [module] : [];
         }),
       })).filter(group => group.modules.length),
-    [roles, user, profile, teamAttendanceOnly],
+    [roles, user, profile, teamAttendanceOnly, moduleVisibility],
   );
+  useEffect(() => {
+    if (activePage && !moduleIsVisible(activePage, moduleVisibility)) {
+      setActivePage('');
+      setSelectedRecord(null);
+    }
+    if (activeModule && !visibleGroups.some(group => group.modules.some(module => module.title === activeModule.title))) {
+      setActiveModule(null);
+    }
+  }, [activePage, activeModule, moduleVisibility, visibleGroups]);
   const moduleCount = visibleGroups.reduce((total, group) => total + group.modules.length, 0);
 
   const loadAccessibleCompanies = useCallback(async () => {
@@ -1234,7 +1248,7 @@ export default function AdminScreen() {
 
   const loadPage = useCallback(async () => {
     const requestId = ++recordsRequest.current;
-    if (!activePage || activePage === 'Loans' || COMPANY_ROLE_PAGES.includes(activePage) || SUBSCRIPTION_PAGES.includes(activePage)) return;
+    if (!activePage || !moduleIsVisible(activePage, moduleVisibility) || activePage === 'Loans' || COMPANY_ROLE_PAGES.includes(activePage) || SUBSCRIPTION_PAGES.includes(activePage)) return;
     const endpoint = activePage === 'Employees' && roles.includes(ROLES.PLATFORM_SUPER_ADMIN) ? '/employees/global' : PAGE_ENDPOINTS[activePage];
     setRecordsError('');
     setRecords([]);
@@ -1600,7 +1614,7 @@ export default function AdminScreen() {
     } finally {
       if (requestId === recordsRequest.current) setLoadingRecords(false);
     }
-  }, [accessibleCompanies, activePage, attendanceFromDate, attendanceToDate, isAdminDocumentsPage, isDocumentRequestsPage, leaveStatusFilter, profile?.companyId, profile?.companyName, roles, selectedCompanyId, selectedCompanyName, user?.companyId, user?.companyName, teamAttendanceOnly]);
+  }, [accessibleCompanies, activePage, attendanceFromDate, attendanceToDate, isAdminDocumentsPage, isDocumentRequestsPage, leaveStatusFilter, profile?.companyId, profile?.companyName, roles, selectedCompanyId, selectedCompanyName, user?.companyId, user?.companyName, teamAttendanceOnly, moduleVisibility]);
 
   useEffect(() => {
     setSearch('');
@@ -2648,7 +2662,7 @@ export default function AdminScreen() {
     );
   }
 
-  if (activeModule && activePage && selectedRecord) {
+  if (activeModule && activePage && selectedRecord && moduleIsVisible(activePage, moduleVisibility)) {
     const isEmployeeDetail = canManageEmployeeDocuments && (activePage === 'Employees' || isAdminDocumentsPage || attendanceDrilldown?.key === 'totalEmployees');
     const employeeCompanyId = rawField(selectedRecord, ['companyId', 'company.id', '__companyId'])
       ?? (selectedCompanyId === 'all' ? null : selectedCompanyId);
@@ -2777,7 +2791,7 @@ export default function AdminScreen() {
     );
   }
 
-  if (activeModule && activePage === 'Loans') {
+  if (activeModule && activePage === 'Loans' && moduleIsVisible(activePage, moduleVisibility)) {
     return (
       <View style={styles.screen}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -2831,7 +2845,7 @@ export default function AdminScreen() {
     );
   }
 
-  if (activeModule && activePage) {
+  if (activeModule && activePage && moduleIsVisible(activePage, moduleVisibility)) {
     return (
       <View className="flex-1 bg-background" style={styles.screen}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -2848,7 +2862,7 @@ export default function AdminScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={loadingRecords} onRefresh={loadPage} />}>
+          refreshControl={<RefreshControl refreshing={loadingRecords} onRefresh={() => {refreshVisibility(); loadPage();}} />}>
           <Card style={styles.listHeaderCard}>
             <View style={styles.groupHead}>
               <View style={styles.groupIcon}>
@@ -3384,7 +3398,7 @@ export default function AdminScreen() {
                 <Text style={styles.groupSub}>Website features available under this module</Text>
               </View>
             </View>
-            {activeModule.pages.map(page => {
+            {activeModule.pages.filter(page => moduleIsVisible(page, moduleVisibility)).map(page => {
               const integrated = isMobileAdminPage(page);
               const label = page === 'My Documents' && canManageEmployeeDocuments ? 'Employee Documents' : page;
               return (
