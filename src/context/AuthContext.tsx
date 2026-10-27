@@ -1,6 +1,7 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {api, LoginResponse, setApiSession} from '../api/client';
 import {clearSession, loadSession, saveSession} from '../utils/storage';
+import {clearLeaveAttachmentCache} from '../native/LeaveAttachmentFiles';
 
 type AuthValue = {
   booting: boolean;
@@ -80,6 +81,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     setProfile(null);
     setPersistSession(false);
     await clearSession();
+    await clearLeaveAttachmentCache().catch(() => {});
   }, []);
 
   const value = useMemo(

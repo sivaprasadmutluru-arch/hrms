@@ -415,6 +415,10 @@ export default function CheckInScreen({onRootChange}: {onRootChange?: (isRoot: b
   }
 
   async function submit() {
+    if (clock?.attendanceRequired === false && !isClockedIn) {
+      Alert.alert('Attendance not required', 'You are exempt from daily attendance. No check-in is needed.');
+      return;
+    }
     const kind = isClockedIn ? 'out' : 'in';
     setLoading(true);
     setMessage('');
@@ -508,7 +512,7 @@ export default function CheckInScreen({onRootChange}: {onRootChange?: (isRoot: b
             </View>
             <View style={[styles.heroChip, isClockedIn ? styles.heroChipOn : styles.heroChipOff]}>
               <View style={[styles.heroChipDot, isClockedIn ? styles.heroChipDotOn : styles.heroChipDotOff]} />
-              <Text style={styles.heroChipText}>{isClockedIn ? 'Checked In' : 'Not Checked In'}</Text>
+              <Text style={styles.heroChipText}>{isClockedIn ? 'Checked In' : clock?.attendanceRequired === false ? 'Attendance not required' : 'Not Checked In'}</Text>
             </View>
           </View>
         </View>
@@ -517,7 +521,9 @@ export default function CheckInScreen({onRootChange}: {onRootChange?: (isRoot: b
           <Text style={styles.clockCardTime} numberOfLines={1}>{wallClockLabel}</Text>
           <Text style={styles.clockCardDate}>{wallDateLabel}</Text>
         </View>
-        <PunchPill isClockedIn={isClockedIn} onPress={submit} loading={loading || locating} />
+        {clock?.attendanceRequired === false && !isClockedIn ? (
+          <Card><Text style={styles.cardSub}>You are exempt from daily attendance. No check-in or regularisation is needed. Your leave policy remains unchanged.</Text></Card>
+        ) : <PunchPill isClockedIn={isClockedIn} onPress={submit} loading={loading || locating} />}
 
         <Card style={[styles.quickStatsCard, styles.flatCard]}>
           <View style={styles.statsRow}>

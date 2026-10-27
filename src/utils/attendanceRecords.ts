@@ -8,6 +8,7 @@ export const attendanceCategories: {key: AttendanceCategory; label: string}[] = 
 
 // Match the monthly overview's HRMS status mapping in both counts and lists.
 export function attendanceCategory(record: any): AttendanceCategory | null {
+  if (record?.attendanceRequired === false || record?.displayStatus === 'EXEMPT') return null;
   const status = String(record?.displayStatus || record?.attendanceStatus || record?.status || '').toUpperCase();
   if (status === 'REGULAR' || status === 'REGULARISED') return 'present';
   if (status === 'ABSENT') return 'absent';
@@ -74,6 +75,7 @@ export function canRegulariseAttendance(record: any, now = new Date()) {
   earliest.setDate(Math.min(day, lastDay));
   const earliestKey = `${earliest.getFullYear()}-${String(earliest.getMonth() + 1).padStart(2, '0')}-${String(earliest.getDate()).padStart(2, '0')}`;
   if (!date || date < earliestKey || date > today) return false;
+  if (record?.attendanceRequired === false || record?.displayStatus === 'EXEMPT') return false;
   if (record?.regularisationStatus && record.regularisationStatus !== 'NONE') return false;
   const status = String(record?.attendanceStatus || record?.displayStatus || record?.status || '').toUpperCase();
   if (['WEEK_OFF', 'WEEKOFF', 'HOLIDAY', 'LEAVE'].includes(status)) return false;

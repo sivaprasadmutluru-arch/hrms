@@ -93,6 +93,10 @@ function companyEmployeePage(selectedCompanyId: number | string, page: number, s
 }
 
 export const api = {
+  leaveRequestFiles: (requestId: number | string, selectedCompanyId: number | string) =>
+    request<any[]>(`/leave/requests/${encodeURIComponent(String(requestId))}/files`, {
+      headers: {'X-Company-Id': String(selectedCompanyId), 'X-Filter-Company-Id': String(selectedCompanyId)},
+    }),
   login: (usernameOrEmail: string, password: string) =>
     request<LoginResponse>('/auth/login', {
       method: 'POST',

@@ -6,6 +6,7 @@ import TeamDateField from '../src/components/TeamDateField';
 import {api} from '../src/api/client';
 
 jest.mock('../src/components/Icon', () => 'Icon');
+jest.mock('../src/native/LeaveAttachmentFiles', () => ({transferLeaveAttachment: jest.fn()}));
 jest.mock('react-native-linear-gradient', () => 'LinearGradient');
 jest.mock('react-native-safe-area-context', () => ({useSafeAreaInsets: () => ({top:0,bottom:0,left:0,right:0})}));
 let mockAuth = {user:{companyId:64},profile:{companyId:64,companyName:'SOPHISTICAVE',isReportingManager:true}};

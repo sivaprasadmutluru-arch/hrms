@@ -5,6 +5,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {api} from '../api/client';
 import {useAuth} from '../context/AuthContext';
 import Icon from '../components/Icon';
+import LeaveAttachments from '../components/LeaveAttachments';
 import TeamDateField from '../components/TeamDateField';
 import {colors} from '../theme/colors';
 import {dateText, timeText} from '../utils/format';
@@ -168,6 +169,7 @@ export default function MyTeamScreen() {
           <Text style={styles.body}>Reason: {item.description || 'Not provided'}</Text>
           {!!item.approvedByName && <Text style={styles.hint}>Approved by {item.approvedByName}</Text>}
           {!!item.rejectReason && <Text style={styles.error}>Rejection: {item.rejectReason}</Text>}
+          <LeaveAttachments request={item} companyId={companyId} />
         </> : section === 'Attendance' ? <>
           <Text style={styles.label}>{dateText(item.attendanceDate)}</Text>
           <View style={styles.metrics}><Text style={styles.body}>In {timeText(item.checkIn)}</Text><Text style={styles.body}>Out {timeText(item.checkOut)}</Text><Text style={styles.body}>{item.workedHour == null ? '-' : `${Number(item.workedHour).toFixed(2)} h`}</Text></View>
@@ -198,6 +200,7 @@ export default function MyTeamScreen() {
         <Text style={styles.title}>{decision?.action === 'approve' ? 'Approve' : 'Reject'} {decision?.kind === 'leave' ? 'leave' : 'regularisation'} request</Text>
         <Text style={styles.body}>{decision?.item.employeeName}</Text>
         <Text style={styles.hint}>{dateText(decision?.item.startDate || decision?.item.attendanceDate)}{decision?.item.endDate ? ` to ${dateText(decision.item.endDate)}` : ''}</Text>
+        {decision?.kind === 'leave' && <LeaveAttachments request={decision.item} companyId={companyId} />}
         {decision?.action === 'reject' ? <TextInput accessibilityLabel="Team rejection reason" placeholder="Rejection reason (required)" value={reason} onChangeText={setReason} multiline style={[styles.input, {minHeight: 80}]} editable={!busy} /> : <Text style={styles.body}>Confirm that you have reviewed this request.</Text>}
         {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
         <View style={styles.actions}>{button('Cancel team decision', () => setDecision(null), false, busy)}{button(busy ? 'Saving decision...' : 'Confirm team decision', confirmDecision, decision?.action === 'reject', busy)}</View>

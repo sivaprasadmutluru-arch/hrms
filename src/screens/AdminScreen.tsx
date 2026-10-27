@@ -15,6 +15,7 @@ import {companyLeaveAllocations} from '../utils/leaveAllocations';
 import {companyLeaveTypes} from '../utils/leaveTypes';
 import CreateLeaveAllocationModal from '../components/CreateLeaveAllocationModal';
 import EmployeeDocuments from '../components/EmployeeDocuments';
+import LeaveAttachments from '../components/LeaveAttachments';
 import {loadDocumentEmployees} from '../utils/employeeDocuments';
 import {companyDocumentRequests} from '../utils/documentRequests';
 import CreateDocumentRequestModal from '../components/CreateDocumentRequestModal';
@@ -570,7 +571,7 @@ function formatRequestType(type?: string) {
     .replace(/\b\w/g, char => char.toUpperCase());
 }
 
-function DataRecord({item, page, onPress, onRegularize}: {item: any; page: string; onPress: () => void; onRegularize?: () => void}) {
+function DataRecord({item, page, onPress, onRegularize, companyId}: {item: any; page: string; onPress: () => void; onRegularize?: () => void; companyId?: number | string | null}) {
   const isEmployee = page === 'Employees';
   const isLeave = page === 'Leave Requests';
   const isRegularisation = page === 'Regularisation';
@@ -715,6 +716,7 @@ function DataRecord({item, page, onPress, onRegularize}: {item: any; page: strin
               </View>
             )}
             {!!meta && !isRegularisation && <Text style={styles.dataMeta} numberOfLines={1}>{meta}</Text>}
+            {isLeave && <LeaveAttachments request={item} companyId={companyId} />}
             {isAttendance && !!attendanceLocation && (
               <View style={styles.attendanceLocationRow}>
                 <Icon name="location-outline" size={12} color={colors.muted} />
@@ -865,12 +867,12 @@ function AdminCalendarDateField({
 
 const DETAIL_HIDDEN_KEYS = new Set(['id', 'uuid', 'logoPath', 'photoPath', 'password', 'active']);
 
-function RecordDetail({item, page}: {item: any; page: string}) {
+function RecordDetail({item, page, companyId}: {item: any; page: string; companyId?: number | string | null}) {
   const title = field(item, ['name', 'fullName', 'title', 'subject', 'employeeName', 'companyName', 'roleName', 'departmentName', 'jobPositionName', 'code'], page);
   const status = field(item, ['status', 'active'], '');
   const logo = logoUrl(field(item, ['logoPath', 'photoPath'], ''));
   const rows = Object.entries(item || {}).filter(
-    ([key, value]) => !DETAIL_HIDDEN_KEYS.has(key) && value !== null && value !== undefined && value !== '' && typeof value !== 'object',
+    ([key, value]) => !DETAIL_HIDDEN_KEYS.has(key) && !(page === 'Leave Requests' && ['attachmentPath', 'filePath', 'certificatePath'].includes(key)) && value !== null && value !== undefined && value !== '' && typeof value !== 'object',
   );
 
   return (
@@ -903,6 +905,7 @@ function RecordDetail({item, page}: {item: any; page: string}) {
             <Text style={styles.groupSub}>All fields returned for this record</Text>
           </View>
         </View>
+        {page === 'Leave Requests' && <View style={{paddingHorizontal: 14}}><LeaveAttachments request={item} companyId={companyId} expanded /></View>}
         {rows.map(([key, value]) => (
           <View key={key} style={styles.detailRow}>
             <Text style={styles.detailRowLabel}>{statLabel(key)}</Text>
@@ -2227,6 +2230,7 @@ export default function AdminScreen() {
                 {!!field(target, ['reason'], '') && (
                   <Text style={styles.modalInfoText}>Employee Reason: {field(target, ['reason'], '')}</Text>
                 )}
+                {activePage === 'Leave Requests' && <LeaveAttachments request={target} companyId={selectedCompanyId === 'all' ? null : selectedCompanyId} />}
               </View>
 
               <Text style={styles.inputLabel}>Reason for Rejection *</Text>
@@ -2716,7 +2720,7 @@ export default function AdminScreen() {
               </View>
               <EmployeeDocuments key={`${employeeCompanyId}-${employeeId}`} employeeId={employeeId} companyId={employeeCompanyId} />
             </>
-          ) : isDocumentRequestsPage ? <DocumentRequestDetail request={selectedRecord} companyId={selectedRecord.companyId} /> : <RecordDetail item={selectedRecord} page={isEmployeeDetail ? 'Employees' : activePage} />}
+          ) : isDocumentRequestsPage ? <DocumentRequestDetail request={selectedRecord} companyId={selectedRecord.companyId} /> : <RecordDetail item={selectedRecord} page={isEmployeeDetail ? 'Employees' : activePage} companyId={selectedCompanyId === 'all' ? null : selectedCompanyId} />}
           {isApprovalPage(activePage) && canReviewRecord(selectedRecord) && (
             <ApprovalButtons
               busy={actionBusyId === selectedRecord.id}
@@ -3278,7 +3282,7 @@ export default function AdminScreen() {
                         item={item}
                         page={activePage}
                         onPress={() => setSelectedRecord(item)}
-                        onRegularize={teamAttendanceOnly ? undefined : () => openRegularisationModal(item)}
+                        onRegularize={teamAttendanceOnly || item?.attendanceRequired === false || item?.displayStatus === 'EXEMPT' ? undefined : () => openRegularisationModal(item)}
                       />
                     );
                   })}
@@ -3294,8 +3298,9 @@ export default function AdminScreen() {
                   <DataRecord
                     item={item}
                     page={isAdminDocumentsPage ? 'Employees' : activePage}
+                    companyId={selectedCompanyId === 'all' ? null : selectedCompanyId}
                     onPress={() => setSelectedRecord(item)}
-                    onRegularize={activePage === 'Attendance Register' && !teamAttendanceOnly ? () => openRegularisationModal(item) : undefined}
+                    onRegularize={activePage === 'Attendance Register' && !teamAttendanceOnly && item?.attendanceRequired !== false && item?.displayStatus !== 'EXEMPT' ? () => openRegularisationModal(item) : undefined}
                   />
                   {isApprovalPage(activePage) && canReviewRecord(item) && (
                     <ApprovalButtons

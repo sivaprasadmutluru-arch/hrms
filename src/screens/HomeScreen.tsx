@@ -21,6 +21,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import Card from '../components/Card';
+import LeaveAttachments from '../components/LeaveAttachments';
 import FieldRow from '../components/FieldRow';
 import Icon from '../components/Icon';
 import PrimaryButton from '../components/PrimaryButton';
@@ -195,6 +196,7 @@ function statusTone(status?: string) {
 }
 
 function canRequestRegularisation(record: any) {
+  if (record?.attendanceRequired === false || record?.displayStatus === 'EXEMPT') return false;
   const date = String(field(record, ['attendanceDate', 'date'], '')).slice(0, 10);
   const noPendingRequest = !record?.regularisationStatus || record?.regularisationStatus === 'NONE';
   if (!noPendingRequest || !date || date < earliestRegularisationDateKey() || date > todayDateKey()) return false;
@@ -292,6 +294,7 @@ function hoursWorked(record: any, clock?: any) {
 }
 
 function regularisationLabel(record: any) {
+  if (record?.attendanceRequired === false || record?.displayStatus === 'EXEMPT') return 'Attendance not required';
   const status = record?.regularisationStatus;
   const attendanceStatus = record?.attendanceStatus;
   const displayStatus = record?.displayStatus;
@@ -904,6 +907,7 @@ function LeaveHistoryEntry({item}: {item: any}) {
               <Text style={styles.leaveEntryMeta} numberOfLines={2}>{reason}</Text>
             </View>
           )}
+          <LeaveAttachments request={item} />
         </View>
       </View>
     </Pressable>
@@ -1430,7 +1434,7 @@ export default function HomeScreen({onRootChange}: {onRootChange?: (isRoot: bool
   }
 
   function renderOverview() {
-    const statusText = clock?.online ? 'Checked in' : 'Not checked in';
+    const statusText = clock?.online ? 'Checked in' : clock?.attendanceRequired === false ? 'Attendance not required' : 'Not checked in';
     const latestAnnouncement = announcements
       .filter(item => !String(field(item, ['expiresOn', 'expiryDate'], '')).slice(0, 10) || String(field(item, ['expiresOn', 'expiryDate'], '')).slice(0, 10) >= todayDateKey())
       .sort((a, b) => String(field(b, ['createdAt', 'publishedAt'], '')).localeCompare(String(field(a, ['createdAt', 'publishedAt'], ''))))[0];
