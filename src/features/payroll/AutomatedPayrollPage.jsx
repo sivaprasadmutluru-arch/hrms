@@ -339,7 +339,7 @@ export default function AutomatedPayrollPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="payroll-workspace space-y-6">
       <PageHeader
         title="Automated Payroll"
         subtitle="Attendance-based payroll processing — step by step"
@@ -349,7 +349,7 @@ export default function AutomatedPayrollPage() {
 
       {/* ── STEP 1: Payroll Settings ────────────────────────────────────────── */}
       {step === 1 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-3xl space-y-6">
+        <div className="automated-payroll-step automated-payroll-settings bg-white rounded-xl border border-gray-200 p-6 space-y-6">
           <h2 className="text-base font-semibold text-gray-800">Payroll Cycle Settings</h2>
           <p className="text-sm text-gray-500 -mt-4">
             Configure the payroll period before processing. Payroll will be calculated only for the selected date range.
@@ -485,7 +485,7 @@ export default function AutomatedPayrollPage() {
 
       {/* ── STEP 2: Attendance Source ───────────────────────────────────────── */}
       {step === 2 && (
-        <div className="max-w-3xl space-y-5">
+        <div className="automated-payroll-step space-y-5">
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex gap-3">
             <InformationCircleIcon className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-indigo-800">
@@ -841,7 +841,7 @@ export default function AutomatedPayrollPage() {
 
       {/* ── STEP 4: Approve & Finalize ──────────────────────────────────────── */}
       {step === 4 && (
-        <div className="max-w-2xl space-y-6">
+        <div className="automated-payroll-step automated-payroll-finalize space-y-6">
           {/* Summary */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
             <h2 className="text-base font-semibold text-gray-800">Payroll Summary</h2>

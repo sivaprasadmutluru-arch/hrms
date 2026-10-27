@@ -3,13 +3,13 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchWorkTypes, createWorkType, updateWorkType, deleteWorkType, selectWorkTypes } from './baseExtrasSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
+import SetupDirectory from '../../components/common/SetupDirectory'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import { LaptopMinimal } from 'lucide-react'
 
 export default function WorkTypesPage() {
   const dispatch = useDispatch()
@@ -56,10 +56,10 @@ export default function WorkTypesPage() {
   }
 
   const columns = [
-    { accessorKey: 'name', header: 'Work Type' },
+    { accessorKey: 'name', header: 'Work Type', cell: ({ row }) => <span className="setup-name-cell"><i><LaptopMinimal size={16} /></i><b>{row.original.name}</b></span> },
     {
       id: 'actions', header: '', cell: ({ row }) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2 setup-table-actions">
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
         </div>
@@ -68,17 +68,16 @@ export default function WorkTypesPage() {
   ]
 
   return (
-    <div>
-      <PageHeader title="Work Types" subtitle="Manage work types (remote, on-site, hybrid, etc.)" actions={<Button onClick={openCreate}>+ New Work Type</Button>} />
-      <DataTable columns={columns} data={workTypes} />
+    <>
+      <SetupDirectory title="Work types" subtitle="Set the ways your teams work, from office-based schedules to remote arrangements." icon={<LaptopMinimal size={22} />} itemLabel="work type" data={workTypes} columns={columns} searchText={item => `${item.name || ''}`} action={<Button className="setup-primary-button" onClick={openCreate}>+ New work type</Button>} />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Work Type' : 'New Work Type'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="lg" panelClassName="setup-form-modal" title={editing ? 'Edit work type' : 'New work type'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <Input label="Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
       </Modal>
 
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Work Type" message={`Delete "${deleteTarget?.name}"?`} confirmLabel="Delete" />
-    </div>
+    </>
   )
 }

@@ -217,7 +217,7 @@ export default function EmployeeDetailPage() {
   if (!profile) return <p className="text-gray-500 p-6">Employee not found.</p>
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="employee-detail-page space-y-4 p-6">
 
       {/* Back navigation */}
       <button
@@ -383,7 +383,7 @@ export default function EmployeeDetailPage() {
             </div>
 
             {/* Tab content */}
-            <div className="p-6">
+            <div className="employee-detail-content p-6">
               {activeTab === 'about'       && <AboutTab profile={profile} />}
               {activeTab === 'work-info'   && <WorkInfoTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
               {activeTab === 'payroll'     && <PayrollTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}

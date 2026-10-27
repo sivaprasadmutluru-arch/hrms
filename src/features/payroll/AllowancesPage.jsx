@@ -117,7 +117,7 @@ export default function AllowancesPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader title="Allowances" subtitle="Salary allowances and benefits configuration"
         actions={<Button onClick={openCreate}>+ New Allowance</Button>} />
       <DataTable columns={columns} data={allowances} loading={loading} />
@@ -130,7 +130,7 @@ export default function AllowancesPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} panelClassName="payroll-form-modal"
         title={editing ? 'Edit Allowance' : 'New Allowance'} size="lg"
         footer={
           <div className="flex justify-end gap-2">

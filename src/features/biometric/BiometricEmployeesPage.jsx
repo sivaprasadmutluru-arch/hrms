@@ -250,7 +250,7 @@ export default function BiometricEmployeesPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="biometric-workspace biometric-employees-workspace">
       <PageHeader
         title="Biometric Employees"
         subtitle="Map employees to their local user IDs on each biometric device"
@@ -265,7 +265,7 @@ export default function BiometricEmployeesPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="biometric-toolbar flex flex-col sm:flex-row sm:items-center gap-3">
         <SearchInput placeholder="Search employee, user ID, or device..." onSearch={setSearch} className="sm:max-w-xs" />
         <div className="flex items-center gap-1.5 ml-auto overflow-x-auto">
           <button
@@ -291,7 +291,7 @@ export default function BiometricEmployeesPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={filtered} loading={loading} />
+      <div className="biometric-table"><DataTable columns={columns} data={filtered} loading={loading} /></div>
 
       <ConfirmModal
         open={confirmModal.open}
@@ -308,6 +308,7 @@ export default function BiometricEmployeesPage() {
         onClose={() => setModalOpen(false)}
         title={editing ? 'Edit Mapping' : 'Add Biometric Mapping'}
         size="lg"
+        panelClassName="biometric-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -315,7 +316,7 @@ export default function BiometricEmployeesPage() {
           </div>
         }
       >
-        <div className="space-y-5">
+        <div className="biometric-form">
           {/* Employee picker */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Employee *</label>

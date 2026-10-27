@@ -40,7 +40,7 @@ const CAL_DAY_TYPE = {
   irregular:  { label: 'Irregular',      circle: 'bg-yellow-400 text-white',    dot: 'bg-yellow-400' },
   absent:     { label: 'Absent',         circle: 'bg-orange-500 text-white',    dot: 'bg-orange-500' },
   weekly_off: { label: 'Weekly Off',     circle: 'bg-green-200 text-green-800', dot: 'bg-green-200' },
-  on_leave:   { label: 'Leave',          circle: 'bg-purple-500 text-white',    dot: 'bg-purple-500' },
+  on_leave:   { label: 'Leave',          circle: 'bg-blue-500 text-white',      dot: 'bg-blue-500' },
   holiday:    { label: 'Public Holiday', circle: 'bg-cyan-400 text-white',      dot: 'bg-cyan-400' },
   future:     { label: '',               circle: 'bg-transparent text-gray-300',dot: '' },
 }
@@ -256,97 +256,18 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
-function PlatformAdminDashboard({ organizations, headcount, leave, helpdesk }) {
+function PlatformAdminSummary({ organizations, headcount, leave, helpdesk }) {
   const activeOrgs = (organizations?.data || []).filter(o => o.status === 'ACTIVE')
   const pendingLeaves = (leave.data || []).filter(l => l.status === 'PENDING')
   const openTickets = (helpdesk.data || []).filter(t => t.status === 'OPEN')
 
   return (
-    <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Active Organizations" value={activeOrgs.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
-        <StatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="emerald" />
-        <StatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-        <StatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
-      </div>
-
-      <Card className="mb-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">All Client Organizations</h3>
-        {organizations?.loading ? <Spinner size="sm" /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b">
-                  <th className="pb-2 text-left font-medium">Organization</th>
-                  <th className="pb-2 text-left font-medium">Contact Email</th>
-                  <th className="pb-2 text-left font-medium">Plan</th>
-                  <th className="pb-2 text-left font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {(organizations?.data || []).slice(0, 10).map(org => (
-                  <tr key={org.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-2.5 font-medium text-gray-800">{org.name || '—'}</td>
-                    <td className="py-2.5 text-gray-500">{org.contactEmail || '—'}</td>
-                    <td className="py-2.5 text-gray-500 capitalize">{org.subscriptionPlan?.toLowerCase() || '—'}</td>
-                    <td className="py-2.5">
-                      <Badge label={org.status || 'Active'} variant={STATUS_COLORS[org.status?.toLowerCase()] || 'success'} />
-                    </td>
-                  </tr>
-                ))}
-                {(organizations?.data || []).length === 0 && (
-                  <tr><td colSpan="4" className="py-8 text-center text-gray-400 text-sm">No organizations found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Leave Requests</h3>
-          <table className="w-full text-sm">
-            <thead><tr className="text-xs text-gray-500 border-b">
-              <th className="pb-2 text-left">Employee</th>
-              <th className="pb-2 text-left">Type</th>
-              <th className="pb-2 text-left">Status</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {(leave.data || []).slice(0, 6).map(l => (
-                <tr key={l.id} className="hover:bg-gray-50">
-                  <td className="py-2 font-medium text-gray-800">{l.employeeName || '—'}</td>
-                  <td className="py-2 text-gray-500">{l.leaveTypeName || '—'}</td>
-                  <td className="py-2"><Badge label={l.status} variant={STATUS_COLORS[l.status?.toLowerCase()] || 'default'} /></td>
-                </tr>
-              ))}
-              {(leave.data || []).length === 0 && <tr><td colSpan="3" className="py-4 text-center text-gray-400">No leave requests</td></tr>}
-            </tbody>
-          </table>
-        </Card>
-
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Support Tickets</h3>
-          <table className="w-full text-sm">
-            <thead><tr className="text-xs text-gray-500 border-b">
-              <th className="pb-2 text-left">Subject</th>
-              <th className="pb-2 text-left">Priority</th>
-              <th className="pb-2 text-left">Status</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {(helpdesk.data || []).slice(0, 6).map(t => (
-                <tr key={t.id} className="hover:bg-gray-50">
-                  <td className="py-2 font-medium text-gray-800 max-w-[150px] truncate">{t.subject || t.title || '—'}</td>
-                  <td className="py-2"><Badge label={t.priority} variant={t.priority === 'HIGH' || t.priority === 'URGENT' ? 'danger' : 'warning'} /></td>
-                  <td className="py-2"><Badge label={t.status} variant={STATUS_COLORS[t.status?.toLowerCase()] || 'default'} /></td>
-                </tr>
-              ))}
-              {(helpdesk.data || []).length === 0 && <tr><td colSpan="3" className="py-4 text-center text-gray-400">No tickets</td></tr>}
-            </tbody>
-          </table>
-        </Card>
-      </div>
-    </>
+    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <StatCard title="Active Organizations" value={activeOrgs.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
+      <StatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="emerald" />
+      <StatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+      <StatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
+    </div>
   )
 }
 
@@ -730,7 +651,7 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
   }
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+    <div className="grid grid-cols-1 xl:grid-cols-3 items-start gap-6 mb-6">
       {/* Attendance Calendar */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
@@ -761,15 +682,16 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
                 if (!cell) return <div key={`e-${idx}`} />
                 const { day, dateStr: ds, data } = cell
                 const isToday = ds === todayStr
-                const isFuture = !data || data.dayType === 'future'
+                const isFuture = ds > todayStr
+                const hasStatus = Boolean(data?.dayType && data.dayType !== 'future')
                 const dayType = data?.dayType || (isFuture ? 'future' : 'absent')
                 const meta = CAL_DAY_TYPE[dayType] || CAL_DAY_TYPE.future
                 return (
                   <div key={ds} className="flex justify-center items-center py-0.5">
                     <span className={`
                       w-8 h-8 rounded-full text-xs font-semibold flex items-center justify-center
-                      ${isFuture ? 'text-gray-300' : meta.circle}
-                      ${isToday && !isFuture ? 'ring-2 ring-offset-1 ring-white shadow' : ''}
+                      ${hasStatus ? meta.circle : isFuture ? 'text-gray-300' : 'text-gray-600'}
+                      ${isToday ? 'ring-2 ring-blue-300 ring-offset-2 ring-offset-white font-bold' : ''}
                     `}>
                       {day}
                     </span>
@@ -927,11 +849,20 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle={subtitle} />
-      <button onClick={() => navigate('/carr/dashboard')} className="mb-6 flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-500 px-6 py-5 text-left text-white shadow-lg shadow-indigo-200 transition hover:-translate-y-0.5">
-        <div><div className="text-xs font-bold uppercase tracking-[.18em] text-indigo-100">GRECHA.ai Enterprise Module</div><div className="mt-1 text-xl font-black">Open CARR</div><div className="mt-1 text-sm text-indigo-100">Clarity · Accountability · Results · Rewards</div></div>
-        <div className="rounded-xl bg-white/15 px-5 py-3 text-sm font-bold">Launch workspace →</div>
-      </button>
+      <PageHeader title="Dashboard" subtitle={subtitle}
+        actions={<button onClick={() => navigate('/carr/dashboard')} className="dashboard-carr-launch" aria-label="Open CARR Enterprise workspace">
+          <span className="dashboard-carr-mark">C</span>
+          <span className="dashboard-carr-copy"><strong>CARR Enterprise</strong><small>People operations workspace</small></span>
+          <span className="dashboard-carr-arrow" aria-hidden="true">↗</span>
+        </button>} />
+      {isSuperAdmin && !selectedCompanyId && (
+        <PlatformAdminSummary
+          organizations={organizations}
+          headcount={headcount}
+          leave={leave}
+          helpdesk={helpdesk}
+        />
+      )}
       {/* Welcome + Check-in side by side */}
       <div className="flex flex-col xl:flex-row items-stretch gap-4 mb-6">
         <div className="flex-1 flex"><WelcomeHeader /></div>
@@ -942,15 +873,6 @@ export default function DashboardPage() {
       <PersonalAttendanceSection attendanceDashboard={attendanceDashboard} />
 
       {/* Role-specific content */}
-      {isSuperAdmin && !selectedCompanyId && (
-        <PlatformAdminDashboard
-          organizations={organizations}
-          headcount={headcount}
-          leave={leave}
-          helpdesk={helpdesk}
-        />
-      )}
-
       {isSuperAdminViewingCompany && (
         <EnterpriseAdminDashboard
           branchSummaryList={branchSummaryList}

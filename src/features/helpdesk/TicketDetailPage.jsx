@@ -61,7 +61,7 @@ export default function TicketDetailPage() {
   if (!ticket) return null
 
   return (
-    <div>
+    <div className="support-workspace support-ticket-detail">
       <PageHeader title={ticket.subject || 'Ticket Detail'}
         subtitle={`#${ticket.ticketNumber || id}`}
         actions={

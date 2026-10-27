@@ -306,7 +306,7 @@ export default function PayrollPage() {
   const isBulkLoading = actionLoading === 'bulk'
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader
         title="Payroll"
         subtitle="Payroll runs grouped by batch and pay period"
@@ -615,6 +615,7 @@ export default function PayrollPage() {
         open={generateModal}
         onClose={() => setGenerateModal(false)}
         title="Generate Payroll"
+        panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setGenerateModal(false)}>Cancel</Button>
@@ -681,6 +682,7 @@ export default function PayrollPage() {
         open={exportModal}
         onClose={() => setExportModal(false)}
         title="Export Payroll to Excel"
+        panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setExportModal(false)}>Cancel</Button>

@@ -300,7 +300,7 @@ export default function BiometricDevicesPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="biometric-workspace biometric-devices-workspace">
       <PageHeader
         title="Biometric Devices"
         subtitle="Manage attendance machines and ADMS push integrations"
@@ -315,27 +315,49 @@ export default function BiometricDevicesPage() {
         <StatCard label="With Serial No." value={`${stats.withSerial}/${stats.total}`} tone="gray" icon={<WifiIcon className="h-6 w-6" />} />
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <SearchInput placeholder="Search by name, serial, or IP..." onSearch={setSearch} className="sm:max-w-xs" />
-        <div className="flex items-center gap-1.5 ml-auto">
-          {['ALL', 'ZK', 'ANVIZ', 'COSEC', 'DAHUA', 'ETIMEOFFICE'].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                typeFilter === t
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {t === 'ALL' ? 'All' : t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
+      {devices.length === 0 && !loading ? (
+        <section className="biometric-device-empty">
+          <div className="biometric-device-empty-copy">
+            <span className="biometric-empty-eyebrow">DEVICE SETUP</span>
+            <h2>Bring your attendance devices together.</h2>
+            <p>Add a biometric terminal to start managing device connections and employee punch records in one place.</p>
+            <Button onClick={openCreate}><PlusIcon className="h-4 w-4 mr-1" /> Add your first device</Button>
+            <div className="biometric-setup-steps">
+              <span><b>01</b> Choose device type</span>
+              <span><b>02</b> Add connection details</span>
+            </div>
+          </div>
+          <div className="biometric-device-art" aria-hidden="true">
+            <div className="biometric-device-orbit biometric-device-orbit-one" />
+            <div className="biometric-device-orbit biometric-device-orbit-two" />
+            <div className="biometric-device-screen"><FingerPrintIcon /><span>READY TO CONNECT</span><i /></div>
+            <div className="biometric-device-chip"><CpuChipIcon /></div>
+            <div className="biometric-device-signal"><WifiIcon /></div>
+          </div>
+        </section>
+      ) : (
+        <>
+          <div className="biometric-toolbar flex flex-col sm:flex-row sm:items-center gap-3">
+            <SearchInput placeholder="Search by name, serial, or IP..." onSearch={setSearch} className="biometric-device-search" />
+            <div className="flex items-center gap-1.5 ml-auto">
+              {['ALL', 'ZK', 'ANVIZ', 'COSEC', 'DAHUA', 'ETIMEOFFICE'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    typeFilter === t
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {t === 'ALL' ? 'All' : t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="biometric-table"><DataTable columns={columns} data={filtered} loading={loading} /></div>
+        </>
+      )}
 
       <ConfirmModal
         open={confirmModal.open}
@@ -352,6 +374,7 @@ export default function BiometricDevicesPage() {
         onClose={() => setModalOpen(false)}
         title={editing ? 'Edit Device' : 'Add Biometric Device'}
         size="xl"
+        panelClassName="biometric-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -361,7 +384,7 @@ export default function BiometricDevicesPage() {
           </div>
         }
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form className="biometric-form" onSubmit={handleSubmit(onSubmit)}>
           <DeviceFormFields register={register} errors={errors} machineType={watchType} />
         </form>
       </Modal>

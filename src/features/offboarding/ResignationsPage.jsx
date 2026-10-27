@@ -72,11 +72,11 @@ export default function ResignationsPage() {
   ]
 
   return (
-    <div>
+    <div className="offboarding-workspace">
       <PageHeader title="Resignations" subtitle="Employee resignation requests"
         actions={<Button onClick={() => { reset(); setModalOpen(true) }}>+ New Resignation</Button>} />
-      <DataTable columns={columns} data={resignations} loading={loading} />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Submit Resignation"
+      <div className="offboarding-table"><DataTable columns={columns} data={resignations} loading={loading} /></div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Submit Resignation" panelClassName="offboarding-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

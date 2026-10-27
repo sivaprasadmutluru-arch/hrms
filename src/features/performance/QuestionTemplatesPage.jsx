@@ -96,7 +96,7 @@ export default function QuestionTemplatesPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Question Templates" subtitle="Manage feedback question templates and questions" />
 
       <div className="border-b border-gray-200 mb-6">
@@ -115,7 +115,7 @@ export default function QuestionTemplatesPage() {
           <div className="flex justify-end mb-4">
             <Button onClick={openTemplateCreate}>+ New Template</Button>
           </div>
-          <DataTable columns={templateColumns} data={templates} loading={loading} />
+          <div className="performance-table"><DataTable columns={templateColumns} data={templates} loading={loading} /></div>
         </div>
       )}
 
@@ -133,7 +133,7 @@ export default function QuestionTemplatesPage() {
             <Button onClick={openQuestionAdd}>+ Add Question</Button>
           </div>
           {selectedTemplateId ? (
-            <DataTable columns={questionColumns} data={questions} loading={loading} />
+            <div className="performance-table"><DataTable columns={questionColumns} data={questions} loading={loading} /></div>
           ) : (
             <p className="text-gray-400 text-sm">Select a template to view its questions.</p>
           )}
@@ -151,6 +151,7 @@ export default function QuestionTemplatesPage() {
       />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={modalType === 'template' ? (editing ? 'Edit Template' : 'New Question Template') : 'Add Question'}
+        panelClassName="performance-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

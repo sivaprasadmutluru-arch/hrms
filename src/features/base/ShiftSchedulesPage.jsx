@@ -3,13 +3,13 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchShiftSchedules, createShiftSchedule, updateShiftSchedule, deleteShiftSchedule, selectShiftSchedules } from './baseExtrasSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
+import SetupDirectory from '../../components/common/SetupDirectory'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import { Clock3, CalendarDays } from 'lucide-react'
 
 const DAYS = [
   { value: 'MONDAY', label: 'Mon' },
@@ -92,16 +92,16 @@ export default function ShiftSchedulesPage() {
   }
 
   const columns = [
-    { accessorKey: 'name', header: 'Shift Name' },
-    { accessorKey: 'startTime', header: 'Start Time', cell: ({ getValue }) => getValue() || '—' },
-    { accessorKey: 'endTime', header: 'End Time', cell: ({ getValue }) => getValue() || '—' },
-    { accessorKey: 'minimumWorkingHour', header: 'Min Hours', cell: ({ getValue }) => getValue() != null ? `${getValue()}h` : '—' },
+    { accessorKey: 'name', header: 'Shift', cell: ({ row }) => <span className="setup-name-cell"><i><Clock3 size={16} /></i><b>{row.original.name}</b></span> },
+    { accessorKey: 'startTime', header: 'Start Time', cell: ({ getValue }) => <span className="setup-time-cell">{getValue() || '—'}</span> },
+    { accessorKey: 'endTime', header: 'End Time', cell: ({ getValue }) => <span className="setup-time-cell">{getValue() || '—'}</span> },
+    { accessorKey: 'minimumWorkingHour', header: 'Min Hours', cell: ({ getValue }) => <span className="setup-hours-cell">{getValue() != null ? `${getValue()}h` : '—'}</span> },
     { accessorKey: 'minimumOvertimeToApprove', header: 'Min OT', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'overtimeCutoff', header: 'OT Cutoff', cell: ({ getValue }) => getValue() || '—' },
-    { accessorKey: 'weeklyOffDays', header: 'Week Off', cell: ({ getValue }) => formatWeekOff(getValue()) },
+    { accessorKey: 'weeklyOffDays', header: 'Week Off', cell: ({ getValue }) => <span className="setup-related-cell"><CalendarDays size={15} />{formatWeekOff(getValue())}</span> },
     {
       id: 'actions', header: '', cell: ({ row }) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2 setup-table-actions">
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
         </div>
@@ -110,11 +110,10 @@ export default function ShiftSchedulesPage() {
   ]
 
   return (
-    <div>
-      <PageHeader title="Shift Schedules" subtitle="Manage work shift schedules" actions={<Button onClick={openCreate}>+ New Shift</Button>} />
-      <DataTable columns={columns} data={shifts} />
+    <>
+      <SetupDirectory title="Shift schedules" subtitle="Set working hours, overtime rules and weekly rest days for your teams." icon={<Clock3 size={22} />} itemLabel="shift" data={shifts} columns={columns} searchText={item => `${item.name || ''} ${item.startTime || ''} ${item.endTime || ''} ${formatWeekOff(item.weeklyOffDays)}`} action={<Button className="setup-primary-button" onClick={openCreate}>+ New shift</Button>} />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Shift' : 'New Shift'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="lg" panelClassName="setup-form-modal" title={editing ? 'Edit shift schedule' : 'New shift schedule'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Shift Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
@@ -129,7 +128,7 @@ export default function ShiftSchedulesPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Working Week</label>
-            <div className="flex gap-2">
+            <div className="shift-weekdays flex gap-2">
               {DAYS.map(d => {
                 const isOff = weekOff.includes(d.value)
                 return (
@@ -156,6 +155,6 @@ export default function ShiftSchedulesPage() {
 
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Shift" message={`Delete shift "${deleteTarget?.name}"?`} confirmLabel="Delete" />
-    </div>
+    </>
   )
 }

@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { fetchAll, create, update, uploadLogo, remove, selectAll, selectLoading, selectPagination } from './organizationsSlice'
 import { setSelectedCompany } from '../auth/authSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
@@ -15,7 +14,7 @@ import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import { STATUS_COLORS, API_BASE_URL } from '../../config/constants'
-import { BuildingOffice2Icon, CameraIcon } from '@heroicons/react/24/outline'
+import { BuildingOffice2Icon, CameraIcon, CheckBadgeIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 
 function getLogoUrl(logoPath) {
@@ -136,9 +135,9 @@ export default function OrganizationsPage() {
       cell: ({ row }) => {
         const url = getLogoUrl(row.original.logoPath)
         return url
-          ? <img src={url} alt="logo" className="h-8 w-8 rounded-lg object-cover border border-gray-100" />
-          : <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <BuildingOffice2Icon className="h-4 w-4 text-indigo-300" />
+          ? <img src={url} alt="logo" className="h-9 w-9 rounded-xl object-cover border border-[#DCE7F2]" />
+          : <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EDF5FD] ring-1 ring-inset ring-[#DCEBFA]">
+              <BuildingOffice2Icon className="h-4 w-4 text-[#4C84B8]" />
             </div>
       },
     },
@@ -169,13 +168,49 @@ export default function OrganizationsPage() {
   ]
 
   return (
-    <div>
-      <PageHeader
-        title="Organizations"
-        subtitle="Manage all platform organizations"
-        actions={<Button onClick={openCreate}>+ New Organization</Button>}
-      />
-      <DataTable columns={columns} data={data} loading={loading} />
+    <div className="space-y-5 pb-6">
+      <div className="relative overflow-hidden rounded-2xl border border-[#DCE7F2] bg-gradient-to-r from-white via-white to-[#F0F6FC] px-5 py-5 shadow-[0_8px_24px_rgba(30,65,96,0.045)] sm:px-6">
+        <div className="pointer-events-none absolute -right-8 -top-16 h-48 w-48 rounded-full bg-[#E8F1FB]/70" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FC] text-[#2D6FB4] ring-1 ring-inset ring-[#D7E6F7]">
+              <BuildingOffice2Icon className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A6B19]">Platform · Directory</p>
+              <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-[#17324F]">Organizations</h1>
+              <p className="mt-1 text-sm text-slate-500">Manage platform organizations and their access.</p>
+            </div>
+          </div>
+          <Button onClick={openCreate}>+ New Organization</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)]">
+          <span className="absolute inset-x-0 top-0 h-[3px] bg-[#4D8FD1]" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#EDF5FD] text-[#3479BC] ring-1 ring-inset ring-[#DCEBFA]"><BuildingOffice2Icon className="h-5 w-5" /></div>
+          <div><p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{pagination.total ?? data.length}</p><p className="text-xs font-medium text-slate-500">Total organizations</p></div>
+        </div>
+        <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)]">
+          <span className="absolute inset-x-0 top-0 h-[3px] bg-[#3E9B79]" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#ECF8F3] text-[#318367] ring-1 ring-inset ring-[#D8EFE5]"><CheckBadgeIcon className="h-5 w-5" /></div>
+          <div><p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{data.filter(org => org.status === 'ACTIVE').length}</p><p className="text-xs font-medium text-slate-500">Active on this page</p></div>
+        </div>
+        <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)]">
+          <span className="absolute inset-x-0 top-0 h-[3px] bg-[#E7C65B]" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFF8DF] text-[#98751D] ring-1 ring-inset ring-[#F4E7B8]"><ExclamationCircleIcon className="h-5 w-5" /></div>
+          <div><p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{data.filter(org => org.status && org.status !== 'ACTIVE').length}</p><p className="text-xs font-medium text-slate-500">Needs review</p></div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.055)]">
+        <div className="flex items-center justify-between border-b border-[#E7EEF5] bg-[#F8FAFD] px-5 py-4">
+          <div><h2 className="text-sm font-bold text-[#17324F]">Organization directory</h2><p className="mt-0.5 text-xs text-slate-500">Review and manage registered organizations</p></div>
+          <span className="rounded-full border border-[#DCE7F2] bg-white px-3 py-1 text-xs font-semibold text-[#46627D]">{pagination.total ?? data.length} total</span>
+        </div>
+        <DataTable columns={columns} data={data} loading={loading} />
+      </div>
       <Pagination
         page={pagination.page}
         totalPages={Math.ceil(pagination.total / pagination.size)}

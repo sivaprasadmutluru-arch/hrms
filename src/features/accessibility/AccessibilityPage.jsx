@@ -82,10 +82,10 @@ export default function AccessibilityPage() {
   ]
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="Default Accessibility" subtitle="Configure feature access and visibility rules"
         actions={<Button onClick={openCreate}>+ Add Rule</Button>} />
-      <DataTable columns={columns} data={items} loading={loading} />
+      <div className="admin-settings-table"><DataTable columns={columns} data={items} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -95,14 +95,14 @@ export default function AccessibilityPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Accessibility Rule' : 'New Accessibility Rule'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Accessibility Rule' : 'New Accessibility Rule'} panelClassName="admin-settings-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="admin-settings-form">
           <Input label="Feature" error={errors.feature?.message}
             placeholder="e.g. attendance, leave, payroll"
             {...register('feature', { required: 'Required' })} />

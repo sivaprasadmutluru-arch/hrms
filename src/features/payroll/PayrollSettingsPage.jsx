@@ -94,7 +94,7 @@ export default function PayrollSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="payroll-workspace payroll-settings-page space-y-6">
       <PageHeader title="Payroll Settings" subtitle="General, encashment and auto-generate configuration" />
 
       <div className="flex gap-2 border-b border-gray-200">
@@ -107,7 +107,7 @@ export default function PayrollSettingsPage() {
       </div>
 
       {tab === 'General' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-4">
+        <div className="payroll-settings-panel bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <h3 className="text-base font-semibold text-gray-800">General Payroll Settings</h3>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="roundOff" {...regGeneral('roundOff')} className="h-4 w-4 text-indigo-600 rounded" />
@@ -131,7 +131,7 @@ export default function PayrollSettingsPage() {
       )}
 
       {tab === 'Encashment' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-4">
+        <div className="payroll-settings-panel bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <h3 className="text-base font-semibold text-gray-800">Encashment Settings</h3>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="enableSelfEncashment" {...regEncash('enableSelfEncashment')} className="h-4 w-4 text-indigo-600 rounded" />
@@ -148,7 +148,7 @@ export default function PayrollSettingsPage() {
       )}
 
       {tab === 'Auto-Generate' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-4">
+        <div className="payroll-settings-panel bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <h3 className="text-base font-semibold text-gray-800">Payslip Auto-Generation</h3>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="autoGenerate" {...regAuto('autoGenerate')} className="h-4 w-4 text-indigo-600 rounded" />

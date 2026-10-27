@@ -4,7 +4,6 @@ import toast from 'react-hot-toast'
 import { fetchApplicants, hireApplicant, rejectApplicant, selectLoading } from './recruitmentSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import { formatDate } from '../../utils/formatters'
@@ -28,30 +27,45 @@ export default function ApplicantsPage() {
 
   const STAGE_VARIANT = { APPLIED: 'default', SCREENING: 'warning', INTERVIEW: 'primary', OFFERED: 'accent', HIRED: 'success', REJECTED: 'danger' }
 
-  const columns = [
-    { accessorKey: 'name', header: 'Applicant' },
-    { accessorKey: 'email', header: 'Email' },
-    { accessorKey: 'jobTitle', header: 'Position' },
-    { accessorKey: 'appliedDate', header: 'Applied', cell: ({ getValue }) => formatDate(getValue()) },
-    { accessorKey: 'stage', header: 'Stage', cell: ({ getValue }) => <Badge label={getValue() || 'Applied'} variant={STAGE_VARIANT[getValue()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="ghost" onClick={() => setDetail(row.original)}>View</Button>
-        {row.original.stage !== 'HIRED' && row.original.stage !== 'REJECTED' && (
-          <>
-            <Button size="sm" variant="success" onClick={() => handleHire(row.original.id)}>Hire</Button>
-            <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
-          </>
-        )}
-      </div>
-    )},
-  ]
+  const stageCounts = applicants.reduce((counts, applicant) => {
+    const stage = applicant.stage || 'APPLIED'
+    counts[stage] = (counts[stage] || 0) + 1
+    return counts
+  }, {})
 
   return (
-    <div>
+    <div className="recruitment-workspace">
       <PageHeader title="Applicants" subtitle="Review and manage job applicants" />
-      <DataTable columns={columns} data={applicants} loading={loading} />
-      <Modal open={!!detail} onClose={() => setDetail(null)} title="Applicant Details" size="md">
+      <div className="applicant-overview">
+        <div><span>Total candidates</span><strong>{loading ? '—' : applicants.length}</strong></div>
+        <div><span>In interview</span><strong>{loading ? '—' : stageCounts.INTERVIEW || 0}</strong></div>
+        <div><span>Offers</span><strong>{loading ? '—' : stageCounts.OFFERED || 0}</strong></div>
+        <div><span>Hired</span><strong>{loading ? '—' : stageCounts.HIRED || 0}</strong></div>
+      </div>
+      {loading ? <div className="applicant-list">{Array.from({ length: 4 }, (_, index) => <div className="applicant-skeleton" key={index} />)}</div> : (
+        <div className="applicant-list">
+          {applicants.length === 0 ? <div className="recruitment-empty">No applicants yet. Candidates will appear here when they apply to your job posts.</div> : applicants.map(applicant => {
+            const name = applicant.name || 'Candidate'
+            const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()
+            return (
+              <article className="applicant-card" key={applicant.id}>
+                <div className="applicant-avatar">{initials}</div>
+                <div className="applicant-main">
+                  <div className="applicant-name-line"><h2>{name}</h2><Badge label={applicant.stage || 'Applied'} variant={STAGE_VARIANT[applicant.stage] || 'default'} /></div>
+                  <p>{applicant.email || 'No email provided'}</p>
+                  <div className="applicant-meta"><span>{applicant.jobTitle || 'Position not specified'}</span><span>Applied {formatDate(applicant.appliedDate)}</span></div>
+                </div>
+                <div className="applicant-actions">
+                  <Button size="sm" variant="secondary" onClick={() => setDetail(applicant)}>View profile</Button>
+                  {applicant.stage !== 'HIRED' && applicant.stage !== 'REJECTED' && <Button size="sm" variant="success" onClick={() => handleHire(applicant.id)}>Hire</Button>}
+                  {applicant.stage !== 'HIRED' && applicant.stage !== 'REJECTED' && <Button size="sm" variant="danger" onClick={() => handleReject(applicant.id)}>Reject</Button>}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+      <Modal open={!!detail} onClose={() => setDetail(null)} title="Applicant Details" size="md" panelClassName="recruitment-form-modal">
         {detail && (
           <div className="space-y-3 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Name</span><span className="font-medium">{detail.name}</span></div>

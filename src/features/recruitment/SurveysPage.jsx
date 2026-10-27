@@ -61,10 +61,10 @@ export default function SurveysPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="recruitment-workspace">
       <PageHeader title="Survey Templates" subtitle="Reusable survey templates for job applications"
         actions={<Button onClick={openCreate}>+ Add Template</Button>} />
-      <DataTable columns={columns} data={templates} loading={loading} />
+      <div className="recruitment-table"><DataTable columns={columns} data={templates} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -74,7 +74,7 @@ export default function SurveysPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Template' : 'Add Template'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Template' : 'Add Template'} panelClassName="recruitment-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />

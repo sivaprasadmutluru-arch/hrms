@@ -228,7 +228,7 @@ export default function GeneralSettingsPage() {
   const companyId = effectiveCompanyId
 
   return (
-    <div className="p-6">
+    <div className="admin-settings-workspace general-settings-workspace p-6">
       <PageHeader title="General Settings" subtitle="Configure company-wide settings and preferences" />
 
       <div className="mt-4 flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">

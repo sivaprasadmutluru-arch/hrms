@@ -162,13 +162,13 @@ export default function ReimbursementsPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader title="Reimbursements" subtitle="Employee reimbursement and encashment requests"
         actions={<Button onClick={() => { setEditTarget(null); reset(isEmp ? { employeeId: String(user?.employeeId) } : {}); setModalOpen(true) }}>+ New Request</Button>} />
       <DataTable columns={columns} data={reimbursements} loading={loading} />
 
       {/* Create / Edit Modal */}
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Reimbursement Request' : 'Submit Reimbursement Request'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Reimbursement Request' : 'Submit Reimbursement Request'} panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
@@ -214,7 +214,7 @@ export default function ReimbursementsPage() {
       </Modal>
 
       {/* Detail Modal — Attachments + Comments */}
-      <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title="Reimbursement Details">
+      <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title="Reimbursement Details" panelClassName="payroll-form-modal">
         {selected && (
           <div className="space-y-6">
             <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">

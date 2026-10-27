@@ -95,10 +95,10 @@ export default function AssetRequestsPage() {
   ]
 
   return (
-    <div>
+    <div className="asset-workspace">
       <PageHeader title="Asset Requests" subtitle="Employee asset requests"
         actions={<Button onClick={openCreate}>New Request</Button>} />
-      <DataTable columns={columns} data={requests} />
+      <div className="asset-table"><DataTable columns={columns} data={requests} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -107,7 +107,7 @@ export default function AssetRequestsPage() {
         message="Are you sure you want to delete this asset request? This cannot be undone."
         confirmLabel="Delete"
       />
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Request' : 'New Asset Request'}
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Request' : 'New Asset Request'} panelClassName="asset-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setModal(false)}>Cancel</Button>

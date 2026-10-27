@@ -201,7 +201,7 @@ export default function WorkRecordsPage() {
   const tablePagination = pagination
 
   return (
-    <div className="space-y-6">
+    <div className="attendance-workspace attendance-work-records-page space-y-6">
       <PageHeader
         title="Work Records"
         subtitle="Manage daily calculated hours and individual punches"
@@ -276,9 +276,17 @@ export default function WorkRecordsPage() {
         open={showModal}
         onClose={() => setShowModal(false)}
         title={editingId ? 'Edit Work Record' : 'Add Work Record'}
+        size="lg"
+        panelClassName="work-record-modal"
+        footer={
+          <div className="work-record-modal-actions">
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" form="work-record-form">{editingId ? 'Update record' : 'Save record'}</Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <FormField label="Employee" error={errors.employeeId?.message}>
+        <form id="work-record-form" onSubmit={handleSubmit(onSubmit)} className="work-record-form">
+          <FormField label="Employee" error={errors.employeeId?.message} className="work-record-employee-field">
             <Select
               {...register('employeeId', { required: 'Required' })}
               options={employees.map(e => ({
@@ -287,21 +295,17 @@ export default function WorkRecordsPage() {
               }))}
             />
           </FormField>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 work-record-date-fields">
             <Input label="Date" type="date" error={errors.date?.message} {...register('date', { required: 'Required' })} />
             <FormField label="Type">
               <Select {...register('workRecordType')} options={RECORD_TYPES} />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 work-record-hours-fields">
             <Input label="At Work (HH:MM)" {...register('atWork')} placeholder="08:30" />
             <Input label="Min Hour (HH:MM)" {...register('minHour')} placeholder="08:00" />
           </div>
-          <Input label="Note" {...register('note')} />
-          <div className="flex justify-end gap-3 mt-6">
-            <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit">Save Record</Button>
-          </div>
+          <Input label="Note" {...register('note')} className="work-record-note-field" />
         </form>
       </Modal>
     </div>

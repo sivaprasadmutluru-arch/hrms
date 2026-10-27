@@ -144,7 +144,7 @@ export default function RotatingShiftAssignsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="attendance-workspace attendance-rotating-shifts-page p-6">
       <PageHeader
         title="Rotating Assignments"
         subtitle="Manage rotating shift and work type assignments"

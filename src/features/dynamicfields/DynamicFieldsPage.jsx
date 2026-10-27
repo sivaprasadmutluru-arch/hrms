@@ -110,7 +110,7 @@ export default function DynamicFieldsPage() {
   ]
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="Dynamic Fields" subtitle="Extend employee and HR forms with custom fields" />
 
       {/* Dynamic Fields Section */}
@@ -119,7 +119,7 @@ export default function DynamicFieldsPage() {
           <h2 className="text-base font-semibold text-gray-900">Custom Fields</h2>
           <Button onClick={openCreate}>+ Add Field</Button>
         </div>
-        <DataTable columns={fieldColumns} data={fields} loading={loading} />
+          <div className="admin-settings-table"><DataTable columns={fieldColumns} data={fields} loading={loading} /></div>
       </div>
 
       {/* Choices Section */}
@@ -157,14 +157,14 @@ export default function DynamicFieldsPage() {
         loading={loading}
       />
       {/* Field Modal */}
-      <Modal open={fieldModalOpen} onClose={() => setFieldModalOpen(false)} title={editing ? 'Edit Dynamic Field' : 'Add Dynamic Field'}
+      <Modal open={fieldModalOpen} onClose={() => setFieldModalOpen(false)} title={editing ? 'Edit Dynamic Field' : 'Add Dynamic Field'} panelClassName="admin-settings-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setFieldModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmitField)}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="admin-settings-form">
           <Input label="Model" placeholder="e.g. employee, leave" error={errors.model?.message}
             {...register('model', { required: 'Required' })} />
           <Input label="Verbose Name" placeholder="Display label" {...register('verboseName')} />

@@ -133,7 +133,7 @@ export default function TaxSettingsPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader title="Tax Settings" subtitle="Filing statuses and tax brackets"
         actions={<Button onClick={openCreateFs}>+ Add Filing Status</Button>} />
       <DataTable columns={fsColumns} data={filingStatuses} loading={loading} />
@@ -150,7 +150,7 @@ export default function TaxSettingsPage() {
         </div>
       )}
 
-      <Modal open={fsModalOpen} onClose={() => setFsModalOpen(false)} title={editingFs ? 'Edit Filing Status' : 'Add Filing Status'}
+      <Modal open={fsModalOpen} onClose={() => setFsModalOpen(false)} title={editingFs ? 'Edit Filing Status' : 'Add Filing Status'} panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setFsModalOpen(false)}>Cancel</Button>
@@ -185,7 +185,7 @@ export default function TaxSettingsPage() {
         </div>
       </Modal>
 
-      <Modal open={bracketModalOpen} onClose={() => setBracketModalOpen(false)} title={editingBracket ? 'Edit Tax Bracket' : 'Add Tax Bracket'}
+      <Modal open={bracketModalOpen} onClose={() => setBracketModalOpen(false)} title={editingBracket ? 'Edit Tax Bracket' : 'Add Tax Bracket'} panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setBracketModalOpen(false)}>Cancel</Button>

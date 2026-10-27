@@ -32,6 +32,8 @@ export default function HolidayAllocationPage() {
   const [searchParams] = useSearchParams()
   const [modal, setModal] = useState(false)
   const [allocType, setAllocType] = useState('employee') // 'employee' | 'department'
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([])
+  const [employeeSearch, setEmployeeSearch] = useState('')
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const [editModal, setEditModal] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
@@ -60,6 +62,8 @@ export default function HolidayAllocationPage() {
   const openCreate = () => {
     reset({})
     setAllocType('employee')
+    setSelectedEmployeeIds([])
+    setEmployeeSearch('')
     setModal(true)
   }
 
@@ -86,9 +90,7 @@ export default function HolidayAllocationPage() {
     if (allocType === 'department') {
       payload.departmentId = data.departmentId
     } else {
-      // employeeIds is a multi-select; value comes as array or single string
-      const ids = Array.isArray(data.employeeIds) ? data.employeeIds : [data.employeeIds]
-      payload.employeeIds = ids.filter(Boolean).map(Number)
+      payload.employeeIds = selectedEmployeeIds.map(Number)
       if (!payload.employeeIds.length) {
         toast.error('Select at least one employee')
         return
@@ -153,8 +155,9 @@ export default function HolidayAllocationPage() {
 
       <DataTable columns={columns} data={allocations} />
 
-      <Modal open={modal} onClose={() => setModal(false)} title="New Holiday Allocation">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Modal open={modal} onClose={() => setModal(false)} title="New Holiday Allocation" size="lg" panelClassName="allocation-form-modal"
+        footer={<div className="allocation-modal-actions"><Button type="button" variant="secondary" onClick={() => setModal(false)}>Cancel</Button><Button type="submit" form="holiday-allocation-form">Allocate</Button></div>}>
+        <form id="holiday-allocation-form" onSubmit={handleSubmit(onSubmit)} className="allocation-form-layout">
           {/* Holiday select */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Holiday</label>
@@ -171,7 +174,7 @@ export default function HolidayAllocationPage() {
           </div>
 
           {/* Allocation type toggle */}
-          <div className="flex gap-3">
+          <div className="allocation-type-toggle flex gap-3">
             <button
               type="button"
               onClick={() => setAllocType('employee')}
@@ -190,22 +193,14 @@ export default function HolidayAllocationPage() {
 
           {/* Employee multi-select */}
           {allocType === 'employee' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Employees <span className="text-gray-400 font-normal">(hold Ctrl/Cmd to select multiple)</span>
-              </label>
-              <select
-                multiple
-                size={6}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                {...register('employeeIds')}
-              >
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>
-                    {e.firstName} {e.lastName || ''} {e.badgeId ? `(${e.badgeId})` : ''}
-                  </option>
+            <div className="allocation-employee-picker">
+              <div className="allocation-picker-heading"><label>Employees</label><span>{selectedEmployeeIds.length} selected</span></div>
+              <label className="allocation-search"><span aria-hidden="true">⌕</span><input value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)} placeholder="Search employees" aria-label="Search employees" /></label>
+              <div className="allocation-employee-list">
+                {employees.filter(e => `${e.firstName || ''} ${e.lastName || ''} ${e.badgeId || ''} ${e.departmentName || ''}`.toLowerCase().includes(employeeSearch.toLowerCase())).length === 0 ? <p className="allocation-empty-employees">{employees.length ? 'No matching employees.' : 'No employees are available.'}</p> : employees.filter(e => `${e.firstName || ''} ${e.lastName || ''} ${e.badgeId || ''} ${e.departmentName || ''}`.toLowerCase().includes(employeeSearch.toLowerCase())).map(e => (
+                  <label key={e.id} className="allocation-employee-option"><input type="checkbox" checked={selectedEmployeeIds.includes(e.id)} onChange={() => setSelectedEmployeeIds(ids => ids.includes(e.id) ? ids.filter(id => id !== e.id) : [...ids, e.id])} /><span className="allocation-employee-avatar">{(e.firstName || 'E').charAt(0).toUpperCase()}</span><span className="allocation-employee-name">{e.firstName} {e.lastName || ''}</span>{e.departmentName && <small>{e.departmentName}</small>}</label>
                 ))}
-              </select>
+              </div>
             </div>
           )}
 
@@ -226,10 +221,6 @@ export default function HolidayAllocationPage() {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setModal(false)}>Cancel</Button>
-            <Button type="submit">Allocate</Button>
-          </div>
         </form>
       </Modal>
 

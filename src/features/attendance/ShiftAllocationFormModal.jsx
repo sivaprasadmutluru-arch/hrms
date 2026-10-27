@@ -61,8 +61,9 @@ export default function ShiftAllocationFormModal({ open, allocation, companyId, 
   })), [employees])
 
   return (
-    <Modal open={open} title={allocation ? 'Edit Shift Allocation' : 'New Shift Allocation'} onClose={onClose}>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <Modal open={open} title={allocation ? 'Edit Shift Allocation' : 'New Shift Allocation'} onClose={onClose} size="lg" panelClassName="allocation-form-modal"
+      footer={<div className="allocation-modal-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="shift-allocation-form" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : allocation ? 'Save changes' : 'Create allocation'}</Button></div>}>
+      <form id="shift-allocation-form" onSubmit={handleSubmit(onSubmit)} className="allocation-form-layout allocation-bulk-form">
 
         {/* Employee */}
         <Combobox
@@ -125,12 +126,6 @@ export default function ShiftAllocationFormModal({ open, allocation, companyId, 
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving…' : allocation ? 'Save Changes' : 'Create'}
-          </Button>
-        </div>
       </form>
     </Modal>
   )

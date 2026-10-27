@@ -250,7 +250,7 @@ export default function GratuityPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader
         title="Gratuity / EOSB Calculator"
         subtitle="UAE Labour Law — End of Service Benefits"
@@ -271,6 +271,7 @@ export default function GratuityPage() {
         onClose={() => setCalcModalOpen(false)}
         title="Calculate End of Service Benefits (UAE)"
         size="lg"
+        panelClassName="payroll-form-modal"
       >
         <form onSubmit={handleSubmit(onCalculate)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -361,6 +362,7 @@ export default function GratuityPage() {
         onClose={() => setDetailOpen(false)}
         title="EOSB Settlement Details"
         size="lg"
+        panelClassName="payroll-form-modal"
       >
         {preview && <EosbBreakdown calc={preview} format={format} onDownload={() => handleDownloadPdf(preview.id)} />}
       </Modal>
@@ -371,6 +373,7 @@ export default function GratuityPage() {
         onClose={() => setEditOpen(false)}
         title="Edit EOSB Record"
         size="lg"
+        panelClassName="payroll-form-modal"
       >
         <form onSubmit={handleEditSubmit(onEdit)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

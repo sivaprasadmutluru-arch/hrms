@@ -151,7 +151,7 @@ export default function ObjectivesPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader
         title="Objectives"
         subtitle="Employee performance objectives and KPIs"
@@ -188,15 +188,15 @@ export default function ObjectivesPage() {
         </select>
       </div>
 
-      <DataTable
+      <div className="performance-table"><DataTable
         columns={columns}
         data={filtered}
         loading={loading}
         onRowClick={(row) => setDetailObj(row)}
-      />
+      /></div>
 
       {/* Create / Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingObj ? 'Edit Objective' : 'New Objective'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingObj ? 'Edit Objective' : 'New Objective'} panelClassName="performance-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -226,7 +226,7 @@ export default function ObjectivesPage() {
 
       {/* Detail / Progress Panel */}
       {detailObj && (
-        <Modal open={!!detailObj} onClose={() => setDetailObj(null)} title={detailObj.title}
+        <Modal open={!!detailObj} onClose={() => setDetailObj(null)} title={detailObj.title} panelClassName="performance-form-modal"
           footer={
             <div className="flex justify-between">
               <Button variant="danger" onClick={() => handleDelete(detailObj.id)}>Delete</Button>

@@ -5,7 +5,6 @@ import {
   Mail, MapPin, Network, Phone, ShieldCheck, Smartphone, UserRound, UsersRound,
   Wrench,
 } from 'lucide-react'
-import brandLogo from '../../assets/the-greater-change-logo.png'
 
 const personalInformation = [
   'Full name', 'Employee ID', 'Date of birth', 'Gender, where required by the organization',
@@ -83,7 +82,11 @@ export default function PrivacyPolicyPage() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-3 sm:px-10 lg:px-16">
-          <img src={brandLogo} alt="Grecha.ai HRMS" className="h-10 w-auto object-contain sm:h-12" />
+          <Link to="/login" aria-label="Accrue Technologies login" className="flex items-center gap-3">
+            <img src="/accrue-mark.svg" alt="" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
+            <span className="text-lg font-black tracking-[0.12em] text-[#102a43] sm:text-xl">ACCRUE<span className="text-[#347fc8]">.</span></span>
+            <span className="text-[9px] font-bold tracking-[0.2em] text-[#52708e] sm:text-[10px]">TECHNOLOGIES</span>
+          </Link>
           <Link to="/login" className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-[#0B3D91] transition hover:bg-blue-50">
             <ArrowLeft className="h-4 w-4" /> Back to login
           </Link>
@@ -94,12 +97,12 @@ export default function PrivacyPolicyPage() {
         <section className="w-full bg-gradient-to-r from-[#062B74] via-[#0B3D91] to-[#1769D1] py-10 text-white sm:py-12">
           <div className="mx-auto grid w-full max-w-7xl items-center gap-8 px-6 sm:px-10 lg:grid-cols-[1fr_auto] lg:px-16">
             <div>
-              <p className="mb-3 text-sm font-bold uppercase tracking-[0.24em] text-blue-200">Grecha.ai HRMS</p>
+              <p className="mb-3 text-sm font-bold uppercase tracking-[0.24em] text-blue-200">Accrue Technologies · AI HRMS Portal</p>
               <h1 className="text-[28px] font-black tracking-tight sm:text-[40px]">Privacy Policy</h1>
               <div className="mt-6 grid gap-3 text-sm sm:grid-cols-3 sm:text-base">
                 <p><strong>Effective Date:</strong><br />16 August 2026</p>
-                <p><strong>Application:</strong><br />Grecha.ai HRMS Mobile Application</p>
-                <p><strong>Website:</strong><br />Grecha.ai</p>
+                <p><strong>Application:</strong><br />Accrue AI HRMS Portal</p>
+                <p><strong>Provider:</strong><br />Accrue Technologies</p>
               </div>
             </div>
             <ShieldCheck className="hidden h-36 w-36 text-blue-100/90 md:block" strokeWidth={1.4} />
@@ -108,9 +111,9 @@ export default function PrivacyPolicyPage() {
 
         <article className="mx-auto w-full max-w-7xl bg-white px-6 py-8 sm:px-10 sm:py-9 lg:px-16">
           <div className="mb-8 max-w-6xl border-b border-slate-200 pb-6 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">
-            <p className="text-[17px] font-bold leading-7 text-[#062B74] sm:text-lg">Grecha.ai respects your privacy and is committed to protecting your personal information.</p>
-            <p className="mt-3">Grecha.ai (&ldquo;Grecha&rdquo;, &ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) protects the personal information of employees, users, administrators, and organizations using our Human Resource Management System (&ldquo;HRMS&rdquo;) mobile application.</p>
-            <p className="mt-3">This Privacy Policy explains what information we collect, how we use and protect it, and the choices and rights available to you when using the Grecha.ai HRMS mobile application and related services.</p>
+            <p className="text-[17px] font-bold leading-7 text-[#062B74] sm:text-lg">Accrue Technologies is committed to respecting your privacy and protecting your personal information.</p>
+            <p className="mt-3">Accrue Technologies (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) supports employees, users, administrators, and organizations using the Accrue AI Human Resource Management System (&ldquo;HRMS&rdquo;) portal.</p>
+            <p className="mt-3">This Privacy Policy explains what information may be collected, how it may be used and protected, and the choices and rights available when using the Accrue AI HRMS Portal and related services.</p>
             <p className="mt-3">By accessing or using the application, you acknowledge that you have read and understood this Privacy Policy.</p>
           </div>
 
@@ -147,7 +150,7 @@ export default function PrivacyPolicyPage() {
 
           <div className="my-7 border-t border-slate-200" />
           <SectionTitle number="3" title="Organization-Controlled Data" icon={Building2} color="text-emerald-700" />
-          <p className="max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Grecha.ai HRMS may be provided to organizations, employers, or other authorized entities. Your organization controls what employee information is collected, which HRMS features are enabled, who can access employee information, how employee information is used within the organization, and how long information is retained.</p>
+          <p className="max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Accrue AI HRMS may be provided to organizations, employers, or other authorized entities. Your organization controls what employee information is collected, which HRMS features are enabled, who can access employee information, how employee information is used within the organization, and how long information is retained.</p>
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950 sm:text-base">Your employer or organization may therefore have its own privacy policies and internal procedures governing employee information. If you have questions about information collected specifically by your employer, you should also contact your organization&apos;s HR or privacy administrator.</div>
 
           <div className="my-7 border-t border-slate-200" />
@@ -163,11 +166,10 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-black">5. Contact Us</h2>
           <p className="mt-2 text-sm text-blue-100">For any questions, concerns, or requests regarding this Privacy Policy or your personal information, please contact us:</p>
           <div className="mt-5 flex flex-col gap-3 text-sm sm:flex-row sm:gap-8">
-            <a href="mailto:info@thegreaterchange.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />info@thegreaterchange.com</a>
-            <a href="tel:+971501619355" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Phone className="h-5 w-5" />+971 50 161 9355</a>
-            <a href="https://grecha.ai" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Globe2 className="h-5 w-5" />Grecha.ai</a>
+            <a href="mailto:sivaprasadmutluru@gmail.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />sivaprasadmutluru@gmail.com</a>
+            <a href="tel:+919381934911" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Phone className="h-5 w-5" />9381934911</a>
           </div>
-          <p className="mt-7 border-t border-white/15 pt-5 text-xs text-blue-200">© 2026 Grecha.ai HRMS. Your privacy. Our responsibility.</p>
+          <p className="mt-7 border-t border-white/15 pt-5 text-xs text-blue-200">© 2026 Accrue Technologies. Your privacy. Our responsibility.</p>
         </div>
       </footer>
     </div>

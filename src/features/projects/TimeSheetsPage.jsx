@@ -94,10 +94,10 @@ export default function TimeSheetsPage() {
   ]
 
   return (
-    <div>
+    <div className="projects-workspace">
       <PageHeader title="Timesheets" subtitle="Employee time log per task"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Log Time</Button>} />
-      <DataTable columns={columns} data={timesheets} loading={loading} />
+      <div className="projects-table"><DataTable columns={columns} data={timesheets} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -107,7 +107,7 @@ export default function TimeSheetsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Timesheet Entry' : 'Log Time'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Timesheet Entry' : 'Log Time'} panelClassName="projects-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

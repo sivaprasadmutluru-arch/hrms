@@ -3,15 +3,14 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { fetchAll, create, update, remove, selectAll, selectLoading, selectPagination } from './departmentsSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
-import Input from '../../components/common/Input'
 import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import { Building2, UsersRound, UserRound, Search, Plus, Sparkles, X } from 'lucide-react'
 
 export default function DepartmentsPage() {
   const dispatch = useDispatch()
@@ -22,6 +21,7 @@ export default function DepartmentsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [query, setQuery] = useState('')
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 20 })) }, [dispatch])
@@ -65,32 +65,50 @@ export default function DepartmentsPage() {
   }
 
   const columns = [
-    { accessorKey: 'name', header: 'Department Name' },
+    { accessorKey: 'name', header: 'Department', cell: ({ row }) => (
+      <div className="department-name-cell"><span className="department-row-icon"><Building2 size={17} /></span><span><b>{row.original.name}</b><small>Company department</small></span></div>
+    ) },
     { id: 'manager', header: 'Manager', cell: ({ row }) => {
       const m = row.original.manager
-      return m ? `${m.firstName || ''} ${m.lastName || ''}`.trim() || '—' : '—'
+      return m ? <span className="department-manager-cell"><span><UserRound size={15} /></span>{`${m.firstName || ''} ${m.lastName || ''}`.trim() || '—'}</span> : <span className="department-unassigned">Not assigned</span>
     }},
     { id: 'status', header: 'Status', cell: ({ row }) => (
       <Badge label={row.original.isActive === false ? 'Inactive' : 'Active'} variant={row.original.isActive === false ? 'danger' : 'success'} />
     )},
     { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
         <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
       </div>
     )},
   ]
 
+  const filteredData = data.filter(department => department.name?.toLowerCase().includes(query.trim().toLowerCase()))
+  const activeCount = data.filter(department => department.isActive !== false).length
+  const inactiveCount = data.length - activeCount
+
   return (
-    <div>
-      <PageHeader title="Departments" subtitle="Manage company departments" actions={<Button onClick={openCreate}>+ New Department</Button>} />
-      <DataTable columns={columns} data={data} loading={loading} />
-      <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Department' : 'New Department'}
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
-        <div className="space-y-4">
-          <Input label="Department Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
-          <Input label="Manager ID (optional)" {...register('managerId')} />
+    <div className="departments-page">
+      <div className="departments-heading">
+        <div><span className="departments-kicker"><Sparkles size={13} /> PEOPLE OPERATIONS</span><h1>Departments</h1><p>Structure your teams and keep ownership clear across the organization.</p></div>
+        <Button className="department-add-button" onClick={openCreate}><Plus size={17} /> New department</Button>
+      </div>
+      <div className="department-metrics">
+        <article><span className="department-metric-icon total"><Building2 size={19} /></span><div><small>Total departments</small><strong>{pagination.total ?? data.length}</strong></div></article>
+        <article><span className="department-metric-icon active"><UsersRound size={19} /></span><div><small>Active departments</small><strong>{activeCount}</strong></div></article>
+        <article><span className="department-metric-icon inactive"><UserRound size={19} /></span><div><small>Inactive departments</small><strong>{inactiveCount}</strong></div></article>
+      </div>
+      <section className="department-directory">
+        <div className="department-directory-heading"><div><h2>Department directory</h2><p>Manage departments and their team leads.</p></div><label className="department-search"><Search size={17} /><input aria-label="Search departments" placeholder="Search departments" value={query} onChange={event => setQuery(event.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={15} /></button>}</label></div>
+        <DataTable columns={columns} data={filteredData} loading={loading} />
+        <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
+      </section>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="lg" panelClassName="department-modal" title={editing ? 'Edit department' : 'Create a department'}
+        footer={<div className="department-modal-actions"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button className="department-save-button" onClick={handleSubmit(onSubmit)}>{editing ? 'Save changes' : 'Create department'}</Button></div>}>
+        <div className="department-modal-intro"><span><Building2 size={18} /></span><p>Give this team a clear name and assign a manager if one is already in place.</p></div>
+        <div className="department-form-fields">
+          <label className="department-form-field"><span>Department name <i>Required</i></span><div className={errors.name ? 'has-error' : ''}><Building2 size={17} /><input autoFocus placeholder="e.g. People & Culture" {...register('name', { required: 'Enter a department name' })} /></div>{errors.name && <small>{errors.name.message}</small>}</label>
+          <label className="department-form-field"><span>Manager ID <i>Optional</i></span><div><UserRound size={17} /><input placeholder="Enter employee ID" {...register('managerId')} /></div><small>Assign a department lead now, or leave this blank and add one later.</small></label>
         </div>
       </Modal>
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}

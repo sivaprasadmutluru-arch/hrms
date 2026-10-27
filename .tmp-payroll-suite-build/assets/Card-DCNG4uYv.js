@@ -1,0 +1,1 @@
+import{t as e}from"./vendor-react-DWC6rCfC.js";var t=e();function n({children:e,className:n=``,padding:r=!0,onClick:i}){return(0,t.jsx)(`div`,{onClick:i,className:`bg-white rounded-2xl shadow-[0_8px_28px_rgba(30,65,96,0.055)] border border-[#E5ECF3] ${r?`p-6`:``} ${n}`,children:e})}export{n as t};

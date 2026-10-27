@@ -30,7 +30,7 @@ export default function LinkedInSettingsPage() {
   }
 
   return (
-    <div>
+    <div className="admin-settings-workspace recruitment-workspace recruitment-linkedin-settings">
       <PageHeader title="LinkedIn Integration" subtitle="Configure LinkedIn recruitment integration" />
       <div className="max-w-lg p-4">
         <div className="bg-white rounded-lg border p-6 space-y-4">

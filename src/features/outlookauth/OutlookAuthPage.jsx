@@ -80,10 +80,10 @@ export default function OutlookAuthPage() {
   ]
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="Outlook / Azure Integration" subtitle="Configure Microsoft Outlook OAuth for email"
         actions={<Button onClick={openCreate}>+ Add Integration</Button>} />
-      <DataTable columns={columns} data={list} loading={loading} />
+      <div className="admin-settings-table"><DataTable columns={columns} data={list} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -93,29 +93,39 @@ export default function OutlookAuthPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Outlook Integration' : 'Add Outlook Integration'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Outlook Integration' : 'Add Outlook Integration'} size="xl" panelClassName="admin-settings-modal outlook-integration-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4 max-h-96 overflow-y-auto">
-          <Input label="Client ID" error={errors.outlookClientId?.message}
-            {...register('outlookClientId', { required: 'Required' })} />
-          <Input label="Client Secret" type="password" {...register('outlookClientSecret')} />
-          <Input label="Tenant ID" error={errors.outlookTenantId?.message}
-            {...register('outlookTenantId', { required: 'Required' })} />
-          <Input label="Email" type="email" {...register('outlookEmail')} />
-          <Input label="Display Name" {...register('outlookDisplayName')} />
-          <Input label="Redirect URI" {...register('outlookRedirectUri')} />
-          <Input label="Authorization URL" {...register('outlookAuthorizationUrl')} />
-          <Input label="Token URL" {...register('outlookTokenUrl')} />
-          <Input label="API Endpoint" {...register('outlookApiEndpoint')} />
-          <Input label="OAuth State" {...register('oauthState')} />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" {...register('isPrimary')} className="rounded" />
-            Set as Primary
+        <div className="outlook-integration-form">
+          <section className="outlook-form-section">
+            <div className="outlook-form-section-heading"><span>01</span><div><h3>Microsoft account</h3><p>Credentials and mailbox identity</p></div></div>
+            <div className="outlook-form-grid">
+              <Input label="Client ID" error={errors.outlookClientId?.message}
+                {...register('outlookClientId', { required: 'Required' })} />
+              <Input label="Client Secret" type="password" {...register('outlookClientSecret')} />
+              <Input label="Tenant ID" error={errors.outlookTenantId?.message}
+                {...register('outlookTenantId', { required: 'Required' })} />
+              <Input label="Email" type="email" {...register('outlookEmail')} />
+              <Input label="Display Name" {...register('outlookDisplayName')} />
+            </div>
+          </section>
+          <section className="outlook-form-section">
+            <div className="outlook-form-section-heading"><span>02</span><div><h3>OAuth endpoints</h3><p>Microsoft sign-in and API connection URLs</p></div></div>
+            <div className="outlook-form-grid">
+              <Input label="Redirect URI" {...register('outlookRedirectUri')} />
+              <Input label="OAuth State" {...register('oauthState')} />
+              <Input label="Authorization URL" {...register('outlookAuthorizationUrl')} />
+              <Input label="Token URL" {...register('outlookTokenUrl')} />
+              <Input label="API Endpoint" {...register('outlookApiEndpoint')} />
+            </div>
+          </section>
+          <label className="outlook-primary-option">
+            <input type="checkbox" {...register('isPrimary')} />
+            <span><strong>Set as primary integration</strong><small>Use this Outlook connection as the default for email.</small></span>
           </label>
         </div>
       </Modal>

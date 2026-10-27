@@ -208,7 +208,7 @@ export default function AttendanceRegularisationPage() {
   const showOT = selectedType === 'OVERTIME_REQUEST'
 
   return (
-    <div>
+    <div className="attendance-workspace attendance-regularisation-page">
       <PageHeader title="Attendance Regularisation" subtitle="Request corrections for irregular attendance records"
         actions={
           <Button onClick={() => { reset(); setSubmitOpen(true) }} disabled={irregularRecords.length === 0 && isEmp}>

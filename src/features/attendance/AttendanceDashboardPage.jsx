@@ -127,8 +127,8 @@ export default function AttendanceDashboardPage() {
   ]
 
   return (
-    <div>
-      <PageHeader title="Attendance Dashboard" subtitle="Daily attendance analytics and team overview">
+    <div className="attendance-workspace attendance-dashboard-page">
+      <PageHeader title="Attendance Dashboard" subtitle="Daily attendance analytics and team overview" actions={
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-500 font-medium">Date:</label>
@@ -151,7 +151,7 @@ export default function AttendanceDashboardPage() {
             </select>
           </div>
         </div>
-      </PageHeader>
+      } />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">

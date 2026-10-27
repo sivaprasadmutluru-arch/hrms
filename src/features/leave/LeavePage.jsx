@@ -629,7 +629,7 @@ export default function LeavePage() {
   }
 
   return (
-    <div>
+    <div className="space-y-5 pb-6">
       <PageHeader title="Leave Management" subtitle="Requests, types, and allocations"
         actions={<div className="flex flex-wrap justify-end gap-2">
           {canPurgeLeaveData && <Button variant="danger" onClick={openPurgeLeaveData} disabled={purgeLoading}>
@@ -642,29 +642,29 @@ export default function LeavePage() {
           setModalOpen(true)
           }}>+ Apply Leave</Button>
         </div>} />
-      <div className="flex gap-1 mb-4 border-b border-gray-200">
+      <div className="inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-[#DCE7F2] bg-white p-1.5 shadow-[0_6px_20px_rgba(30,65,96,0.04)]">
         {(isEmployee() ? EMPLOYEE_TABS : ALL_TABS).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === t ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${tab === t ? 'bg-[#1F5F9D] text-white shadow-[0_5px_12px_rgba(31,95,157,0.2)]' : 'text-slate-500 hover:bg-[#F2F7FC] hover:text-[#24496B]'}`}>
             {t}
           </button>
         ))}
       </div>
       {tab === 'Requests' && (() => {
         return <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#DCE7F2] bg-gradient-to-r from-white to-[#F6F9FD] p-4 shadow-[0_6px_20px_rgba(30,65,96,0.035)] sm:flex-row sm:items-center sm:justify-between">
             <input
               type="text"
               placeholder="Search by employee, type, department or status…"
               value={requestSearch}
               onChange={e => setRequestSearch(e.target.value)}
-              className="w-full sm:w-96 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-xl border border-[#DCE7F2] bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA] sm:w-96"
             />
             {canManage && (
               <div className="flex gap-2">
                 <select aria-label="Filter leave requests by year" value={requestYear}
                   onChange={event => { setRequestYear(event.target.value); setSelectedRequestIds(new Set()) }}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  className="rounded-xl border border-[#DCE7F2] bg-white px-3.5 py-2.5 text-sm text-[#294766] outline-none focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]">
                   <option value="">All years</option>
                   {Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index).map(year => <option key={year} value={year}>{year}</option>)}
                 </select>
@@ -692,23 +692,25 @@ export default function LeavePage() {
               </div>
             )}
           </div>
-          <DataTable columns={requestColumns} data={visibleRequests} loading={loading} />
+          <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
+            <DataTable columns={requestColumns} data={visibleRequests} loading={loading} />
+          </div>
           <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))} />
         </>
       })()}
       {tab === 'Allocations' && (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#DCE7F2] bg-gradient-to-r from-white to-[#F6F9FD] p-4 shadow-[0_6px_20px_rgba(30,65,96,0.035)] sm:flex-row sm:items-center sm:justify-between">
             <input
               type="text"
               placeholder="Search by employee or leave type…"
               value={allocationSearch}
               onChange={e => setAllocationSearch(e.target.value)}
-              className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-xl border border-[#DCE7F2] bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA] sm:w-80"
             />
             <div className="flex gap-2">
               <select aria-label="Filter leave allocations by year" value={allocationYear} onChange={event => setAllocationYear(event.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                className="rounded-xl border border-[#DCE7F2] bg-white px-3.5 py-2.5 text-sm text-[#294766] outline-none focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]">
                 <option value="">All years</option>
                 {Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index).map(year => <option key={year} value={year}>{year}</option>)}
               </select>
@@ -730,11 +732,13 @@ export default function LeavePage() {
               <Button variant="danger" onClick={handleAnnualReset}>Annual Reset</Button>
             </div>
           </div>
-          <DataTable
-            columns={allocationColumns}
-            data={filteredAllocations}
-            loading={loading}
-          />
+          <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
+            <DataTable
+              columns={allocationColumns}
+              data={filteredAllocations}
+              loading={loading}
+            />
+          </div>
         </>
       )}
       {tab === 'Assigned Leaves' && (() => {
@@ -744,9 +748,9 @@ export default function LeavePage() {
             {myAllocations.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-8">No leave allocations assigned to you</p>
             )}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="border-b border-[#DCE7F2] bg-[#F4F8FC]">
                   <tr>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Leave Type</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Allocated Days</th>
@@ -759,7 +763,7 @@ export default function LeavePage() {
                   {myAllocations.map((a, i) => {
                     const used = a.usedDays ?? 0
                     return (
-                      <tr key={a.id || i} className="hover:bg-gray-50">
+                      <tr key={a.id || i} className="transition-colors hover:bg-[#F7FAFD]">
                         <td className="py-3 px-4 font-medium text-gray-900">{a.leaveTypeName || '—'}</td>
                         <td className="py-3 px-4 text-gray-600">{a.totalLeaveDays ?? '—'}</td>
                         <td className="py-3 px-4 text-green-600 font-semibold">{a.remainingDays ?? a.availableDays ?? '—'}</td>
@@ -790,13 +794,13 @@ export default function LeavePage() {
           : base
         return (
           <div>
-          <div className="mb-4">
+          <div className="mb-4 rounded-2xl border border-[#DCE7F2] bg-white p-4 shadow-[0_6px_20px_rgba(30,65,96,0.035)]">
             <input
               type="text"
               placeholder="Search by employee or leave type…"
               value={balanceSearch}
               onChange={e => setBalanceSearch(e.target.value)}
-              className="w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-xl border border-[#DCE7F2] bg-[#F8FAFC] px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA] sm:w-80"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -807,7 +811,8 @@ export default function LeavePage() {
               const used = a.usedDays ?? 0
               const pct = a.totalLeaveDays > 0 ? Math.round(((a.availableDays ?? 0) / a.totalLeaveDays) * 100) : 0
               return (
-                <div key={a.id || i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div key={a.id || i} className="group relative overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white p-5 shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition hover:-translate-y-0.5 hover:shadow-md">
+                  <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#4D8FD1] to-[#E7C65B]" />
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-semibold text-gray-800 text-sm">{a.leaveTypeName || '—'}</p>
@@ -825,7 +830,7 @@ export default function LeavePage() {
                   </div>
                   <div className="flex items-end justify-between mb-2">
                     <div>
-                      <p className="text-2xl font-bold text-indigo-600">{a.availableDays ?? '—'}</p>
+                      <p className="text-2xl font-bold tracking-tight text-[#2D6FB4]">{a.availableDays ?? '—'}</p>
                       <p className="text-xs text-gray-400">days available</p>
                     </div>
                     <div className="text-right">
@@ -833,9 +838,9 @@ export default function LeavePage() {
                       <p className="text-xs text-gray-400">of {a.totalLeaveDays ?? '—'} total</p>
                     </div>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#EAF0F6]">
                     <div
-                      className="bg-indigo-500 h-1.5 rounded-full"
+                      className="h-full rounded-full bg-gradient-to-r from-[#377DBD] to-[#E2BE54] transition-all"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

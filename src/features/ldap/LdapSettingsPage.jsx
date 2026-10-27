@@ -34,11 +34,11 @@ export default function LdapSettingsPage() {
   }
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="LDAP Settings" subtitle="Configure LDAP / Active Directory integration" />
 
-      <div className="max-w-lg bg-white rounded-xl border border-gray-200 p-6">
-        <div className="space-y-4">
+      <div className="admin-settings-panel max-w-2xl bg-white rounded-xl border border-gray-200 p-6">
+        <div className="admin-settings-form">
           <Input
             label="LDAP Server"
             placeholder="ldap://example.com:389"

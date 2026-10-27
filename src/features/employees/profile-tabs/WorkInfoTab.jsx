@@ -7,16 +7,16 @@ import useCurrency from '../../../hooks/useCurrency'
 import useAuth from '../../../hooks/useAuth'
 
 const Section = ({ title, children }) => (
-  <div className="mb-6">
+  <div className="employee-detail-section mb-6">
     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{title}</h4>
-    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">{children}</dl>
+    <dl className="employee-detail-fields grid grid-cols-1 gap-2">{children}</dl>
   </div>
 )
 
 const Field = ({ label, value }) => (
-  <div>
-    <dt className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">{label}</dt>
-    <dd className="text-sm text-gray-900">{value != null && value !== '' ? value : '—'}</dd>
+  <div className="employee-detail-field">
+    <dt className="employee-detail-field-label">{label}</dt>
+    <dd className="employee-detail-field-value">{value != null && value !== '' ? value : '—'}</dd>
   </div>
 )
 

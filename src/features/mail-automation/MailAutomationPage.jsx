@@ -128,7 +128,7 @@ export default function MailAutomationPage() {
   ]
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader
         title="Mail Automation"
         subtitle="Configure automated email and notification rules triggered by system events"
@@ -150,7 +150,7 @@ export default function MailAutomationPage() {
         }
       />
 
-      <DataTable columns={columns} data={items} loading={loading} />
+      <div className="admin-settings-table"><DataTable columns={columns} data={items} loading={loading} /></div>
 
       <ConfirmModal
         open={confirmModal.open}
@@ -166,6 +166,7 @@ export default function MailAutomationPage() {
         open={modalOpen}
         onClose={() => { setModalOpen(false); reset() }}
         title={editing ? 'Edit Mail Automation' : 'New Mail Automation'}
+        panelClassName="admin-settings-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); reset() }}>Cancel</Button>
@@ -173,7 +174,7 @@ export default function MailAutomationPage() {
           </div>
         }
       >
-        <div className="space-y-4">
+        <div className="admin-settings-form">
           <Input
             label="Title"
             error={errors.title?.message}

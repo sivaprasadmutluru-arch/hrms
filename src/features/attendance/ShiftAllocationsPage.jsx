@@ -70,7 +70,7 @@ export default function ShiftAllocationsPage() {
   if (loading && !allocations.length) return <div className="flex justify-center p-12"><Spinner /></div>
 
   return (
-    <div className="p-6">
+    <div className="attendance-workspace attendance-shift-allocations-page p-6">
       <PageHeader
         title="Shift Allocations"
         subtitle="Allocate shifts to employees and manage approvals"

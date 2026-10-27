@@ -5,7 +5,6 @@ import toast from 'react-hot-toast'
 import { fetchAll, create, update, remove, selectLoading, selectPagination } from './recruitmentSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
@@ -45,26 +44,43 @@ export default function RecruitmentPostsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const columns = [
-    { accessorKey: 'title', header: 'Job Title' },
-    { accessorKey: 'department', header: 'Department' },
-    { accessorKey: 'location', header: 'Location' },
-    { accessorKey: 'type', header: 'Type' },
-    { accessorKey: 'deadline', header: 'Deadline', cell: ({ getValue }) => formatDate(getValue()) },
-    { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'Open'} variant={getValue() === 'CLOSED' ? 'danger' : 'success'} /> },
-    { accessorKey: 'applicantCount', header: 'Applicants' },
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original)}>Delete</Button>
-      </div>
-    )},
-  ]
+  const openCount = posts.filter(post => post.status !== 'CLOSED').length
+  const applicantCount = posts.reduce((total, post) => total + (Number(post.applicantCount) || 0), 0)
 
   return (
-    <div>
+    <div className="recruitment-workspace">
       <PageHeader title="Job Posts" subtitle="Manage open positions and recruitment" actions={<Button onClick={openCreate}>+ New Post</Button>} />
-      <DataTable columns={columns} data={posts} loading={loading} />
+      <div className="recruitment-post-stats">
+        <div><span>Open positions</span><strong>{loading ? '—' : openCount}</strong><small>Currently accepting applications</small></div>
+        <div><span>All job posts</span><strong>{loading ? '—' : pagination.total}</strong><small>Across the current workspace</small></div>
+        <div><span>Applicants</span><strong>{loading ? '—' : applicantCount}</strong><small>Candidates across these roles</small></div>
+      </div>
+      {loading ? <div className="recruitment-job-grid" aria-busy="true">{Array.from({ length: 3 }, (_, index) => <div className="recruitment-job-skeleton" key={index} />)}</div> : (
+        <div className="recruitment-job-grid">
+          {posts.length === 0 ? <div className="recruitment-empty">No job posts yet. Create a post to start building your hiring pipeline.</div> : posts.map(post => (
+            <article className="recruitment-job-card" key={post.id}>
+              <div className="recruitment-job-card-top">
+                <div className="recruitment-job-mark">{(post.title || 'J').slice(0, 1).toUpperCase()}</div>
+                <Badge label={post.status || 'OPEN'} variant={post.status === 'CLOSED' ? 'danger' : 'success'} />
+              </div>
+              <h2>{post.title || 'Untitled position'}</h2>
+              <p className="recruitment-job-department">{post.department || 'Department not specified'}</p>
+              <div className="recruitment-job-meta">
+                <span>{post.location || 'Location flexible'}</span>
+                <span>{String(post.type || 'FULL_TIME').replaceAll('_', ' ')}</span>
+              </div>
+              <div className="recruitment-job-card-foot">
+                <div><strong>{Number(post.applicantCount) || 0}</strong><span> applicants</span></div>
+                <span>Closes {post.deadline ? formatDate(post.deadline) : 'No deadline'}</span>
+              </div>
+              <div className="recruitment-job-actions">
+                <Button size="sm" variant="secondary" onClick={() => openEdit(post)}>Edit post</Button>
+                <Button size="sm" variant="danger" onClick={() => handleDelete(post)}>Delete</Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
       <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
       <ConfirmModal
         open={confirmModal.open}
@@ -75,9 +91,9 @@ export default function RecruitmentPostsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Job Post' : 'New Job Post'} size="lg"
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Job Post' : 'New Job Post'} size="lg" panelClassName="recruitment-form-modal recruitment-job-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Publish'}</Button></div>}>
-        <div className="space-y-4">
+        <div className="recruitment-job-form">
           <Input label="Job Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Department" {...register('department')} />

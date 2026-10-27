@@ -177,7 +177,7 @@ function TwoFactorCard() {
 
 export default function AccountSettingsPage() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="admin-settings-workspace account-settings-workspace p-6 space-y-6">
       <PageHeader title="Account Settings" subtitle="Manage your credentials and security settings" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChangeUsernameForm />

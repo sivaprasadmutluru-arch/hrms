@@ -96,7 +96,7 @@ export default function ProjectDetailPage() {
   if (!project) return <Spinner className="py-16" />
 
   return (
-    <div>
+    <div className="project-detail-workspace">
       <PageHeader
         title={project.title}
         subtitle={project.description}
@@ -104,7 +104,7 @@ export default function ProjectDetailPage() {
       />
 
       {/* Project Summary Card */}
-      <div className="bg-white rounded-lg border p-4 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+      <div className="project-summary bg-white rounded-lg border p-4 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="text-gray-500 text-xs uppercase tracking-wide">Status</p>
           <Badge label={project.status || 'PLANNED'} variant={project.status === 'COMPLETED' ? 'primary' : project.status === 'ON_HOLD' ? 'warning' : project.status === 'CANCELLED' ? 'danger' : project.status === 'IN_PROGRESS' ? 'success' : 'default'} />
@@ -139,14 +139,14 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Kanban Board */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="project-kanban grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {TASK_STAGES.map(stage => {
           const stageTasks = localTasks.filter(t => t.stage === stage)
           const doneInStage = stage === 'DONE' ? stageTasks.length : 0
           return (
             <div
               key={stage}
-              className="flex flex-col gap-2 min-h-48"
+              className="project-kanban-column flex flex-col gap-2 min-h-48"
               onDragOver={onDragOver}
               onDrop={e => onDrop(e, stage)}
             >
@@ -216,6 +216,7 @@ export default function ProjectDetailPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingTask ? 'Edit Task' : 'New Task'}
+        panelClassName="projects-form-modal"
         footer={
           <div className="flex justify-between">
             {editingTask && (

@@ -60,12 +60,11 @@ export default function PayrollBatchGroupsPage() {
   ]
 
   return (
-    <div>
-      <PageHeader title="Payroll Batch Groups" subtitle="Manage payroll batch groups">
-        <Button onClick={openCreate}>Add Batch Group</Button>
-      </PageHeader>
+    <div className="payroll-workspace">
+      <PageHeader title="Payroll Batch Groups" subtitle="Manage payroll batch groups"
+        actions={<Button onClick={openCreate}>Add Batch Group</Button>} />
       <DataTable columns={columns} data={groups} />
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Batch Group' : 'New Batch Group'}>
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Batch Group' : 'New Batch Group'} panelClassName="payroll-form-modal">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input label="Name" {...register('name', { required: 'Required' })} error={errors.name?.message} />
           <Input label="Description" {...register('description')} />

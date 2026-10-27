@@ -70,10 +70,10 @@ export default function ExitReasonsPage() {
   ]
 
   return (
-    <div>
+    <div className="offboarding-workspace">
       <PageHeader title="Exit Reasons" subtitle="Reasons for employee exits"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Add Reason</Button>} />
-      <DataTable columns={columns} data={exitReasons} loading={loading} />
+      <div className="offboarding-table"><DataTable columns={columns} data={exitReasons} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -83,7 +83,7 @@ export default function ExitReasonsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Exit Reason' : 'Add Exit Reason'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Exit Reason' : 'Add Exit Reason'} panelClassName="offboarding-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

@@ -64,11 +64,12 @@ export default function EmployeeFormFields({
   reportingManagerOptions = [],
   photoPreview = null,
   onPhotoChange,
+  vertical = false,
 }) {
   const photoInputRef = useRef()
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 employee-form-fields ${vertical ? 'employee-form-fields-vertical' : ''}`}>
 
       {/* Photo picker */}
       <div className="flex items-center gap-4">
@@ -103,6 +104,7 @@ export default function EmployeeFormFields({
         />
       </div>
 
+      {vertical && <div className="employee-form-section-label">Identity &amp; contact</div>}
       {/* Employee ID */}
       <div className="grid grid-cols-2 gap-3">
         <Input
@@ -130,6 +132,7 @@ export default function EmployeeFormFields({
         <Input label="Phone" {...register('phone')} />
       </div>
 
+      {vertical && <div className="employee-form-section-label">Personal details</div>}
       {/* Personal */}
       <div className="grid grid-cols-2 gap-3">
         <Select label="Gender"
@@ -148,6 +151,7 @@ export default function EmployeeFormFields({
         <Input label="Place of Birth" {...register('placeOfBirth')} />
       </div>
 
+      {vertical && <div className="employee-form-section-label">Employment details</div>}
       {/* Work */}
       <div className="grid grid-cols-2 gap-3">
         <Input label="Date of Joining" type="date" {...register('dateJoining')} />
@@ -159,6 +163,7 @@ export default function EmployeeFormFields({
       {/* Create-only: role, access scope, and full contract/salary fields */}
       {!isEdit && (
         <>
+          {vertical && <div className="employee-form-section-label">Access &amp; compensation</div>}
           <div className="grid grid-cols-2 gap-3">
             <Select label="Role"
               options={[{ value: '', label: 'None' }, ...assignableRoles]}
@@ -211,6 +216,7 @@ export default function EmployeeFormFields({
           {...register('companyId', { required: 'Required' })} />
       )}
 
+      {vertical && <div className="employee-form-section-label">Team &amp; reporting</div>}
       {/* Org structure */}
       <Select label="Department"
         options={[{ value: '', label: 'None' }, ...departmentOptions]}
@@ -231,6 +237,7 @@ export default function EmployeeFormFields({
         options={[{ value: '', label: 'None' }, ...reportingManagerOptions]}
         {...register('reportingManagerId')} />
 
+      {vertical && <div className="employee-form-section-label">Professional background</div>}
       {/* Professional */}
       <div className="grid grid-cols-2 gap-3">
         <Input label="Qualification" {...register('qualification')} />
@@ -240,6 +247,7 @@ export default function EmployeeFormFields({
         <Input label="Children" type="number" {...register('children')} />
       </div>
 
+      {vertical && <div className="employee-form-section-label">Work &amp; emergency contact</div>}
       {/* Work contact */}
       <div className="grid grid-cols-2 gap-3">
         <Input label="Work Email" type="email" {...register('workEmail')} />

@@ -6,14 +6,14 @@ import {
   fetchJobPositions, selectJobPositions,
   fetchJobRoles, createJobRole, updateJobRole, deleteJobRole, selectJobRoles,
 } from './baseExtrasSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
+import SetupDirectory from '../../components/common/SetupDirectory'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import { UserRoundCog, BriefcaseBusiness } from 'lucide-react'
 
 export default function JobRolesPage() {
   const dispatch = useDispatch()
@@ -71,11 +71,11 @@ export default function JobRolesPage() {
   }
 
   const columns = [
-    { accessorKey: 'name', header: 'Job Role' },
-    { id: 'jobPosition', header: 'Job Position', cell: ({ row }) => row.original.jobPosition?.name || '—' },
+    { accessorKey: 'name', header: 'Job Role', cell: ({ row }) => <span className="setup-name-cell"><i><UserRoundCog size={16} /></i><b>{row.original.name}</b></span> },
+    { id: 'jobPosition', header: 'Job Position', cell: ({ row }) => <span className="setup-related-cell"><BriefcaseBusiness size={15} />{row.original.jobPosition?.name || 'Unassigned'}</span> },
     {
       id: 'actions', header: '', cell: ({ row }) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2 setup-table-actions">
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
         </div>
@@ -84,11 +84,10 @@ export default function JobRolesPage() {
   ]
 
   return (
-    <div>
-      <PageHeader title="Job Roles" subtitle="Manage job roles" actions={<Button onClick={openCreate}>+ New Role</Button>} />
-      <DataTable columns={columns} data={jobRoles} />
+    <>
+      <SetupDirectory title="Job roles" subtitle="Organize responsibilities and link each role to the position it supports." icon={<UserRoundCog size={22} />} itemLabel="role" data={jobRoles} columns={columns} searchText={item => `${item.name || ''} ${item.jobPosition?.name || ''}`} action={<Button className="setup-primary-button" onClick={openCreate}>+ New role</Button>} />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Job Role' : 'New Job Role'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="lg" panelClassName="setup-form-modal" title={editing ? 'Edit job role' : 'New job role'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
@@ -103,6 +102,6 @@ export default function JobRolesPage() {
 
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Job Role" message={`Delete "${deleteTarget?.name}"?`} confirmLabel="Delete" />
-    </div>
+    </>
   )
 }

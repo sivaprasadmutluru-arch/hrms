@@ -1,6 +1,6 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-export const APP_NAME = 'GRECHA.AI'
+export const APP_NAME = 'Accrue Technologies'
 
 export const ROLES = {
   PLATFORM_SUPER_ADMIN: 'PLATFORM_SUPER_ADMIN',  // Prabha Tech internal

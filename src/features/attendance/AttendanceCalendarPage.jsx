@@ -164,7 +164,7 @@ export default function AttendanceCalendarPage() {
   // Admin with no employee record and no selection → show picker
   if (isAdminWithoutRecord) {
     return (
-      <div>
+      <div className="attendance-workspace attendance-calendar-page">
         <PageHeader
           title="Attendance Calendar"
           subtitle="Monthly view of attendance records"
@@ -178,7 +178,7 @@ export default function AttendanceCalendarPage() {
   }
 
   return (
-    <div>
+    <div className="attendance-workspace attendance-calendar-page">
       <PageHeader
         title="Attendance Calendar"
         subtitle="Monthly view of attendance records"

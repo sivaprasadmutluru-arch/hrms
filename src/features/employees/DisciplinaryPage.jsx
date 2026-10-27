@@ -7,13 +7,10 @@ import {
   deleteDisciplinaryAction, selectDisciplinaryActions, selectLoading
 } from './employeeExtrasSlice'
 import { fetchAll as fetchEmployees, selectAll as selectEmployees } from './employeesSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
-import Badge from '../../components/common/Badge'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
 import { formatDate } from '../../utils/formatters'
@@ -27,11 +24,6 @@ const ACTION_TYPES = [
   { value: 'TERMINATION', label: 'Termination' },
 ]
 
-const ACTION_VARIANTS = {
-  VERBAL_WARNING: 'secondary', WRITTEN_WARNING: 'secondary',
-  WARNING: 'accent', SUSPENSION: 'danger', DEMOTION: 'danger', TERMINATION: 'danger',
-}
-
 export default function DisciplinaryPage() {
   const dispatch = useDispatch()
   const { user } = useAuth()
@@ -41,16 +33,20 @@ export default function DisciplinaryPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const [search, setSearch] = useState('')
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const selectedEmployeeIds = watch('employeeIds') || []
 
   useEffect(() => {
     dispatch(fetchDisciplinaryActions())
     dispatch(fetchEmployees({ page: 0, size: 200 }))
   }, [dispatch])
 
-  const openCreate = () => { setEditing(null); reset({ startDate: new Date().toISOString().slice(0, 10) }); setModalOpen(true) }
+  const openCreate = () => { setEditing(null); setEmployeeSearch(''); reset({ startDate: new Date().toISOString().slice(0, 10), employeeIds: [] }); setModalOpen(true) }
   const openEdit = (row) => {
     setEditing(row)
+    setEmployeeSearch('')
     reset({
       ...row,
       actionType: row.actionType,
@@ -85,48 +81,54 @@ export default function DisciplinaryPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const columns = [
-    {
-      id: 'employees',
-      header: 'Employees',
-      cell: ({ row }) => (
-        <div className="text-sm text-gray-700">
-          {row.original.employees?.map(e => e.fullName || `${e.firstName} ${e.lastName}`).join(', ') || '—'}
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'actionType',
-      header: 'Action Type',
-      cell: ({ getValue }) => <Badge label={getValue()?.replace(/_/g, ' ') || '—'} variant={ACTION_VARIANTS[getValue()] || 'secondary'} />,
-    },
-    { accessorKey: 'startDate', header: 'Start Date', cell: ({ getValue }) => formatDate(getValue()) },
-    { accessorKey: 'days', header: 'Days' },
-    {
-      id: 'actions',
-      header: '',
-      cell: ({ row }) => (
-        <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-          <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
-        </div>
-      ),
-    },
-  ]
+  const filteredActions = actions.filter(action => {
+    const employeeNames = action.employees?.map(employee => employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`).join(' ') || ''
+    return `${action.actionType || ''} ${action.description || ''} ${employeeNames}`.toLowerCase().includes(search.toLowerCase())
+  })
+  const coveredEmployees = new Set(actions.flatMap(action => action.employees || []).map(employee => employee.id)).size
+  const recordedDays = actions.reduce((total, action) => total + (Number(action.days) || 0), 0)
+  const actionTone = (type) => ['SUSPENSION', 'DEMOTION', 'TERMINATION'].includes(type) ? 'serious' : 'warning'
+  const filteredEmployees = employees.filter(employee => `${employee.fullName || ''} ${employee.firstName || ''} ${employee.lastName || ''} ${employee.departmentName || ''}`.toLowerCase().includes(employeeSearch.toLowerCase()))
 
   return (
-    <div>
-      <PageHeader
-        title="Disciplinary Actions"
-        subtitle="Track and manage employee disciplinary records"
-        actions={<Button onClick={openCreate}>+ New Action</Button>}
-      />
-      <DataTable columns={columns} data={actions} loading={loading} />
+    <div className="disciplinary-page">
+      <section className="disciplinary-hero">
+        <div className="disciplinary-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <div className="disciplinary-hero-copy"><span className="disciplinary-eyebrow">PEOPLE OPERATIONS</span><h1>Disciplinary actions</h1><p>Maintain clear, consistent records of employee conduct and follow-up.</p></div>
+        <Button onClick={openCreate}>+ New action</Button>
+      </section>
+
+      <section className="disciplinary-summary" aria-label="Disciplinary action summary">
+        <div className="disciplinary-stat"><span className="disciplinary-stat-icon">▤</span><div><span>Recorded actions</span><strong>{actions.length}</strong></div></div>
+        <div className="disciplinary-stat"><span className="disciplinary-stat-icon disciplinary-stat-icon-blue">♙</span><div><span>Employees covered</span><strong>{coveredEmployees}</strong></div></div>
+        <div className="disciplinary-stat"><span className="disciplinary-stat-icon disciplinary-stat-icon-slate">◷</span><div><span>Total days recorded</span><strong>{recordedDays}</strong></div></div>
+      </section>
+
+      <section className="disciplinary-records">
+        <div className="disciplinary-records-head"><div><h2>Action records</h2><p>Search and manage documented employee actions.</p></div><label className="disciplinary-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employee or action" aria-label="Search disciplinary actions" /></label></div>
+        {loading ? <div className="disciplinary-loading"><span />Loading action records…</div> : filteredActions.length === 0 ? (
+          <div className="disciplinary-empty"><span className="disciplinary-empty-icon">✓</span><h3>{search ? 'No matching records' : 'No actions recorded'}</h3><p>{search ? 'Try another employee name or action type.' : 'New disciplinary records will appear here once created.'}</p>{!search && <Button onClick={openCreate}>Create first action</Button>}</div>
+        ) : (
+          <div className="disciplinary-grid">
+            {filteredActions.map(action => (
+              <article className="disciplinary-card" key={action.id}>
+                <div className="disciplinary-card-top"><span className={`disciplinary-type disciplinary-type-${actionTone(action.actionType)}`}>{action.actionType?.replace(/_/g, ' ') || 'ACTION'}</span><span className="disciplinary-record-id">RECORD #{action.id}</span></div>
+                <div className="disciplinary-card-main"><div className="disciplinary-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3Z"/><path d="M9 12h6"/></svg></div><div className="disciplinary-card-copy"><h3>{action.employees?.length ? action.employees.map(employee => employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim()).join(', ') : 'No employees assigned'}</h3><span>Employee{action.employees?.length === 1 ? '' : 's involved'}</span></div></div>
+                {action.description && <p className="disciplinary-description">{action.description}</p>}
+                <div className="disciplinary-card-meta"><div><span>Start date</span><strong>{action.startDate ? formatDate(action.startDate) : '—'}</strong></div><div><span>Duration</span><strong>{action.days ? `${action.days} day${Number(action.days) === 1 ? '' : 's'}` : 'Not specified'}</strong></div></div>
+                <div className="disciplinary-card-actions"><Button size="sm" variant="secondary" onClick={() => openEdit(action)}>Edit record</Button><Button size="sm" variant="danger" onClick={() => setDeleteTarget(action)}>Delete</Button></div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? 'Edit Disciplinary Action' : 'New Disciplinary Action'}
+        size="lg"
+        panelClassName="disciplinary-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -134,7 +136,7 @@ export default function DisciplinaryPage() {
           </div>
         }
       >
-        <div className="space-y-4">
+        <div className="disciplinary-form">
           <Select
             label="Action Type"
             options={ACTION_TYPES}
@@ -143,15 +145,23 @@ export default function DisciplinaryPage() {
           />
           <Input label="Start Date" type="date" {...register('startDate')} />
           <Input label="Duration (days)" type="number" {...register('days')} />
-          <Input label="Description" {...register('description')} />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Employees</label>
-            <select multiple className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" {...register('employeeIds')}>
-              {employees.map(e => (
-                <option key={e.id} value={e.id}>{e.fullName || `${e.firstName} ${e.lastName}`}</option>
+          <div className="disciplinary-description-field">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea rows={3} className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" {...register('description')} />
+          </div>
+          <div className="disciplinary-employee-field">
+            <div className="disciplinary-employee-heading"><label>Employees</label><span>{selectedEmployeeIds.length} selected</span></div>
+            {employees.length > 0 && <label className="disciplinary-employee-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg><input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)} placeholder="Find an employee" aria-label="Find an employee" /></label>}
+            <div className="disciplinary-employee-options">
+              {employees.length === 0 ? <div className="disciplinary-no-employees"><span>♙</span><strong>No employees available</strong><small>Employees will appear here when they are added to this organization.</small></div> : filteredEmployees.length === 0 ? <p className="disciplinary-no-results">No employees match “{employeeSearch}”.</p> : filteredEmployees.map(employee => (
+                <label className="disciplinary-employee-option" key={employee.id}>
+                  <input type="checkbox" value={String(employee.id)} {...register('employeeIds')} />
+                  <span className="disciplinary-employee-avatar">{(employee.fullName || employee.firstName || 'E').trim().charAt(0).toUpperCase()}</span>
+                  <span className="disciplinary-employee-name">{employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim()}</span>
+                  {employee.departmentName && <small>{employee.departmentName}</small>}
+                </label>
               ))}
-            </select>
-            <p className="text-xs text-gray-400 mt-1">Hold Ctrl/Cmd to select multiple</p>
+            </div>
           </div>
         </div>
       </Modal>

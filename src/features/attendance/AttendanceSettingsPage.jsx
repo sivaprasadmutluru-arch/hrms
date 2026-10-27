@@ -317,7 +317,7 @@ export default function AttendanceSettingsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="attendance-workspace attendance-settings-page space-y-6">
       <PageHeader title="Attendance Settings" subtitle="Grace times, validation, IP restrictions, and batch groups" />
 
       <div className="flex gap-2 border-b border-gray-200">

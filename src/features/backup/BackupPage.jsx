@@ -95,7 +95,7 @@ export default function BackupPage() {
   }
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="Backup Settings" subtitle="Configure automated data backup schedules" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BackupForm

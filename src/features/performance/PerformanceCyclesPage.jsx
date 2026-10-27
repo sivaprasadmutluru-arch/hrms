@@ -64,9 +64,9 @@ export default function PerformanceCyclesPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Performance Cycles" subtitle="Manage appraisal and review cycles" actions={<Button onClick={openCreate}>+ New Cycle</Button>} />
-      <DataTable columns={columns} data={cycles} loading={loading} />
+      <div className="performance-table"><DataTable columns={columns} data={cycles} loading={loading} /></div>
       <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
       <ConfirmModal
         open={confirmModal.open}
@@ -77,7 +77,7 @@ export default function PerformanceCyclesPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Cycle' : 'New Cycle'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Cycle' : 'New Cycle'} panelClassName="performance-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
           <Input label="Cycle Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />

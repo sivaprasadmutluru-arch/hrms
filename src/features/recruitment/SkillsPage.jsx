@@ -64,10 +64,10 @@ export default function SkillsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="recruitment-workspace">
       <PageHeader title="Skills" subtitle="Skills library for recruitment"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Add Skill</Button>} />
-      <DataTable columns={columns} data={skills} loading={loading} />
+      <div className="recruitment-table"><DataTable columns={columns} data={skills} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -77,7 +77,7 @@ export default function SkillsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Skill' : 'Add Skill'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Skill' : 'Add Skill'} panelClassName="recruitment-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button></div>}>
         <Input label="Skill Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
       </Modal>

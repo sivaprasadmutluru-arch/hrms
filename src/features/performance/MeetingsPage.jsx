@@ -86,10 +86,10 @@ export default function MeetingsPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Meetings" subtitle="Schedule and track team meetings"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Meeting</Button>} />
-      <DataTable columns={columns} data={meetings} loading={loading} />
+      <div className="performance-table"><DataTable columns={columns} data={meetings} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -99,7 +99,7 @@ export default function MeetingsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Meeting' : 'Create Meeting'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Meeting' : 'Create Meeting'} panelClassName="performance-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

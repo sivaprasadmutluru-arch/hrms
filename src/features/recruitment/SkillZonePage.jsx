@@ -68,10 +68,10 @@ export default function SkillZonePage() {
   ]
 
   return (
-    <div>
+    <div className="recruitment-workspace">
       <PageHeader title="Skill Zones" subtitle="Categorize candidates by skills"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Skill Zone</Button>} />
-      <DataTable columns={columns} data={skillZones} loading={loading} />
+      <div className="recruitment-table"><DataTable columns={columns} data={skillZones} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -81,7 +81,7 @@ export default function SkillZonePage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Skill Zone' : 'Create Skill Zone'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Skill Zone' : 'Create Skill Zone'} panelClassName="recruitment-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

@@ -27,6 +27,8 @@ export default function ProjectsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, project: null })
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 50 })) }, [dispatch])
@@ -50,29 +52,65 @@ export default function ProjectsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
+  const normalizedSearch = search.trim().toLowerCase()
+  const filteredProjects = data.filter(project => {
+    const matchesSearch = !normalizedSearch || `${project.title || ''} ${project.description || ''}`.toLowerCase().includes(normalizedSearch)
+    return matchesSearch && (statusFilter === 'ALL' || project.status === statusFilter)
+  })
+  const projectCount = data.length
+  const activeCount = data.filter(project => project.status === 'IN_PROGRESS').length
+  const plannedCount = data.filter(project => project.status === 'PLANNED').length
+  const completedCount = data.filter(project => project.status === 'COMPLETED').length
+
   if (loading) return <Spinner className="py-16" />
 
   return (
-    <div>
+    <div className="projects-workspace">
       <PageHeader title="Projects" subtitle="Manage projects and tasks" actions={<Button onClick={openCreate}>+ New Project</Button>} />
+      <div className="projects-overview">
+        {[
+          { label: 'All projects', value: projectCount, tone: 'total' },
+          { label: 'In progress', value: activeCount, tone: 'active' },
+          { label: 'Planned', value: plannedCount, tone: 'planned' },
+          { label: 'Completed', value: completedCount, tone: 'complete' },
+        ].map(item => <div className={`projects-stat projects-stat-${item.tone}`} key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>)}
+      </div>
+      <div className="projects-library-toolbar">
+        <div><span>PROJECT LIBRARY</span><h2>Your workspace</h2></div>
+        <div className="projects-filters">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects" aria-label="Search projects" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="Filter projects by status">
+            <option value="ALL">All statuses</option>
+            {Object.keys(STATUS_VARIANT).map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}
+          </select>
+        </div>
+      </div>
       {data.length === 0 ? (
-        <EmptyState title="No projects" description="Create your first project to get started." action={<Button onClick={openCreate}>+ New Project</Button>} />
+        <EmptyState title="No projects yet" description="Create your first project to organize work, tasks, and timelines." action={<Button onClick={openCreate}>+ New Project</Button>} />
+      ) : filteredProjects.length === 0 ? (
+        <div className="projects-empty-filter">No projects match these filters. Try another search or status.</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.map(project => (
-            <Card key={project.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/projects/${project.id}`)}>
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-                  <FolderIcon className="h-5 w-5 text-indigo-600" />
+        <div className="projects-grid">
+          {filteredProjects.map(project => (
+            <Card key={project.id} className="project-card" onClick={() => navigate(`/projects/${project.id}`)}>
+              <div className="project-card-identity">
+                <div className="project-folder-icon"><FolderIcon /></div>
+                <div className="project-card-copy">
+                  <div className="project-card-title-line">
+                    <h3>{project.title}</h3>
+                    <Badge label={(project.status || 'PLANNED').replace('_', ' ')} variant={STATUS_VARIANT[project.status] || 'default'} />
+                  </div>
+                  <p className="project-card-description">{project.description || 'Add a short summary to help your team understand this project.'}</p>
                 </div>
-                <Badge label={project.status || 'Active'} variant={STATUS_VARIANT[project.status] || 'default'} />
               </div>
-              <h3 className="font-semibold text-gray-900 mb-1">{project.title}</h3>
-              <p className="text-sm text-gray-500 mb-3 line-clamp-2">{project.description || 'No description'}</p>
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{formatDate(project.startDate)}</span>
-                <Button size="sm" variant="ghost" onClick={(e) => openEdit(e, project)}>Edit</Button>
-                <Button size="sm" variant="danger" onClick={(e) => handleDelete(e, project)}>Delete</Button>
+              <div className="project-card-dates">
+                <div><span>START DATE</span><strong><CalendarIcon />{formatDate(project.startDate) || 'Not set'}</strong></div>
+                <div><span>END DATE</span><strong><CalendarIcon />{formatDate(project.endDate) || 'Not set'}</strong></div>
+              </div>
+              <div className="project-card-actions">
+                <button onClick={e => openEdit(e, project)}>Edit details</button>
+                <button className="project-open-action" onClick={() => navigate(`/projects/${project.id}`)}>Open project <span>→</span></button>
+                <button className="project-delete-action" aria-label={`Delete ${project.title}`} onClick={e => handleDelete(e, project)}>Delete</button>
               </div>
             </Card>
           ))}
@@ -87,9 +125,9 @@ export default function ProjectsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Project' : 'New Project'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Project' : 'New Project'} size="lg" panelClassName="projects-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
-        <div className="space-y-4">
+        <div className="projects-form-grid">
           <Input label="Project Name" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>

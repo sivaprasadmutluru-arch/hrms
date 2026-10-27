@@ -13,6 +13,7 @@ import Input from '../../components/common/Input'
 import Button from '../../components/common/Button'
 import toast from 'react-hot-toast'
 import useAuth from '../../hooks/useAuth'
+import { ChartBarIcon } from '@heroicons/react/24/outline'
 
 const TABS = ['Headcount', 'Attendance', 'Leave', 'Payroll', 'Report Repository']
 const COLORS = ['#6366F1', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444']
@@ -37,6 +38,16 @@ const STATUS_BADGE = {
   COMPLETED: 'bg-emerald-100 text-emerald-700',
   FAILED: 'bg-red-100 text-red-700',
   PROCESSING: 'bg-amber-100 text-amber-700',
+}
+
+function ReportEmptyState({ title = 'No report data yet', description = 'Data will appear here when records are available.' }) {
+  return (
+    <div className="report-empty-state">
+      <span className="report-empty-icon"><ChartBarIcon /></span>
+      <h4>{title}</h4>
+      <p>{description}</p>
+    </div>
+  )
 }
 
 function ReportRepositoryTab() {
@@ -144,8 +155,8 @@ function ReportRepositoryTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="reports-repository-workspace">
+      <Card className="report-generator-card">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Generate Report</h3>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -169,7 +180,7 @@ function ReportRepositoryTab() {
         </div>
       </Card>
 
-      <Card>
+      <Card className="report-filter-card">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Filters</h3>
         <div className="flex flex-wrap items-end gap-3">
           <select value={filterType} onChange={e => setFilterType(e.target.value)}
@@ -206,7 +217,7 @@ function ReportRepositoryTab() {
       {loading ? <Spinner className="py-12" /> : (
         <div className="space-y-4">
           {Object.keys(grouped).length === 0 && (
-            <Card><p className="text-sm text-gray-500 text-center py-8">No reports found. Generate one above.</p></Card>
+            <Card className="report-empty-card"><ReportEmptyState title="No saved reports" description="Choose a report type and date range above, then generate a report to add it here." /></Card>
           )}
           {Object.entries(grouped).map(([typeLabel, years]) => (
             <Card key={typeLabel}>
@@ -418,11 +429,11 @@ export default function ReportsPage() {
   const showDateRange = tab !== 'Headcount' && tab !== 'Report Repository'
 
   return (
-    <div>
+    <div className="reports-workspace">
       <PageHeader title="Reports" subtitle="Analytics and workforce insights" />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b border-gray-200">
+      <div className="reports-tabs flex gap-1 mb-4 border-b border-gray-200">
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === t ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -433,7 +444,7 @@ export default function ReportsPage() {
 
       {/* Date range + export controls */}
       {showDateRange && (
-        <div className="flex items-end gap-3 mb-6">
+        <div className="reports-date-toolbar flex items-end gap-3 mb-6">
           <div>
             <label className="block text-xs text-gray-500 mb-1">From</label>
             <input
@@ -469,39 +480,41 @@ export default function ReportsPage() {
         <div className="space-y-6">
           {tab === 'Headcount' && (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[['Total', headcount?.total || 0, 'indigo'], ['Active', headcount?.active || 0, 'emerald'], ['On Leave', headcount?.onLeave || 0, 'amber'], ['Departed', headcount?.departed || 0, 'red']].map(([label, val, color]) => (
-                  <Card key={label}><p className="text-xs text-gray-500">{label}</p><p className={`text-2xl font-bold text-${color}-600 mt-1`}>{val}</p></Card>
+              <div className="report-kpis grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[['Total Employees', headcount?.total || 0, 'total'], ['Active', headcount?.active || 0, 'active'], ['On Leave', headcount?.onLeave || 0, 'leave'], ['Departed', headcount?.departed || 0, 'departed']].map(([label, val, tone]) => (
+                  <Card key={label} className={`report-kpi-card report-kpi-${tone}`}><span>{label}</span><strong>{val}</strong><small>{val === 1 ? 'employee' : 'employees'}</small></Card>
                 ))}
               </div>
-              <Card>
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Headcount by Department</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={headcount?.byDepartment || []}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <Card className="report-chart-card">
+                <div className="report-chart-heading"><div><span>WORKFORCE BREAKDOWN</span><h3>Headcount by Department</h3></div><small>{headcount?.byDepartment?.length || 0} departments</small></div>
+                {(headcount?.byDepartment || []).length === 0 ? <ReportEmptyState title="Department data will appear here" description="There are no employee records to break down by department yet." /> : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={headcount?.byDepartment || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#397fb5" radius={[6, 6, 0, 0]} maxBarSize={44} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </Card>
             </>
           )}
           {tab === 'Attendance' && (
-            <Card>
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Daily Attendance Trend</h3>
-              <ResponsiveContainer width="100%" height={280}>
+            <Card className="report-chart-card">
+              <div className="report-chart-heading"><div><span>ATTENDANCE INSIGHTS</span><h3>Daily Attendance Trend</h3></div><small>{attendance?.daily?.length || 0} days</small></div>
+              {(attendance?.daily || []).length === 0 ? <ReportEmptyState title="No attendance data for this range" description="Try a different date range once attendance records have been recorded." /> : <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={attendance?.daily || []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="present" stroke="#6366F1" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="absent" stroke="#EF4444" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="present" name="Present" stroke="#347db7" strokeWidth={3} dot={false} />
+                  <Line type="monotone" dataKey="absent" name="Absent" stroke="#e7bd3e" strokeWidth={3} dot={false} />
                 </LineChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer>}
             </Card>
           )}
           {tab === 'Attendance' && (
@@ -509,8 +522,9 @@ export default function ReportsPage() {
           )}
           {tab === 'Leave' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Leave by Type</h3>
+              <Card className="report-chart-card">
+                <div className="report-chart-heading"><div><span>LEAVE INSIGHTS</span><h3>Leave by Type</h3></div></div>
+                {(leave?.byType || []).length === 0 ? <ReportEmptyState title="No leave data for this range" description="Leave totals will appear after requests are recorded." /> : <>
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
                     <Pie data={leave?.byType || []} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={80} label>
@@ -520,18 +534,21 @@ export default function ReportsPage() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                </>}
               </Card>
-              <Card>
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Leave Status Summary</h3>
+              <Card className="report-chart-card">
+                <div className="report-chart-heading"><div><span>REQUEST STATUS</span><h3>Leave Status Summary</h3></div></div>
+                {(leave?.byStatus || []).length === 0 ? <ReportEmptyState title="No leave status data" description="Status totals will appear when leave requests are available." /> : <>
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={leave?.byStatus || []}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="status" tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                    <XAxis dataKey="status" tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip />
                     <Bar dataKey="count" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                </>}
               </Card>
             </div>
           )}
@@ -539,17 +556,17 @@ export default function ReportsPage() {
             <TabReportHistory reportType={TAB_REPOSITORY_TYPE.Leave} companyId={companyId} refreshKey={refreshKey} />
           )}
           {tab === 'Payroll' && (
-            <Card>
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Payroll Cost</h3>
-              <ResponsiveContainer width="100%" height={280}>
+            <Card className="report-chart-card">
+              <div className="report-chart-heading"><div><span>PAYROLL INSIGHTS</span><h3>Monthly Payroll Cost</h3></div><small>{payroll?.monthly?.length || 0} periods</small></div>
+              {(payroll?.monthly || []).length === 0 ? <ReportEmptyState title="No payroll data for this range" description="Payroll totals will appear after payroll runs are available." /> : <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={payroll?.monthly || []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#71869a' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip formatter={(v) => `$${v?.toLocaleString()}`} />
-                  <Bar dataKey="total" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total" fill="#347db7" radius={[6, 6, 0, 0]} maxBarSize={44} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer>}
             </Card>
           )}
           {tab === 'Payroll' && (

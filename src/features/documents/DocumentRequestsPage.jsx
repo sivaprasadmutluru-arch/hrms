@@ -10,9 +10,7 @@ import {
 } from './documentsSlice'
 import { fetchAll as fetchEmployees, selectAll as selectEmployees } from '../employees/employeesSlice'
 import api from '../../services/api'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
@@ -41,6 +39,7 @@ export default function DocumentRequestsPage() {
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([])
   const [statusModal, setStatusModal] = useState({ open: false, requestTitle: '' })
+  const [search, setSearch] = useState('')
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
@@ -103,27 +102,62 @@ export default function DocumentRequestsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const columns = [
-    { accessorKey: 'title', header: 'Title' },
-    { accessorKey: 'documentFormat', header: 'Format', cell: ({ getValue }) => getValue() || 'ANY' },
-    { accessorKey: 'maxSizeMb', header: 'Max Size (MB)', cell: ({ getValue }) => getValue() ? `${getValue()} MB` : '—' },
-    { accessorKey: 'description', header: 'Description', cell: ({ getValue }) => (
-      <span className="max-w-xs truncate block">{getValue() || '—'}</span>
-    )},
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" onClick={() => handleViewSubmissions(row.original)}>Submissions</Button>
-        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
-      </div>
-    )},
-  ]
+  const filteredRequests = requests.filter(request =>
+    `${request.title || ''} ${request.description || ''} ${request.documentFormat || ''}`.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
-    <div>
-      <PageHeader title="Document Requests" subtitle="Manage employee document requests"
-        actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New Request</Button>} />
-      <DataTable columns={columns} data={requests} loading={loading} />
+    <div className="document-requests-page">
+      <section className="document-requests-hero">
+        <div className="document-requests-hero-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3.75h7l5 5v11.5H7a2 2 0 0 1-2-2v-12a2.5 2.5 0 0 1 2-2.5Z"/><path d="M14 4v5h5M9 14h6M9 17h6"/></svg>
+        </div>
+        <div className="document-requests-hero-copy">
+          <span className="document-requests-eyebrow">PEOPLE OPERATIONS</span>
+          <h1>Document requests</h1>
+          <p>Collect and track the documents your team needs to submit.</p>
+        </div>
+        <Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ New request</Button>
+      </section>
+
+      <section className="document-requests-summary" aria-label="Document request summary">
+        <div className="document-requests-stat"><span className="document-requests-stat-icon">▤</span><div><span className="document-requests-stat-label">Active requests</span><strong>{requests.length}</strong></div></div>
+        <div className="document-requests-stat"><span className="document-requests-stat-icon document-requests-stat-icon-blue">♙</span><div><span className="document-requests-stat-label">Employees available</span><strong>{employees.length}</strong></div></div>
+        <div className="document-requests-summary-note"><span className="document-requests-status-dot" /> Requests are shared with selected employees</div>
+      </section>
+
+      <section className="document-requests-library">
+        <div className="document-requests-library-head">
+          <div><h2>Request library</h2><p>Review formats, requirements, and employee submissions.</p></div>
+          <label className="document-requests-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+            <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search requests" aria-label="Search document requests" />
+          </label>
+        </div>
+
+        {loading ? <div className="document-requests-loading"><span />Loading document requests…</div> : filteredRequests.length === 0 ? (
+          <div className="document-requests-empty"><span className="document-requests-empty-icon">▤</span><h3>{search ? 'No matching requests' : 'No document requests yet'}</h3><p>{search ? 'Try a different title, description, or format.' : 'Create a request to collect documents from your employees.'}</p>{!search && <Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>Create first request</Button>}</div>
+        ) : (
+          <div className="document-requests-grid">
+            {filteredRequests.map(request => (
+              <article className="document-request-card" key={request.id}>
+                <div className="document-request-card-top">
+                  <span className="document-request-file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3.75h7l5 5v11.5H7a2 2 0 0 1-2-2v-12a2.5 2.5 0 0 1 2-2.5Z"/><path d="M14 4v5h5M9 14h6M9 17h4"/></svg></span>
+                  <span className="document-request-format">{request.documentFormat || 'ANY'} format</span>
+                </div>
+                <h3>{request.title}</h3>
+                <p className="document-request-description">{request.description || 'No additional instructions provided.'}</p>
+                <div className="document-request-meta"><span>Maximum file size</span><strong>{request.maxSizeMb ? `${request.maxSizeMb} MB` : 'No limit set'}</strong></div>
+                <div className="document-request-actions">
+                  <Button size="sm" variant="secondary" onClick={() => handleViewSubmissions(request)}>Submissions</Button>
+                  <Button size="sm" variant="secondary" onClick={() => openEdit(request)}>Edit</Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDelete(request.id)}>Delete</Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -192,14 +226,14 @@ export default function DocumentRequestsPage() {
         )}
       </Modal>
 
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null); setSelectedEmployeeIds([]) }} title={editTarget ? 'Edit Document Request' : 'Create Document Request'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null); setSelectedEmployeeIds([]) }} title={editTarget ? 'Edit Document Request' : 'Create Document Request'} size="lg" panelClassName="document-request-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null); setSelectedEmployeeIds([]) }}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="document-request-form">
           <Input label="Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <Select label="Format" options={FORMAT_OPTIONS} {...register('documentFormat')} />
           <Input label="Max Size (MB)" type="number" {...register('maxSizeMb')} />
@@ -208,11 +242,11 @@ export default function DocumentRequestsPage() {
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               rows={3} {...register('description')} />
           </div>
-          {!editTarget && <div>
+          {!editTarget && <div className="document-request-recipient-block">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notify Employees <span className="text-gray-400 font-normal">(select to send notifications)</span>
+              Notify employees <span className="text-gray-400 font-normal">Choose who will be notified</span>
             </label>
-            <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+            <div className="document-request-recipient-list border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
               {employees.length === 0 ? (
                 <p className="text-xs text-gray-400 p-3">No employees found</p>
               ) : (

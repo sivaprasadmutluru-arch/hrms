@@ -27,27 +27,38 @@ export default function OffboardingSettingsPage() {
   }
 
   return (
-    <div>
+    <div className="offboarding-workspace offboarding-settings-page">
       <PageHeader title="Offboarding Settings" subtitle="Configure module-wide offboarding behaviour" />
-      <div className="max-w-lg bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-        <Input label="Notice Period (days)" type="number" {...register('noticePeriodDays', { valueAsNumber: true })} />
+      <div className="offboarding-settings-panel">
+        <section className="offboarding-notice-setting">
+          <div className="offboarding-settings-kicker">DEFAULT POLICY</div>
+          <h2>Notice period</h2>
+          <p>Set the standard number of days employees should work after submitting a resignation.</p>
+          <Input label="Notice period (days)" type="number" {...register('noticePeriodDays', { valueAsNumber: true })} />
+        </section>
 
-        <div className="space-y-3">
-          <label className="block text-sm font-semibold text-gray-700">Features</label>
-          {[
-            { key: 'enableExitInterview', label: 'Enable Exit Interview' },
-            { key: 'enableAssetReturnCheck', label: 'Enable Asset Return Check' },
-            { key: 'enableKnowledgeTransfer', label: 'Enable Knowledge Transfer' },
-          ].map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" {...register(key)} className="rounded" />
-              <span className="text-sm text-gray-700">{label}</span>
-            </label>
-          ))}
-        </div>
+        <section className="offboarding-feature-setting">
+          <div className="offboarding-settings-kicker">EXIT WORKFLOW</div>
+          <h2>Offboarding checklist</h2>
+          <p>Choose the steps your team should complete when an employee leaves.</p>
+          <div className="offboarding-feature-list">
+            {[
+              { key: 'enableExitInterview', title: 'Exit interview', description: 'Capture feedback and the employee’s reason for leaving.' },
+              { key: 'enableAssetReturnCheck', title: 'Asset return check', description: 'Track company equipment that must be returned.' },
+              { key: 'enableKnowledgeTransfer', title: 'Knowledge transfer', description: 'Include a handover step before the final working day.' },
+            ].map(({ key, title, description }) => (
+              <label key={key} className="offboarding-feature-option">
+                <input type="checkbox" {...register(key)} />
+                <span className="offboarding-feature-copy"><strong>{title}</strong><small>{description}</small></span>
+                <span className="offboarding-feature-chevron" aria-hidden="true">›</span>
+              </label>
+            ))}
+          </div>
+        </section>
 
-        <div className="flex justify-end">
-          <Button onClick={handleSubmit(onSubmit)} disabled={loading}>Save Settings</Button>
+        <div className="offboarding-settings-footer">
+          <p>Changes apply to future offboarding cases.</p>
+          <Button onClick={handleSubmit(onSubmit)} disabled={loading}>{loading ? 'Saving…' : 'Save settings'}</Button>
         </div>
       </div>
     </div>

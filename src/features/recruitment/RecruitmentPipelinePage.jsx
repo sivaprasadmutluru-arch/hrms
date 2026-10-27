@@ -89,7 +89,7 @@ export default function RecruitmentPipelinePage() {
   const totalApplicants = localPipeline.reduce((sum, s) => sum + (s.applicants?.length || 0), 0)
 
   return (
-    <div>
+    <div className="recruitment-workspace recruitment-pipeline">
       <PageHeader title="Recruitment Pipeline" subtitle="Kanban view — drag cards to move applicants between stages" />
 
       <div className="px-4 pb-4">
@@ -197,6 +197,7 @@ export default function RecruitmentPipelinePage() {
               <Button variant="secondary" onClick={() => setDetailApp(null)}>Close</Button>
             </div>
           }
+          panelClassName="recruitment-form-modal"
         >
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">

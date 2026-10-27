@@ -63,17 +63,53 @@ const StatCard = memo(function StatCard({ label, value, icon, color }) {
   )
 })
 
+function EmployeeDetailsModal({ employee, role, isOnline, onClose, onFullProfile }) {
+  if (!employee) return null
+  const details = [
+    ['Employee ID', employee.badgeId],
+    ['Department', employee.departmentName],
+    ['Organization', employee.organizationName],
+    ['Branch / Company', employee.companyName],
+    ['Date joined', employee.dateJoining ? formatDate(employee.dateJoining) : null],
+    ['Employee type', employee.employeeType?.replace(/_/g, ' ')],
+    ['Role', role?.replace(/_/g, ' ')],
+    ['Phone', employee.phone],
+    ['Account status', employee.isActive ? 'Active' : 'Inactive'],
+    ['Availability', isOnline ? 'Online now' : 'Offline'],
+  ].filter(([, value]) => value != null && value !== '')
+
+  return (
+    <Modal
+      open={!!employee}
+      onClose={onClose}
+      size="lg"
+      panelClassName="employee-details-modal"
+      title="Employee details"
+      footer={<div className="employee-details-actions"><Button variant="secondary" onClick={onClose}>Close</Button><Button className="employee-profile-button" onClick={onFullProfile}>Full profile <span aria-hidden="true">→</span></Button></div>}
+    >
+      <div className="employee-details-person">
+        <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${employee.photoPath}` : undefined} size="lg" />
+        <div><h3>{employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Employee'}</h3><p>{employee.email || 'No email on file'}</p></div>
+        <span className={employee.isActive ? 'is-active' : 'is-inactive'}>{employee.isActive ? 'Active' : 'Inactive'}</span>
+      </div>
+      <dl className="employee-details-list">
+        {details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+      </dl>
+    </Modal>
+  )
+}
+
 const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canHardDelete, onView, onEdit, onToggleActive, onHardDelete, isOnline }) {
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
+      className="employee-list-card bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
       onClick={() => onView(employee)}
     >
       {/* Card top accent */}
-      <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-t-2xl" />
-      <div className="p-5">
+      <div className="employee-list-accent h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-t-2xl" />
+      <div className="employee-list-card-content p-5">
         {/* Header row */}
-        <div className="flex items-start justify-between gap-2 mb-4">
+        <div className="employee-list-heading flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="shrink-0 relative">
               <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${employee.photoPath}` : undefined} size="lg" />
@@ -94,7 +130,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
         </div>
 
         {/* Details grid */}
-        <div className="space-y-2 mb-4">
+        <div className="employee-list-details space-y-2 mb-4">
           {employee.badgeId && (
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,8 +178,9 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
           )}
         </div>
 
+        <div className="employee-list-management">
         {/* Tags row */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        <div className="employee-list-tags flex flex-wrap gap-1.5 mb-4">
           {employee.employeeType && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
               {employee.employeeType.replace(/_/g, ' ')}
@@ -158,7 +195,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
 
         {/* Actions */}
         {canManage && (
-          <div className="flex gap-2 pt-3 border-t border-gray-100">
+          <div className="employee-list-actions flex gap-2 pt-3 border-t border-gray-100">
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(employee) }}
               className="flex-1 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -184,6 +221,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
@@ -219,6 +257,7 @@ export default function EmployeesPage() {
   const onlineEmployeeIds = useSelector(selectOnlineEmployeeIds)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [detailsEmployee, setDetailsEmployee] = useState(null)
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [hardDeleteTarget, setHardDeleteTarget] = useState(null)
@@ -593,7 +632,7 @@ export default function EmployeesPage() {
   const reportingManagerOptions = employees.map(e => ({ value: e.id, label: e.fullName || e.firstName }))
 
   return (
-    <div className="space-y-6">
+    <div className="employees-page space-y-6">
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -822,7 +861,9 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Keep the employee list scrolling independently from the page controls. */}
+      <div className="employee-results-panel">
+      <div className="employee-results-scroll">
       {loading ? (
         <div className="flex justify-center items-center py-24">
           <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
@@ -834,7 +875,7 @@ export default function EmployeesPage() {
           <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="employee-directory-stack">
           {filtered.map((emp, idx) => (
             <EmployeeCard
               key={`${emp.companyId ?? 'x'}-${emp.id ?? idx}-${idx}`}
@@ -843,7 +884,7 @@ export default function EmployeesPage() {
               canManage={canManage}
               canHardDelete={isPlatformAdmin()}
               isOnline={onlineSet.has(emp.id)}
-              onView={(e) => navigate(`/employees/${e.id}${e.companyId ? `?companyId=${e.companyId}` : ''}`)}
+              onView={setDetailsEmployee}
               onEdit={openEdit}
               onToggleActive={setDeleteTarget}
               onHardDelete={setHardDeleteTarget}
@@ -856,18 +897,36 @@ export default function EmployeesPage() {
         </div>
       )}
 
+      </div>
+      <div className="employee-results-footer">
+      <span className="employee-results-count">{pagination.total ? `${pagination.total} employees · page ${pagination.page + 1} of ${Math.max(1, Math.ceil(pagination.total / pageSize))}` : 'No employees to display'}</span>
       <Pagination
         page={pagination.page}
         totalPages={Math.ceil(pagination.total / pageSize)}
         onPageChange={load}
       />
+      </div>
+      </div>
       </>
       )}
 
       {/* Create / Edit Modal */}
+      <EmployeeDetailsModal
+        employee={detailsEmployee}
+        role={detailsEmployee ? roleByEmail[detailsEmployee.email] : null}
+        isOnline={detailsEmployee ? onlineSet.has(detailsEmployee.id) : false}
+        onClose={() => setDetailsEmployee(null)}
+        onFullProfile={() => {
+          const employee = detailsEmployee
+          setDetailsEmployee(null)
+          if (employee) navigate(`/employees/${employee.id}${employee.companyId ? `?companyId=${employee.companyId}` : ''}`)
+        }}
+      />
       <Modal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setPhotoFile(null); setPhotoPreview(null) }}
+        size="lg"
+        panelClassName="employee-modal"
         title={editing ? 'Edit Employee' : 'New Employee'}
         footer={
           <div className="flex justify-end gap-2">
@@ -890,6 +949,7 @@ export default function EmployeesPage() {
           workTypeOptions={workTypeOptions}
           shiftOptions={shiftOptions}
           reportingManagerOptions={reportingManagerOptions}
+          vertical
           photoPreview={photoPreview}
           onPhotoChange={(file) => {
             setPhotoFile(file)

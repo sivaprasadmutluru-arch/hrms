@@ -89,10 +89,10 @@ export default function ApprovalConditionsPage() {
   ]
 
   return (
-    <div>
+    <div className="admin-settings-workspace">
       <PageHeader title="Approval Conditions" subtitle="Multi-level approval condition rules"
         actions={<Button onClick={openCreate}>+ Add Condition</Button>} />
-      <DataTable columns={columns} data={conditions} loading={loading} />
+      <div className="admin-settings-table"><DataTable columns={columns} data={conditions} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -102,14 +102,14 @@ export default function ApprovalConditionsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Condition' : 'Add Condition'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Condition' : 'Add Condition'} panelClassName="admin-settings-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="admin-settings-form">
           <Select label="Field" options={FIELD_OPTIONS} {...register('conditionField')} />
           <Select label="Operator" options={OPERATOR_OPTIONS} {...register('conditionOperator')} />
           {operator === 'RANGE' ? (

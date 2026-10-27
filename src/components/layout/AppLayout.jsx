@@ -48,9 +48,9 @@ export default function AppLayout() {
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (user?.mustChangePassword) return <Navigate to="/change-password-required" replace />
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="app-workspace flex h-screen overflow-hidden">
       <Sidebar />
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="app-main-shell flex flex-col flex-1 overflow-hidden">
         <Topbar />
         <main className="flex-1 overflow-auto p-6">
           <Suspense fallback={<PageSkeleton />}>

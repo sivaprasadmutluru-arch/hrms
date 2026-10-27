@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  BarChart, Bar, FunnelChart, Funnel, LabelList,
+  BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   Cell, PieChart, Pie,
 } from 'recharts'
 import {
   BriefcaseIcon, UserGroupIcon, CheckCircleIcon,
-  XCircleIcon, ChartBarIcon, SparklesIcon,
+  ChartBarIcon, SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { fetchRecruitmentDashboard, fetchAll as fetchPosts, fetchApplicants } from './recruitmentSlice'
 import PageHeader from '../../components/common/PageHeader'
@@ -16,7 +16,6 @@ import Badge from '../../components/common/Badge'
 import Avatar from '../../components/common/Avatar'
 import useAuth from '../../hooks/useAuth'
 
-const FUNNEL_COLORS = ['#6366F1', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444']
 const PIE_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
 
 export default function RecruitmentDashboardPage() {
@@ -52,13 +51,6 @@ export default function RecruitmentDashboardPage() {
     ? Math.round((hired / (hired + rejected)) * 100)
     : 0
 
-  // Funnel data
-  const funnelData = [
-    { name: 'Total Applicants', value: totalApplicants },
-    { name: 'Shortlisted', value: shortlisted },
-    { name: 'Hired', value: hired },
-  ].filter(d => d.value > 0)
-
   // Stage breakdown from applicants
   const stageMap = {}
   ;(applicants || []).forEach(a => {
@@ -76,54 +68,65 @@ export default function RecruitmentDashboardPage() {
   const deptData = Object.entries(deptMap).map(([dept, count]) => ({ dept, count }))
 
   return (
-    <div>
+    <div className="recruitment-workspace recruitment-dashboard">
       <PageHeader title="Recruitment Dashboard" subtitle="Hiring pipeline, conversion rates, and applicant overview" />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
-        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 shadow-sm">
+      <div className="recruitment-dashboard-kpis">
+        <div className="recruitment-kpi recruitment-kpi-vacancies">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs text-gray-500 font-medium mb-1">Total Vacancies</p>
               <p className="text-2xl font-bold text-indigo-600">{loading ? '—' : totalPosts}</p>
               <p className="text-xs text-gray-400 mt-1">{activePosts} active</p>
             </div>
-            <BriefcaseIcon className="h-6 w-6 text-indigo-400" />
+            <span className="recruitment-kpi-icon"><BriefcaseIcon /></span>
           </div>
         </div>
 
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 shadow-sm">
+        <div className="recruitment-kpi recruitment-kpi-applicants">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs text-gray-500 font-medium mb-1">Total Applicants</p>
               <p className="text-2xl font-bold text-blue-600">{loading ? '—' : totalApplicants}</p>
               <p className="text-xs text-gray-400 mt-1">{shortlisted} shortlisted</p>
             </div>
-            <UserGroupIcon className="h-6 w-6 text-blue-400" />
+            <span className="recruitment-kpi-icon"><UserGroupIcon /></span>
           </div>
         </div>
 
-        <div className="bg-green-50 border border-green-100 rounded-xl p-4 shadow-sm">
+        <div className="recruitment-kpi recruitment-kpi-shortlisted">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-1">Shortlisted</p>
+              <p className="text-2xl font-bold text-indigo-600">{loading ? '—' : shortlisted}</p>
+              <p className="text-xs text-gray-400 mt-1">Moving through the process</p>
+            </div>
+            <span className="recruitment-kpi-icon"><SparklesIcon /></span>
+          </div>
+        </div>
+
+        <div className="recruitment-kpi recruitment-kpi-hired">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs text-gray-500 font-medium mb-1">Hired</p>
               <p className="text-2xl font-bold text-green-600">{loading ? '—' : hired}</p>
               <p className="text-xs text-gray-400 mt-1">Offer accepted</p>
             </div>
-            <CheckCircleIcon className="h-6 w-6 text-green-400" />
+            <span className="recruitment-kpi-icon"><CheckCircleIcon /></span>
           </div>
         </div>
       </div>
 
       {/* Conversion rates row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+      <div className="recruitment-rates">
+        <div className="recruitment-rate-card recruitment-rate-conversion">
           <div className="flex items-center gap-2 mb-3">
             <ChartBarIcon className="h-5 w-5 text-purple-500" />
             <h3 className="text-sm font-semibold text-gray-700">Conversion Rate</h3>
             <span className="text-xs text-gray-400 ml-1">(Hired / Total Applicants)</span>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="recruitment-rate-value">
             <span className="text-4xl font-bold text-purple-600">{conversionRate}%</span>
           </div>
           <div className="mt-3 bg-gray-100 rounded-full h-2">
@@ -134,13 +137,13 @@ export default function RecruitmentDashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+        <div className="recruitment-rate-card recruitment-rate-offers">
           <div className="flex items-center gap-2 mb-3">
             <SparklesIcon className="h-5 w-5 text-emerald-500" />
             <h3 className="text-sm font-semibold text-gray-700">Offer Acceptance Rate</h3>
             <span className="text-xs text-gray-400 ml-1">(OAR)</span>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="recruitment-rate-value">
             <span className="text-4xl font-bold text-emerald-600">{offerAcceptanceRate}%</span>
           </div>
           <div className="mt-3 bg-gray-100 rounded-full h-2">
@@ -154,8 +157,8 @@ export default function RecruitmentDashboardPage() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Applicant Stage Breakdown</h3>
+        <Card className="recruitment-chart-card">
+          <div className="recruitment-panel-heading"><div><span>PIPELINE</span><h3>Applicant stages</h3></div><span>{totalApplicants} total</span></div>
           {stageData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -178,28 +181,15 @@ export default function RecruitmentDashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[220px] flex items-center justify-center">
-              <div className="text-center">
-                <div className="flex justify-center gap-4 text-sm text-gray-600">
-                  {[
-                    { label: 'Applied', value: totalApplicants, color: 'bg-indigo-500' },
-                    { label: 'Shortlisted', value: shortlisted, color: 'bg-purple-500' },
-                    { label: 'Hired', value: hired, color: 'bg-green-500' },
-                    { label: 'Rejected', value: rejected, color: 'bg-red-500' },
-                  ].map(s => (
-                    <div key={s.label} className="flex flex-col items-center gap-1">
-                      <span className={`${s.color} text-white text-lg font-bold rounded-lg px-3 py-1`}>{s.value}</span>
-                      <span className="text-xs text-gray-500">{s.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="recruitment-chart-empty">
+              <div className="recruitment-stage-empty-icon"><UserGroupIcon /></div>
+              <div><strong>No candidate activity yet</strong><p>Applicant stage metrics will appear here as candidates move through the hiring process.</p></div>
             </div>
           )}
         </Card>
 
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Job Posts by Department</h3>
+        <Card className="recruitment-chart-card">
+          <div className="recruitment-panel-heading"><div><span>OPEN ROLES</span><h3>Posts by department</h3></div><span>{totalPosts} total</span></div>
           {deptData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={deptData} layout="vertical">
@@ -211,7 +201,10 @@ export default function RecruitmentDashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[220px] flex items-center justify-center text-gray-400 text-sm">No post data</div>
+            <div className="recruitment-chart-empty">
+              <div className="recruitment-stage-empty-icon"><BriefcaseIcon /></div>
+              <div><strong>No department data yet</strong><p>Published roles will be grouped here so you can see where hiring is active.</p></div>
+            </div>
           )}
         </Card>
       </div>

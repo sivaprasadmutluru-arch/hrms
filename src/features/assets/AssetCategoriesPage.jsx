@@ -70,11 +70,11 @@ export default function AssetCategoriesPage() {
   ]
 
   return (
-    <div>
+    <div className="asset-workspace">
       <PageHeader title="Asset Categories" subtitle="Manage asset categories"
         actions={<Button onClick={openCreate}>Add Category</Button>} />
-      <DataTable columns={columns} data={categories} />
-      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Category' : 'New Category'}>
+      <div className="asset-table"><DataTable columns={columns} data={categories} /></div>
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Category' : 'New Category'} panelClassName="asset-form-modal">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input label="Name" {...register('name', { required: 'Required' })} error={errors.name?.message} />
           <div className="flex justify-end gap-2">

@@ -103,10 +103,10 @@ export default function InterviewsPage() {
   ]
 
   return (
-    <div>
+    <div className="recruitment-workspace">
       <PageHeader title="Interviews" subtitle="Schedule and manage candidate interviews"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Schedule Interview</Button>} />
-      <DataTable columns={columns} data={interviews} loading={loading} />
+      <div className="recruitment-table"><DataTable columns={columns} data={interviews} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -116,7 +116,7 @@ export default function InterviewsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Interview' : 'Schedule Interview'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Interview' : 'Schedule Interview'} panelClassName="recruitment-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

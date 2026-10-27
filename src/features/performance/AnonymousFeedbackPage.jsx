@@ -87,10 +87,10 @@ export default function AnonymousFeedbackPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Anonymous Feedback" subtitle="Submit and view anonymous feedback"
         actions={<Button onClick={() => { setEditTarget(null); reset(); setModalOpen(true) }}>+ Submit Feedback</Button>} />
-      <DataTable columns={columns} data={feedbacks} loading={loading} />
+      <div className="performance-table"><DataTable columns={columns} data={feedbacks} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -100,7 +100,7 @@ export default function AnonymousFeedbackPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Feedback' : 'Submit Anonymous Feedback'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Feedback' : 'Submit Anonymous Feedback'} panelClassName="performance-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>

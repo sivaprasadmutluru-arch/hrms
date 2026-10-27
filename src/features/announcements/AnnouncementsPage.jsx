@@ -9,7 +9,6 @@ import {
 import { markAnnouncementViewed } from '../base/baseExtrasSlice'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
-import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
@@ -61,26 +60,35 @@ export default function AnnouncementsPage() {
     } catch (e) { toast.error(e || 'Error') }
   }
 
-  const columns = [
-    { accessorKey: 'title', header: 'Title' },
-    { accessorKey: 'description', header: 'Description', cell: ({ getValue }) => (
-      <span className="max-w-sm truncate block">{getValue() || '—'}</span>
-    )},
-    { accessorKey: 'expiresOn', header: 'Expires On', cell: ({ getValue }) => getValue() || '—' },
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="ghost" onClick={() => handleView(row.original.id)}>Mark Viewed</Button>
-        <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-        <Button size="sm" variant="danger" onClick={() => handleDelete(row.original.id)}>Delete</Button>
-      </div>
-    )},
-  ]
+  const activeAnnouncements = announcements.filter(item => !item.expiresOn || new Date(`${item.expiresOn}T23:59:59`) >= new Date()).length
 
   return (
-    <div>
+    <div className="support-workspace announcements-workspace">
       <PageHeader title="Announcements" subtitle="Company announcements and updates"
         actions={<Button onClick={openCreate}>+ New Announcement</Button>} />
-      <DataTable columns={columns} data={announcements} loading={loading} />
+      <div className="support-metrics announcement-metrics">
+        <div className="support-metric support-metric-open"><span>Published updates</span><strong>{announcements.length}</strong></div>
+        <div className="support-metric support-metric-done"><span>Currently active</span><strong>{activeAnnouncements}</strong></div>
+      </div>
+      {loading ? <div className="announcement-loading">Loading announcements…</div> : announcements.length === 0 ? (
+        <div className="announcement-empty"><span className="announcement-empty-icon">✦</span><h2>No announcements yet</h2><p>Share company news and important updates with your team.</p><Button onClick={openCreate}>Create announcement</Button></div>
+      ) : (
+        <div className="announcement-grid">
+          {announcements.map(item => {
+            const expired = item.expiresOn && new Date(`${item.expiresOn}T23:59:59`) < new Date()
+            return <article className="announcement-card" key={item.id}>
+              <div className="announcement-card-top"><span className="announcement-mark">✦</span><span className={`announcement-state ${expired ? 'is-expired' : ''}`}>{expired ? 'Expired' : 'Active'}</span></div>
+              <h2>{item.title}</h2>
+              <p className="announcement-description">{item.description || 'No additional details were provided.'}</p>
+              <div className="announcement-card-foot"><span>{item.expiresOn ? `Expires ${item.expiresOn}` : 'No expiry date'}</span><div className="announcement-actions">
+                <Button size="sm" variant="ghost" onClick={() => handleView(item.id)}>Mark viewed</Button>
+                <Button size="sm" variant="secondary" onClick={() => openEdit(item)}>Edit</Button>
+                <Button size="sm" variant="danger" onClick={() => handleDelete(item.id)}>Delete</Button>
+              </div></div>
+            </article>
+          })}
+        </div>
+      )}
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -90,14 +98,14 @@ export default function AnnouncementsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Announcement' : 'New Announcement'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Announcement' : 'New Announcement'} panelClassName="support-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="support-form">
           <Input label="Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <Input label="Expires On" type="date" {...register('expiresOn')} />
           <div>

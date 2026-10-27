@@ -68,11 +68,11 @@ export default function FaceDetectionPage() {
   ]
 
   return (
-    <div>
+    <div className="biometric-workspace face-detection-workspace">
       <PageHeader title="Face Detection" subtitle="Manage face detection for attendance" />
 
       {/* Config toggle */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <div className="face-status-panel bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Face Detection Status</h2>
@@ -91,11 +91,11 @@ export default function FaceDetectionPage() {
       </div>
 
       {/* Employees */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="face-employee-toolbar flex justify-between items-center mb-4">
         <h2 className="text-base font-semibold text-gray-900">Registered Employees</h2>
         <Button onClick={() => { reset({}); setModalOpen(true) }}>+ Register Employee</Button>
       </div>
-      <DataTable columns={columns} data={employees} loading={loading} />
+      <div className="biometric-table"><DataTable columns={columns} data={employees} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -105,14 +105,14 @@ export default function FaceDetectionPage() {
         confirmLabel="Remove"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Register Employee for Face Detection"
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Register Employee for Face Detection" panelClassName="biometric-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>Register</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="biometric-form">
           <Input label="Employee ID" type="number" {...register('employeeId', { required: true })} />
           <Input label="Image Path" {...register('imagePath')} />
         </div>

@@ -65,10 +65,10 @@ export default function RejectReasonsPage() {
   ]
 
   return (
-    <div>
+    <div className="recruitment-workspace">
       <PageHeader title="Reject Reasons" subtitle="Standard rejection reasons for candidates"
         actions={<Button onClick={openCreate}>+ Add Reason</Button>} />
-      <DataTable columns={columns} data={rejectReasons} loading={loading} />
+      <div className="recruitment-table"><DataTable columns={columns} data={rejectReasons} loading={loading} /></div>
       <ConfirmModal
         open={confirmModal.open}
         onClose={() => setConfirmModal({ open: false, id: null })}
@@ -78,7 +78,7 @@ export default function RejectReasonsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Reject Reason' : 'Add Reject Reason'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Reject Reason' : 'Add Reject Reason'} panelClassName="recruitment-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

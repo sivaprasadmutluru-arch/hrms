@@ -8,7 +8,6 @@ import {
 } from './companiesSlice'
 import { validateCompanyScope } from '../platform/platformSlice'
 import { setSelectedCompany } from '../auth/authSlice'
-import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
@@ -52,12 +51,12 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
 
   return (
     <div
-      className={`${sizeMap[size]} rounded-xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative ${canUpload ? 'cursor-pointer group' : ''} ${className}`}
+      className={`${sizeMap[size]} rounded-2xl bg-white border border-[#DCE7F2] flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative ${canUpload ? 'cursor-pointer group' : ''} ${className}`}
       onClick={() => canUpload && inputRef.current?.click()}
     >
       {url
         ? <img src={url} alt="logo" className="w-full h-full object-cover" />
-        : <Icon className={`${iconSizeMap[size]} text-indigo-400`} />
+        : <Icon className={`${iconSizeMap[size]} text-[#4C84B8]`} />
       }
       {canUpload && (
         <>
@@ -74,8 +73,8 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
 // ─── Branch card ─────────────────────────────────────────────────────────────
 function BranchCard({ branch, headOfficeId, canEdit, onEdit, onDelete, onLogoUpload }) {
   return (
-    <div className="aspect-square flex flex-col rounded-2xl border border-gray-100 overflow-hidden hover:border-violet-200 hover:shadow-md transition-all group">
-      <div className="flex-1 flex flex-col items-center justify-center p-4 bg-gradient-to-br from-violet-50 to-purple-50 group-hover:from-violet-100 group-hover:to-purple-100 transition-colors">
+    <div className="flex min-h-[250px] flex-col overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition-all hover:-translate-y-0.5 hover:border-[#C9D9E8] hover:shadow-md group">
+      <div className="flex flex-1 flex-col items-center justify-center bg-gradient-to-br from-[#F4F8FC] to-[#FFFDF6] p-4 transition-colors group-hover:from-[#EDF5FD] group-hover:to-[#FFFAE9]">
         <LogoAvatar
           logoPath={branch.logoPath}
           icon={BuildingStorefrontIcon}
@@ -84,10 +83,10 @@ function BranchCard({ branch, headOfficeId, canEdit, onEdit, onDelete, onLogoUpl
           onUpload={(file) => onLogoUpload(branch.id, file)}
           className="mb-3"
         />
-        <p className="font-bold text-gray-800 text-sm text-center leading-tight">{branch.name}</p>
-        <span className="mt-2 text-xs font-medium px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Branch</span>
+        <p className="text-center text-sm font-bold leading-tight text-[#17324F]">{branch.name}</p>
+        <span className="mt-2 rounded-full border border-[#DCE7F2] bg-white px-2.5 py-1 text-xs font-semibold text-[#49627C]">Branch</span>
       </div>
-      <div className="bg-white px-3 py-2.5 border-t border-gray-100 space-y-1">
+      <div className="space-y-1 border-t border-[#E7EEF5] bg-white px-3 py-2.5">
         {branch.email && (
           <p className="flex items-center gap-1 text-xs text-gray-500 truncate">
             <EnvelopeIcon className="h-3 w-3 flex-shrink-0 text-gray-400" />
@@ -133,13 +132,13 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
   const location = [headOffice.city, headOffice.state, headOffice.country].filter(Boolean).join(', ')
 
   return (
-    <div className="flex gap-6 items-start">
+    <div className="flex flex-col items-start gap-5 lg:flex-row lg:gap-6">
 
       {/* ── LEFT: Company profile sidebar ── */}
-      <div className="w-72 flex-shrink-0 space-y-4">
+      <div className="w-full flex-shrink-0 space-y-4 lg:w-72">
         {/* Identity block */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="h-20 bg-gradient-to-br from-indigo-500 to-violet-600" />
+        <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
+          <div className="h-20 bg-gradient-to-r from-[#17324F] via-[#28669C] to-[#91BBDD]" />
           <div className="px-5 pb-5">
             <div className="-mt-8 mb-4">
               <LogoAvatar
@@ -148,13 +147,13 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                 size="md"
                 canUpload={canAddBranch}
                 onUpload={(file) => onLogoUpload(headOffice.id, file)}
-                className="border-2 border-white shadow-md"
+              className="border-2 border-white shadow-md"
               />
             </div>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 mb-2 inline-block">
+            <span className="mb-2 inline-block rounded-full border border-[#D5E5F4] bg-[#EDF5FD] px-2.5 py-1 text-xs font-semibold text-[#2D6FB4]">
               Head Office
             </span>
-            <h2 className="text-base font-bold text-gray-900 leading-snug">{headOffice.name}</h2>
+            <h2 className="text-base font-bold leading-snug text-[#17324F]">{headOffice.name}</h2>
             {location && (
               <p className="flex items-center gap-1 text-xs text-gray-400 mt-1">
                 <MapPinIcon className="h-3.5 w-3.5 flex-shrink-0" />
@@ -168,11 +167,11 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
         </div>
 
         {/* Contact details */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+        <div className="divide-y divide-[#E7EEF5] overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
           {headOffice.email && (
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                <EnvelopeIcon className="h-3.5 w-3.5 text-blue-500" />
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#EDF5FD]">
+                <EnvelopeIcon className="h-4 w-4 text-[#3479BC]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400">Email</p>
@@ -182,8 +181,8 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           )}
           {headOffice.phone && (
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-                <PhoneIcon className="h-3.5 w-3.5 text-green-500" />
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#ECF8F3]">
+                <PhoneIcon className="h-4 w-4 text-[#318367]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400">Phone</p>
@@ -193,8 +192,8 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           )}
           {headOffice.website && (
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="w-7 h-7 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
-                <GlobeAltIcon className="h-3.5 w-3.5 text-violet-500" />
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#FFF8DF]">
+                <GlobeAltIcon className="h-4 w-4 text-[#98751D]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400">Website</p>
@@ -204,8 +203,8 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           )}
           {headOffice.address && (
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
-                <MapPinIcon className="h-3.5 w-3.5 text-rose-400" />
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#F1F5F8]">
+                <MapPinIcon className="h-4 w-4 text-[#698096]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400">Address</p>
@@ -216,16 +215,16 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
         </div>
 
         {/* Branch usage */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4">
+        <div className="rounded-2xl border border-[#DCE7F2] bg-white px-4 py-4 shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-600">Branch Usage</p>
             <span className={`text-xs font-bold ${atLimit ? 'text-amber-600' : 'text-indigo-600'}`}>
               {branchList.length} / 5
             </span>
           </div>
-          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[#EAF0F6]">
             <div
-              className={`h-full rounded-full transition-all ${atLimit ? 'bg-amber-400' : 'bg-indigo-500'}`}
+              className={`h-full rounded-full transition-all ${atLimit ? 'bg-[#E2BE54]' : 'bg-gradient-to-r from-[#4D8FD1] to-[#2F70B3]'}`}
               style={{ width: `${(branchList.length / 5) * 100}%` }}
             />
           </div>
@@ -273,15 +272,15 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {branchList.map(branch => {
               const branchLocation = [branch.city, branch.state, branch.country].filter(Boolean).join(', ')
               return (
                 <div
                   key={branch.id}
-                  className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all group overflow-hidden"
+                  className="group overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition-all hover:-translate-y-0.5 hover:border-[#C9D9E8] hover:shadow-md"
                 >
-                  <div className="px-5 pt-5 pb-4">
+                  <div className="px-5 pb-4 pt-5">
                     <div className="flex items-start justify-between mb-3">
                       <LogoAvatar
                         logoPath={branch.logoPath}
@@ -289,13 +288,13 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                         size="sm"
                         canUpload={canAddBranch}
                         onUpload={(file) => onLogoUpload(branch.id, file)}
-                        className="rounded-xl border-violet-100"
+                        className="rounded-xl border-[#DCE7F2]"
                       />
-                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-50 text-violet-700">
+                      <span className="rounded-full border border-[#DCE7F2] bg-[#F4F8FC] px-2.5 py-1 text-xs font-semibold text-[#49627C]">
                         Branch
                       </span>
                     </div>
-                    <h4 className="font-bold text-gray-800 text-sm leading-snug mb-3">{branch.name}</h4>
+                    <h4 className="mb-3 text-sm font-bold leading-snug text-[#17324F]">{branch.name}</h4>
                     <div className="space-y-1.5">
                       {branch.email && (
                         <p className="flex items-center gap-2 text-xs text-gray-500">
@@ -318,7 +317,7 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
                     </div>
                   </div>
                   {canAddBranch && (
-                    <div className="border-t border-gray-50 px-4 py-2.5 flex justify-end gap-3">
+                    <div className="flex justify-end gap-3 border-t border-[#E7EEF5] px-4 py-2.5">
                       <button
                         onClick={() => onEditBranch(branch, headOffice.id)}
                         className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-indigo-600 transition-colors"
@@ -445,32 +444,32 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {headOffices.length > 0 && (
-        <div className="flex gap-4">
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-              <BuildingOffice2Icon className="h-4 w-4 text-indigo-600" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex items-center gap-3 rounded-2xl border border-[#DCE7F2] bg-white p-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)]">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#EDF5FD] text-[#3479BC] ring-1 ring-inset ring-[#DCEBFA]">
+              <BuildingOffice2Icon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xl font-bold text-gray-900 leading-none">{headOffices.length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Head Office{headOffices.length !== 1 ? 's' : ''}</p>
+              <p className="text-xl font-bold leading-none text-[#17324F]">{headOffices.length}</p>
+              <p className="mt-1 text-xs font-medium text-slate-500">Head Office{headOffices.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
-              <BuildingStorefrontIcon className="h-4 w-4 text-violet-600" />
+          <div className="flex items-center gap-3 rounded-2xl border border-[#DCE7F2] bg-white p-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)]">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#FFF8DF] text-[#98751D] ring-1 ring-inset ring-[#F4E7B8]">
+              <BuildingStorefrontIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xl font-bold text-gray-900 leading-none">{totalBranches}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Total Branch{totalBranches !== 1 ? 'es' : ''}</p>
+              <p className="text-xl font-bold leading-none text-[#17324F]">{totalBranches}</p>
+              <p className="mt-1 text-xs font-medium text-slate-500">Total Branch{totalBranches !== 1 ? 'es' : ''}</p>
             </div>
           </div>
         </div>
       )}
 
       {headOffices.length > 0 ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {headOffices.map(company => {
             const branchCount = (branches[company.id] || []).length
             const atLimit = branchCount >= 5
@@ -479,9 +478,9 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
               <div
                 key={company.id}
                 onClick={() => handleOpenCompanyDashboard(company.id)}
-                className="relative cursor-pointer aspect-square flex flex-col rounded-2xl border-2 border-gray-100 overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md hover:border-indigo-200 group"
+                className="group relative flex min-h-[280px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#BFD3E7] hover:shadow-[0_14px_30px_rgba(30,65,96,0.09)]"
               >
-                <div className="flex-1 flex flex-col items-center justify-center p-5 bg-gradient-to-br from-indigo-50 to-violet-50 group-hover:from-indigo-100 group-hover:to-violet-100 transition-colors">
+                <div className="flex flex-1 flex-col items-center justify-center bg-gradient-to-br from-[#F3F8FD] via-white to-[#FFFCF1] p-5 transition-colors">
                   <div onClick={e => e.stopPropagation()} className="mb-3">
                     <LogoAvatar
                       logoPath={company.logoPath}
@@ -491,12 +490,12 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                       onUpload={(file) => onLogoUpload(company.id, file)}
                     />
                   </div>
-                  <p className="font-bold text-base text-center leading-tight text-gray-800">{company.name}</p>
-                  <span className="mt-2 text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                  <p className="text-center text-base font-bold leading-tight text-[#17324F]">{company.name}</p>
+                  <span className="mt-2 rounded-full border border-[#D5E5F4] bg-[#EDF5FD] px-2.5 py-1 text-xs font-semibold text-[#2D6FB4]">
                     Head Office
                   </span>
                 </div>
-                <div className="bg-white px-4 py-3 border-t border-gray-100 space-y-1">
+                <div className="space-y-1 border-t border-[#E7EEF5] bg-white px-4 py-3">
                   {company.email && (
                     <p className="flex items-center gap-1.5 text-xs text-gray-500 truncate">
                       <EnvelopeIcon className="h-3 w-3 flex-shrink-0 text-gray-400" />
@@ -512,14 +511,14 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                   <div className="flex items-center justify-between pt-1">
                     <button
                       onClick={(e) => { e.stopPropagation(); openBranchModal(company.id) }}
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full transition-colors ${atLimit ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-500 hover:bg-indigo-100 hover:text-indigo-600'}`}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${atLimit ? 'border-[#F0E2B7] bg-[#FFF8E3] text-[#98751D] hover:bg-[#FFF2C8]' : 'border-[#DCE7F2] bg-[#F6F9FC] text-[#49627C] hover:bg-[#EDF5FD] hover:text-[#2D6FB4]'}`}
                     >
                       {branchCount}/5 branches ↓
                     </button>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditHeadOffice(company) }}
-                        className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                        className="flex items-center gap-1 text-xs font-semibold text-[#3479BC] transition-colors hover:text-[#1F5F9D]"
                         title="Edit company branding"
                       >
                         <PencilSquareIcon className="h-3.5 w-3.5" />
@@ -540,9 +539,9 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
           })}
         </div>
       ) : (
-        <div className="bg-white border border-dashed border-gray-200 rounded-2xl px-6 py-16 flex flex-col items-center text-center shadow-sm">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
-            <BuildingOffice2Icon className="h-8 w-8 text-indigo-400" />
+          <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#C9D9E8] bg-white px-6 py-16 text-center shadow-[0_7px_22px_rgba(30,65,96,0.035)]">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#EDF5FD] text-[#4C84B8]">
+            <BuildingOffice2Icon className="h-8 w-8" />
           </div>
           <p className="text-gray-700 font-semibold text-base mb-1">No companies yet</p>
           <p className="text-sm text-gray-400 max-w-xs">Head offices are created automatically when you add a new organization.</p>
@@ -771,15 +770,18 @@ export default function CompaniesPage() {
   const enterpriseHeadOffice = isEnterpriseAdmin() ? headOffices[0] || companies[0] : null
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Companies"
-        subtitle={
-          isEnterpriseAdmin()
-            ? 'Your company and branch offices'
-            : 'Manage all head offices and their branches'
-        }
-      />
+    <div className="space-y-5 pb-6">
+      <div className="relative overflow-hidden rounded-2xl border border-[#DCE7F2] bg-gradient-to-r from-white via-white to-[#F0F6FC] px-5 py-5 shadow-[0_8px_24px_rgba(30,65,96,0.045)] sm:px-6">
+        <div className="pointer-events-none absolute -right-8 -top-16 h-48 w-48 rounded-full bg-[#E8F1FB]/70" />
+        <div className="relative flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FC] text-[#2D6FB4] ring-1 ring-inset ring-[#D7E6F7"><BuildingOffice2Icon className="h-6 w-6" /></div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A6B19]">Organization · Directory</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-[#17324F]">Companies</h1>
+            <p className="mt-1 text-sm text-slate-500">{isEnterpriseAdmin() ? 'Your company and branch offices' : 'Manage all head offices and their branches'}</p>
+          </div>
+        </div>
+      </div>
 
       {loading && <Spinner className="py-12" />}
 

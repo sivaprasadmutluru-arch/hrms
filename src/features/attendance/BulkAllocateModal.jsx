@@ -45,8 +45,9 @@ export default function BulkAllocateModal({ open, companyId, onClose }) {
   }
 
   return (
-    <Modal open={open} title="Bulk Shift Allocation" onClose={onClose} size="lg">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <Modal open={open} title="Bulk Shift Allocation" onClose={onClose} size="lg" panelClassName="allocation-form-modal"
+      footer={<div className="allocation-modal-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="bulk-shift-allocation-form" disabled={isSubmitting || !selectedIds.length}>{isSubmitting ? 'Allocating…' : `Allocate to ${selectedIds.length || '—'} employee${selectedIds.length !== 1 ? 's' : ''}`}</Button></div>}>
+      <form id="bulk-shift-allocation-form" onSubmit={handleSubmit(onSubmit)} className="allocation-form-layout allocation-bulk-form">
 
         {/* Shift dropdown */}
         <div>
@@ -119,12 +120,6 @@ export default function BulkAllocateModal({ open, companyId, onClose }) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isSubmitting || !selectedIds.length}>
-            {isSubmitting ? 'Allocating…' : `Allocate to ${selectedIds.length || '—'} employee${selectedIds.length !== 1 ? 's' : ''}`}
-          </Button>
-        </div>
       </form>
     </Modal>
   )

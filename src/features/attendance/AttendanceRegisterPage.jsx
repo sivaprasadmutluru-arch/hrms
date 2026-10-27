@@ -196,7 +196,7 @@ export default function AttendanceRegisterPage() {
   })
 
   return (
-    <div>
+    <div className="attendance-workspace attendance-register-page">
       <PageHeader
         title="Attendance Register"
         subtitle="Monthly grid view — all employees"

@@ -123,7 +123,7 @@ export default function DeductionsPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader title="Deductions" subtitle="Salary deductions configuration"
         actions={<Button onClick={openCreate}>+ New Deduction</Button>} />
       <DataTable columns={columns} data={deductions} loading={loading} />
@@ -136,7 +136,7 @@ export default function DeductionsPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} panelClassName="payroll-form-modal"
         title={editing ? 'Edit Deduction' : 'New Deduction'} size="lg"
         footer={
           <div className="flex justify-end gap-2">

@@ -151,7 +151,7 @@ export default function AssetsPage() {
   ]
 
   return (
-    <div>
+    <div className="asset-workspace">
       <PageHeader title="Asset Inventory" subtitle="Track and manage company assets"
         actions={
           <div className="flex gap-2">
@@ -163,18 +163,18 @@ export default function AssetsPage() {
         }
       />
 
-      <DataTable columns={columns} data={data} loading={loading} />
+      <div className="asset-table"><DataTable columns={columns} data={data} loading={loading} /></div>
       <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20 }))} />
 
       {/* Create / Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Asset' : 'New Asset'}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Asset' : 'New Asset'} size="lg" panelClassName="asset-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button>
           </div>
         }>
-        <div className="space-y-4">
+        <div className="asset-form-grid">
           <Input label="Asset Name" error={errors.assetName?.message} {...register('assetName', { required: 'Required' })} />
           <Input label="Asset Tag / ID" {...register('assetId')} />
           <Select label="Category" placeholder="— Select category —"
@@ -201,7 +201,7 @@ export default function AssetsPage() {
       />
 
       {/* Assign Modal */}
-      <Modal open={!!assignModal} onClose={() => setAssignModal(null)} title={`Assign: ${assignModal?.assetName}`}
+      <Modal open={!!assignModal} onClose={() => setAssignModal(null)} title={`Assign: ${assignModal?.assetName}`} panelClassName="asset-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setAssignModal(null)}>Cancel</Button>

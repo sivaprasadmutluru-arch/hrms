@@ -72,7 +72,7 @@ export default function CandidateDocumentsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="recruitment-workspace">
       <PageHeader title="Candidate Documents"
         subtitle="Document requests and rejected candidates"
         actions={
@@ -91,10 +91,10 @@ export default function CandidateDocumentsPage() {
         ))}
       </div>
 
-      {tab === 'Document Requests' && <DataTable columns={docColumns} data={docRequests} loading={loading} />}
-      {tab === 'Rejected Candidates' && <DataTable columns={rejectedColumns} data={rejected} loading={loading} />}
+      {tab === 'Document Requests' && <div className="recruitment-table"><DataTable columns={docColumns} data={docRequests} loading={loading} /></div>}
+      {tab === 'Rejected Candidates' && <div className="recruitment-table"><DataTable columns={rejectedColumns} data={rejected} loading={loading} /></div>}
 
-      <Modal open={docModal} onClose={() => setDocModal(false)} title="Request Document from Candidate"
+      <Modal open={docModal} onClose={() => setDocModal(false)} title="Request Document from Candidate" panelClassName="recruitment-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setDocModal(false)}>Cancel</Button><Button onClick={handleDoc(onSubmitDocRequest)}>Send</Button></div>}>
         <div className="space-y-4">
           <Input label="Candidate ID" error={errDoc.candidateId?.message} {...regDoc('candidateId', { required: 'Required' })} />
@@ -106,7 +106,7 @@ export default function CandidateDocumentsPage() {
         </div>
       </Modal>
 
-      <Modal open={rejectModal} onClose={() => setRejectModal(false)} title="Reject Candidate"
+      <Modal open={rejectModal} onClose={() => setRejectModal(false)} title="Reject Candidate" panelClassName="recruitment-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRejectModal(false)}>Cancel</Button><Button variant="danger" onClick={handleReject(onSubmitReject)}>Reject</Button></div>}>
         <div className="space-y-4">
           <Input label="Candidate ID" error={errReject['candidate.id']?.message} {...regReject('candidate.id', { required: 'Required' })} />

@@ -429,7 +429,7 @@ export default function AttendancePage() {
   ]
 
   return (
-    <div>
+    <div className="attendance-workspace attendance-records-page">
       <PageHeader title="Attendance" subtitle="Track employee attendance records"
         actions={
           <>

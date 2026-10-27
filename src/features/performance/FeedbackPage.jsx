@@ -47,13 +47,13 @@ export default function FeedbackPage() {
   ]
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Feedback" subtitle="Performance feedback and ratings"
         actions={<Button onClick={() => { reset({}); setModalOpen(true) }}>+ Give Feedback</Button>} />
-      <DataTable columns={columns} data={feedback} loading={loading} />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Give Feedback"
+      <div className="performance-table"><DataTable columns={columns} data={feedback} loading={loading} /></div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Give Feedback" size="lg" panelClassName="performance-form-modal performance-feedback-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>Submit</Button></div>}>
-        <div className="space-y-4">
+        <div className="performance-feedback-form">
           <Input label="Reviewee Employee ID" type="number" {...register('revieweeId')} />
           <Input label="Cycle ID" type="number" {...register('cycleId')} />
           <div>

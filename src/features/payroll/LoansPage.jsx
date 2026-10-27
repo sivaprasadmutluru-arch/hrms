@@ -225,7 +225,7 @@ export default function LoansPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace">
       <PageHeader title="Loan Accounts" subtitle="Employee loans, advances, and fines"
         actions={
           isEmp
@@ -255,7 +255,7 @@ export default function LoansPage() {
       )}
 
       {/* Admin: Create/Edit Loan Account */}
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Loan Account' : 'Create Loan Account'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Loan Account' : 'Create Loan Account'} panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button>
@@ -292,7 +292,7 @@ export default function LoansPage() {
       </Modal>
 
       {/* Employee: Apply for Loan */}
-      <Modal open={applyModalOpen} onClose={() => setApplyModalOpen(false)} title="Apply for Loan"
+      <Modal open={applyModalOpen} onClose={() => setApplyModalOpen(false)} title="Apply for Loan" panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setApplyModalOpen(false)}>Cancel</Button>
@@ -320,6 +320,7 @@ export default function LoansPage() {
 
       {/* Admin: Approve/Reject Loan Request */}
       <Modal open={!!reviewModal} onClose={() => setReviewModal(null)}
+        panelClassName="payroll-form-modal"
         title={reviewModal?.action === 'approve' ? 'Approve Loan Request' : 'Reject Loan Request'}
         footer={
           <div className="flex justify-end gap-2">

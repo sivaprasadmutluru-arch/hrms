@@ -17,6 +17,7 @@ export default function Topbar() {
   const { user, logout } = useAuth()
   const auth = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const unreadCount = useSelector(s => s.notifications?.unreadCount || 0)
   const breadcrumbs = useBreadcrumb()
   const profilePath = (
@@ -32,7 +33,7 @@ export default function Topbar() {
 
   return (
     <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
-      <nav className="flex items-center gap-1 text-sm text-gray-500">
+      <nav aria-label="Breadcrumb" className={`flex items-center gap-1 text-sm text-gray-500 ${location.pathname === '/admin/profile' ? 'invisible' : ''}`}>
         {breadcrumbs.map((b, i) => (
           <span key={b.path} className="flex items-center gap-1">
             {i > 0 && <span className="text-gray-300">/</span>}

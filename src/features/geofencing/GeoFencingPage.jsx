@@ -73,14 +73,14 @@ export default function GeoFencingPage() {
   }
 
   return (
-    <div>
+    <div className="biometric-workspace geofencing-workspace">
       <PageHeader title="Geo Fencing" subtitle="Configure attendance location boundaries" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="geofencing-panels grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Configuration */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="geofence-card geofence-config bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Geofencing Configuration</h2>
-          <div className="space-y-4">
+          <div className="geofence-form-fields">
             <Input label="Latitude" type="number" step="any" error={errors.latitude?.message}
               {...register('latitude', { required: 'Required' })} />
             <Input label="Longitude" type="number" step="any" error={errors.longitude?.message}
@@ -120,9 +120,9 @@ export default function GeoFencingPage() {
         </div>
 
         {/* Location Check */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="geofence-card geofence-test bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Test Location Check</h2>
-          <div className="space-y-4">
+          <div className="geofence-form-fields">
             <Input label="Latitude" type="number" step="any" {...registerCheck('checkLat')} />
             <Input label="Longitude" type="number" step="any" {...registerCheck('checkLng')} />
             <Input label="Employee ID (optional)" type="number" {...registerCheck('checkEmployeeId')} />

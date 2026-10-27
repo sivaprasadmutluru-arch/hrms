@@ -382,20 +382,26 @@ export default function PayslipsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="payroll-workspace space-y-5 pb-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Payslips</h1>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="flex flex-col gap-5 rounded-2xl border border-[#DCE7F2] bg-gradient-to-r from-white via-white to-[#F2F7FD] px-5 py-5 shadow-[0_8px_24px_rgba(30,65,96,0.045)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FC] text-[#2D6FB4] ring-1 ring-inset ring-[#D7E6F7]">
+            <DocumentTextIcon className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A6B19]">Payroll · Records</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-[#17324F]">Payslips</h1>
+            <p className="mt-1 text-sm text-slate-500">
             {isEmp ? 'Your payslips and earnings history' : 'Employee payslip management'}
-          </p>
+            </p>
+          </div>
         </div>
         {!isEmp && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <button
               onClick={() => dispatch(exportPayslipsExcel({})).unwrap().catch(() => toast.error('Export failed'))}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#D8E4F0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#35516E] shadow-sm transition hover:border-[#AFC9E4] hover:bg-[#F7FAFE]"
               title="Export to Excel"
             >
               <ArrowDownTrayIcon className="w-4 h-4" />
@@ -403,7 +409,7 @@ export default function PayslipsPage() {
             </button>
             <button
               onClick={() => navigate('/payroll/import')}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#D8E4F0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#35516E] shadow-sm transition hover:border-[#AFC9E4] hover:bg-[#F7FAFE]"
             >
               <ArrowUpTrayIcon className="w-4 h-4" />
               Import
@@ -411,7 +417,7 @@ export default function PayslipsPage() {
             {canApprovePayroll && (
               <button
                 onClick={() => { reset({}); setGenModal(true) }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#286CB2] to-[#4389D2] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(48,116,186,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(48,116,186,0.28)]"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -425,41 +431,45 @@ export default function PayslipsPage() {
 
       {/* Stats */}
       {!isEmp && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className="absolute inset-x-0 top-0 h-[3px] bg-[#4D8FD1]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#EDF5FD] text-[#3479BC] ring-1 ring-inset ring-[#DCEBFA]">
               <DocumentTextIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900 leading-tight">{payslips.length}</p>
-              <p className="text-xs text-gray-500 font-medium">Total</p>
+              <p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{payslips.length}</p>
+              <p className="text-xs font-medium text-slate-500">Total payslips</p>
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600">
+          <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className="absolute inset-x-0 top-0 h-[3px] bg-[#3E9B79]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#ECF8F3] text-[#318367] ring-1 ring-inset ring-[#D8EFE5]">
               <CheckCircleIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900 leading-tight">{paidCount}</p>
-              <p className="text-xs text-gray-500 font-medium">Paid</p>
+              <p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{paidCount}</p>
+              <p className="text-xs font-medium text-slate-500">Paid</p>
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-violet-50 text-violet-600">
+          <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className="absolute inset-x-0 top-0 h-[3px] bg-[#E7C65B]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFF8DF] text-[#98751D] ring-1 ring-inset ring-[#F4E7B8]">
               <CurrencyDollarIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900 leading-tight">{confirmedCount}</p>
-              <p className="text-xs text-gray-500 font-medium">Confirmed</p>
+              <p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{confirmedCount}</p>
+              <p className="text-xs font-medium text-slate-500">Confirmed</p>
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600">
+          <div className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white px-5 py-4 shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className="absolute inset-x-0 top-0 h-[3px] bg-[#D9A62A]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFF7E1] text-[#A47713] ring-1 ring-inset ring-[#F3E5B9]">
               <DocumentTextIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900 leading-tight">{pendingCount}</p>
-              <p className="text-xs text-gray-500 font-medium">Pending</p>
+              <p className="text-2xl font-bold leading-tight tracking-tight text-[#17324F]">{pendingCount}</p>
+              <p className="text-xs font-medium text-slate-500">Pending</p>
             </div>
           </div>
         </div>
@@ -467,14 +477,14 @@ export default function PayslipsPage() {
 
       {/* Toolbar */}
       {!isEmp && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="rounded-2xl border border-[#DCE7F2] bg-white p-4 shadow-[0_7px_22px_rgba(30,65,96,0.04)]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               {selectedMonth && (
                 <button
                   type="button"
                   onClick={backToMonths}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#DCE7F2] bg-[#F7FAFD] px-3 py-2 text-sm font-semibold text-[#35516E] transition hover:bg-[#EDF4FB]"
                 >
                   <ArrowLeftIcon className="w-4 h-4" />
                   Months
@@ -483,7 +493,7 @@ export default function PayslipsPage() {
               <select
                 value={selectedYear}
                 onChange={(e) => changeYear(Number(e.target.value))}
-                className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="rounded-xl border border-[#DCE7F2] bg-[#F8FAFC] px-3.5 py-2.5 text-sm font-semibold text-[#294766] outline-none transition focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]"
               >
                 {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
               </select>
@@ -504,7 +514,7 @@ export default function PayslipsPage() {
                   placeholder="Search employee, status..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                  className="w-full rounded-xl border border-[#DCE7F2] bg-[#F8FAFC] py-2.5 pl-9 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]"
                 />
               </div>
             )}
@@ -513,7 +523,7 @@ export default function PayslipsPage() {
       )}
 
       {isEmp && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="rounded-2xl border border-[#DCE7F2] bg-white p-4 shadow-[0_7px_22px_rgba(30,65,96,0.04)]">
           <div className="relative max-w-sm">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -523,7 +533,7 @@ export default function PayslipsPage() {
               placeholder="Search status, period..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+              className="w-full rounded-xl border border-[#DCE7F2] bg-[#F8FAFC] py-2.5 pl-9 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]"
             />
           </div>
         </div>
@@ -536,30 +546,30 @@ export default function PayslipsPage() {
               key={card.month}
               type="button"
               onClick={() => openMonth(card.month)}
-              className="group text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-indigo-200 hover:shadow-md transition-all"
+              className="group relative overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white p-5 text-left shadow-[0_7px_22px_rgba(30,65,96,0.045)] transition-all hover:-translate-y-0.5 hover:border-[#B7D0E9] hover:shadow-[0_14px_30px_rgba(30,65,96,0.09)]"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#EDF5FD] text-[#3479BC] ring-1 ring-inset ring-[#DCEBFA] transition-colors group-hover:bg-[#E2EFFB]">
                     <FolderIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{card.name}</p>
-                    <p className="text-xs text-gray-500">{card.rows.length} payslip{card.rows.length === 1 ? '' : 's'}</p>
+                    <p className="truncate font-semibold text-[#17324F]">{card.name}</p>
+                    <p className="text-xs text-slate-500">{card.rows.length} payslip{card.rows.length === 1 ? '' : 's'}</p>
                   </div>
                 </div>
-                <span className="text-sm font-semibold text-emerald-700 tabular-nums">{formatCurrency(card.netPay)}</span>
+                <span className="rounded-lg bg-[#FFF8E3] px-2.5 py-1.5 text-sm font-bold tabular-nums text-[#8E6A13]">{formatCurrency(card.netPay)}</span>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg bg-amber-50 px-2 py-2">
+                <div className="rounded-xl border border-[#F1E5BF] bg-[#FFFAE9] px-2 py-2">
                   <p className="text-sm font-semibold text-amber-700">{card.pending}</p>
                   <p className="text-[11px] text-amber-700/80">Pending</p>
                 </div>
-                <div className="rounded-lg bg-indigo-50 px-2 py-2">
+                <div className="rounded-xl border border-[#DDEAF7] bg-[#F3F8FD] px-2 py-2">
                   <p className="text-sm font-semibold text-indigo-700">{card.approved}</p>
                   <p className="text-[11px] text-indigo-700/80">Approved</p>
                 </div>
-                <div className="rounded-lg bg-emerald-50 px-2 py-2">
+                <div className="rounded-xl border border-[#DDEFE7] bg-[#F1FAF6] px-2 py-2">
                   <p className="text-sm font-semibold text-emerald-700">{card.paid}</p>
                   <p className="text-[11px] text-emerald-700/80">Paid</p>
                 </div>
@@ -570,10 +580,10 @@ export default function PayslipsPage() {
       )}
 
       {!isEmp && selectedMonth && selectedRows.length > 0 && (
-        <div className="bg-gray-900 text-white rounded-2xl shadow-sm px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl bg-gradient-to-r from-[#17324F] to-[#285C8A] px-4 py-3 text-white shadow-[0_10px_24px_rgba(28,68,108,0.16)] lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold">{selectedRows.length} selected</p>
-            <p className="text-xs text-gray-300">
+            <p className="text-xs text-blue-100">
               {selectedStatus ? `${STATUS_LABEL[selectedStatus] || selectedStatus} payslips` : 'Select rows with the same status for bulk actions'}
             </p>
           </div>
@@ -614,13 +624,13 @@ export default function PayslipsPage() {
 
       {/* Table */}
       {(isEmp || selectedMonth) && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.055)]">
           <DataTable columns={columns} data={filtered} loading={loading} />
         </div>
       )}
 
       {/* Detail Modal */}
-      <Modal open={!!detail} onClose={() => setDetail(null)} title="Payslip Detail" size="md">
+      <Modal open={!!detail} onClose={() => setDetail(null)} title="Payslip Detail" size="md" panelClassName="payroll-form-modal">
         {detail && (() => {
           let payHead = null
           try { payHead = detail.payHeadData ? JSON.parse(detail.payHeadData) : null } catch { /* ignore */ }
@@ -929,6 +939,7 @@ export default function PayslipsPage() {
         open={genModal}
         onClose={() => setGenModal(false)}
         title="Generate Payslips"
+        panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setGenModal(false)}>Cancel</Button>
@@ -958,6 +969,7 @@ export default function PayslipsPage() {
         open={!!payModal}
         onClose={() => setPayModal(null)}
         title={payModal?.bulk ? 'Mark Selected Payslips Paid' : 'Mark Payslip Paid'}
+        panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setPayModal(null)}>Cancel</Button>
@@ -988,6 +1000,7 @@ export default function PayslipsPage() {
         open={!!reopenModal}
         onClose={() => setReopenModal(null)}
         title="Reopen Payslip"
+        panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setReopenModal(null)}>Cancel</Button>

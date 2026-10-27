@@ -106,7 +106,7 @@ export default function OffboardingPlansPage() {
   const modalTitle = modalType === 'plan' ? (editing ? 'Edit Plan' : 'New Offboarding Plan') : (editing ? 'Edit Stage' : 'New Stage')
 
   return (
-    <div>
+    <div className="offboarding-workspace">
       <PageHeader title="Offboarding Plans" subtitle="Manage offboarding plan templates and stages" />
 
       <div className="border-b border-gray-200 mb-6">
@@ -159,7 +159,7 @@ export default function OffboardingPlansPage() {
         confirmLabel="Delete"
         loading={loading}
       />
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={modalTitle}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={modalTitle} panelClassName="offboarding-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

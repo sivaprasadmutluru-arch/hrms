@@ -721,8 +721,8 @@ export default function Sidebar() {
       'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium',
       'transition-all duration-300 ease-out',
       isActive
-        ? 'sidebar-active text-white'
-        : 'text-[#D8D6F2] hover:bg-white/[0.075] hover:text-white',
+        ? 'sidebar-active text-[#245D95]'
+        : 'text-[#52677F] hover:bg-[#EDF4FB] hover:text-[#173858]',
       extra,
     ].join(' ')
 
@@ -730,41 +730,39 @@ export default function Sidebar() {
     <>
       {/* Scoped styles: 4px thin scrollbar + active item gradient for sidebar only */}
       <style>{`
-        .sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(210,207,255,0.22) transparent; }
+        .sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(75,111,146,0.22) transparent; }
         .sidebar-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
         .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
         .sidebar-scroll::-webkit-scrollbar-thumb {
-          background-color: rgba(210,207,255,0.22);
+          background-color: rgba(75,111,146,0.22);
           border-radius: 9999px;
         }
-        .sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(210,207,255,0.38); }
+        .sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(75,111,146,0.38); }
         @media (prefers-reduced-motion: reduce) {
-          .sidebar-scroll { scrollbar-color: rgba(210,207,255,0.34) transparent; }
+          .sidebar-scroll { scrollbar-color: rgba(75,111,146,0.34) transparent; }
         }
         .sidebar-active {
-          background: #5F43D8;
-          box-shadow: 0 10px 24px rgba(22,18,72,0.24), inset 0 1px 0 rgba(255,255,255,0.18);
-          color: #FFFFFF;
+          background: linear-gradient(100deg, #E8F3FF 0%, #F6FAFF 72%, #FFF8DD 100%);
+          box-shadow: inset 3px 0 0 #D7AE45;
+          color: #245D95;
         }
-        .sidebar-active svg { color: #FFFFFF; }
+        .sidebar-active svg { color: #2F73B7; }
         .sidebar-child-active {
-          background: rgba(95,67,216,0.38);
-          box-shadow: inset 2px 0 0 rgba(200,190,255,0.78);
-          color: #FFFFFF;
+          background: linear-gradient(100deg, #E8F3FF, #FFF9E5);
+          box-shadow: inset 2px 0 0 #D7AE45;
+          color: #245D95;
         }
       `}</style>
     <aside
-      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-white/[0.10] text-white transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[#E3EAF1] text-[#304B65] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         collapsed ? 'w-[72px]' : 'w-60'
       }`}
       style={{
-        background: '#21184E',
-        backdropFilter: 'blur(20px) saturate(140%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(140%)',
+        background: 'linear-gradient(180deg, #fffdf5 0%, #f8fbff 48%, #edf5ff 100%)',
       }}
     >
       {/* ── Logo / Brand ─────────────────────────────────────────────── */}
-      <div className={`relative flex items-center border-b border-white/[0.10] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
+      <div className={`relative flex items-center border-b border-[#E3EAF1] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
         <div className={`flex min-w-0 items-center ${collapsed ? '' : 'gap-2.5'}`}>
           <div className={`${collapsed ? 'h-11 w-11' : 'h-10 w-10'} flex flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-lg shadow-black/10`}>
             {displayLogoUrl && !logoLoadError ? (
@@ -775,11 +773,15 @@ export default function Sidebar() {
                 onError={() => setLogoLoadError(true)}
               />
             ) : (
-              <Building2 className="h-5 w-5 text-[#5F43D8]" strokeWidth={2.2} />
+              <img
+                src="/accrue-mark.svg"
+                alt="Accrue Technologies logo"
+                className="h-full w-full object-contain p-1.5"
+              />
             )}
           </div>
           {!collapsed && (
-            <span className="truncate text-[15px] font-semibold tracking-tight text-white">
+            <span className="truncate text-[15px] font-semibold tracking-tight text-[#173858]">
               {displayName}
             </span>
           )}
@@ -787,7 +789,7 @@ export default function Sidebar() {
         {!collapsed && (
           <button
             onClick={() => setCollapsed(c => !c)}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[#D8D6F2]/70 transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[#71869B] transition-all duration-300 hover:bg-[#EDF4FB] hover:text-[#173858]"
             title="Collapse sidebar"
             aria-label="Collapse sidebar"
           >
@@ -800,7 +802,7 @@ export default function Sidebar() {
       {collapsed && (
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="absolute right-2 top-5 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-[#D8D6F2]/70 opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
+          className="absolute right-2 top-5 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-[#EDF4FB] text-[#71869B] opacity-0 transition-all duration-300 hover:bg-[#E2EDF8] hover:text-[#173858] group-hover/sidebar:opacity-100"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
@@ -814,12 +816,12 @@ export default function Sidebar() {
           {sections.map(section => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#BDB7E8]/55">
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#899BAD]">
                   {section.title}
                 </p>
               )}
               {collapsed && (
-                <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.10]" />
+                <div className="mx-auto mb-1.5 h-px w-6 bg-[#E3EAF1]" />
               )}
               <div className="space-y-0.5">
                 {section.items.map(item => {
@@ -833,12 +835,12 @@ export default function Sidebar() {
                           title={collapsed ? item.label : undefined}
                           className={navItemClass(groupActive, 'w-full')}
                         >
-                          <item.icon className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${groupActive ? 'text-white' : ''}`} strokeWidth={2} />
+                          <item.icon className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${groupActive ? 'text-[#2F73B7]' : ''}`} strokeWidth={2} />
                           {!collapsed && (
                             <>
                               <span className="flex-1 text-left">{item.label}</span>
-                              <ChevronDown
-                                className={`h-4 w-4 flex-shrink-0 text-[#BDB7E8]/50 transition-transform duration-300 ease-out ${isOpen ? 'rotate-180' : ''}`}
+                          <ChevronDown
+                                className={`h-4 w-4 flex-shrink-0 text-[#91A3B5] transition-transform duration-300 ease-out ${isOpen ? 'rotate-180' : ''}`}
                                 strokeWidth={2.2}
                               />
                             </>
@@ -851,7 +853,7 @@ export default function Sidebar() {
                           }`}
                         >
                           <div className="overflow-hidden">
-                            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/[0.10] pl-2">
+                            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-[#E3EAF1] pl-2">
                               {item.children.map(child => (
                                 <NavLink
                                   key={child.to}
@@ -860,8 +862,8 @@ export default function Sidebar() {
                                   className={({ isActive }) =>
                                     `flex items-center rounded-lg px-3 py-1.5 text-[13px] transition-all duration-200 ${
                                       isActive
-                                        ? 'sidebar-child-active font-medium text-white'
-                                        : 'text-[#D8D6F2] hover:bg-white/[0.075] hover:text-white'
+                                        ? 'sidebar-child-active font-medium text-[#245D95]'
+                                        : 'text-[#52677F] hover:bg-[#EDF4FB] hover:text-[#173858]'
                                     }`
                                   }
                                 >
@@ -895,11 +897,11 @@ export default function Sidebar() {
         {/* Notifications — always shown */}
         <div className="mt-5">
           {!collapsed && (
-            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#BDB7E8]/55">
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#899BAD]">
               Account
             </p>
           )}
-          {collapsed && <div className="mx-auto mb-1.5 h-px w-6 bg-white/[0.10]" />}
+          {collapsed && <div className="mx-auto mb-1.5 h-px w-6 bg-[#E3EAF1]" />}
           <NavLink
             to="/notifications"
             end
@@ -929,18 +931,18 @@ export default function Sidebar() {
       </nav>
 
       {/* ── User footer ──────────────────────────────────────────────── */}
-      <div className="border-t border-white/[0.10] bg-black/[0.08] p-3">
+      <div className="border-t border-[#E3EAF1] bg-white p-3">
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <Avatar name={user?.name || user?.username || 'User'} src={userPhotoUrl} size="sm" />
           {!collapsed && (
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-white">{user?.name || user?.username}</p>
-                <p className="truncate text-xs capitalize text-[#BDB7E8]/70">{user?.role?.replace(/_/g, ' ')}</p>
+                <p className="truncate text-sm font-medium text-[#173858]">{user?.name || user?.username}</p>
+                <p className="truncate text-xs capitalize text-[#74899F]">{user?.role?.replace(/_/g, ' ')}</p>
               </div>
               <button
                 onClick={() => setLogoutConfirmOpen(true)}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[#D8D6F2]/70 transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[#71869B] transition-all duration-300 hover:bg-[#EDF4FB] hover:text-[#173858]"
                 title="Logout"
                 aria-label="Logout"
               >
@@ -951,7 +953,7 @@ export default function Sidebar() {
           {collapsed && (
             <button
               onClick={() => setLogoutConfirmOpen(true)}
-              className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-[#D8D6F2]/70 opacity-0 transition-all duration-300 hover:bg-white/[0.08] hover:text-white group-hover/sidebar:opacity-100"
+          className="absolute bottom-3 left-1/2 flex h-7 w-7 -translate-x-1/2 translate-y-8 items-center justify-center rounded-lg text-[#71869B] opacity-0 transition-all duration-300 hover:bg-[#EDF4FB] hover:text-[#173858] group-hover/sidebar:opacity-100"
               title="Logout"
               aria-label="Logout"
             >

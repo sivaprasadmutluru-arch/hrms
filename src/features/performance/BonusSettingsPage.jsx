@@ -27,9 +27,9 @@ export default function BonusSettingsPage() {
   }
 
   return (
-    <div>
+    <div className="performance-workspace">
       <PageHeader title="Bonus Point Settings" subtitle="Configure the bonus point system for your organisation" />
-      <div className="max-w-lg bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+      <div className="performance-settings-panel">
         <div className="flex items-center gap-3">
           <input type="checkbox" id="enableBonusPoints" {...register('enableBonusPoints')} className="rounded" />
           <label htmlFor="enableBonusPoints" className="text-sm font-medium text-gray-700">Enable Bonus Points</label>

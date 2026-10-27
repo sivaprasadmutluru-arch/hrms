@@ -99,7 +99,7 @@ export default function PayrollDashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="payroll-workspace space-y-6">
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>

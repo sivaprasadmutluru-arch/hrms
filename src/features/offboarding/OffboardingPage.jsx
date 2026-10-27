@@ -169,7 +169,7 @@ export default function OffboardingPage() {
   ]
 
   return (
-    <div>
+    <div className="offboarding-workspace">
       <PageHeader title="Offboarding" subtitle="Manage employee exit process"
         actions={<Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Start Offboarding</Button>} />
 
@@ -197,9 +197,9 @@ export default function OffboardingPage() {
       )}
 
       {/* Start Offboarding Modal */}
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Offboarding' : 'Start Offboarding'}
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditTarget(null) }} title={editTarget ? 'Edit Offboarding' : 'Start Offboarding'} size="lg" panelClassName="offboarding-form-modal offboarding-start-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setModalOpen(false); setEditTarget(null) }}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editTarget ? 'Update' : 'Start'}</Button></div>}>
-        <div className="space-y-4">
+        <div className="offboarding-start-form">
           <Combobox
             label="Employee"
             options={employeeOptions}
@@ -227,7 +227,7 @@ export default function OffboardingPage() {
       </Modal>
 
       {/* Detail Modal (Tasks + Notes) */}
-      <Modal open={detailOpen} onClose={() => setDetailOpen(false)}
+      <Modal open={detailOpen} onClose={() => setDetailOpen(false)} panelClassName="offboarding-form-modal"
         title={`Offboarding: ${detailRecord?.employee?.firstName || ''} ${detailRecord?.employee?.lastName || ''}`}
         footer={
           <div className="flex justify-between items-center">
@@ -274,7 +274,7 @@ export default function OffboardingPage() {
       </Modal>
 
       {/* Assign Task Modal */}
-      <Modal open={taskModalOpen} onClose={() => setTaskModalOpen(false)} title="Assign Task"
+      <Modal open={taskModalOpen} onClose={() => setTaskModalOpen(false)} title="Assign Task" panelClassName="offboarding-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setTaskModalOpen(false)}>Cancel</Button>

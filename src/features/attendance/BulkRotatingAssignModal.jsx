@@ -57,8 +57,9 @@ export default function BulkRotatingAssignModal({ type, companyId, onClose }) {
   const typeLabel = type === 'shift' ? 'Shift' : 'Work Type'
 
   return (
-    <Modal title={`Bulk Rotating ${typeLabel} Assign`} onClose={onClose} size="lg">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <Modal title={`Bulk Rotating ${typeLabel} Assign`} onClose={onClose} size="lg" panelClassName="allocation-form-modal"
+      footer={<div className="allocation-modal-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="bulk-rotating-allocation-form">Assign ({selectedIds.length})</Button></div>}>
+      <form id="bulk-rotating-allocation-form" onSubmit={handleSubmit(onSubmit)} className="allocation-form-layout allocation-bulk-form">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Rotating {typeLabel} Template *</label>
           <select
@@ -142,10 +143,6 @@ export default function BulkRotatingAssignModal({ type, companyId, onClose }) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Assign ({selectedIds.length})</Button>
-        </div>
       </form>
     </Modal>
   )

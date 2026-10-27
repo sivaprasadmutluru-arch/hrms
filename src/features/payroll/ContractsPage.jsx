@@ -228,7 +228,7 @@ export default function ContractsPage() {
   ]
 
   return (
-    <div>
+    <div className="payroll-workspace payroll-contracts-page">
       <PageHeader title="Payroll Contracts" subtitle="Employee contracts and salary details"
         actions={
           tab === 'Contracts'
@@ -258,9 +258,9 @@ export default function ContractsPage() {
       )}
 
       {/* Contract Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Contract' : 'New Contract'} size="lg"
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Contract' : 'New Contract'} size="lg" panelClassName="payroll-form-modal payroll-contract-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)} disabled={employeesLoading}>{employeesLoading ? 'Loading...' : editing ? 'Update' : 'Create'}</Button></div>}>
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="payroll-contract-editor">
           <div className="grid grid-cols-2 gap-4">
             <Select label="Employee" placeholder={employeesLoading ? 'Loading employees...' : 'Select employee...'} options={employeeOptions} error={errors.employeeId?.message} {...register('employeeId', { required: 'Required' })} />
             <Input label="Contract Name" error={errors.contractName?.message} {...register('contractName', { required: 'Required' })} />
@@ -328,7 +328,7 @@ export default function ContractsPage() {
       </Modal>
 
       {/* Contract Detail View Modal */}
-      <Modal open={!!viewContract} onClose={() => setViewContract(null)} title="Contract Details" size="lg"
+      <Modal open={!!viewContract} onClose={() => setViewContract(null)} title="Contract Details" size="lg" panelClassName="payroll-form-modal"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setViewContract(null)}>Close</Button>
@@ -408,7 +408,7 @@ export default function ContractsPage() {
       />
 
       {/* Condition Modal */}
-      <Modal open={condModalOpen} onClose={() => setCondModalOpen(false)} title={editingCond ? 'Edit Condition' : 'New Pay Condition'}
+      <Modal open={condModalOpen} onClose={() => setCondModalOpen(false)} title={editingCond ? 'Edit Condition' : 'New Pay Condition'} panelClassName="payroll-form-modal"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCondModalOpen(false)}>Cancel</Button><Button onClick={handleCondSubmit(onCondSubmit)}>{editingCond ? 'Update' : 'Create'}</Button></div>}>
         <div className="space-y-4">
           <Select label="Field" options={FIELD_OPTIONS} error={condErrors.field?.message} {...regCond('field', { required: 'Required' })} />
