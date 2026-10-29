@@ -619,7 +619,7 @@ function getNavSections(auth) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }) {
   const [collapsed, setCollapsed] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [openGroups, setOpenGroups] = useState(new Set())
@@ -754,7 +754,7 @@ export default function Sidebar() {
         }
       `}</style>
     <aside
-      className={`group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[#E3EAF1] text-[#304B65] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`app-sidebar group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[#E3EAF1] text-[#304B65] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${mobileOpen ? 'mobile-open' : ''} ${
         collapsed ? 'w-[72px]' : 'w-60'
       }`}
       style={{
@@ -858,6 +858,7 @@ export default function Sidebar() {
                                 <NavLink
                                   key={child.to}
                                   to={child.to}
+                                  onClick={onMobileClose}
                                   end
                                   className={({ isActive }) =>
                                     `flex items-center rounded-lg px-3 py-1.5 text-[13px] transition-all duration-200 ${
@@ -880,6 +881,7 @@ export default function Sidebar() {
                     <NavLink
                       key={item.to}
                       to={item.to}
+                      onClick={onMobileClose}
                       end
                       title={collapsed ? item.label : undefined}
                       className={({ isActive }) => navItemClass(isActive)}

@@ -6,6 +6,7 @@ import useAuth from '../../hooks/useAuth'
 import CompanySwitcher from './CompanySwitcher'
 import BranchSwitcher from './BranchSwitcher'
 import { API_BASE_URL } from '../../config/constants'
+import { Menu } from 'lucide-react'
 
 function useBreadcrumb() {
   const { pathname } = useLocation()
@@ -13,7 +14,7 @@ function useBreadcrumb() {
   return parts.map((p, i) => ({ label: p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), path: '/' + parts.slice(0, i + 1).join('/') }))
 }
 
-export default function Topbar() {
+export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth()
   const auth = useAuth()
   const navigate = useNavigate()
@@ -32,8 +33,10 @@ export default function Topbar() {
     : null
 
   return (
-    <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
-      <nav aria-label="Breadcrumb" className={`flex items-center gap-1 text-sm text-gray-500 ${location.pathname === '/admin/profile' ? 'invisible' : ''}`}>
+    <header className="app-topbar h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
+      <div className="app-topbar-leading">
+      <button className="mobile-menu-button" type="button" onClick={onMenuClick} aria-label="Open navigation menu"><Menu size={21} /></button>
+      <nav aria-label="Breadcrumb" className={`app-breadcrumb flex items-center gap-1 text-sm text-gray-500 ${location.pathname === '/admin/profile' ? 'invisible' : ''}`}>
         {breadcrumbs.map((b, i) => (
           <span key={b.path} className="flex items-center gap-1">
             {i > 0 && <span className="text-gray-300">/</span>}
@@ -43,6 +46,7 @@ export default function Topbar() {
           </span>
         ))}
       </nav>
+      </div>
       <div className="flex items-center gap-3">
         {auth.isCompanyScopeAdmin?.() && (
           <CompanySwitcher allowAll={auth.isPlatformAdmin?.()} />

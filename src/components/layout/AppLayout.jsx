@@ -1,4 +1,4 @@
-import { useEffect, Suspense } from 'react'
+import { useEffect, Suspense, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Sidebar from './Sidebar'
@@ -11,6 +11,7 @@ import UnresolvedRegularisationReminder from '../../features/attendance/Unresolv
 import ChatbotWidget from './ChatbotWidget'
 
 export default function AppLayout() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const dispatch = useDispatch()
   const isAuthenticated = useSelector(selectIsAuthenticated)
   const roles = useSelector(selectRoles)
@@ -49,9 +50,10 @@ export default function AppLayout() {
   if (user?.mustChangePassword) return <Navigate to="/change-password-required" replace />
   return (
     <div className="app-workspace flex h-screen overflow-hidden">
-      <Sidebar />
+      {mobileNavOpen && <button className="mobile-nav-backdrop" aria-label="Close navigation menu" onClick={() => setMobileNavOpen(false)} />}
+      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="app-main-shell flex flex-col flex-1 overflow-hidden">
-        <Topbar />
+        <Topbar onMenuClick={() => setMobileNavOpen(open => !open)} />
         <main className="flex-1 overflow-auto p-6">
           <Suspense fallback={<PageSkeleton />}>
             <Outlet />

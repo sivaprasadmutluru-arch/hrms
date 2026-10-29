@@ -1,6 +1,40 @@
 #root { min-height: 100vh; }
 body:has(.signin-page) { overflow: hidden; }
 
+/* App shell responsive behavior */
+.mobile-menu-button, .mobile-nav-backdrop { display: none; }
+.app-topbar-leading { display: flex; min-width: 0; align-items: center; }
+.app-breadcrumb { min-width: 0; overflow: hidden; white-space: nowrap; }
+.app-breadcrumb > span { flex: 0 0 auto; }
+.app-breadcrumb > span:not(:last-child) { display: none; }
+.app-breadcrumb button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-workspace main { min-width: 0; }
+
+@media (max-width: 760px) {
+  .app-workspace { gap: 0; }
+  .app-sidebar { position: fixed !important; z-index: 50 !important; inset: 0 auto 0 0; width: min(290px, 84vw) !important; height: 100dvh !important; transform: translateX(-105%); transition: transform .24s ease !important; box-shadow: 12px 0 32px rgba(20, 45, 72, .18); }
+  .app-sidebar.mobile-open { transform: translateX(0); }
+  .mobile-nav-backdrop { display: block; position: fixed; inset: 0; z-index: 49; border: 0; background: rgba(17, 35, 54, .42); }
+  .app-main-shell { width: 100%; border: 0; border-radius: 0; }
+  .app-topbar { height: auto; min-height: 54px; gap: 8px; padding: 7px 12px; }
+  .app-topbar-leading { flex: 1; gap: 8px; }
+  .mobile-menu-button { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border: 1px solid #e3ebf5; border-radius: 10px; color: #315878; background: #fff; }
+  .app-breadcrumb { font-size: 12px; }
+  .app-topbar > div:last-child { gap: 6px; }
+  .app-workspace main { padding: 14px !important; padding-bottom: max(18px, env(safe-area-inset-bottom)) !important; }
+  .app-workspace main > * { min-width: 0; }
+  .app-workspace main .grid { min-width: 0; }
+  .app-workspace main [class*="overflow-x-auto"] { max-width: 100%; overscroll-behavior-x: contain; }
+}
+
+@media (max-width: 420px) {
+  .app-topbar { padding-inline: 9px; }
+  .app-topbar > div:last-child { gap: 3px; }
+  .app-topbar > div:last-child > button { padding: 7px; }
+  .app-topbar > div:last-child > :is(div, label) { max-width: 145px; }
+  .app-workspace main { padding: 11px !important; }
+}
+
 .app-workspace {
   --color-gray-50: #fffaf0;
   --color-gray-100: #f3f8fe;
