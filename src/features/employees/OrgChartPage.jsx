@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
-import { fetchOrgChart } from './employeesSlice'
+import { useState, useMemo } from 'react'
 import PageHeader from '../../components/common/PageHeader'
 import useAuth from '../../hooks/useAuth'
 import { API_BASE_URL } from '../../config/constants'
+import useCompanyOrgChart from './useCompanyOrgChart'
+import { orgChartGroupingMode, groupOrgChart, countChartEmployees, chartGroupLabels, filterOrgChart } from './orgChartGrouping'
 
 // ─── Colour palette (one per department, consistent within a session) ─────────
 
@@ -30,38 +30,23 @@ function initials(name) {
   return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-// ─── Tree helpers ─────────────────────────────────────────────────────────────
-
-function countNodes(node) {
-  return 1 + (node.children || []).reduce((s, c) => s + countNodes(c), 0)
-}
-
-function collectDepts(node, set = new Set()) {
-  if (node.department) set.add(node.department)
-  ;(node.children || []).forEach(c => collectDepts(c, set))
-  return set
-}
-
-function nodeMatches(node, q) {
-  return (
-    (node.name || '').toLowerCase().includes(q) ||
-    (node.position || '').toLowerCase().includes(q) ||
-    (node.department || '').toLowerCase().includes(q)
-  )
-}
-
-function filterTree(node, q) {
-  if (!q) return node
-  const kids = (node.children || []).map(c => filterTree(c, q)).filter(Boolean)
-  return nodeMatches(node, q) || kids.length > 0 ? { ...node, children: kids } : null
-}
-
 // ─── Employee card ────────────────────────────────────────────────────────────
 
 function EmployeeCard({ node, expanded, hasChildren, onToggle }) {
-  const color = deptColor(node.department)
+  const color = deptColor(node.chartColorKey || node.department)
   const ini = initials(node.name)
-  const directCount = node.children?.length || 0
+  const directCount = node.directReportCount ?? node.children?.length ?? 0
+
+  if (node.isChartGroup) return (
+    <button type="button" onClick={onToggle} aria-expanded={expanded}
+      className="relative bg-white rounded-xl shadow-sm transition-shadow duration-150 hover:shadow-md px-4 py-3 text-left"
+      style={{ minWidth: 180, maxWidth: 210, border: `2px solid ${color}` }}>
+      <span className="block text-sm font-semibold text-gray-900">{node.name}</span>
+      <span className="block text-xs mt-1" style={{ color }}>
+        {node.groupKind === 'department' ? 'Department' : 'Job position'} · {expanded ? 'Collapse' : 'Expand'}
+      </span>
+    </button>
+  )
 
   return (
     <div
@@ -109,6 +94,7 @@ function EmployeeCard({ node, expanded, hasChildren, onToggle }) {
         )}
 
         {/* Expand/collapse toggle */}
+        {node.hierarchyIssue && <p className="text-xs text-amber-800 bg-amber-50 px-2 py-1 rounded">{node.hierarchyIssue}</p>}
         {hasChildren && (
           <button
             onClick={onToggle}
@@ -137,14 +123,14 @@ function EmployeeCard({ node, expanded, hasChildren, onToggle }) {
 
 function OrgNode({ node, search, depth = 0 }) {
   // Auto-collapse levels beyond 1 (can still manually expand)
-  const [expanded, setExpanded] = useState(depth < 2)
+  const [expanded, setExpanded] = useState(depth < 2 || node.isChartGroup)
   const isExpanded = search ? true : expanded
   const kids = (node.children || [])
   const hasChildren = kids.length > 0
   const visibleKids = isExpanded ? kids : []
 
   return (
-    <div className="flex flex-col items-center">
+    <div role="treeitem" aria-expanded={hasChildren ? isExpanded : undefined} className="flex flex-col items-center">
       <EmployeeCard
         node={node}
         expanded={isExpanded}
@@ -159,10 +145,10 @@ function OrgNode({ node, search, depth = 0 }) {
 
           {visibleKids.length === 1 ? (
             /* Single child: straight vertical, no T-bar */
-            <OrgNode node={visibleKids[0]} search={search} depth={depth + 1} />
+            <OrgNode node={visibleKids[0]} search={search} depth={depth + (node.isChartGroup ? 0 : 1)} />
           ) : (
             /* Multiple children: T-bar connectors */
-            <div className="flex items-start">
+            <div role="group" className="flex items-start">
               {visibleKids.map((child, idx) => {
                 const isFirst = idx === 0
                 const isLast = idx === visibleKids.length - 1
@@ -184,7 +170,7 @@ function OrgNode({ node, search, depth = 0 }) {
                     />
                     {/* Vertical stem going down to child card */}
                     <div className="w-px bg-gray-300 flex-shrink-0" style={{ height: 32 }} />
-                    <OrgNode node={child} search={search} depth={depth + 1} />
+                    <OrgNode node={child} search={search} depth={depth + (node.isChartGroup ? 0 : 1)} />
                   </div>
                 )
               })}
@@ -199,44 +185,24 @@ function OrgNode({ node, search, depth = 0 }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OrgChartPage() {
-  const dispatch = useDispatch()
-  const { user, effectiveCompanyId } = useAuth()
+  const { effectiveCompanyId } = useAuth()
   const companyId = effectiveCompanyId
-  const orgChart = useSelector(s => s.employees.orgChart)
+  const { nodes, departments, loaded, error } = useCompanyOrgChart(companyId)
   const [search, setSearch] = useState('')
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    if (companyId) {
-      dispatch(fetchOrgChart({ companyId })).finally(() => setLoaded(true))
-    }
-  }, [dispatch, companyId])
-
-  const allRoots = useMemo(
-    () => (orgChart || []).filter(e => !e.managerId),
-    [orgChart],
-  )
-
-  const totalEmployees = useMemo(
-    () => allRoots.reduce((s, r) => s + countNodes(r), 0),
-    [allRoots],
-  )
-
-  const allDepts = useMemo(() => {
-    const s = new Set()
-    allRoots.forEach(r => collectDepts(r, s))
-    return s
-  }, [allRoots])
+  const groupingMode = useMemo(() => orgChartGroupingMode(nodes, departments), [nodes, departments])
+  const allRoots = useMemo(() => groupOrgChart(nodes, groupingMode), [nodes, groupingMode])
+  const totalEmployees = useMemo(() => countChartEmployees(nodes), [nodes])
+  const groupLabels = useMemo(() => chartGroupLabels(nodes, groupingMode), [nodes, groupingMode])
 
   const q = search.toLowerCase().trim()
   const roots = useMemo(
-    () => q ? allRoots.map(r => filterTree(r, q)).filter(Boolean) : allRoots,
+    () => filterOrgChart(allRoots, q),
     [allRoots, q],
   )
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Org Chart" subtitle="Company organizational hierarchy">
+      <PageHeader title="Org Chart" subtitle={`Grouped by ${groupingMode === 'department' ? 'department' : 'job position'} — reporting relationships preserved`}>
         {/* Search */}
         <div className="relative">
           <svg
@@ -267,7 +233,7 @@ export default function OrgChartPage() {
       {/* Stats bar */}
       <div className="flex items-center gap-6 px-6 py-3 bg-white border-b border-gray-100 text-sm">
         <StatPill color="#6366f1" label="employees" value={totalEmployees} />
-        <StatPill color="#8b5cf6" label="departments" value={allDepts.size} />
+        <StatPill color="#8b5cf6" label={groupingMode === 'department' ? 'department groups' : 'job-position groups'} value={groupLabels.length} />
         {q && (
           <span className="text-indigo-600 ml-2">
             Showing results for <strong>"{search}"</strong>
@@ -276,17 +242,17 @@ export default function OrgChartPage() {
       </div>
 
       {/* Department legend */}
-      {allDepts.size > 0 && (
+      {groupLabels.length > 0 && (
         <div className="flex flex-wrap gap-2 px-6 py-3 bg-gray-50 border-b border-gray-100">
-          {[...allDepts].map(dept => (
+          {groupLabels.map(dept => (
             <span
               key={dept}
               className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
-              style={{ backgroundColor: deptColor(dept) + '18', color: deptColor(dept) }}
+              style={{ backgroundColor: deptColor(dept.toLocaleLowerCase('en')) + '18', color: deptColor(dept.toLocaleLowerCase('en')) }}
             >
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: deptColor(dept) }}
+                style={{ backgroundColor: deptColor(dept.toLocaleLowerCase('en')) }}
               />
               {dept}
             </span>
@@ -296,7 +262,7 @@ export default function OrgChartPage() {
 
       {/* Tree canvas */}
       <div className="flex-1 overflow-auto bg-gray-50 p-8">
-        {!loaded ? (
+        {!companyId ? <p className="text-sm text-gray-500">Select a company to view its org chart.</p> : error ? <p role="alert" className="text-sm text-red-600">{error}</p> : !loaded ? (
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -311,7 +277,7 @@ export default function OrgChartPage() {
             </p>
           </div>
         ) : (
-          <div className="flex gap-16 justify-start items-start min-w-max pb-8">
+          <div key={companyId} role="tree" aria-label="Company organizational hierarchy" className="flex gap-16 justify-start items-start min-w-max pb-8">
             {roots.map(root => (
               <OrgNode key={root.id} node={root} search={q} depth={0} />
             ))}
