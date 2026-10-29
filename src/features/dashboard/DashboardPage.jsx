@@ -206,7 +206,7 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
         ) : (
           <>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Status</p>
-            <p className="text-sm font-medium text-gray-500 mt-0.5">Not checked in today</p>
+            <p className="text-sm font-medium text-gray-500 mt-0.5">{clockStatus?.attendanceRequired === false ? 'Attendance not required' : 'Not checked in today'}</p>
           </>
         )}
         {!user?.employeeId && (
@@ -230,7 +230,9 @@ const CheckInOutWidget = memo(function CheckInOutWidget({ user }) {
 
       {/* Action button */}
       <div className="flex-shrink-0">
-        {!user?.employeeId ? null : isClockedIn ? (
+        {!user?.employeeId ? null : clockStatus?.attendanceRequired === false && !isClockedIn ? (
+          <span className="text-sm text-slate-600">Attendance exempt</span>
+        ) : isClockedIn ? (
           <button
             onClick={handleCheckOut}
             disabled={actionLoading}

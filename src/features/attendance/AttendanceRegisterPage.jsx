@@ -14,6 +14,7 @@ import useAuth from '../../hooks/useAuth'
 
 // ─── Cell display config ──────────────────────────────────────────────────────
 const CELL_META = {
+  EX: { label: 'Attendance not required', bg: 'bg-slate-100 text-slate-600' },
   P:  { label: 'Present',    bg: 'bg-green-100 text-green-800 hover:bg-green-200' },
   A:  { label: 'Absent',     bg: 'bg-red-100 text-red-700 hover:bg-red-200' },
   L:  { label: 'Late',       bg: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },

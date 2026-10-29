@@ -18,6 +18,8 @@ import {
   selectLeaveBalance,
 } from './leaveSlice'
 import api from '../../services/api'
+import LeaveAttachmentActions from './LeaveAttachmentActions'
+import LeaveRequestActionMenu from './LeaveRequestActionMenu'
 import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import DataTable from '../../components/common/DataTable'
@@ -44,10 +46,13 @@ export default function LeavePage() {
   const { user, roles, effectiveCompanyId, isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
   const platformAdmin = isPlatformAdmin()
   const canManage = platformAdmin || roles.includes('SUPER_ADMIN') || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const canDeleteCancelledLeave = platformAdmin || roles.includes('SUPER_ADMIN')
   const data = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
   const leaveTypes = useSelector(s => s.leave.leaveTypes)
+  const leaveTypesLoading = useSelector(s => s.leave.leaveTypesLoading)
+  const leaveTypesError = useSelector(s => s.leave.leaveTypesError)
   const leaveAllocations = useSelector(s => s.leave.leaveAllocations)
   const leaveBalance = useSelector(selectLeaveBalance)
   const comments = useSelector(selectLeaveRequestComments)
@@ -74,6 +79,7 @@ export default function LeavePage() {
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, ids: [] })
   const [requestDeleting, setRequestDeleting] = useState(false)
   const [requestYear, setRequestYear] = useState(String(new Date().getFullYear()))
+  const [showCancelledRequests, setShowCancelledRequests] = useState(false)
   const [allocationYear, setAllocationYear] = useState('')
   const [selectedAllocationIds, setSelectedAllocationIds] = useState(new Set())
   const [allocationDeleteConfirm, setAllocationDeleteConfirm] = useState({ open: false, ids: [] })
@@ -101,6 +107,13 @@ export default function LeavePage() {
   const [purgeConfirmation, setPurgeConfirmation] = useState('')
   const [purgeLoading, setPurgeLoading] = useState(false)
   const canPurgeLeaveData = platformAdmin || roles.includes('SUPER_ADMIN')
+
+  const leaveRequestParams = (page = 0, size = 20) => ({
+    page,
+    size,
+    ...(requestYear ? { year: Number(requestYear) } : {}),
+    ...(canDeleteCancelledLeave && showCancelledRequests ? { includeCancelled: true } : {}),
+  })
 
   const requireCompany = () => {
     if (effectiveCompanyId) return effectiveCompanyId
@@ -202,7 +215,7 @@ export default function LeavePage() {
       if (failed) toast.error(`${failed} row${failed === 1 ? '' : 's'} failed: ${result.errors?.[0] || 'check employee IDs and dates'}`)
       if (!imported && !duplicates && !failed) toast(`No leave rows imported (${skipped} blank row${skipped === 1 ? '' : 's'} skipped)`)
       await Promise.all([
-        dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) })),
+        dispatch(fetchAll(leaveRequestParams())),
         dispatch(fetchLeaveBalance()),
       ])
     } catch (e) {
@@ -285,13 +298,34 @@ export default function LeavePage() {
   })
   const applyFor = watch('applyFor')
   const selectedEmployeeId = watch('employeeId')
+  const leaveDuration = watch('leaveDuration') || 'FULL_DAY'
+  const leaveStartDate = watch('startDate')
+  const leaveEndDate = watch('endDate')
+  const selectedLeaveTypeId = watch('leaveTypeId')
+  const selectedLeaveType = leaveTypes.find(type => String(type.id) === String(selectedLeaveTypeId))
+  const isSickLeave = String(selectedLeaveType?.name || '').replace(/[^a-z]/gi, '').toLowerCase() === 'sickleave'
+  const showCertificateUpload = !editTarget && isSickLeave && leaveDuration === 'FULL_DAY'
+    && Boolean(leaveStartDate && leaveEndDate && leaveEndDate > leaveStartDate)
   const { register: regApproval, handleSubmit: handleApprovalSubmit, reset: resetApproval, formState: { errors: approvalErrors } } = useForm()
 
   useEffect(() => {
-    dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
-    dispatch(fetchLeaveTypes())
+    dispatch(fetchAll(leaveRequestParams()))
     dispatch(fetchLeaveBalance())
-  }, [dispatch, requestYear])
+  }, [dispatch, requestYear, effectiveCompanyId, platformAdmin, canDeleteCancelledLeave, showCancelledRequests])
+
+  useEffect(() => {
+    // Employee context can arrive after /auth/me. Refetch on context changes,
+    // and discard responses from the previous company.
+    if (!platformAdmin && !canManage && !effectiveCompanyId) return
+    const request = dispatch(fetchLeaveTypes(effectiveCompanyId))
+    return () => request.abort()
+  }, [dispatch, effectiveCompanyId, platformAdmin, canManage])
+
+  useEffect(() => {
+    if (leaveDuration !== 'FULL_DAY' && leaveStartDate) {
+      setValue('endDate', leaveStartDate, { shouldValidate: true })
+    }
+  }, [leaveDuration, leaveStartDate, setValue])
 
   useEffect(() => {
     dispatch(fetchLeaveAllocations(allocationYear ? { year: Number(allocationYear) } : {}))
@@ -313,8 +347,8 @@ export default function LeavePage() {
     Promise.all([
       dispatch(fetchLeaveRequestComments(request.id)),
       dispatch(fetchConditionApprovals(request.id)),
-      dispatch(fetchLeaveRequestFiles(request.id)),
-    ]).catch(() => {})
+      dispatch(fetchLeaveRequestFiles(request.id)).unwrap(),
+    ]).catch(() => toast.error('Unable to load attachments. Please reopen the request and try again.'))
   }
 
   const handleFileUpload = async (e) => {
@@ -339,7 +373,7 @@ export default function LeavePage() {
   }
 
   const handleApprove = async (id) => {
-    try { await dispatch(approveLeave(id)).unwrap(); toast.success('Approved'); dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) })) }
+    try { await dispatch(approveLeave(id)).unwrap(); setDetailOpen(false); toast.success('Approved'); dispatch(fetchAll(leaveRequestParams())) }
     catch (e) { toast.error(e || 'Failed') }
   }
   const handleReject = (id) => {
@@ -349,8 +383,9 @@ export default function LeavePage() {
     try {
       await dispatch(rejectLeave({ id: rejectModal.id, reason: rejectModal.reason || undefined })).unwrap()
       toast.success('Rejected')
+      setDetailOpen(false)
       setRejectModal({ open: false, id: null, reason: '' })
-      dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
+      dispatch(fetchAll(leaveRequestParams()))
     } catch (e) { toast.error(e || 'Failed') }
   }
 
@@ -369,16 +404,17 @@ export default function LeavePage() {
     (request.status || '').toLowerCase().includes(requestQuery) ||
     (request.departmentName || '').toLowerCase().includes(requestQuery)
   ) : data
+  const cancellableRequests = visibleRequests.filter(request => request.status === 'CANCELLED')
 
   const toggleAllRequests = () => setSelectedRequestIds(current => {
-    const pageIds = visibleRequests.map(request => request.id)
+    const pageIds = cancellableRequests.map(request => request.id)
     const allSelected = pageIds.length > 0 && pageIds.every(id => current.has(id))
     const next = new Set(current)
     pageIds.forEach(id => allSelected ? next.delete(id) : next.add(id))
     return next
   })
 
-  useEffect(() => setSelectedRequestIds(new Set()), [effectiveCompanyId, pagination.page, tab, requestSearch])
+  useEffect(() => setSelectedRequestIds(new Set()), [effectiveCompanyId, pagination.page, tab, requestSearch, showCancelledRequests])
 
   const confirmRequestDelete = async () => {
     const ids = deleteConfirm.ids
@@ -394,7 +430,7 @@ export default function LeavePage() {
       })
       setDeleteConfirm({ open: false, ids: [] })
       await Promise.all([
-        dispatch(fetchAll({ page: pagination.page, size: pagination.size || 20, ...(requestYear ? { year: Number(requestYear) } : {}) })),
+        dispatch(fetchAll(leaveRequestParams(pagination.page, pagination.size || 20))),
         dispatch(fetchLeaveBalance()),
       ])
     } catch (e) {
@@ -408,7 +444,7 @@ export default function LeavePage() {
     const { action, id } = confirmModal
     try {
       if (action === 'cancel') {
-        await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
+        await dispatch(cancelLeave(id)).unwrap(); toast.success('Cancelled'); dispatch(fetchAll(leaveRequestParams()))
       } else if (action === 'deleteComment') {
         await dispatch(deleteLeaveRequestComment({ requestId: selectedRequest.id, commentId: id })).unwrap()
         dispatch(fetchLeaveRequestComments(selectedRequest.id))
@@ -458,6 +494,7 @@ export default function LeavePage() {
       leaveTypeId: request.leaveTypeId || request.leaveType?.id || '',
       startDate: request.startDate || '',
       endDate: request.endDate || '',
+      leaveDuration: request.leaveDuration || 'FULL_DAY',
       description: request.description || '',
     })
     setModalOpen(true)
@@ -474,17 +511,19 @@ export default function LeavePage() {
           leaveTypeId: formData.leaveTypeId,
           startDate: formData.startDate,
           endDate: formData.endDate,
+          leaveDuration: formData.leaveDuration || 'FULL_DAY',
           description: formData.description,
           companyId: effectiveCompanyId,
         }
         if (canManage && formData.applyFor === 'employee') {
           payload.employeeId = Number(formData.employeeId)
         }
+        if (showCertificateUpload) payload.certificate = formData.certificate?.[0]
         await dispatch(create(payload)).unwrap()
         toast.success(formData.applyFor === 'employee' ? 'Leave applied for employee' : 'Leave applied')
       }
       setModalOpen(false)
-      dispatch(fetchAll({ page: 0, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))
+      dispatch(fetchAll(leaveRequestParams()))
     } catch (e) { toast.error(e || 'Error') }
   }
 
@@ -527,12 +566,25 @@ export default function LeavePage() {
   }
 
   const requestColumns = [
-    ...(canManage ? [{
-      id: 'select', enableSorting: false,
+    { id: 'actions', header: 'Actions', enableSorting: false, meta: { stickyLeft: true }, cell: ({ row }) => (
+      <LeaveRequestActionMenu request={row.original} canDeleteCancelledLeave={canDeleteCancelledLeave}
+        onAction={action => {
+          const request = row.original
+          if (action === 'details') openDetail(request)
+          else if (action === 'approve') handleApprove(request.id)
+          else if (action === 'reject') handleReject(request.id)
+          else if (action === 'edit') openEdit(request)
+          else if (action === 'cancel') handleCancel(request.id)
+          else if (action === 'delete') setDeleteConfirm({ open: true, ids: [request.id] })
+        }} />
+    )},
+    ...(canDeleteCancelledLeave ? [{
+      id: 'select',
+      enableSorting: false,
       header: () => <input type="checkbox" aria-label="Select all leave requests on this page"
-        checked={visibleRequests.length > 0 && visibleRequests.every(request => selectedRequestIds.has(request.id))}
+        checked={cancellableRequests.length > 0 && cancellableRequests.every(request => selectedRequestIds.has(request.id))}
         onChange={toggleAllRequests} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
-      cell: ({ row }) => <input type="checkbox" aria-label={`Select leave request for ${row.original.employeeName || 'employee'}`}
+      cell: ({ row }) => row.original.status === 'CANCELLED' && <input type="checkbox" aria-label={`Select cancelled leave request for ${row.original.employeeName || 'employee'}`}
         checked={selectedRequestIds.has(row.original.id)} onChange={() => toggleRequest(row.original.id)}
         onClick={event => event.stopPropagation()} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />,
     }] : []),
@@ -545,23 +597,6 @@ export default function LeavePage() {
     { accessorKey: 'description', header: 'Reason', cell: ({ getValue }) => <span className="max-w-xs truncate block">{getValue() || '—'}</span> },
     { id: 'approvedBy', header: 'Approved By', cell: ({ row }) => row.original.approvedByName || '—' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue()} variant={STATUS_COLORS[getValue()?.toLowerCase()] || 'default'} /> },
-    { id: 'actions', header: '', cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" onClick={() => openDetail(row.original)}>Details</Button>
-        {row.original.status === 'REQUESTED' && (
-          <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-        )}
-        {row.original.status === 'REQUESTED' && row.original.canReview && <>
-          <Button size="sm" variant="success" onClick={() => handleApprove(row.original.id)}>Approve</Button>
-          <Button size="sm" variant="danger" onClick={() => handleReject(row.original.id)}>Reject</Button>
-        </>}
-        {(row.original.status === 'REQUESTED' || row.original.status === 'APPROVED') &&
-          <Button size="sm" variant="ghost" onClick={() => handleCancel(row.original.id)}>Cancel</Button>
-        }
-        {canManage && <Button size="sm" variant="danger"
-          onClick={() => setDeleteConfirm({ open: true, ids: [row.original.id] })}>Delete</Button>}
-      </div>
-    )},
   ]
 
   const allocationColumns = [
@@ -668,9 +703,14 @@ export default function LeavePage() {
                   <option value="">All years</option>
                   {Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index).map(year => <option key={year} value={year}>{year}</option>)}
                 </select>
-                {selectedRequestIds.size > 0 && (
+                {canDeleteCancelledLeave && <label className="flex items-center gap-2 text-sm text-gray-600 whitespace-nowrap">
+                  <input type="checkbox" checked={showCancelledRequests}
+                    onChange={event => { setShowCancelledRequests(event.target.checked); setSelectedRequestIds(new Set()) }} />
+                  Show cancelled
+                </label>}
+                {canDeleteCancelledLeave && selectedRequestIds.size > 0 && (
                   <Button variant="danger" onClick={() => setDeleteConfirm({ open: true, ids: [...selectedRequestIds] })}>
-                    Delete Selected ({selectedRequestIds.size})
+                    Delete cancelled ({selectedRequestIds.size})
                   </Button>
                 )}
                 <input
@@ -695,7 +735,7 @@ export default function LeavePage() {
           <div className="overflow-hidden rounded-2xl border border-[#DCE7F2] bg-white shadow-[0_8px_26px_rgba(30,65,96,0.05)]">
             <DataTable columns={requestColumns} data={visibleRequests} loading={loading} />
           </div>
-          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll({ page: p, size: 20, ...(requestYear ? { year: Number(requestYear) } : {}) }))} />
+          <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => dispatch(fetchAll(leaveRequestParams(p, 20)))} />
         </>
       })()}
       {tab === 'Allocations' && (
@@ -912,9 +952,32 @@ export default function LeavePage() {
               )}
             </div>
           )}
-          <Select label="Leave Type" options={leaveTypes.map(lt => ({ value: lt.id, label: lt.name }))} error={errors.leaveTypeId?.message} {...register('leaveTypeId', { required: 'Required' })} />
+          <Select label="Leave Type *" placeholder={leaveTypesLoading ? 'Loading leave types…' : 'Select a leave type'} disabled={leaveTypesLoading || !!leaveTypesError} options={leaveTypes.map(lt => ({ value: lt.id, label: lt.name }))} error={leaveTypesError || errors.leaveTypeId?.message} {...register('leaveTypeId', { required: 'Select a leave type' })} />
+          {!leaveTypesLoading && (leaveTypesError || !leaveTypes.length) && (
+            <div role="status" className="text-sm text-gray-600">
+              {!leaveTypesError && <p>No leave types are configured for your company. Contact HR.</p>}
+              <Button variant="secondary" size="sm" onClick={() => dispatch(fetchLeaveTypes(effectiveCompanyId))}>Retry loading leave types</Button>
+            </div>
+          )}
+          <Select label="Leave Duration" options={[
+            { value: 'FULL_DAY', label: 'Full day' },
+            { value: 'FIRST_HALF', label: 'First half' },
+            { value: 'SECOND_HALF', label: 'Second half' },
+          ]} {...register('leaveDuration')} />
           <Input label="Start Date" type="date" error={errors.startDate?.message} {...register('startDate', { required: 'Required' })} />
-          <Input label="End Date" type="date" error={errors.endDate?.message} {...register('endDate', { required: 'Required' })} />
+          <Input label="End Date" type="date" disabled={leaveDuration !== 'FULL_DAY'} error={errors.endDate?.message} {...register('endDate', { required: 'Required' })} />
+          {showCertificateUpload && (
+            <div>
+              <Input label="Sick leave certificate *" type="file" accept="application/pdf,image/*"
+                error={errors.certificate?.message}
+                {...register('certificate', {
+                  shouldUnregister: true,
+                  validate: files => !showCertificateUpload || (files?.length > 0 && files[0].size <= 10 * 1024 * 1024)
+                    || 'Attach a certificate (PDF or image, up to 10 MB)',
+                })} />
+              <p className="mt-1 text-sm text-gray-500">A certificate is required for sick leave longer than one day.</p>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" rows={3} {...register('description')} />
@@ -995,6 +1058,7 @@ export default function LeavePage() {
               <div><span className="font-medium text-gray-600">Employee:</span> {selectedRequest.employeeName || '—'}</div>
               <div><span className="font-medium text-gray-600">Type:</span> {selectedRequest.leaveTypeName || '—'}</div>
               <div><span className="font-medium text-gray-600">Period:</span> {formatDate(selectedRequest.startDate)} – {formatDate(selectedRequest.endDate)}</div>
+              <div><span className="font-medium text-gray-600">Duration:</span> {selectedRequest.leaveDuration === 'FIRST_HALF' ? 'First half' : selectedRequest.leaveDuration === 'SECOND_HALF' ? 'Second half' : 'Full day'}</div>
               <div><span className="font-medium text-gray-600">Status:</span> <Badge label={selectedRequest.status} variant={STATUS_COLORS[selectedRequest.status?.toLowerCase()] || 'default'} /></div>
               {selectedRequest.description && <div><span className="font-medium text-gray-600">Reason:</span> {selectedRequest.description}</div>}
             </div>
@@ -1049,7 +1113,8 @@ export default function LeavePage() {
                   ? <p className="text-sm text-gray-400 italic">No files attached.</p>
                   : leaveRequestFiles.map(f => (
                     <div key={f.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                      <span className="text-gray-700 truncate">{f.fileName || f.filePath}</span>
+                      <span className="text-gray-700 truncate min-w-0 mr-3" title={f.fileName || 'Attachment'}>{f.fileName || 'Attachment'}</span>
+                      <LeaveAttachmentActions key={`${selectedRequest.id}:${f.id}`} requestId={selectedRequest.id} file={f} companyId={selectedRequest.companyId || effectiveCompanyId} />
                       <button onClick={() => handleDeleteFile(f.id)} className="text-gray-400 hover:text-red-500 text-xs ml-2 shrink-0">✕</button>
                     </div>
                   ))}
@@ -1111,8 +1176,8 @@ export default function LeavePage() {
         open={deleteConfirm.open}
         onClose={() => !requestDeleting && setDeleteConfirm({ open: false, ids: [] })}
         onConfirm={confirmRequestDelete}
-        title={deleteConfirm.ids.length === 1 ? 'Delete Leave Request' : 'Delete Selected Leave Requests'}
-        message={`Permanently delete ${deleteConfirm.ids.length} selected leave request${deleteConfirm.ids.length === 1 ? '' : 's'}? Related comments, approval steps, and attachments will also be removed. This cannot be undone.`}
+        title={deleteConfirm.ids.length === 1 ? 'Delete Cancelled Leave' : 'Delete Cancelled Leaves'}
+        message={`Permanently delete ${deleteConfirm.ids.length} cancelled leave request${deleteConfirm.ids.length === 1 ? '' : 's'}? Related comments, approval steps, and attachments will also be removed. This cannot be undone.`}
         confirmLabel={requestDeleting ? 'Deleting…' : `Delete ${deleteConfirm.ids.length}`}
         danger
       />

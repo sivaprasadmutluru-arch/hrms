@@ -109,9 +109,8 @@ const organizationsSlice = createSlice({
 
       .addCase(create.pending, (state) => { state.loading = true; state.error = null })
       .addCase(create.fulfilled, (state, action) => {
-        // Backend returns { organization, headOfficeCompanyId } so the caller can switch
-        // the active org context right after creation — keep the table's `data` array as
-        // plain Organization rows, matching every other reducer here.
+        // Keep the table's `data` array as plain Organization rows.  The caller only
+        // selects the returned company after its provisioning status is READY.
         state.loading = false
         state.data.push(action.payload.organization)
       })

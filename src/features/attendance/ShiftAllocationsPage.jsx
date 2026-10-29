@@ -46,7 +46,7 @@ export default function ShiftAllocationsPage() {
     const params = {}
     if (statusFilter !== 'All') params.status = statusFilter
     dispatch(fetchShiftAllocations(params))
-  }, [dispatch, statusFilter])
+  }, [dispatch, statusFilter, effectiveCompanyId, selectedCompanyId])
 
   const handleApprove = async (id) => {
     const res = await dispatch(approveShiftAllocation(id))
@@ -123,7 +123,7 @@ export default function ShiftAllocationsPage() {
                   <td className="py-3 px-4 text-gray-500">{a.previousShift?.name || '—'}</td>
                   <td className="py-3 px-4 text-gray-600">{a.effectiveDate || '—'}</td>
                   <td className="py-3 px-4">
-                    <Badge variant={STATUS_BADGE[a.status] || 'default'}>{a.status}</Badge>
+                    <Badge variant={STATUS_BADGE[a.status] || 'default'} label={a.status || 'Unknown'} />
                   </td>
                   <td className="py-3 px-4 text-gray-500">
                     {[a.allocatedBy?.firstName, a.allocatedBy?.lastName].filter(Boolean).join(' ') || a.allocatedBy?.employeeCode || '—'}

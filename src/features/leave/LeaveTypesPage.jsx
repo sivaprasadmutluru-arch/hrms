@@ -427,6 +427,12 @@ export default function LeaveTypesPage() {
                 />
               </>
             )}
+            {!watch('accrualEnabled') && (
+              <Select label="Entitlement on probation confirmation" options={[
+                { value: 'MANUAL', label: 'Full annual entitlement' },
+                { value: 'AUTO_PRORATA', label: 'Pro-rata from confirmation to the leave-year end' },
+              ]} {...register('midYearJoinerMode')} />
+            )}
             <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer">
               <input type="checkbox" {...register('negativeBalanceAllowed')} />
               Allow negative balance

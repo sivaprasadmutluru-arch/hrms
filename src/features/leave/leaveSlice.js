@@ -21,7 +21,14 @@ export const fetchById = createAsyncThunk('leave/fetchById', async (id, { reject
 
 export const create = createAsyncThunk('leave/create', async (data, { rejectWithValue }) => {
   try {
-    const res = await api.post('/leave/apply', data)
+    let body = data
+    if (data.certificate) {
+      body = new FormData()
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) body.append(key, value)
+      })
+    }
+    const res = await api.post(data.certificate ? '/leave/apply-with-certificate' : '/leave/apply', body)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to create leave request')
@@ -46,12 +53,16 @@ export const remove = createAsyncThunk('leave/remove', async (id, { rejectWithVa
   }
 })
 
-export const fetchLeaveTypes = createAsyncThunk('leave/fetchLeaveTypes', async (_, { rejectWithValue }) => {
+export const fetchLeaveTypes = createAsyncThunk('leave/fetchLeaveTypes', async (companyId, { rejectWithValue, signal }) => {
   try {
-    const res = await api.get('/leave/types')
+    const res = await api.get('/leave/types', {
+      signal,
+      ...(companyId ? { headers: { 'X-Company-Id': String(companyId) } } : {}),
+    })
+    if (!Array.isArray(res.data)) throw new Error('Invalid leave-type response')
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to fetch leave types')
+    return rejectWithValue(err.response?.data?.message || err.message || 'Failed to fetch leave types')
   }
 })
 
@@ -617,6 +628,9 @@ const leaveSlice = createSlice({
     data: [],
     selected: {},
     leaveTypes: [],
+    leaveTypesLoading: false,
+    leaveTypesError: null,
+    leaveTypesRequestId: null,
     leaveAllocations: [],
     leaveBalance: [],
     allocationRequests: [],
@@ -681,12 +695,23 @@ const leaveSlice = createSlice({
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 
-      .addCase(fetchLeaveTypes.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchLeaveTypes.pending, (state, action) => {
+        state.leaveTypesLoading = true
+        state.leaveTypesError = null
+        state.leaveTypes = []
+        state.leaveTypesRequestId = action.meta.requestId
+      })
       .addCase(fetchLeaveTypes.fulfilled, (state, action) => {
-        state.loading = false
+        if (state.leaveTypesRequestId !== action.meta.requestId) return
+        state.leaveTypesLoading = false
         state.leaveTypes = action.payload
       })
-      .addCase(fetchLeaveTypes.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(fetchLeaveTypes.rejected, (state, action) => {
+        if (state.leaveTypesRequestId !== action.meta.requestId) return
+        state.leaveTypesLoading = false
+        state.leaveTypes = []
+        state.leaveTypesError = action.meta.aborted ? null : (action.payload || 'Failed to fetch leave types')
+      })
 
       .addCase(createLeaveType.fulfilled, (state, action) => {
         state.leaveTypes.push(action.payload)
@@ -798,7 +823,10 @@ const leaveSlice = createSlice({
       })
 
       // Leave Request Files
-      .addCase(fetchLeaveRequestFiles.fulfilled, (state, action) => { state.leaveRequestFiles = action.payload.content || action.payload })
+      .addCase(fetchLeaveRequestFiles.pending, (state, action) => { state.leaveRequestFiles = []; state.filesRequestId = action.meta.requestId })
+      .addCase(fetchLeaveRequestFiles.fulfilled, (state, action) => {
+        if (state.filesRequestId === action.meta.requestId) state.leaveRequestFiles = action.payload.content || action.payload
+      })
       .addCase(deleteLeaveRequestFile.fulfilled, (state, action) => {
         state.leaveRequestFiles = state.leaveRequestFiles.filter(f => f.id !== action.payload)
       })
@@ -822,8 +850,7 @@ const leaveSlice = createSlice({
 
       // Cancel Leave
       .addCase(cancelLeave.fulfilled, (state, action) => {
-        const idx = state.data.findIndex((item) => item.id === action.payload.id)
-        if (idx !== -1) state.data[idx] = action.payload
+        state.data = state.data.filter((item) => item.id !== action.payload.id)
       })
 
       // Bulk Allocate + Annual Reset (no state mutation needed — triggers refetch)

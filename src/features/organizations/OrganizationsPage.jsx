@@ -74,17 +74,17 @@ export default function OrganizationsPage() {
         savedOrg = await dispatch(update({ id: editing.id, data: formData })).unwrap()
         toast.success('Organization updated')
       } else {
-        // Creation returns { organization, headOfficeCompanyId } — unlike update/edit which
-        // returns the bare Organization. Switch the active org context to the new org right
-        // away: previously nothing updated selectedCompanyId/X-Company-Id after creating an
-        // org, so the very next action (e.g. adding an employee) kept operating against
-        // whatever org was active before, landing data in the wrong place.
+        // Creation returns before workspace DDL completes.  Do not select a company
+        // whose tenant schema is still being provisioned: that would send subsequent
+        // requests to a workspace that is deliberately not ready yet.
         const result = await dispatch(create(formData)).unwrap()
         savedOrg = result.organization
-        if (result.headOfficeCompanyId) {
+        if (result.headOfficeCompanyId && result.headOfficeSchemaReady) {
           dispatch(setSelectedCompany(result.headOfficeCompanyId))
+          toast.success('Organization created — switched to it')
+        } else {
+          toast.success('Organization created — preparing its workspace. Refresh in a few moments to open it.')
         }
-        toast.success('Organization created — switched to it')
       }
       if (logoFile && savedOrg?.id) {
         try {

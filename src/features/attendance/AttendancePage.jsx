@@ -80,10 +80,18 @@ export default function AttendancePage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [search, setSearch] = useState('')
-  const today = new Date().toISOString().split('T')[0]
+  // Attendance is evaluated in the application's UAE business timezone.  UTC
+  // can be one day behind/ahead here, which made the date filter and max date
+  // disagree with the records returned by the server around midnight.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState(isEmp ? '' : today)
-  const [filterDateTo, setFilterDateTo] = useState(isEmp ? '' : today)
+  // Keep the values being edited separate from the values sent to the API.
+  // This makes it explicit when the table is showing a date range rather than
+  // silently refetching on every date picker change.
+  const [filterDateFrom, setFilterDateFrom] = useState(today)
+  const [filterDateTo, setFilterDateTo] = useState(today)
+  const [selectedDateFrom, setSelectedDateFrom] = useState(today)
+  const [selectedDateTo, setSelectedDateTo] = useState(today)
   const [filterDept, setFilterDept] = useState('')
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [exportModal, setExportModal] = useState(false)
@@ -124,6 +132,19 @@ export default function AttendancePage() {
       dispatch(fetchFullView(params))
     }
   }, [dispatch, companyId, isEmp, filterStatus, filterDateFrom, filterDateTo, filterDept])
+
+  const applyDateFilter = () => {
+    if (!selectedDateFrom || !selectedDateTo) {
+      toast.error('Select both a From and To date')
+      return
+    }
+    if (selectedDateFrom > selectedDateTo) {
+      toast.error('From date cannot be after To date')
+      return
+    }
+    setFilterDateFrom(selectedDateFrom)
+    setFilterDateTo(selectedDateTo)
+  }
 
   const filteredData = useMemo(() => {
     if (!search) return data
@@ -293,7 +314,7 @@ export default function AttendancePage() {
     }},
     { id: 'status', header: 'Status', cell: ({ row }) => {
       const qs = row.original.displayStatus || row.original.attendanceStatus || 'REGULAR'
-      const labels = { REGULAR: 'Regular', IRREGULAR: 'Irregular', REGULARISED: 'Regularised', ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEK_OFF: 'Week Off' }
+      const labels = { EXEMPT: 'Attendance not required', REGULAR: 'Regular', IRREGULAR: 'Irregular', REGULARISED: 'Regularised', ABSENT: 'Absent', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEK_OFF: 'Week Off' }
       const label = qs === 'ON_LEAVE' && row.original.leaveTypeName ? row.original.leaveTypeName : (labels[qs] || qs)
       return <Badge label={label} variant={QUALITY_COLORS[qs] || 'default'} />
     }},
@@ -306,6 +327,7 @@ export default function AttendancePage() {
       // request on their own row the same way a plain employee would.
       const isOwnRecord = user?.employeeId != null && rec.employeeId === user.employeeId
       const canRequest = isEmp || isOwnRecord
+      if (rec.attendanceRequired === false || rec.displayStatus === 'EXEMPT') return <span className="text-xs text-slate-500">Not required</span>
 
       if (rs === 'REGULARISED' || as_ === 'REGULARISED') {
         return <Badge label="Regularised" variant="success" />
@@ -461,6 +483,7 @@ export default function AttendancePage() {
                 <option value="REGULAR">Regular</option>
                 <option value="IRREGULAR">Irregular</option>
                 <option value="REGULARISED">Regularised</option>
+                <option value="EXEMPT">Attendance not required</option>
                 <option value="ABSENT">Absent</option>
                 <option value="ON_LEAVE">On Leave</option>
                 <option value="HOLIDAY">Holiday</option>
@@ -470,12 +493,12 @@ export default function AttendancePage() {
           )}
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 font-medium">From:</label>
-            <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+            <input type="date" value={selectedDateFrom} onChange={e => setSelectedDateFrom(e.target.value)}
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500 font-medium">To:</label>
-            <input type="date" value={filterDateTo} max={today} onChange={e => setFilterDateTo(e.target.value)}
+            <input type="date" value={selectedDateTo} max={today} onChange={e => setSelectedDateTo(e.target.value)}
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
           </div>
           {!isEmp && (
@@ -491,9 +514,22 @@ export default function AttendancePage() {
               </select>
             </div>
           )}
+          <Button size="sm" onClick={applyDateFilter} disabled={loading}>
+            Filter
+          </Button>
+          <span className="self-center text-xs text-gray-500 whitespace-nowrap">
+            Showing: <span className="font-medium text-gray-700">{filterDateFrom} to {filterDateTo}</span>
+          </span>
           {(filterStatus || filterDateFrom || filterDateTo || filterDept) && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterDateFrom(isEmp ? '' : today); setFilterDateTo(isEmp ? '' : today); setFilterDept('') }}
+              onClick={() => {
+                setFilterStatus('')
+                setFilterDateFrom(today)
+                setFilterDateTo(today)
+                setSelectedDateFrom(today)
+                setSelectedDateTo(today)
+                setFilterDept('')
+              }}
               className="text-xs text-indigo-600 hover:underline ml-1"
             >
               Clear filters
@@ -515,17 +551,15 @@ export default function AttendancePage() {
         <>
           <DataTable columns={attendanceColumns} data={filteredData} loading={loading} />
           <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => {
-  if (isEmp) {
-    dispatch(fetchAll({ page: p, size: 20, sort: 'attendanceDate,desc' }))
-  } else {
-    const params = { companyId, page: p, size: 20 }
-    if (filterStatus) params.status = filterStatus
-    if (filterDateFrom) params.from = filterDateFrom
-    if (filterDateTo) params.to = filterDateTo
-    if (filterDept) params.departmentId = filterDept
-    dispatch(fetchFullView(params))
-  }
-}} />
+            const params = { page: p, size: 20, ...(isEmp ? { isEmp: true } : { companyId }) }
+            if (filterStatus) params.status = filterStatus
+            if (filterDateFrom) params.from = filterDateFrom
+            if (filterDateTo) params.to = filterDateTo
+            if (!isEmp && filterDept) params.departmentId = filterDept
+            // Use the same endpoint and filters as the first page. Previously
+            // employee pagination switched to /attendance and dropped dates.
+            dispatch(fetchFullView(params))
+          }} />
         </>
       )}
 

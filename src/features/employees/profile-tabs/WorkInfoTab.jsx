@@ -5,6 +5,7 @@ import Spinner from '../../../components/common/Spinner'
 import { formatDate } from '../../../utils/formatters'
 import useCurrency from '../../../hooks/useCurrency'
 import useAuth from '../../../hooks/useAuth'
+import AttendancePolicySettings from './AttendancePolicySettings'
 
 const Section = ({ title, children }) => (
   <div className="employee-detail-section mb-6">
@@ -28,6 +29,8 @@ export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
   const navigate = useNavigate()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager } = useAuth()
   const canEdit = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const attendancePolicy = canEdit && !isSelf && employeeId && companyId
+    ? <AttendancePolicySettings key={`${companyId}:${employeeId}`} employeeId={employeeId} companyId={companyId} /> : null
 
   useEffect(() => {
     if (!employeeId && !isSelf) return
@@ -50,6 +53,7 @@ export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
 
   if (!info) return (
     <div className="py-6 flex flex-col items-start gap-3">
+      {attendancePolicy}
       <p className="text-sm text-gray-400">No work information available.</p>
       {canEdit && (
         <button
@@ -64,6 +68,7 @@ export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
 
   return (
     <div className="space-y-2">
+      {attendancePolicy}
       {canEdit && (
         <div className="flex justify-end mb-2">
           <button

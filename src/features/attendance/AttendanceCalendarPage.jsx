@@ -9,6 +9,7 @@ import useAuth from '../../hooks/useAuth'
 
 // ─── Day type config ──────────────────────────────────────────────────────────
 const DAY_TYPE = {
+  exempt:     { label: 'Attendance not required', circle: 'bg-slate-200 text-slate-700', dot: 'bg-slate-300' },
   present:    { label: 'Present',        circle: 'bg-green-500 text-white',           dot: 'bg-green-500' },
   irregular:  { label: 'Irregular',      circle: 'bg-yellow-400 text-white',          dot: 'bg-yellow-400' },
   absent:     { label: 'Absent',         circle: 'bg-orange-500 text-white',          dot: 'bg-orange-500' },

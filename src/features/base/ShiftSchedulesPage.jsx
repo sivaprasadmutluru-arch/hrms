@@ -30,7 +30,7 @@ function formatWeekOff(weeklyOffDays) {
 
 export default function ShiftSchedulesPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { effectiveCompanyId } = useAuth()
   const shifts = useSelector(selectShiftSchedules)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -69,7 +69,9 @@ export default function ShiftSchedulesPage() {
       overtimeCutoff: data.overtimeCutoff || null,
       minimumOvertimeToApprove: data.minimumOvertimeToApprove || null,
       weeklyOffDays: weekOff.length ? weekOff.join(',') : null,
-      company: user?.companyId ? { id: user.companyId } : undefined,
+      // The header company switcher is the source of truth. A platform admin's
+      // profile company can differ from the company they are currently managing.
+      company: effectiveCompanyId ? { id: effectiveCompanyId } : undefined,
     }
     try {
       if (editing) {

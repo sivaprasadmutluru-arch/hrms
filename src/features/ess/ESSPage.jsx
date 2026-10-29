@@ -232,7 +232,9 @@ function AttendanceTab({ attendance, loading }) {
         </div>
         <Button variant="secondary" onClick={handleFilter}>Filter</Button>
         <div className="ml-auto flex items-center gap-2">
-          {isClockedIn ? (
+          {clockStatus?.attendanceRequired === false && !isClockedIn ? (
+            <span className="text-sm text-slate-600">Attendance not required</span>
+          ) : isClockedIn ? (
             <Button onClick={handleCheckOut}>Check Out</Button>
           ) : (
             <Button onClick={handleCheckIn}>Check In</Button>

@@ -19,8 +19,9 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
+import ProbationPage from './ProbationPage'
 
-const TABS = ['Portals', 'Stages', 'Candidates', 'Tasks']
+const TABS = ['Portals', 'Stages', 'Candidates', 'Tasks', 'Probation']
 
 export default function OnboardingPage() {
   const dispatch = useDispatch()
@@ -245,6 +246,8 @@ export default function OnboardingPage() {
           ))}
         </nav>
       </div>
+
+      {activeTab === 'Probation' && <ProbationPage />}
 
       {/* Portals Tab */}
       {activeTab === 'Portals' && (

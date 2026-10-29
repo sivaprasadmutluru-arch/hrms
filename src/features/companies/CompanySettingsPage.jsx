@@ -91,8 +91,9 @@ export default function CompanySettingsPage() {
   // Currency tab state
   const [currencyInput, setCurrencyInput] = useState(activeCurrency)
   const [currencySaving, setCurrencySaving] = useState(false)
-  const [moduleVisibility, setModuleVisibility] = useState({ payslips: true, loans: true, reimbursements: true })
-  const [moduleSaving, setModuleSaving] = useState(false)
+  const [moduleVisibility, setModuleVisibility] = useState(null)
+  const [modulesLoading, setModulesLoading] = useState(false)
+  const [modulesSaving, setModulesSaving] = useState(false)
 
   const emailForm = useForm()
   const { register: regTag, handleSubmit: handleTagSubmit, reset: resetTag, formState: { errors: errTag } } = useForm()
@@ -103,9 +104,6 @@ export default function CompanySettingsPage() {
     dispatch(fetchEmailConfig(companyId))
     dispatch(fetchTags())
     dispatch(fetchPenaltyAccounts())
-    api.get('/settings/module-visibility', { params: { companyId } })
-      .then(response => setModuleVisibility(current => ({ ...current, ...response.data })))
-      .catch(() => setModuleVisibility({ payslips: true, loans: true, reimbursements: true }))
   }, [dispatch, companyId])
 
   useEffect(() => {
@@ -127,6 +125,18 @@ export default function CompanySettingsPage() {
   useEffect(() => {
     setCurrencyInput(activeCurrency)
   }, [activeCurrency])
+
+  useEffect(() => {
+    if (tab !== 'Module Visibility' || !companyId) return
+    let active = true
+    setModuleVisibility(null)
+    setModulesLoading(true)
+    api.get('/settings/module-visibility', { params: { companyId } })
+      .then(({ data }) => { if (active) setModuleVisibility(data) })
+      .catch(err => { if (active) toast.error(err.response?.data?.message || 'Failed to load module visibility') })
+      .finally(() => { if (active) setModulesLoading(false) })
+    return () => { active = false }
+  }, [tab, companyId])
 
   const onSaveEmailConfig = async (data) => {
     try {
@@ -155,12 +165,17 @@ export default function CompanySettingsPage() {
   }
 
   const onSaveModuleVisibility = async () => {
+    if (!companyId || !moduleVisibility) return
     try {
-      setModuleSaving(true)
-      await api.post('/settings/module-visibility', moduleVisibility, { params: { companyId } })
+      setModulesSaving(true)
+      const { data } = await api.post('/settings/module-visibility', moduleVisibility, { params: { companyId } })
+      setModuleVisibility(data)
       toast.success('Module visibility saved')
-    } catch (e) { toast.error(e?.response?.data?.message || 'Failed to save module visibility') }
-    finally { setModuleSaving(false) }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save module visibility')
+    } finally {
+      setModulesSaving(false)
+    }
   }
 
   const openCreateTag = () => { setEditingTag(null); resetTag({}); setTagModal(true) }
@@ -335,12 +350,12 @@ export default function CompanySettingsPage() {
               ['reimbursements', 'Reimbursements', 'Employee expense claims and tracking', Sparkles],
             ].map(([key, label, description, Icon]) => (
               <label key={key} className="flex min-h-36 cursor-pointer flex-col justify-between rounded-2xl border border-[#DDE9F5] bg-gradient-to-br from-white to-[#F5F9FF] p-4 transition hover:-translate-y-0.5 hover:border-[#B9D5EF] hover:shadow-md">
-                <span className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF4FF] text-[#3479BC]"><Icon className="h-5 w-5" /></span><input type="checkbox" checked={moduleVisibility[key] !== false} onChange={e => setModuleVisibility(value => ({ ...value, [key]: e.target.checked }))} className="mt-1 h-4 w-4 accent-[#2F73B7]" /></span>
+                <span className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF4FF] text-[#3479BC]"><Icon className="h-5 w-5" /></span><input type="checkbox" checked={moduleVisibility?.[key] !== false} disabled={modulesLoading || modulesSaving || !moduleVisibility} onChange={e => setModuleVisibility(value => ({ ...value, [key]: e.target.checked }))} className="mt-1 h-4 w-4 accent-[#2F73B7]" /></span>
                 <span><span className="block text-sm font-semibold text-[#294762]">{label}</span><span className="mt-1 block text-xs leading-relaxed text-[#7A8EA3]">{description}</span></span>
               </label>
             ))}
           </div>
-          <div className="flex justify-end border-t border-[#EAF0F6] bg-[#FBFDFF] px-6 py-4 sm:px-7"><Button onClick={onSaveModuleVisibility} disabled={moduleSaving}>{moduleSaving ? 'Saving…' : 'Save visibility'}</Button></div>
+          <div className="flex justify-end border-t border-[#EAF0F6] bg-[#FBFDFF] px-6 py-4 sm:px-7"><Button onClick={onSaveModuleVisibility} disabled={modulesLoading || modulesSaving || !moduleVisibility}>{modulesSaving ? 'Saving…' : 'Save visibility'}</Button></div>
         </section>
       )}
 
@@ -427,6 +442,7 @@ export default function CompanySettingsPage() {
           </div>
         </section>
       )}
+
 
       <ConfirmModal
         open={confirmModal.open}
