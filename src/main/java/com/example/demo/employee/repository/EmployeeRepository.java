@@ -12,6 +12,9 @@ import java.util.Optional;
 
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSpecificationExecutor<Employee> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from Employee e where e.id = :id")
+    Optional<Employee> findByIdForProbationConfirmation(@Param("id") Long id);
     List<Employee> findByCompanyId(Long companyId);
     List<Employee> findByCompanyIdAndIsActiveTrue(Long companyId);
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"user", "company", "department"})

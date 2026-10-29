@@ -81,6 +81,34 @@ public class AttendanceService {
     private final AttendanceRegularisationRequestRepository regularisationRequestRepository;
     private final com.example.demo.geofencing.service.GeoFencingService geoFencingService;
     private final AttendanceAddressResolver attendanceAddressResolver;
+    private final EmployeeAttendancePolicyService attendancePolicies;
+
+    public boolean attendanceRequired(Employee employee, LocalDate date) {
+        return attendancePolicies.required(employee, date);
+    }
+
+    private List<AttendanceResponse> policyResponses(List<Attendance> records) {
+        LocalDate last = records.stream().map(Attendance::getAttendanceDate).filter(Objects::nonNull)
+                .max(LocalDate::compareTo).orElse(LocalDate.now(DUBAI_ZONE));
+        var policies = attendancePolicies.indexByCompany(records.stream().map(Attendance::getEmployee).toList(), last);
+        return records.stream().map(record -> {
+            var row = AttendanceResponse.from(record);
+            var employee = record.getEmployee();
+            var policy = employee != null && employee.getCompany() != null ? policies.get(employee.getCompany().getId()) : null;
+            return policy != null && row.getAttendanceDate() != null ? applyPolicy(row, policy) : row;
+        }).toList();
+    }
+
+    private AttendanceResponse applyPolicy(AttendanceResponse row, EmployeeAttendancePolicyService.PolicyIndex policies) {
+        boolean required = policies.required(row.getEmployeeId(), row.getAttendanceDate());
+        row.setAttendanceRequired(required);
+        if (!required && !"ON_LEAVE".equals(row.getDisplayStatus()) && !"HOLIDAY".equals(row.getDisplayStatus())
+                && !"WEEK_OFF".equals(row.getDisplayStatus())) {
+            row.setDisplayStatus("EXEMPT");
+            row.setDeductionMinutes(0); row.setDeductionAmount(0.0);
+        }
+        return row;
+    }
 
     /**
      * ENTERPRISE_ADMIN → sees attendance across all branches.
@@ -117,7 +145,7 @@ public class AttendanceService {
         Page<Attendance> page = spec != null
                 ? attendanceRepository.findAll(spec, pageable)
                 : attendanceRepository.findAll(pageable);
-        return page.map(AttendanceResponse::from);
+        return new org.springframework.data.domain.PageImpl<>(policyResponses(page.getContent()), pageable, page.getTotalElements());
     }
 
     @Transactional(readOnly = true)
@@ -185,6 +213,7 @@ public class AttendanceService {
 
         // Dates with a pending "no attendance yet" regularisation request (Absent/Leave/Holiday/WeekOff rows)
         List<Long> employeeIds = employees.stream().map(Employee::getId).collect(Collectors.toList());
+        var attendancePolicy = attendancePolicies.index(companyId, employeeIds, end);
         Set<String> pendingNoAttendanceKeys = employeeIds.isEmpty() ? Set.of() :
                 regularisationRequestRepository.findPendingNoAttendanceRequests(employeeIds, start, end).stream()
                         .map(r -> r.getEmployee().getId() + "_" + r.getRequestDate())
@@ -220,6 +249,7 @@ public class AttendanceService {
                         row.setRegularisationStatus("HAS_PENDING");
                     }
                 }
+                applyPolicy(row, attendancePolicy);
                 String ds = row.getDisplayStatus() != null ? row.getDisplayStatus() : "REGULAR";
                 if (statusFilter == null || statusFilter.isBlank() || statusFilter.equalsIgnoreCase(ds)) {
                     rows.add(row);
@@ -240,13 +270,12 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public AttendanceResponse getById(Long id) {
-        return AttendanceResponse.from(find(id));
+        return policyResponses(List.of(find(id))).get(0);
     }
 
     @Transactional(readOnly = true)
     public List<AttendanceResponse> getByEmployee(Long employeeId) {
-        return attendanceRepository.findByEmployeeId(employeeId)
-                .stream().map(AttendanceResponse::from).collect(Collectors.toList());
+        return policyResponses(attendanceRepository.findByEmployeeId(employeeId));
     }
 
     @Transactional
@@ -367,6 +396,11 @@ public class AttendanceService {
      * (that is set by the regularisation approval workflow).
      */
     public void evaluateAttendanceStatus(Attendance att, int graceMinutes) {
+        if (!attendancePolicies.required(att.getEmployee(), att.getAttendanceDate())) {
+            att.setAttendanceStatus(Attendance.AttendanceQualityStatus.REGULAR);
+            att.setDeductionMinutes(0); att.setDeductionAmount(0.0);
+            return;
+        }
         // Skip re-evaluation if already regularised
         if (att.getAttendanceStatus() == Attendance.AttendanceQualityStatus.REGULARISED) return;
 
@@ -712,6 +746,7 @@ public class AttendanceService {
     @Transactional
     public void detectLateComeEarlyOut(Long attendanceId, int graceMinutes) {
         Attendance att = find(attendanceId);
+        if (!attendancePolicies.required(att.getEmployee(), att.getAttendanceDate())) return;
         ShiftSchedule shift = att.getShift();
         if (shift == null || att.getCheckIn() == null) return;
 
@@ -822,11 +857,13 @@ public class AttendanceService {
             if (emp != null && emp.getCompany() != null) resolvedCompanyId = emp.getCompany().getId();
         }
 
-        if (resolvedEmployeeId == null) return Collections.emptyList();
+        if (resolvedEmployeeId == null || resolvedCompanyId == null) return Collections.emptyList();
 
         LocalDate first = LocalDate.of(year, month, 1);
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
         LocalDate today = LocalDate.now(DUBAI_ZONE);
+
+        var attendancePolicy = attendancePolicies.index(resolvedCompanyId, List.of(resolvedEmployeeId), last);
 
         // Attendance records for the month
         List<Attendance> attendances = attendanceRepository
@@ -974,6 +1011,12 @@ public class AttendanceService {
                 }
             }
 
+            if (!attendancePolicy.required(resolvedEmployeeId, cur) && !cur.isAfter(today)
+                    && !"on_leave".equals(dto.getDayType()) && !"holiday".equals(dto.getDayType())
+                    && !"weekly_off".equals(dto.getDayType())) {
+                dto.setStatus("exempt"); dto.setDayType("exempt"); dto.setRowClass("gray");
+                dto.setPenalties(0); dto.setPendingHour(0.0);
+            }
             days.add(dto);
             cur = cur.plusDays(1);
         }
@@ -989,6 +1032,8 @@ public class AttendanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+        if (!attendancePolicies.required(employee, LocalDate.now(DUBAI_ZONE)))
+            throw new BadRequestException("Attendance is not required for you. No check-in is needed.");
         ShiftSchedule assignedShift = resolveAssignedShift(employee);
         if (assignedShift == null) {
             throw new BadRequestException("No shift assigned. Please contact your administrator before checking in.");
@@ -1199,6 +1244,8 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getNotClockedIn(Long companyId, LocalDate date) {
         List<Employee> allActive = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
+        var attendancePolicy = attendancePolicies.index(companyId, allActive.stream().map(Employee::getId).toList(), date);
+        allActive = allActive.stream().filter(employee -> attendancePolicy.required(employee.getId(), date)).toList();
         List<Attendance> attendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, date);
         Set<Long> presentIds = new HashSet<>();
         for (Attendance a : attendances) {
@@ -1220,10 +1267,11 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getNotClockedOut(Long companyId, LocalDate date) {
         List<Attendance> notOut = attendanceRepository.findByCompanyIdAndAttendanceDateAndCheckInIsNotNullAndCheckOutIsNull(companyId, date);
+        var attendancePolicy = attendancePolicies.index(companyId, notOut.stream().filter(a -> a.getEmployee() != null).map(a -> a.getEmployee().getId()).toList(), date);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Attendance a : notOut) {
             Employee emp = a.getEmployee();
-            if (emp != null) {
+            if (emp != null && attendancePolicy.required(emp.getId(), date)) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("id", emp.getId());
                 m.put("name", emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : ""));
@@ -1240,8 +1288,7 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public List<AttendanceResponse> getTodayAttendance(Long companyId) {
-        return attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, LocalDate.now(DUBAI_ZONE))
-                .stream().map(AttendanceResponse::from).collect(Collectors.toList());
+        return policyResponses(attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, LocalDate.now(DUBAI_ZONE)));
     }
 
     // ─── Dashboard ────────────────────────────────────────────────────────────
@@ -1257,6 +1304,9 @@ public class AttendanceService {
                     .collect(Collectors.toList());
         }
         long totalEmployees = allActive.size();
+        var attendancePolicy = attendancePolicies.index(companyId, allActive.stream().map(Employee::getId).toList(), targetDate);
+        long exemptEmployees = allActive.stream().filter(employee -> !attendancePolicy.required(employee.getId(), targetDate)).count();
+        allActive = allActive.stream().filter(employee -> attendancePolicy.required(employee.getId(), targetDate)).toList();
 
         Set<Long> activeEmpIds = allActive.stream().map(Employee::getId).collect(Collectors.toSet());
 
@@ -1264,7 +1314,7 @@ public class AttendanceService {
                 .stream().filter(a -> a.getEmployee() != null && activeEmpIds.contains(a.getEmployee().getId()))
                 .collect(Collectors.toList());
         long presentToday = presentRecords.size();
-        long absentToday = totalEmployees - presentToday;
+        long absentToday = totalEmployees - exemptEmployees - presentToday;
         long notOutYet = presentRecords.stream().filter(a -> a.getCheckOut() == null).count();
 
         List<Attendance> dayAttendances = attendanceRepository.findByCompanyIdAndAttendanceDate(companyId, targetDate)
@@ -1301,6 +1351,8 @@ public class AttendanceService {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("totalEmployees", totalEmployees);
+        result.put("attendanceExempt", exemptEmployees);
+        result.put("attendanceRequiredEmployees", totalEmployees - exemptEmployees);
         result.put("presentToday", presentToday);
         result.put("absentToday", absentToday);
         result.put("notOutYet", notOutYet);
@@ -1327,6 +1379,7 @@ public class AttendanceService {
             employees = employeeRepository.findByCompanyIdAndIsActiveTrue(companyId);
         }
 
+        var attendancePolicy = attendancePolicies.index(companyId, employees.stream().map(Employee::getId).toList(), end);
         Map<String, Attendance> attMap = new HashMap<>();
         attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, start, end)
                 .forEach(a -> { if (a.getEmployee() != null) attMap.put(a.getEmployee().getId() + "_" + a.getAttendanceDate(), a); });
@@ -1360,7 +1413,7 @@ public class AttendanceService {
                     String ltn = ml != null && ml.getLeaveType() != null ? ml.getLeaveType().getName() : null;
                     row = AttendanceResponse.fromVirtual(emp, cursor, ds, ltn);
                 }
-                rows.add(row);
+                rows.add(applyPolicy(row, attendancePolicy));
             }
             cursor = cursor.minusDays(1);
         }
@@ -1643,6 +1696,8 @@ public class AttendanceService {
                     .collect(Collectors.toList());
         }
 
+        var attendancePolicy = attendancePolicies.index(companyId, employees.stream().map(Employee::getId).toList(), last);
+
         // 2. All attendance records for company in month (single query)
         List<Attendance> allAttendances = attendanceRepository.findByCompanyIdAndAttendanceDateBetween(companyId, first, last);
         // Group by (employeeId -> (date -> attendance))
@@ -1719,7 +1774,10 @@ public class AttendanceService {
                     cell.setDisplayStatus("H");
                 } else {
                     Attendance att = empAtt.get(cur);
-                    if (att == null) {
+                    if (!attendancePolicy.required(emp.getId(), cur) && !empLeaves.containsKey(cur) && !isWeekend) {
+                        cell.setDayType("exempt"); cell.setDisplayStatus("EX");
+                        if (att != null) cell.setAttendanceId(att.getId());
+                    } else if (att == null) {
                         if (empLeaves.containsKey(cur)) {
                             cell.setDayType("on_leave");
                             cell.setDisplayStatus("OL");
@@ -1794,6 +1852,10 @@ public class AttendanceService {
      */
     @Transactional
     public AttendanceRegisterDayDto updateRegisterCell(Long employeeId, LocalDate date, String status, Long companyId) {
+        Employee policyEmployee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
+        if (!attendancePolicies.required(policyEmployee, date))
+            throw new BadRequestException("Attendance is exempt for this date; change the employee attendance policy instead");
         Attendance att = attendanceRepository.findByEmployeeIdAndAttendanceDate(employeeId, date).orElse(null);
 
         switch (status.toLowerCase()) {

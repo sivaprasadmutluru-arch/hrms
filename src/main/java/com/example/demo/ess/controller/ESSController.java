@@ -101,7 +101,8 @@ public class ESSController {
                 .map(a -> a.getAuthority()).filter(a -> a.startsWith("ROLE_"))
                 .map(a -> a.substring(5)).distinct().toList();
         return ResponseEntity.ok(Map.of("roles", roles,
-                "isReportingManager", reportingManagers.hasDirectReports(employee)));
+                "isReportingManager", reportingManagers.hasDirectReports(employee),
+                "attendanceRequired", attendanceService.attendanceRequired(employee, LocalDate.now(DUBAI_ZONE))));
     }
 
     @GetMapping("/me")
@@ -324,11 +325,13 @@ public class ESSController {
         }
 
         final java.time.Instant finalStart = currentSessionStartUtc;
+        boolean attendanceRequired = attendanceService.attendanceRequired(emp, today);
 
         return attendanceRepository.findByEmployeeIdAndAttendanceDate(emp.getId(), today)
                 .map(att -> {
                     java.util.Map<String, Object> res = new java.util.HashMap<>();
                     res.put("online", online);
+                    res.put("attendanceRequired", attendanceRequired);
                     res.put("checkIn", att.getCheckIn() != null ? att.getCheckIn().toString() : "");
                     res.put("checkOut", att.getCheckOut() != null ? att.getCheckOut().toString() : "");
                     res.put("atWorkSecond", att.getAtWorkSecond() != null ? att.getAtWorkSecond() : 0);
@@ -336,6 +339,7 @@ public class ESSController {
                     return ResponseEntity.ok(res);
                 })
                 .orElse(ResponseEntity.ok(Map.of(
+                        "attendanceRequired", attendanceRequired,
                         "online", false,
                         "checkIn", "",
                         "checkOut", "",

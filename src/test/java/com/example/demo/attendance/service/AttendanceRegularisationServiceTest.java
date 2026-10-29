@@ -45,9 +45,26 @@ class AttendanceRegularisationServiceTest {
     @Mock NotificationService notificationService;
     @InjectMocks AttendanceRegularisationService service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void defaultAttendancePolicy() {
+        org.mockito.Mockito.lenient().when(attendanceService.attendanceRequired(any(), any())).thenReturn(true);
+    }
+
     @AfterEach
     void clearScope() {
         AccessScopeContext.clear();
+    }
+
+    @Test
+    void exemptDateCannotCreateMissingAttendanceRequest() {
+        Employee employee = employee(10L);
+        when(employeeRepository.findByUserId(100L)).thenReturn(Optional.of(employee));
+        when(attendanceService.attendanceRequired(any(), any())).thenReturn(false);
+        RegularisationSubmitRequest req = new RegularisationSubmitRequest();
+        req.setAttendanceDate(LocalDate.now(java.time.ZoneId.of("Asia/Dubai")));
+        req.setRequestType("MISSING_PUNCH"); req.setReason("Missing punch");
+        assertThrows(BadRequestException.class, () -> service.submitRequest(req,100L));
+        org.mockito.Mockito.verify(requestRepository,org.mockito.Mockito.never()).save(any());
     }
 
     @Test
@@ -61,6 +78,7 @@ class AttendanceRegularisationServiceTest {
         shift.setStartTime(LocalTime.of(9, 0));
         Attendance attendance = new Attendance();
         attendance.setId(1L);
+        attendance.setAttendanceDate(LocalDate.now(java.time.ZoneId.of("Asia/Dubai")));
         attendance.setEmployee(employee);
         attendance.setCompany(company);
         attendance.setAttendanceStatus(Attendance.AttendanceQualityStatus.IRREGULAR);

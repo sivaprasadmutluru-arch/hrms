@@ -50,6 +50,7 @@ public class ConsolidatedReportController {
     private final ExcelExporter excelExporter;
     private final PayslipExcelExportService payslipExcelExportService;
     private final AttendanceRepository attendanceRepository;
+    private final com.example.demo.attendance.service.EmployeeAttendancePolicyService attendancePolicies;
     private final LeaveRequestRepository leaveRequestRepository;
     private final PayslipRepository payslipRepository;
     private final RecruitmentPostRepository recruitmentPostRepository;
@@ -174,6 +175,9 @@ public class ConsolidatedReportController {
         List<Attendance> todayRecords = all.stream()
                 .filter(a -> today.equals(a.getAttendanceDate()))
                 .toList();
+        var policy = attendancePolicies.indexByCompany(todayRecords.stream().map(Attendance::getEmployee).toList(), today);
+        todayRecords = todayRecords.stream().filter(record -> record.getEmployee() != null && record.getEmployee().getCompany() != null
+                && policy.get(record.getEmployee().getCompany().getId()).required(record.getEmployee().getId(), today)).toList();
         long clockedInToday = todayRecords.stream()
                 .map(a -> a.getEmployee() != null ? a.getEmployee().getId() : null)
                 .filter(id -> id != null)

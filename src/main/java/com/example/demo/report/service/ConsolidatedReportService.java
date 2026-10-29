@@ -27,6 +27,7 @@ public class ConsolidatedReportService {
     private final AttendanceRepository attendanceRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final PayslipRepository payslipRepository;
+    private final com.example.demo.attendance.service.EmployeeAttendancePolicyService attendancePolicies;
 
     /**
      * Headcount summary — matches frontend expected shape:
@@ -102,6 +103,12 @@ public class ConsolidatedReportService {
                 })
                 .toList();
 
+        var staff = filtered.stream().map(com.example.demo.attendance.entity.Attendance::getEmployee)
+                .filter(Objects::nonNull).filter(employee -> employee.getCompany() != null)
+                .collect(Collectors.toMap(employee -> employee.getCompany().getId() + ":" + employee.getId(), employee -> employee, (a,b) -> a)).values();
+        var policy = attendancePolicies.indexByCompany(staff, to);
+        filtered = filtered.stream().filter(record -> record.getEmployee() != null && record.getEmployee().getCompany() != null
+                && policy.get(record.getEmployee().getCompany().getId()).required(record.getEmployee().getId(), record.getAttendanceDate())).toList();
         long approved = filtered.stream()
                 .filter(a -> com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.REGULAR == a.getAttendanceStatus()
                           || com.example.demo.attendance.entity.Attendance.AttendanceQualityStatus.REGULARISED == a.getAttendanceStatus())
@@ -133,7 +140,8 @@ public class ConsolidatedReportService {
                     long present = presentByDay.getOrDefault(date, 0L);
                     day.put("date", date.toString());
                     day.put("present", present);
-                    day.put("absent", Math.max(0, totalEmployees - present));
+                    long requiredStaff = staff.stream().filter(employee -> policy.get(employee.getCompany().getId()).required(employee.getId(), date)).count();
+                    day.put("absent", Math.max(0, requiredStaff - present));
                     return day;
                 })
                 .collect(Collectors.toList());

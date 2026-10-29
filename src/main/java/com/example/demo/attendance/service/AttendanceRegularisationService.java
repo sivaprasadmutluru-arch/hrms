@@ -105,6 +105,8 @@ public class AttendanceRegularisationService {
             throw new BadRequestException("You can only submit requests for your own attendance");
         }
         validateRequestDate(att.getAttendanceDate(), LocalDate.now(DUBAI_ZONE));
+        if (!attendanceService.attendanceRequired(employee, att.getAttendanceDate()))
+            throw new BadRequestException("Attendance regularisation is not needed on an exempt date");
 
         // Block duplicate pending requests
         boolean hasPending = requestRepository.findByAttendanceId(att.getId()).stream()
@@ -148,6 +150,8 @@ public class AttendanceRegularisationService {
             throw new BadRequestException("Attendance date is required");
         }
         validateRequestDate(req.getAttendanceDate(), LocalDate.now(DUBAI_ZONE));
+        if (!attendanceService.attendanceRequired(employee, req.getAttendanceDate()))
+            throw new BadRequestException("Attendance regularisation is not needed on an exempt date");
         if (!NO_ATTENDANCE_REQUEST_TYPES.contains(requestType)) {
             throw new BadRequestException("This request type requires an existing attendance record");
         }
@@ -190,6 +194,8 @@ public class AttendanceRegularisationService {
             throw new BadRequestException("Request is not pending approval");
         }
         requireCompanyAccess(request.getCompany().getId());
+        if (!attendanceService.attendanceRequired(request.getEmployee(), effectiveDate(request)))
+            throw new BadRequestException("Attendance regularisation is not needed on an exempt date");
         if (request.getAttendance() != null) {
             validateRequestAgainstAttendance(request.getAttendance(), request.getRequestType(),
                     request.getRequestedCheckIn(), request.getRequestedCheckOut(),
@@ -336,6 +342,7 @@ public class AttendanceRegularisationService {
                 .stream()
                 .filter(a -> a.getAttendanceStatus() == Attendance.AttendanceQualityStatus.IRREGULAR
                         && a.getRegularisationStatus() == Attendance.RegularisationStatus.NONE)
+                .filter(a -> attendanceService.attendanceRequired(employee, a.getAttendanceDate()))
                 .map(UnresolvedIrregularAttendanceDto::from)
                 .collect(Collectors.toList());
     }

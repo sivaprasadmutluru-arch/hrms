@@ -59,6 +59,7 @@ public class PayrollService {
     private final WorkRecordRepository workRecordRepository;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceLateComeEarlyOutRepository lateComeEarlyOutRepository;
+    private final com.example.demo.attendance.service.EmployeeAttendancePolicyService attendancePolicies;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final EmailService emailService;
@@ -565,15 +566,16 @@ public class PayrollService {
         basicPay = round2(basicPay);
 
         // ── 1c. Attendance Summary ─────────────────────────────────────────────
-        long presentDays   = attendanceRepository.countAttendanceByEmployeeAndPeriod(employeeId, startDate, endDate);
-        long lateComing    = lateComeEarlyOutRepository.countLateComesForEmployee(employeeId, startDate, endDate);
-        long earlyLeaving  = lateComeEarlyOutRepository.countEarlyOutsForEmployee(employeeId, startDate, endDate);
+        var attendanceSummary = attendanceSummary(employeeId, companyId, startDate, endDate, weekendDays);
+        long presentDays = attendanceSummary.present();
+        long lateComing = attendanceSummary.late();
+        long earlyLeaving = attendanceSummary.early();
         long totalOtSec    = attendanceRepository.sumOvertimeSecondsByEmployeeAndPeriod(employeeId, startDate, endDate);
         double overtimeHours = round2(totalOtSec / 3600.0);
-        long absentDays    = Math.max(0L, (long) workingDaysInPeriod - presentDays - Math.round(paidLeaveDays));
+        long absentDays    = Math.max(0L, (long) workingDaysInPeriod - attendanceSummary.exemptWorkingDays() - presentDays - Math.round(paidLeaveDays));
 
         // Minute-based attendance deduction: deductionMinutes (late + short-hours) × per-minute salary
-        long totalDeductionMinutes = attendanceRepository.sumDeductionMinutesByEmployeeAndPeriod(employeeId, startDate, endDate);
+        long totalDeductionMinutes = attendanceSummary.deductionMinutes();
         double perMinuteSalary = (workingDaysInMonth > 0 && contractWage > 0)
                 ? contractWage / (workingDaysInMonth * 8 * 60.0)
                 : 0.0;
@@ -1027,6 +1029,28 @@ public class PayrollService {
     /** Backward-compatible overload — defaults to Saturday + Sunday as weekend days */
     private int countWorkingDays(LocalDate start, LocalDate end) {
         return countWorkingDays(start, end, Set.of(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY));
+    }
+
+    record AttendanceSummary(long present, long late, long early, long deductionMinutes, long exemptWorkingDays) {}
+
+    AttendanceSummary attendanceSummary(Long employeeId, Long companyId, LocalDate start, LocalDate end, Set<DayOfWeek> weekends) {
+        var policy = attendancePolicies.index(companyId, List.of(employeeId), end);
+        var requiredDates = start.datesUntil(end.plusDays(1)).filter(date -> policy.required(employeeId, date)).toList();
+        if (requiredDates.size() == ChronoUnit.DAYS.between(start, end) + 1) {
+            // Keep the existing four aggregate queries for ordinary employees.
+            return new AttendanceSummary(attendanceRepository.countAttendanceByEmployeeAndPeriod(employeeId,start,end),
+                    lateComeEarlyOutRepository.countLateComesForEmployee(employeeId,start,end),
+                    lateComeEarlyOutRepository.countEarlyOutsForEmployee(employeeId,start,end),
+                    attendanceRepository.sumDeductionMinutesByEmployeeAndPeriod(employeeId,start,end),0);
+        }
+        long exemptWorkingDays = start.datesUntil(end.plusDays(1))
+                .filter(date -> !weekends.contains(date.getDayOfWeek()) && !policy.required(employeeId,date)).count();
+        return new AttendanceSummary(
+                requiredDates.stream().mapToLong(date -> attendanceRepository.countAttendanceByEmployeeAndPeriod(employeeId,date,date)).sum(),
+                requiredDates.stream().mapToLong(date -> lateComeEarlyOutRepository.countLateComesForEmployee(employeeId,date,date)).sum(),
+                requiredDates.stream().mapToLong(date -> lateComeEarlyOutRepository.countEarlyOutsForEmployee(employeeId,date,date)).sum(),
+                requiredDates.stream().mapToLong(date -> attendanceRepository.sumDeductionMinutesByEmployeeAndPeriod(employeeId,date,date)).sum(),
+                exemptWorkingDays);
     }
 
     private Map<String, Object> deductionLine(Deduction d, double amount) {

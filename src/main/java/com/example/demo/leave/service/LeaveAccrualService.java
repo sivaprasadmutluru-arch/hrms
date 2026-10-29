@@ -43,6 +43,7 @@ public class LeaveAccrualService {
     private final AvailableLeaveRepository availableLeaveRepository;
     private final LeaveAccrualLogRepository accrualLogRepository;
     private final EmployeeRepository employeeRepository;
+    private final com.example.demo.onboarding.service.ProbationEligibility probationEligibility;
 
     /** Backwards-compatible manual run: processes legacy end-of-month policies. */
     @Transactional
@@ -58,10 +59,37 @@ public class LeaveAccrualService {
      */
     @Transactional
     public int processMonthlyAccrual(LocalDate accrualPeriod, LeaveType.AccrualPostingTiming timing) {
+        return processMonthlyAccrual(accrualPeriod, timing, null, LocalDate.now(java.time.ZoneId.of("Asia/Dubai")));
+    }
+
+    /** Catch up only this employee's post-confirmation credits; existing accrual log keys prevent duplicates. */
+    @Transactional
+    public int processProbationAccrual(Long employeeId, LocalDate today) {
+        var employee = employeeRepository.findById(employeeId).orElse(null);
+        if (employee == null || !employee.isActive() || !employee.getCompany().isActive()) return 0;
+        LocalDate start = probationEligibility.leaveStartsOn(employee);
+        if (start == null || start.isAfter(today)) return 0;
+        LocalDate earliestCurrentPeriod = leaveTypeRepository.findByAccrualEnabledTrue().stream()
+                .map(type -> LeavePeriodResolver.containing(type, today).start().withDayOfMonth(1))
+                .min(LocalDate::compareTo).orElse(today.withDayOfMonth(1));
+        if (start.isBefore(earliestCurrentPeriod)) start = earliestCurrentPeriod;
+        int posted = 0;
+        for (LocalDate month = start.withDayOfMonth(1); !month.isAfter(today); month = month.plusMonths(1)) {
+            posted += processMonthlyAccrual(month, LeaveType.AccrualPostingTiming.START_OF_MONTH, employeeId, today);
+            LocalDate end = month.withDayOfMonth(month.lengthOfMonth());
+            if (!end.isAfter(today)) posted += processMonthlyAccrual(end, LeaveType.AccrualPostingTiming.END_OF_MONTH, employeeId, today);
+        }
+        return posted;
+    }
+
+    private int processMonthlyAccrual(LocalDate accrualPeriod, LeaveType.AccrualPostingTiming timing, Long targetEmployeeId, LocalDate today) {
         List<LeaveType> types = leaveTypeRepository.findByAccrualEnabledTrue();
         int totalPosted = 0;
 
         for (LeaveType lt : types) {
+            // Past leave years must follow their reset/carryforward rules, never be credited into today's balance.
+            if (targetEmployeeId != null && accrualPeriod.withDayOfMonth(accrualPeriod.lengthOfMonth())
+                    .isBefore(LeavePeriodResolver.containing(lt, today).start())) continue;
             LeaveType.AccrualPostingTiming postingTiming = lt.getAccrualPostingTiming() != null
                     ? lt.getAccrualPostingTiming() : LeaveType.AccrualPostingTiming.END_OF_MONTH;
             if (postingTiming != timing) continue;
@@ -82,7 +110,12 @@ public class LeaveAccrualService {
 
                 List<Employee> companyEmployees = employeeRepository.findByCompanyIdAndIsActiveTrue(lt.getCompany().getId());
                 for (Employee emp : companyEmployees) {
+                    if (targetEmployeeId != null && !targetEmployeeId.equals(emp.getId())) continue;
                     if (alreadyHaveBalance.contains(emp.getId())) continue;
+                    LocalDate probationStart = probationEligibility.leaveStartsOn(emp);
+                    if (probationStart != null && (!lt.isActive() || !probationEligibility.applicableCategory(emp, lt))) continue;
+                    if (probationStart != null && (probationStart.isAfter(today)
+                            || probationStart.isAfter(accrualPeriod.withDayOfMonth(accrualPeriod.lengthOfMonth())))) continue;
                     // Skip employees who haven't joined yet
                     if (emp.getDateJoining() != null && emp.getDateJoining().isAfter(accrualPeriod.withDayOfMonth(accrualPeriod.lengthOfMonth()))) continue;
 
@@ -101,13 +134,19 @@ public class LeaveAccrualService {
             for (AvailableLeave balance : balances) {
                 Long empId = balance.getEmployee().getId();
                 Long ltId = lt.getId();
+                if (targetEmployeeId != null && !targetEmployeeId.equals(empId)) continue;
+                LocalDate probationStart = probationEligibility.leaveStartsOn(balance.getEmployee());
+                if (probationStart != null && (!lt.isActive() || !balance.getEmployee().isActive()
+                        || !probationEligibility.applicableCategory(balance.getEmployee(), lt))) continue;
+                if (probationStart != null && (probationStart.isAfter(today)
+                        || probationStart.isAfter(accrualPeriod.withDayOfMonth(accrualPeriod.lengthOfMonth())))) continue;
 
                 // Idempotency check
                 if (accrualLogRepository.existsByEmployeeIdAndLeaveTypeIdAndAccrualDate(empId, ltId, accrualPeriod)) {
                     continue;
                 }
 
-                LocalDate joining = balance.getEmployee().getDateJoining();
+                LocalDate joining = probationStart != null ? probationStart : balance.getEmployee().getDateJoining();
 
                 // Skip employees who haven't joined yet by end of this month
                 if (joining != null && joining.isAfter(accrualPeriod.withDayOfMonth(accrualPeriod.lengthOfMonth()))) {
@@ -122,7 +161,7 @@ public class LeaveAccrualService {
                         && joining.getMonthValue() == accrualPeriod.getMonthValue();
 
                 if (isJoiningMonth) {
-                    if (lt.getMidYearJoinerMode() == LeaveType.MidYearJoinerMode.AUTO_PRORATA) {
+                    if (probationStart != null || lt.getMidYearJoinerMode() == LeaveType.MidYearJoinerMode.AUTO_PRORATA) {
                         // Pro-rata: days from joining date to end of month (inclusive)
                         LeaveType.AccrualProrationBasis basis = lt.getAccrualProrationBasis() != null
                                 ? lt.getAccrualProrationBasis() : LeaveType.AccrualProrationBasis.CALENDAR_DAYS;

@@ -73,6 +73,7 @@ public class LeaveController {
     private String uploadDir;
 
     private final LeaveService leaveService;
+    private final com.example.demo.leave.service.LeaveAttachmentService leaveAttachments;
     private final LeaveAccrualService leaveAccrualService;
     private final LeaveAccrualLogRepository accrualLogRepository;
     private final AvailableLeaveRepository availableLeaveRepository;
@@ -917,6 +918,7 @@ public class LeaveController {
     @Transactional(readOnly = true)
     @Operation(summary = "List files attached to a leave request")
     public ResponseEntity<List<LeaveRequestFile>> getLeaveRequestFiles(@PathVariable Long requestId) {
+        leaveAttachments.requireRead(requestId);
         return ResponseEntity.ok(leaveRequestFileRepository.findByLeaveRequestId(requestId));
     }
 

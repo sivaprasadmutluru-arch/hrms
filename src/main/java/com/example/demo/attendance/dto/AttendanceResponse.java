@@ -14,6 +14,7 @@ import java.time.LocalTime;
 public class AttendanceResponse {
 
     private Long id;
+    private boolean attendanceRequired = true;
     private Long employeeId;
     private String employeeName;
     private String employeeBadgeId;

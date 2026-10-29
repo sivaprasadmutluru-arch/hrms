@@ -5,6 +5,7 @@ import com.example.demo.base.repository.CompanyRepository;
 import com.example.demo.common.tenant.TenantContext;
 import com.example.demo.leave.repository.AvailableLeaveRepository;
 import com.example.demo.leave.repository.LeaveTypeRepository;
+import static com.example.demo.leave.entity.LeaveType.AccrualPostingTiming.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,14 +38,14 @@ class LeaveSchedulerTest {
         Company achira = company(12L, "achira_clinics");
         List<String> processedSchemas = new ArrayList<>();
         when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(goods, achira));
-        when(leaveAccrualService.processMonthlyAccrual(LocalDate.of(2026, 8, 31))).thenAnswer(invocation -> {
+        when(leaveAccrualService.processMonthlyAccrual(LocalDate.of(2026, 8, 31), END_OF_MONTH)).thenAnswer(invocation -> {
             processedSchemas.add(TenantContext.getTenant());
             return 1;
         });
 
         scheduler().runMonthlyAccrualCatchUp(LocalDate.of(2026, 9, 8));
 
-        verify(leaveAccrualService, times(2)).processMonthlyAccrual(LocalDate.of(2026, 8, 31));
+        verify(leaveAccrualService, times(2)).processMonthlyAccrual(LocalDate.of(2026, 8, 31), END_OF_MONTH);
         assertEquals(List.of("the_goods_collective", "achira_clinics"), processedSchemas);
         assertEquals("public", TenantContext.getTenant());
     }
@@ -54,13 +55,13 @@ class LeaveSchedulerTest {
         Company failing = company(1L, "failing_tenant");
         Company healthy = company(2L, "healthy_tenant");
         when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(failing, healthy));
-        when(leaveAccrualService.processMonthlyAccrual(LocalDate.of(2026, 8, 31)))
+        when(leaveAccrualService.processMonthlyAccrual(LocalDate.of(2026, 8, 31), END_OF_MONTH))
                 .thenThrow(new IllegalStateException("database unavailable"))
                 .thenReturn(5);
 
         scheduler().runMonthlyAccrualCatchUp(LocalDate.of(2026, 9, 2));
 
-        verify(leaveAccrualService, times(2)).processMonthlyAccrual(LocalDate.of(2026, 8, 31));
+        verify(leaveAccrualService, times(2)).processMonthlyAccrual(LocalDate.of(2026, 8, 31), END_OF_MONTH);
         assertEquals("public", TenantContext.getTenant());
     }
 
@@ -84,7 +85,8 @@ class LeaveSchedulerTest {
         Company healthy = company(2L, "healthy_tenant");
         when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(healthy));
         scheduler().onApplicationReady();
-        verify(leaveAccrualService).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth());
+        verify(leaveAccrualService).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth(), END_OF_MONTH);
+        verify(leaveAccrualService).processMonthlyAccrual(java.time.YearMonth.now().atDay(1), START_OF_MONTH);
     }
 
     @Test
@@ -96,7 +98,8 @@ class LeaveSchedulerTest {
         when(companyRepository.findAllHeadOfficesActivePublic()).thenReturn(List.of(healthy));
         scheduler.onApplicationReady();
         scheduler.periodicAccrualCatchUp();
-        verify(leaveAccrualService, times(2)).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth());
+        verify(leaveAccrualService, times(2)).processMonthlyAccrual(java.time.YearMonth.now().minusMonths(1).atEndOfMonth(), END_OF_MONTH);
+        verify(leaveAccrualService, times(2)).processMonthlyAccrual(java.time.YearMonth.now().atDay(1), START_OF_MONTH);
     }
 
     @Test
