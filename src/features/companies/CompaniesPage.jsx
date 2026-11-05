@@ -70,6 +70,21 @@ function LogoAvatar({ logoPath, icon: Icon, size = 'md', canUpload = false, onUp
   )
 }
 
+// Capacity comes from the backend; do not assume the Standard plan's five branches.
+function branchCapacity(company, used) {
+  const value = company?.branchLimit
+  const limit = Number.isInteger(value) && value >= 0 ? value : undefined
+  const unlimited = limit === 2147483647
+  return {
+    limit,
+    limitLabel: unlimited ? 'Unlimited' : limit ?? '—',
+    atLimit: limit === undefined || (!unlimited && used >= limit),
+    remaining: unlimited ? null : limit === undefined ? null : Math.max(0, limit - used),
+    progress: unlimited || limit === undefined ? 0 : limit === 0 ? 100 : Math.min(100, used / limit * 100),
+    unlimited,
+  }
+}
+
 // ─── Branch card ─────────────────────────────────────────────────────────────
 function BranchCard({ branch, headOfficeId, canEdit, onEdit, onDelete, onLogoUpload }) {
   return (
@@ -125,7 +140,7 @@ function BranchCard({ branch, headOfficeId, canEdit, onEdit, onDelete, onLogoUpl
 // ─── Enterprise Admin View ───────────────────────────────────────────────────
 function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEditBranch, onDeleteBranch, onLogoUpload }) {
   const branchList = branches[headOffice?.id] || []
-  const atLimit = branchList.length >= 5
+  const { atLimit, limitLabel, remaining, progress, unlimited } = branchCapacity(headOffice, branchList.length)
 
   if (!headOffice) return null
 
@@ -219,17 +234,17 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-600">Branch Usage</p>
             <span className={`text-xs font-bold ${atLimit ? 'text-amber-600' : 'text-indigo-600'}`}>
-              {branchList.length} / 5
+              {branchList.length} / {limitLabel}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[#EAF0F6]">
             <div
               className={`h-full rounded-full transition-all ${atLimit ? 'bg-[#E2BE54]' : 'bg-gradient-to-r from-[#4D8FD1] to-[#2F70B3]'}`}
-              style={{ width: `${(branchList.length / 5) * 100}%` }}
+              style={{ width: `${progress}%` }}
             />
           </div>
           <p className="text-xs text-gray-400 mt-1.5">
-            {atLimit ? 'Branch limit reached' : `${5 - branchList.length} slot${5 - branchList.length !== 1 ? 's' : ''} remaining`}
+            {unlimited ? 'Unlimited branches included' : remaining == null ? 'Loading branch limit…' : atLimit ? 'Branch limit reached' : `${remaining} slot${remaining !== 1 ? 's' : ''} remaining`}
           </p>
         </div>
       </div>
@@ -347,6 +362,7 @@ function EnterpriseView({ headOffice, branches, canAddBranch, onAddBranch, onEdi
 // ─── Branches Modal (Super Admin) ─────────────────────────────────────────────
 function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBranch, onEditBranch, onDeleteBranch, onLogoUpload }) {
   const branchList = branches[company?.id] || []
+  const { atLimit, limitLabel, unlimited } = branchCapacity(company, branchList.length)
 
   return (
     <Modal
@@ -362,12 +378,12 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
             <p className="text-sm font-semibold text-gray-900">
               Branches — <span className="text-indigo-600">{company?.name}</span>
             </p>
-            <p className="text-xs text-gray-400 font-normal">{branchList.length} of 5 branches used</p>
+            <p className="text-xs text-gray-400 font-normal">{branchList.length} of {limitLabel} branches used</p>
           </div>
         </div>
       }
       footer={
-        canAddBranch && branchList.length < 5 ? (
+        canAddBranch && !atLimit ? (
           <div className="flex justify-end">
             <button
               onClick={() => { onClose(); onAddBranch(company?.id) }}
@@ -377,10 +393,10 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
               Add Branch
             </button>
           </div>
-        ) : branchList.length >= 5 ? (
+        ) : atLimit ? (
           <div className="flex justify-end">
             <span className="text-xs font-medium px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
-              Branch limit reached (5/5)
+              Branch limit reached ({branchList.length}/{limitLabel})
             </span>
           </div>
         ) : null
@@ -392,7 +408,7 @@ function BranchesModal({ company, branches, open, onClose, canAddBranch, onAddBr
             <BuildingStorefrontIcon className="h-7 w-7 text-gray-300" />
           </div>
           <p className="text-sm font-semibold text-gray-600">No branches yet</p>
-          <p className="text-xs text-gray-400 mt-1">Add up to 5 branches to this head office</p>
+          <p className="text-xs text-gray-400 mt-1">{unlimited ? 'Add branches to this head office' : `Add up to ${limitLabel} ${limitLabel === 1 ? 'branch' : 'branches'} to this head office`}</p>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-3">
@@ -472,7 +488,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {headOffices.map(company => {
             const branchCount = (branches[company.id] || []).length
-            const atLimit = branchCount >= 5
+            const { atLimit, limitLabel } = branchCapacity(company, branchCount)
 
             return (
               <div
@@ -513,7 +529,7 @@ function SuperAdminView({ headOffices, branches, canAddBranch, onAddBranch, onEd
                       onClick={(e) => { e.stopPropagation(); openBranchModal(company.id) }}
                       className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${atLimit ? 'border-[#F0E2B7] bg-[#FFF8E3] text-[#98751D] hover:bg-[#FFF2C8]' : 'border-[#DCE7F2] bg-[#F6F9FC] text-[#49627C] hover:bg-[#EDF5FD] hover:text-[#2D6FB4]'}`}
                     >
-                      {branchCount}/5 branches ↓
+                      {branchCount}/{limitLabel} branches ↓
                     </button>
                     <div className="flex items-center gap-2">
                       <button
@@ -572,6 +588,7 @@ export default function CompaniesPage() {
   const companies = useSelector(selectAll)
   const loading = useSelector(selectLoading)
   const branches = useSelector(selectBranches)
+  const selectedCompanyId = useSelector(state => state.auth.selectedCompanyId)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('headoffice')
@@ -614,11 +631,27 @@ export default function CompaniesPage() {
     }
   }, [companies])
 
-  const handleDeleteHeadOffice = (company) => setConfirmModal({ open: true, company, action: 'headoffice' })
-  const handleDeleteBranch = (branch) => setConfirmModal({ open: true, company: branch, action: 'branch' })
+  const blocksCurrentCompany = company => {
+    const affectedIds = [company.id, ...(branches[company.id] || []).map(branch => branch.id)]
+    return [selectedCompanyId, user?.loginCompanyId].some(id => id != null && affectedIds.some(affected => String(affected) === String(id)))
+  }
+  const requestDelete = (company, action) => {
+    if (blocksCurrentCompany(company)) {
+      toast.error('Cannot delete your login company or currently selected company.')
+      return
+    }
+    setConfirmModal({ open: true, company, action })
+  }
+  const handleDeleteHeadOffice = company => requestDelete(company, 'headoffice')
+  const handleDeleteBranch = branch => requestDelete(branch, 'branch')
 
   const onConfirmDelete = async () => {
     const { company, action } = confirmModal
+    if (blocksCurrentCompany(company)) {
+      toast.error('Cannot delete your login company or currently selected company.')
+      setConfirmModal({ open: false, company: null, action: null })
+      return
+    }
     try {
       await dispatch(remove(company.id)).unwrap()
       toast.success(action === 'headoffice' ? 'Head office deleted' : 'Branch deleted')
@@ -881,21 +914,21 @@ export default function CompaniesPage() {
           </div>
           <p className="text-xs text-gray-400 text-center -mt-2">Use PNG/JPG. Logo, stamp and signature are printed on generated payslips.</p>
 
-          <Input label="Company Name" error={errors.name?.message} {...register('name', { required: 'Required' })} />
+          <Input label="Company Name *" error={errors.name?.message} {...register('name', { required: 'Company name is required', setValueAs: value => value?.trim() })} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Email" type="email" {...register('email')} />
-            <Input label="Phone" {...register('phone')} />
+            <Input label="Email" type="email" error={errors.email?.message} {...register('email', { setValueAs: value => value?.trim(), pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Enter a valid email address' } })} />
+            <Input label="Phone" error={errors.phone?.message} {...register('phone')} />
           </div>
-          <Input label="Address" {...register('address')} />
+          <Input label="Address *" error={errors.address?.message} {...register('address', { required: 'Address is required' })} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="City" {...register('city')} />
-            <Input label="State" {...register('state')} />
+            <Input label="City *" error={errors.city?.message} {...register('city', { required: 'City is required' })} />
+            <Input label="State" error={errors.state?.message} {...register('state')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Country" {...register('country')} />
-            <Input label="ZIP" {...register('zip')} />
+            {isPlatformAdmin() && <Input label="Country *" error={errors.country?.message} {...register('country', { required: 'Country is required' })} />}
+            <Input label="ZIP" error={errors.zip?.message} {...register('zip')} />
           </div>
-          <Input label="Website" {...register('website')} />
+          <Input label="Website" error={errors.website?.message} {...register('website')} />
 
         </div>
       </Modal>
