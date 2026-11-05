@@ -1,9 +1,12 @@
+import { applyFormErrors } from '../../services/apiErrors'
+import api from '../../services/api'
+import SaveProgressCard from '../../components/common/SaveProgressCard'
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, setEmployeeActive, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
+import { fetchAll, fetchAllGlobal, create, update, remove, hardDelete, setEmployeeArchived, uploadPhoto, importEmployees, downloadImportTemplate, fetchOnlineStatus, selectAll, selectLoading, selectPagination, selectOnlineEmployeeIds } from './employeesSlice'
 import { fetchLeavers, selectLeavers, selectLeaversPagination } from '../offboarding/offboardingSlice'
 import BulkUpdateModal from './BulkUpdateModal'
 import { fetchUserRoles, selectUserRoles } from '../roles/rolesSlice'
@@ -74,7 +77,7 @@ function EmployeeDetailsModal({ employee, role, isOnline, onClose, onFullProfile
     ['Employee type', employee.employeeType?.replace(/_/g, ' ')],
     ['Role', role?.replace(/_/g, ' ')],
     ['Phone', employee.phone],
-    ['Account status', employee.isActive ? 'Active' : 'Inactive'],
+    ['Employment status', employee.isActive ? 'Active' : 'Archived'],
     ['Availability', isOnline ? 'Online now' : 'Offline'],
   ].filter(([, value]) => value != null && value !== '')
 
@@ -90,7 +93,7 @@ function EmployeeDetailsModal({ employee, role, isOnline, onClose, onFullProfile
       <div className="employee-details-person">
         <Avatar name={employee.fullName || employee.firstName} src={employee.photoPath ? `${API_BASE_URL.replace('/api', '')}/media/${employee.photoPath}` : undefined} size="lg" />
         <div><h3>{employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Employee'}</h3><p>{employee.email || 'No email on file'}</p></div>
-        <span className={employee.isActive ? 'is-active' : 'is-inactive'}>{employee.isActive ? 'Active' : 'Inactive'}</span>
+        <span className={employee.isActive ? 'is-active' : 'is-inactive'}>{employee.isActive ? 'Active' : 'Archived'}</span>
       </div>
       <dl className="employee-details-list">
         {details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
@@ -99,7 +102,7 @@ function EmployeeDetailsModal({ employee, role, isOnline, onClose, onFullProfile
   )
 }
 
-const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canHardDelete, onView, onEdit, onToggleActive, onHardDelete, isOnline }) {
+const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, canArchive, canHoldLogin, canHardDelete, onView, onEdit, onToggleActive, onLoginHold, onHardDelete, isOnline }) {
   return (
     <div
       className="employee-list-card bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 group cursor-pointer"
@@ -125,7 +128,7 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
               : 'bg-red-50 text-red-600 border border-red-200'
           }`}>
-            {employee.isActive ? 'Active' : 'Inactive'}
+            {employee.isActive ? 'Active' : 'Archived'}
           </span>
         </div>
 
@@ -193,6 +196,8 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
           )}
         </div>
 
+        {employee.userId && <span className={`text-xs font-medium ${employee.loginHeld ? 'text-amber-700' : 'text-slate-500'}`}>Login: {employee.loginHeld ? 'On hold' : 'Not held'}</span>}
+        {canHoldLogin && <button onClick={(e) => { e.stopPropagation(); onLoginHold(employee) }} className="w-full py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg">{employee.loginHeld ? 'Resume login' : 'Hold login'}</button>}
         {/* Actions */}
         {canManage && (
           <div className="employee-list-actions flex gap-2 pt-3 border-t border-gray-100">
@@ -202,12 +207,12 @@ const EmployeeCard = memo(function EmployeeCard({ employee, role, canManage, can
             >
               Edit
             </button>
-            <button
+            {canArchive && <button
               onClick={(e) => { e.stopPropagation(); onToggleActive(employee) }}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${employee.isActive ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}
             >
-              {employee.isActive ? 'Deactivate' : 'Activate'}
-            </button>
+              {employee.isActive ? 'Archive' : 'Restore'}
+            </button>}
           </div>
         )}
         {canHardDelete && (
@@ -231,8 +236,10 @@ export default function EmployeesPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, user } = useAuth()
+  const canHoldEmployeeLogin = employee => employee.userId && String(employee.userId) !== String(user?.id)
   const employees = useSelector(selectAll)
   const loading = useSelector(selectLoading)
+  const listError = useSelector(s => s.employees.error)
   const pagination = useSelector(selectPagination)
   const leavers = useSelector(selectLeavers)
   const leaversPagination = useSelector(selectLeaversPagination)
@@ -252,18 +259,44 @@ export default function EmployeesPage() {
     return map
   }, [userRoles])
 
+  const canArchiveEmployee = employee => (!employee.userId || String(employee.userId) !== String(user?.id)) && roleByEmail[employee.email] !== 'PLATFORM_SUPER_ADMIN'
+
   // Initialise from the persisted header switcher selection so a page reload keeps the filter
   const authSelectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const onlineEmployeeIds = useSelector(selectOnlineEmployeeIds)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
+  const submittingRef = useRef(false)
   const [detailsEmployee, setDetailsEmployee] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [loginTarget, setLoginTarget] = useState(null)
+  const [loginReason, setLoginReason] = useState('')
+  const [loginSaving, setLoginSaving] = useState(false)
+  const loginSubmitting = useRef(false)
+  const openLoginHold = employee => { setLoginReason(''); setLoginTarget(employee) }
+  const handleLoginHold = async event => {
+    event.preventDefault()
+    if (loginSubmitting.current || !loginTarget || !loginReason.trim()) return
+    loginSubmitting.current = true
+    setLoginSaving(true)
+    try {
+      await api.put(`/employees/${loginTarget.id}/login-hold`, { held: !loginTarget.loginHeld, reason: loginReason.trim() }, { headers: { 'X-Company-Id': loginTarget.companyId } })
+      toast.success(loginTarget.loginHeld ? 'Login hold removed' : 'Employee login held')
+      setLoginTarget(null)
+      load(pagination.page)
+    } catch (error) { toast.error(error.response?.data?.message || 'Unable to update login access') }
+    finally { loginSubmitting.current = false; setLoginSaving(false) }
+  }
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [archiveSaving, setArchiveSaving] = useState(false)
+  const archiveSubmitting = useRef(false)
   const [hardDeleteTarget, setHardDeleteTarget] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [search, setSearch] = useState('')
+  const searchReady = useRef(false)
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'online' | 'offline'
   const [viewMode, setViewMode] = useActiveView('grid') // persisted grid | list preference
   const [selectedCompanyId, setSelectedCompanyId] = useState(
@@ -275,7 +308,7 @@ export default function EmployeesPage() {
   const [importFailures, setImportFailures] = useState(null) // per-row reasons from the last import, or null when none/hidden
   const importEmployeesRef = useRef()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, control, setValue, handleSubmit, reset, setError, clearErrors, formState: { errors } } = useForm()
 
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin()
 
@@ -297,12 +330,12 @@ export default function EmployeesPage() {
       // Use the persisted company filter (from the header switcher) if present
       const initCompanyId = authSelectedCompanyId ? Number(authSelectedCompanyId) : null
       if (initCompanyId) {
-        dispatch(fetchAll({ page: 0, size: pageSize, sort: 'id,desc', companyIdOverride: initCompanyId }))
+        dispatch(fetchAll({ archived: activeTab === 'archived', page: 0, size: pageSize, sort: 'id,desc', companyIdOverride: initCompanyId }))
       } else {
-        dispatch(fetchAllGlobal({ page: 0, size: pageSize, sort: 'id,desc' }))
+        dispatch(fetchAllGlobal({ archived: activeTab === 'archived', page: 0, size: pageSize, sort: 'id,desc' }))
       }
     } else {
-      dispatch(fetchAll({ page: 0, size: pageSize, sort: 'id,desc' }))
+      dispatch(fetchAll({ archived: activeTab === 'archived', page: 0, size: pageSize, sort: 'id,desc' }))
     }
     dispatch(fetchUserRoles())
     dispatch(fetchDepartments({ page: 0, size: 100 }))
@@ -332,15 +365,26 @@ export default function EmployeesPage() {
   }, [activeTab, selectedCompanyId])
 
   // Super Admin with no company filter → global; otherwise scoped
-  const load = (page, size = pageSize) => {
+  const load = (page, size = pageSize, q = search.trim()) => {
     if (isPlatformAdmin() && !selectedCompanyId) {
-      dispatch(fetchAllGlobal({ page, size, sort: 'id,desc' }))
+      dispatch(fetchAllGlobal({ archived: activeTab === 'archived', page, size, sort: 'id,desc', q }))
     } else if (isPlatformAdmin() && selectedCompanyId) {
-      dispatch(fetchAll({ page, size, sort: 'id,desc', companyIdOverride: selectedCompanyId }))
+      dispatch(fetchAll({ archived: activeTab === 'archived', page, size, sort: 'id,desc', q, companyIdOverride: selectedCompanyId }))
     } else {
-      dispatch(fetchAll({ page, size, sort: 'id,desc', ...(selectedCompanyId ? { filterByCompanyId: selectedCompanyId } : {}) }))
+      dispatch(fetchAll({ archived: activeTab === 'archived', page, size, sort: 'id,desc', q, ...(selectedCompanyId ? { filterByCompanyId: selectedCompanyId } : {}) }))
     }
   }
+
+  useEffect(() => {
+    if (!searchReady.current) { searchReady.current = true; return }
+    const timer = window.setTimeout(() => { if (activeTab !== 'leavers') load(0) }, 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    if (activeTab !== 'leavers') load(0)
+    setSelectedRows([])
+  }, [activeTab])
 
   const openCreate = useCallback(() => { setEditing(null); setPhotoFile(null); setPhotoPreview(null); setModalOpen(true) }, [])
   const openEdit = useCallback((row) => {
@@ -408,9 +452,17 @@ export default function EmployeesPage() {
   }, [modalOpen, editing])
 
   const onSubmit = async (data) => {
+    if (submittingRef.current) return
+    clearErrors()
+    submittingRef.current = true
+    setSaving(true)
+    setSaveMessage(editing ? 'Saving employee details…' : 'Saving the employee profile and account details…')
     const { confirmPassword, password, ...rest } = data
     const payload = {
       ...rest,
+      // Include password so the backend can set a custom initial password on employee create,
+      // or create the user account on update when userId was previously null.
+      password: password || undefined,
       companyId: data.companyId ? Number(data.companyId) : (user?.companyId ? Number(user.companyId) : undefined),
       departmentId: data.departmentId ? Number(data.departmentId) : undefined,
       jobPositionId: data.jobPositionId ? Number(data.jobPositionId) : undefined,
@@ -449,6 +501,7 @@ export default function EmployeesPage() {
         toast.success('Employee created')
       }
       if (photoFile && savedId) {
+        setSaveMessage('Uploading the employee profile picture…')
         try {
           await dispatch(uploadPhoto({ id: savedId, file: photoFile })).unwrap()
         } catch {
@@ -458,8 +511,15 @@ export default function EmployeesPage() {
       setModalOpen(false)
       setPhotoFile(null)
       setPhotoPreview(null)
-      load(0)
-    } catch (e) { toast.error(e || 'Error') }
+      if (!editing) {
+        setViewMode('grid')
+        setSearch('')
+        setStatusFilter('all')
+        if (activeTab !== 'employees') setActiveTab('employees')
+        else load(0, pageSize, '')
+      } else load(pagination.page)
+    } catch (e) { toast.error(applyFormErrors(e, setError)) }
+    finally { submittingRef.current = false; setSaving(false) }
   }
 
   const handleDelete = async () => {
@@ -475,14 +535,17 @@ export default function EmployeesPage() {
 
   const handleToggleActive = async () => {
     const employee = deleteTarget
-    if (!employee) return
-    const active = !employee.isActive
+    if (!employee || archiveSubmitting.current) return
+    const archived = employee.isActive
+    archiveSubmitting.current = true
+    setArchiveSaving(true)
     try {
-      await dispatch(setEmployeeActive({ ids: [employee.id], active, companyId: employee.companyId })).unwrap()
-      toast.success(`Employee ${active ? 'activated' : 'deactivated'}`)
+      await dispatch(setEmployeeArchived({ id: employee.id, archived, companyId: employee.companyId })).unwrap()
+      toast.success(`Employee ${archived ? 'archived' : 'restored'}`)
       setDeleteTarget(null)
       load(0)
-    } catch (e) { toast.error(e || `Failed to ${active ? 'activate' : 'deactivate'} employee`) }
+    } catch (e) { toast.error(e || `Failed to ${archived ? 'archive' : 'restore'} employee`) }
+    finally { archiveSubmitting.current = false; setArchiveSaving(false) }
   }
 
   const handleHardDelete = async () => {
@@ -497,18 +560,13 @@ export default function EmployeesPage() {
   const onlineSet = new Set(onlineEmployeeIds)
 
   const filtered = employees.filter(e => {
-    const matchesSearch = !search ||
-      `${e.fullName} ${e.email} ${e.badgeId} ${e.companyName} ${e.departmentName} ${e.organizationName || ''}`
-        .toLowerCase().includes(search.toLowerCase())
     const isOnline = onlineSet.has(e.id)
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'online' && isOnline) ||
       (statusFilter === 'offline' && !isOnline)
-    return matchesSearch && matchesStatus
+    return matchesStatus
   })
 
-  const activeCount = employees.filter(e => e.isActive).length
-  const inactiveCount = employees.filter(e => !e.isActive).length
   const onlineCount = employees.filter(e => onlineSet.has(e.id)).length
 
   const columns = [
@@ -563,7 +621,7 @@ export default function EmployeesPage() {
     {
       id: 'status',
       header: 'Status',
-      cell: ({ row }) => <Badge label={row.original.isActive ? 'Active' : 'Inactive'} variant={row.original.isActive ? 'success' : 'danger'} />,
+      cell: ({ row }) => <Badge label={row.original.isActive ? 'Active' : 'Archived'} variant={row.original.isActive ? 'success' : 'danger'} />,
     },
     {
       id: 'online',
@@ -576,6 +634,11 @@ export default function EmployeesPage() {
       ),
     },
     {
+      id: 'loginAccess',
+      header: 'Login',
+      cell: ({ row }) => row.original.userId ? <span className={row.original.loginHeld ? 'text-amber-700 font-medium' : 'text-slate-500'}>{row.original.loginHeld ? 'On hold' : 'Not held'}</span> : 'No account',
+    },
+    {
       id: 'actions',
       header: '',
       cell: ({ row }) => (
@@ -584,9 +647,10 @@ export default function EmployeesPage() {
           {canManage && (
             <>
               <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-              <Button size="sm" variant={row.original.isActive ? 'danger' : 'success'} onClick={() => setDeleteTarget(row.original)}>
-                {row.original.isActive ? 'Deactivate' : 'Activate'}
-              </Button>
+              {canHoldEmployeeLogin(row.original) && <Button size="sm" variant="secondary" onClick={() => openLoginHold(row.original)}>{row.original.loginHeld ? 'Resume login' : 'Hold login'}</Button>}
+              {canArchiveEmployee(row.original) && <Button size="sm" variant={row.original.isActive ? 'danger' : 'success'} onClick={() => setDeleteTarget(row.original)}>
+                {row.original.isActive ? 'Archive' : 'Restore'}
+              </Button>}
             </>
           )}
           {isPlatformAdmin() && (
@@ -622,11 +686,11 @@ export default function EmployeesPage() {
   // null here means "no organization is unambiguously selected", which disables both
   // actions rather than guessing (a platform admin viewing "All Organizations" has no
   // safe default to fall back to).
-  const importTargetCompanyId = selectedCompanyId || user?.companyId || null
+  const importTargetCompanyId = isPlatformAdmin() ? selectedCompanyId : (selectedCompanyId || user?.companyId || null)
 
   const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }))
   const jobPositionOptions = jobPositions.map(p => ({ value: p.id, label: p.name }))
-  const jobRoleOptions = jobRoles.map(r => ({ value: r.id, label: r.name }))
+  const jobRoleOptions = jobRoles.map(r => ({ value: r.id, label: r.name, jobPositionId: r.jobPositionId ?? r.jobPosition?.id }))
   const workTypeOptions = workTypes.map(w => ({ value: w.id, label: w.name }))
   const shiftOptions = shiftSchedules.map(s => ({ value: s.id, label: s.name }))
   const reportingManagerOptions = employees.map(e => ({ value: e.id, label: e.fullName || e.firstName }))
@@ -684,7 +748,11 @@ export default function EmployeesPage() {
                   const { successCount, failureCount, failures } = res.payload
                   toast.success(`Imported ${successCount} employee(s)${failureCount > 0 ? `, ${failureCount} failed` : ''}`)
                   if (failureCount > 0) setImportFailures(failures || [])
-                  dispatch(fetchAll({ page: 0, size: pageSize }))
+                  setViewMode('grid')
+                  setSearch('')
+                  setStatusFilter('all')
+                  if (activeTab !== 'employees') setActiveTab('employees')
+                  else load(0, pageSize, '')
                 }
               }}
             />
@@ -703,7 +771,7 @@ export default function EmployeesPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {[{ id: 'employees', label: 'Employees' }, { id: 'leavers', label: 'Leavers' }].map(t => (
+        {[{ id: 'employees', label: 'Employees' }, { id: 'archived', label: 'Archived employees' }, { id: 'leavers', label: 'Leavers' }].map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
@@ -739,12 +807,11 @@ export default function EmployeesPage() {
         </div>
       ) : (
       <>
+      {activeTab === 'archived' && <p className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">Archived employees cannot sign in and do not count toward active employee limits. Their records remain available. Restore an employee to return them to the active workforce.</p>}
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <StatCard label="Total Employees" value={pagination.total || employees.length} icon="👥" color="bg-indigo-50 text-indigo-600" />
-        <StatCard label="Active" value={activeCount} icon="✅" color="bg-emerald-50 text-emerald-600" />
-        <StatCard label="Inactive" value={inactiveCount} icon="⏸️" color="bg-red-50 text-red-500" />
-        <StatCard label="Online Now" value={onlineCount} icon="🟢" color="bg-green-50 text-green-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label={activeTab === 'archived' ? 'Total Archived' : 'Total Active'} value={pagination.total || employees.length} icon="👥" color="bg-indigo-50 text-indigo-600" />
+        <StatCard label="Online on this page" value={onlineCount} icon="🟢" color="bg-green-50 text-green-600" />
         <StatCard label="Departments" value={departments.length} icon="🏢" color="bg-violet-50 text-violet-600" />
       </div>
 
@@ -759,6 +826,7 @@ export default function EmployeesPage() {
             <input
               type="text"
               placeholder="Search name, email, employee ID..."
+              maxLength={80}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
@@ -785,10 +853,10 @@ export default function EmployeesPage() {
                 setSelectedCompanyId(id)
                 dispatch(setSelectedCompany(id)) // keep in sync with header switcher
                 if (id) {
-                  dispatch(fetchAll({ page: 0, size: pageSize, companyIdOverride: id }))
+                  dispatch(fetchAll({ archived: activeTab === 'archived', page: 0, size: pageSize, q: search.trim(), companyIdOverride: id }))
                   dispatch(fetchOnlineStatus(id))
                 } else {
-                  dispatch(fetchAllGlobal({ page: 0, size: pageSize }))
+                  dispatch(fetchAllGlobal({ archived: activeTab === 'archived', page: 0, size: pageSize, q: search.trim() }))
                   dispatch(fetchOnlineStatus(null))
                 }
               }}
@@ -808,7 +876,7 @@ export default function EmployeesPage() {
               onChange={e => {
                 const id = e.target.value ? Number(e.target.value) : null
                 setSelectedCompanyId(id)
-                dispatch(fetchAll({ page: 0, size: pageSize, ...(id ? { filterByCompanyId: id } : {}) }))
+                dispatch(fetchAll({ archived: activeTab === 'archived', page: 0, size: pageSize, q: search.trim(), ...(id ? { filterByCompanyId: id } : {}) }))
               }}
               className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
             >
@@ -842,7 +910,9 @@ export default function EmployeesPage() {
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-              title="Card view"
+              title="Grid view"
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 0h7v7h-7v-7z" />
@@ -852,6 +922,8 @@ export default function EmployeesPage() {
               onClick={() => setViewMode('list')}
               className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
               title="List view"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -861,6 +933,7 @@ export default function EmployeesPage() {
         </div>
       </div>
 
+      {listError && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{listError}</p>}
       {/* Keep the employee list scrolling independently from the page controls. */}
       <div className="employee-results-panel">
       <div className="employee-results-scroll">
@@ -871,8 +944,8 @@ export default function EmployeesPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4 text-2xl">👤</div>
-          <p className="text-gray-900 font-semibold text-base">No employees found</p>
-          <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+          <p className="text-gray-900 font-semibold text-base">{activeTab === 'archived' ? 'No archived employees' : 'No employees found'}</p>
+          <p className="text-gray-400 text-sm mt-1">{search ? 'Try a different name, email, or employee ID' : 'Try adjusting your filters'}</p>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="employee-directory-stack">
@@ -882,11 +955,14 @@ export default function EmployeesPage() {
               employee={emp}
               role={roleByEmail[emp.email]}
               canManage={canManage}
+              canArchive={canManage && canArchiveEmployee(emp)}
+              canHoldLogin={canManage && canHoldEmployeeLogin(emp) && roleByEmail[emp.email] !== 'PLATFORM_SUPER_ADMIN'}
               canHardDelete={isPlatformAdmin()}
               isOnline={onlineSet.has(emp.id)}
               onView={setDetailsEmployee}
               onEdit={openEdit}
               onToggleActive={setDeleteTarget}
+              onLoginHold={openLoginHold}
               onHardDelete={setHardDeleteTarget}
             />
           ))}
@@ -899,7 +975,7 @@ export default function EmployeesPage() {
 
       </div>
       <div className="employee-results-footer">
-      <span className="employee-results-count">{pagination.total ? `${pagination.total} employees · page ${pagination.page + 1} of ${Math.max(1, Math.ceil(pagination.total / pageSize))}` : 'No employees to display'}</span>
+      <span className="employee-results-count">{pagination.total ? `Showing ${pagination.page * pageSize + 1}–${Math.min((pagination.page + 1) * pageSize, pagination.total)} of ${pagination.total} employees · page ${pagination.page + 1} of ${Math.max(1, Math.ceil(pagination.total / pageSize))}` : 'No employees to display'}</span>
       <Pagination
         page={pagination.page}
         totalPages={Math.ceil(pagination.total / pageSize)}
@@ -924,19 +1000,25 @@ export default function EmployeesPage() {
       />
       <Modal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setPhotoFile(null); setPhotoPreview(null) }}
+        onClose={() => { if (!submittingRef.current) { setModalOpen(false); setPhotoFile(null); setPhotoPreview(null) } }}
+        busy={saving}
         size="lg"
         panelClassName="employee-modal"
         title={editing ? 'Edit Employee' : 'New Employee'}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button>
+            {!saving && <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>}
+            <Button disabled={saving} loading={saving} onClick={handleSubmit(onSubmit)}>{saving ? (editing ? 'Saving…' : 'Creating…') : editing ? 'Update' : 'Create'}</Button>
           </div>
         }
       >
+        {saving && <SaveProgressCard title={editing ? 'Saving employee…' : 'Creating employee…'} message={saveMessage} />}
+        <fieldset disabled={saving} hidden={saving} className="min-w-0">
         <EmployeeFormFields
           register={register}
+          control={control}
+          setValue={setValue}
+          defaultCompanyId={user?.companyId}
           errors={errors}
           isEdit={!!editing}
           badgeId={editing?.badgeId}
@@ -956,17 +1038,35 @@ export default function EmployeesPage() {
             setPhotoPreview(file ? URL.createObjectURL(file) : null)
           }}
         />
+        </fieldset>
       </Modal>
 
+      <Modal open={!!loginTarget} onClose={() => setLoginTarget(null)} title={loginTarget?.loginHeld ? 'Resume employee login' : 'Hold employee login'} size="sm" busy={loginSaving}>
+        <form onSubmit={handleLoginHold} className="space-y-4">
+          <p className="text-sm text-slate-600">{loginTarget?.fullName}</p>
+          <p className="text-sm text-slate-600">{loginTarget?.loginHeld
+            ? 'Remove the hold on this login account. Employment status and other access restrictions still apply.'
+            : 'Block sign-in and existing sessions for this login account across its companies. Employee records, employment status and payroll are preserved.'}</p>
+          <label className="block text-sm font-medium text-slate-700">Reason <span className="text-red-600">*</span>
+            <textarea value={loginReason} onChange={e => setLoginReason(e.target.value)} required maxLength={500} disabled={loginSaving} rows={3} className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-sm" placeholder="Explain why login access is changing" />
+          </label>
+          <p className="text-xs text-slate-500">Your name, the reason and time will be recorded in the audit history.</p>
+          <div className="flex justify-end gap-2">
+            {!loginSaving && <Button type="button" variant="secondary" onClick={() => setLoginTarget(null)}>Cancel</Button>}
+            <Button type="submit" disabled={loginSaving || !loginReason.trim()}>{loginSaving ? 'Updating…' : loginTarget?.loginHeld ? 'Resume login' : 'Hold login'}</Button>
+          </div>
+        </form>
+      </Modal>
       <ConfirmModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { if (!archiveSubmitting.current) setDeleteTarget(null) }}
         onConfirm={handleToggleActive}
-        title={deleteTarget?.isActive ? 'Deactivate Employee' : 'Activate Employee'}
+        title={deleteTarget?.isActive ? 'Archive employee' : 'Restore employee'}
+        loading={archiveSaving}
         message={deleteTarget?.isActive
-          ? `Deactivate "${deleteTarget?.fullName}"? They will no longer be able to sign in, while their records remain available.`
-          : `Activate "${deleteTarget?.fullName}"? They will regain access to HRMS.`}
-        confirmLabel={deleteTarget?.isActive ? 'Deactivate' : 'Activate'}
+          ? `Archive "${deleteTarget?.fullName}"? This removes them from the active workforce and blocks login. All employee records and payroll history are preserved.`
+          : `Restore "${deleteTarget?.fullName}" to the active workforce? Plan capacity limits apply. Any separate login hold, account restriction or revoked role remains in place.`}
+        confirmLabel={deleteTarget?.isActive ? 'Archive' : 'Restore'}
       />
 
       <ConfirmModal
