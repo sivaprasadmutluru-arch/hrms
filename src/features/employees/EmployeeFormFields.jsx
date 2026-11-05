@@ -1,4 +1,6 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useWatch } from 'react-hook-form'
+import api from '../../services/api'
 import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 
@@ -24,7 +26,7 @@ const MARITAL_STATUSES = [
 
 const STATUS_OPTIONS = [
   { value: 'true',  label: 'Active' },
-  { value: 'false', label: 'Inactive' },
+  { value: 'false', label: 'Archived' },
 ]
 
 const ACCESS_SCOPE_OPTIONS = [
@@ -51,13 +53,14 @@ export { EMPLOYEE_TYPES, GENDERS, MARITAL_STATUSES, STATUS_OPTIONS, ACCESS_SCOPE
 
 export default function EmployeeFormFields({
   register,
+  control,
+  setValue,
+  defaultCompanyId,
   errors,
   isEdit,
   canSelectCompany,
   assignableRoles = [],
   companyOptions = [],
-  departmentOptions = [],
-  jobPositionOptions = [],
   jobRoleOptions = [],
   workTypeOptions = [],
   shiftOptions = [],
@@ -67,6 +70,27 @@ export default function EmployeeFormFields({
   vertical = false,
 }) {
   const photoInputRef = useRef()
+  const watchedCompanyId = useWatch({ control, name: 'companyId' })
+  const departmentId = useWatch({ control, name: 'departmentId' })
+  const jobPositionId = useWatch({ control, name: 'jobPositionId' })
+  const [jobRoleId, workTypeId, shiftId, reportingManagerId] = useWatch({
+    control, name: ['jobRoleId', 'workTypeId', 'shiftId', 'reportingManagerId'],
+  })
+  const companyId = canSelectCompany ? watchedCompanyId : watchedCompanyId || defaultCompanyId
+  const [setup, setSetup] = useState(null)
+  useEffect(() => {
+    if (!companyId) return
+    let active = true
+    api.get(`/companies/${companyId}/employee-setup`).then(({ data }) => {
+      if (active) setSetup({ ...data, companyId: String(companyId) })
+    }).catch(error => { if (active) setSetup({ companyId: String(companyId), error: error.response?.data?.message || 'Could not load departments and job positions' }) })
+    return () => { active = false }
+  }, [companyId])
+  const currentSetup = setup?.companyId === String(companyId) ? setup : null
+  const departmentOptions = (currentSetup?.departments || []).map(item => ({ value: item.id, label: item.name }))
+  const jobPositionOptions = (currentSetup?.jobPositions || []).filter(item => String(item.departmentId) === String(departmentId)).map(item => ({ value: item.id, label: item.name }))
+  const clearPosition = () => { setValue('jobPositionId', ''); setValue('jobRoleId', '') }
+
 
   return (
     <div className={`space-y-4 employee-form-fields ${vertical ? 'employee-form-fields-vertical' : ''}`}>
@@ -110,54 +134,66 @@ export default function EmployeeFormFields({
         <Input
           label="Employee ID"
           placeholder="Auto-generated if left blank"
-          {...register('badgeId')}
+          error={errors.badgeId?.message} {...register('badgeId')}
         />
         <Select
-          label="Status"
+          label="Employment status"
           options={STATUS_OPTIONS}
-          {...register('isActive')}
+          error={errors.isActive?.message} {...register('isActive')}
         />
       </div>
 
       {/* Name */}
       <div className="grid grid-cols-2 gap-3">
         <Input label="First Name" error={errors.firstName?.message}
-          {...register('firstName', { required: 'Required' })} />
-        <Input label="Last Name" {...register('lastName')} />
+          {...register('firstName', { required: 'Enter the employee’s first name', setValueAs: value => value?.trim(), maxLength: { value: 255, message: 'First name must be at most 255 characters' } })} />
+        <Input label="Last Name" error={errors.lastName?.message} {...register('lastName')} />
       </div>
 
       {/* Contact */}
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Email" type="email" {...register('email')} />
-        <Input label="Phone" {...register('phone')} />
+        <Input label={isEdit ? 'Email' : 'Email *'} type="email" error={errors.email?.message} {...register('email', {
+          required: isEdit ? false : 'Email is required to create a login account',
+          setValueAs: value => value?.trim(),
+          pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Enter a valid email address' },
+          maxLength: { value: 254, message: 'Email must be at most 254 characters' }
+        })} />
+        <Input label={isEdit ? 'Phone' : 'Phone *'} error={errors.phone?.message} {...register('phone', {
+          required: isEdit ? false : 'Phone is required — it is used as the default login password'
+        })} />
       </div>
+      {!isEdit && (
+        <p className="text-xs text-slate-500 -mt-1">
+          📧 Email is used as the login username. &nbsp;🔑 Default login password = phone number (employee can change it after first login).
+        </p>
+      )}
 
       {vertical && <div className="employee-form-section-label">Personal details</div>}
       {/* Personal */}
       <div className="grid grid-cols-2 gap-3">
         <Select label="Gender"
           options={[{ value: '', label: 'Select...' }, ...GENDERS]}
-          {...register('gender')} />
+          error={errors.gender?.message} {...register('gender')} />
         <Select label="Marital Status"
           options={[{ value: '', label: 'None' }, ...MARITAL_STATUSES]}
-          {...register('maritalStatus')} />
+          error={errors.maritalStatus?.message} {...register('maritalStatus')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Date of Birth" type="date" {...register('dateOfBirth')} />
-        <Input label="Nationality" {...register('nationality')} />
+        <Input label="Date of Birth" type="date" error={errors.dateOfBirth?.message} {...register('dateOfBirth', { validate: value => !value || value <= new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10) || 'Date of birth cannot be in the future' })} />
+        <Input label="Nationality" error={errors.nationality?.message} {...register('nationality')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Country of Birth" {...register('countryOfBirth')} />
-        <Input label="Place of Birth" {...register('placeOfBirth')} />
+        <Input label="Country of Birth" error={errors.countryOfBirth?.message} {...register('countryOfBirth')} />
+        <Input label="Place of Birth" error={errors.placeOfBirth?.message} {...register('placeOfBirth')} />
       </div>
 
       {vertical && <div className="employee-form-section-label">Employment details</div>}
       {/* Work */}
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Date of Joining" type="date" {...register('dateJoining')} />
+        <Input label="Date of Joining" type="date" error={errors.dateJoining?.message} {...register('dateJoining')} />
         <Select label="Employee Type"
           options={[{ value: '', label: 'Select...' }, ...EMPLOYEE_TYPES]}
-          {...register('employeeType')} />
+          error={errors.employeeType?.message} {...register('employeeType')} />
       </div>
 
       {/* Create-only: role, access scope, and full contract/salary fields */}
@@ -167,10 +203,10 @@ export default function EmployeeFormFields({
           <div className="grid grid-cols-2 gap-3">
             <Select label="Role"
               options={[{ value: '', label: 'None' }, ...assignableRoles]}
-              {...register('role')} />
+              error={errors.role?.message} {...register('role')} />
             <Select label="Access Scope"
               options={[{ value: '', label: 'None' }, ...ACCESS_SCOPE_OPTIONS]}
-              {...register('accessScope')} />
+              error={errors.accessScope?.message} {...register('accessScope')} />
           </div>
 
           {/* Salary / Contract */}
@@ -184,21 +220,21 @@ export default function EmployeeFormFields({
                   { value: 'HOURLY',  label: 'Hourly' },
                   { value: 'DAILY',   label: 'Daily' },
                 ]}
-                {...register('wageType')}
+                error={errors.wageType?.message} {...register('wageType')}
               />
-              <Input label="Contract End Date" type="date" {...register('contractEndDate')} />
+              <Input label="Contract End Date" type="date" error={errors.contractEndDate?.message} {...register('contractEndDate')} />
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="Basic Pay" type="number" placeholder="e.g. 5000" {...register('basicPay')} />
-              <Input label="Housing Allowance" type="number" placeholder="e.g. 1000" {...register('housingAllowance')} />
+              <Input label="Basic Pay" type="number" placeholder="e.g. 5000" error={errors.basicPay?.message} {...register('basicPay', { min: { value: 0, message: 'Amount cannot be negative' } })} />
+              <Input label="Housing Allowance" type="number" placeholder="e.g. 1000" error={errors.housingAllowance?.message} {...register('housingAllowance', { min: { value: 0, message: 'Amount cannot be negative' } })} />
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="Transport Allowance" type="number" placeholder="e.g. 500" {...register('transportAllowance')} />
-              <Input label="Other Allowance" type="number" placeholder="e.g. 200" {...register('otherAllowance')} />
+              <Input label="Transport Allowance" type="number" placeholder="e.g. 500" error={errors.transportAllowance?.message} {...register('transportAllowance', { min: { value: 0, message: 'Amount cannot be negative' } })} />
+              <Input label="Other Allowance" type="number" placeholder="e.g. 200" error={errors.otherAllowance?.message} {...register('otherAllowance', { min: { value: 0, message: 'Amount cannot be negative' } })} />
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="Total Salary" type="number" placeholder="Sum of all components" {...register('totalSalary')} />
-              <Input label="Salary Per Hour" type="number" placeholder="e.g. 25" {...register('salaryPerHour')} />
+              <Input label="Total Salary" type="number" placeholder="Sum of all components" error={errors.totalSalary?.message} {...register('totalSalary', { min: { value: 0, message: 'Amount cannot be negative' } })} />
+              <Input label="Salary Per Hour" type="number" placeholder="e.g. 25" error={errors.salaryPerHour?.message} {...register('salaryPerHour', { min: { value: 0, message: 'Amount cannot be negative' } })} />
             </div>
           </div>
         </>
@@ -210,66 +246,79 @@ export default function EmployeeFormFields({
           guard in EmployeesPage and could submit the wrong company without any visible
           sign that nothing was actually chosen. */}
       {canSelectCompany && (
-        <Select label="Branch / Company" options={companyOptions}
+        <Select label="Branch / Company"
+          value={companyId ?? ''} options={companyOptions}
           placeholder="Select organization / branch..."
           error={errors.companyId?.message}
-          {...register('companyId', { required: 'Required' })} />
+          {...register('companyId', { required: 'Select the employee’s company', onChange: () => { setValue('departmentId', ''); clearPosition() } })} />
       )}
 
       {vertical && <div className="employee-form-section-label">Team &amp; reporting</div>}
       {/* Org structure */}
+      {currentSetup?.industryLabel && <p className="text-xs font-medium text-slate-600">Organization type: {currentSetup.industryLabel}</p>}
       <Select label="Department"
+        value={departmentId ?? ''}
         options={[{ value: '', label: 'None' }, ...departmentOptions]}
-        {...register('departmentId')} />
+        disabled={!companyId || !currentSetup || !!currentSetup.error}
+        error={errors.departmentId?.message} {...register('departmentId', { onChange: clearPosition })} />
       <Select label="Job Position"
-        options={[{ value: '', label: 'None' }, ...jobPositionOptions]}
-        {...register('jobPositionId')} />
+        value={jobPositionId ?? ''}
+        options={[{ value: '', label: departmentId ? 'Select job position...' : 'Select a department first' }, ...jobPositionOptions]}
+        disabled={!departmentId || !currentSetup || !!currentSetup.error}
+        error={errors.jobPositionId?.message} {...register('jobPositionId', { onChange: () => setValue('jobRoleId', '') })} />
+      {currentSetup?.error && <p role="alert" className="text-sm text-red-600">{currentSetup.error}</p>}
+      <p className="text-xs text-slate-500">Standard and custom positions for the selected company are available under their department.</p>
       <Select label="Job Role"
-        options={[{ value: '', label: 'None' }, ...jobRoleOptions]}
+        value={jobRoleId ?? ''}
+        options={[{ value: '', label: jobPositionId ? 'Select job role...' : 'Select a job position first' }, ...jobRoleOptions.filter(role => String(role.jobPositionId) === String(jobPositionId))]}
+        disabled={!jobPositionId}
         {...register('jobRoleId')} />
       <Select label="Work Type"
+        value={workTypeId ?? ''}
         options={[{ value: '', label: 'None' }, ...workTypeOptions]}
-        {...register('workTypeId')} />
+        error={errors.workTypeId?.message} {...register('workTypeId')} />
       <Select label="Shift"
+        value={shiftId ?? ''}
         options={[{ value: '', label: 'None' }, ...shiftOptions]}
-        {...register('shiftId')} />
+        error={errors.shiftId?.message} {...register('shiftId')} />
       <Select label="Reporting Manager"
+        value={reportingManagerId ?? ''}
         options={[{ value: '', label: 'None' }, ...reportingManagerOptions]}
-        {...register('reportingManagerId')} />
+        error={errors.reportingManagerId?.message} {...register('reportingManagerId')} />
 
       {vertical && <div className="employee-form-section-label">Professional background</div>}
       {/* Professional */}
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Qualification" {...register('qualification')} />
-        <Input label="Experience (years)" type="number" {...register('experience')} />
+        <Input label="Qualification" error={errors.qualification?.message} {...register('qualification')} />
+        <Input label="Experience (years)" type="number" error={errors.experience?.message} {...register('experience', { min: { value: 0, message: 'Experience cannot be negative' } })} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Children" type="number" {...register('children')} />
+        <Input label="Children" type="number" error={errors.children?.message} {...register('children', { min: { value: 0, message: 'Number of children cannot be negative' } })} />
       </div>
 
       {vertical && <div className="employee-form-section-label">Work &amp; emergency contact</div>}
       {/* Work contact */}
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Work Email" type="email" {...register('workEmail')} />
-        <Input label="Work Phone" {...register('workPhone')} />
+        <Input label="Work Email" type="email" error={errors.workEmail?.message} {...register('workEmail', { setValueAs: value => value?.trim(), pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Enter a valid work email address' }, maxLength: { value: 254, message: 'Work email must be at most 254 characters' } })} />
+        <Input label="Work Phone" error={errors.workPhone?.message} {...register('workPhone')} />
       </div>
 
       {/* Address */}
-      <Input label="Permanent Address" {...register('permanentAddress')} />
-      <Input label="Current Address" {...register('currentAddress')} />
+      <Input label="Permanent Address" error={errors.permanentAddress?.message} {...register('permanentAddress')} />
+      <Input label="Current Address" error={errors.currentAddress?.message} {...register('currentAddress')} />
       <div className="grid grid-cols-3 gap-3">
-        <Input label="Country" {...register('country')} />
-        <Input label="State" {...register('state')} />
-        <Input label="City" {...register('city')} />
+        <Input label="Country" error={errors.country?.message} {...register('country')} />
+        <Input label="State" error={errors.state?.message} {...register('state')} />
+        <Input label="City" error={errors.city?.message} {...register('city')} />
       </div>
-      <Input label="ZIP Code" {...register('zip')} />
+      <Input label="ZIP Code" error={errors.zip?.message} {...register('zip')} />
 
       {/* Emergency contact */}
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Emergency Contact Name" {...register('emergencyContactName')} />
-        <Input label="Emergency Contact Number" {...register('emergencyContact')} />
+        <Input label="Emergency Contact Name" error={errors.emergencyContactName?.message} {...register('emergencyContactName')} />
+        <Input label="Emergency Contact Number" error={errors.emergencyContact?.message} {...register('emergencyContact')} />
       </div>
-      <Input label="Emergency Contact Relation" {...register('emergencyContactRelation')} />
+      <Input label="Emergency Contact Relation" error={errors.emergencyContactRelation?.message} {...register('emergencyContactRelation')} />
     </div>
   )
 }
