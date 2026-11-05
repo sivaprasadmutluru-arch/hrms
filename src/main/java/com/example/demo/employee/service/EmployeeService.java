@@ -73,6 +73,7 @@ public class EmployeeService {
     private final CompanyRepository companyRepository;
     private final DepartmentRepository departmentRepository;
     private final JobPositionRepository jobPositionRepository;
+    private final com.example.demo.auth.service.PositionAccessService positionAccessService;
     private final JobRoleRepository jobRoleRepository;
     private final WorkTypeRepository workTypeRepository;
     private final ShiftScheduleRepository shiftScheduleRepository;
@@ -100,11 +101,27 @@ public class EmployeeService {
 
     @Transactional(readOnly = true)
     public Page<EmployeeResponse> getAll(Pageable pageable, Long filterByCompanyId, boolean active) {
+        return getAll(pageable, filterByCompanyId, active, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<EmployeeResponse> getAll(Pageable pageable, Long filterByCompanyId, boolean active, String searchText) {
+        if (searchText != null && searchText.length() > 80) {
+            throw new BadRequestException("Search text must be 80 characters or fewer");
+        }
+        String term = searchText == null ? "" : searchText.trim().toLowerCase(java.util.Locale.ROOT);
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
 
         // SELF scope: return only the employee record linked to the current user
         if (scope != null && scope.isSelfScope()) {
             return employeeRepository.findByUserId(scope.getUserId())
+                    .filter(e -> e.isActive() == active)
+                    .filter(e -> term.isEmpty() || (String.join(" ",
+                            java.util.Objects.toString(e.getFirstName(), ""),
+                            java.util.Objects.toString(e.getLastName(), ""),
+                            java.util.Objects.toString(e.getEmail(), ""),
+                            java.util.Objects.toString(e.getBadgeId(), "")))
+                            .toLowerCase(java.util.Locale.ROOT).contains(term))
                     .map(e -> {
                         Contract contract = contractRepository.findByEmployeeId(e.getId())
                                 .stream().findFirst().orElse(null);
@@ -129,8 +146,21 @@ public class EmployeeService {
             spec = spec != null ? spec.and(companyFilter) : companyFilter;
         }
 
-        Specification<Employee> activeFilter = (root, query, cb) -> cb.equal(root.get("isActive"), active);
+        Specification<Employee> activeFilter = (root, criteria, cb) -> cb.equal(root.get("isActive"), active);
         spec = spec != null ? spec.and(activeFilter) : activeFilter;
+        if (!term.isEmpty()) {
+            String pattern = "%" + term.replace("\\", "\\\\")
+                    .replace("%", "\\%").replace("_", "\\_") + "%";
+            Specification<Employee> searchFilter = (root, criteria, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("firstName")), pattern, '\\'),
+                    cb.like(cb.lower(root.get("lastName")), pattern, '\\'),
+                    cb.like(cb.lower(root.get("email")), pattern, '\\'),
+                    cb.like(cb.lower(root.get("badgeId")), pattern, '\\'),
+                    cb.like(cb.lower(cb.concat(cb.concat(
+                            cb.coalesce(root.get("firstName"), ""), " "),
+                            cb.coalesce(root.get("lastName"), ""))), pattern, '\\'));
+            spec = spec.and(searchFilter);
+        }
 
         Page<Employee> page = spec != null
                 ? employeeRepository.findAll(spec, pageable)
@@ -222,6 +252,10 @@ public class EmployeeService {
         }
     }
 
+    /** Used by tenant-scoped lifecycle conversion so employee and candidate link commit atomically. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public EmployeeResponse createWithinCurrentTransaction(EmployeeRequest request) { return doCreate(request); }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EmployeeResponse doCreate(EmployeeRequest req) {
         log.info("[create] email={} companyId={}", req.getEmail(), req.getCompanyId());
@@ -260,21 +294,7 @@ public class EmployeeService {
                     "This organization's workspace is still being set up. Please wait a few seconds and try again.");
         }
 
-        Organization org = company.getOrganization();
-        if (org != null && org.getSubscriptionPlan() != null) {
-            int planMaxEmployees = org.getSubscriptionPlan().getMaxEmployees();
-            if (planMaxEmployees != Integer.MAX_VALUE) {
-                List<Company> orgCompanies = companyRepository.findByOrganizationId(org.getId());
-                long currentCount = orgCompanies.stream()
-                        .mapToLong(c -> employeeRepository.countByCompanyIdAndIsActiveTrue(c.getId()))
-                        .sum();
-                if (currentCount >= planMaxEmployees) {
-                    throw new BadRequestException(
-                            "Employee limit of " + planMaxEmployees + " reached for subscription plan '"
-                            + org.getSubscriptionPlan().name() + "'. Upgrade your plan to add more employees.");
-                }
-            }
-        }
+        requireEmployeeCapacity(company);
 
         Employee emp = buildEmployee(new Employee(), req);
         if (emp.getBadgeId() == null || emp.getBadgeId().isBlank()) {
@@ -290,9 +310,7 @@ public class EmployeeService {
                 isNewUser[0] = true;
                 log.info("[create] user not found, registering new user for email={}", req.getEmail());
                 RegisterRequest reg = new RegisterRequest();
-                reg.setUsername(req.getPhone() != null && !req.getPhone().isBlank()
-                        ? req.getPhone().trim()
-                        : req.getEmail());
+                reg.setUsername(req.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
                 reg.setEmail(req.getEmail());
                 reg.setPassword(EmployeeInitialPassword.resolve(req.getPassword(), req.getPhone(),
                         company.getCountry() != null && !company.getCountry().isBlank() ? company.getCountry() : req.getCountry()));
@@ -309,26 +327,13 @@ public class EmployeeService {
             employeeCompanyGuard.validateEmployment(user.getId(), req.getCompanyId());
             emp.setUser(user);
 
-            // Assign role: use selected role, or default to EMPLOYEE+SELF.
-            // Defaults regardless of isNewUser — a pre-existing user account linked to a new
-            // Employee record still needs a role in this company, otherwise they end up with
-            // zero access and no indication why (see: sivaprasadmutluru@gmail.com incident).
-            Role.RoleName roleName = req.getRole() != null ? req.getRole() : Role.RoleName.EMPLOYEE;
-            UserRole.AccessScope scope = req.getAccessScope() != null ? req.getAccessScope() : UserRole.AccessScope.SELF;
-            log.info("[create] isNewUser={} roleName={} scope={} userId={} companyId={}", isNewUser[0], roleName, scope, user.getId(), req.getCompanyId());
-            if (roleName != null && scope != null && !userRoleService.hasRole(user.getId(), req.getCompanyId(), roleName)) {
-                log.info("[create] assigning role={} to userId={}", roleName, user.getId());
-                AssignRoleRequest roleReq = new AssignRoleRequest();
-                roleReq.setUserId(user.getId());
-                roleReq.setRoleName(roleName);
-                roleReq.setCompanyId(req.getCompanyId());
-                roleReq.setAccessScope(scope);
-                // This assignment is generated as part of employee onboarding,
-                // not entered through the manual Roles & Access form. Keep an
-                // explicit audit reason so the canonical role validator can
-                // distinguish and record the system-driven grant.
-                roleReq.setReason("Automatic assignment during employee creation");
-                userRoleService.assignRole(roleReq);
+            // Employment membership must exist before a scoped administrative role is
+            // validated. Every employee keeps the baseline self-service membership.
+            assignOnboardingRole(user.getId(), req.getCompanyId(), Role.RoleName.EMPLOYEE,
+                    UserRole.AccessScope.SELF);
+            if (req.getRole() != null && req.getRole() != Role.RoleName.EMPLOYEE) {
+                assignOnboardingRole(user.getId(), req.getCompanyId(), req.getRole(),
+                        req.getAccessScope() != null ? req.getAccessScope() : UserRole.AccessScope.SELF);
             }
         }
 
@@ -345,8 +350,8 @@ public class EmployeeService {
                             "recipientName", saved.getFirstName() == null ? "there" : saved.getFirstName(),
                             "companyName", company.getName(),
                             "username", saved.getUser().getUsername(),
-                            "loginUrl", "https://grecha.ai/login",
-                            "passwordResetUrl", "https://grecha.ai/forgot-password"), saved);
+                            "loginUrl", emailService.loginUrl(),
+                            "passwordResetUrl", emailService.passwordResetUrl()), saved);
         }
         log.info("[create] done for employee id={}", saved.getId());
         return responseWithManager(saved, contract);
@@ -532,12 +537,40 @@ public class EmployeeService {
         // employee field is edited without supplying a manager change.
         emp.setReportingManager(reportingManagers.resolve(emp));
         buildEmployee(emp, req);
-        // Link to user account if not already linked and email is provided
+        // Link to user account if not already linked and email is provided.
+        // If a user with that email already exists, link to it.
+        // If no user exists yet, auto-register one so the employee can log in.
         if (emp.getUser() == null && req.getEmail() != null && !req.getEmail().isBlank()) {
-            userRepository.findByEmail(req.getEmail()).ifPresent(user -> {
-                employeeCompanyGuard.validateEmployment(user.getId(), emp.getCompany().getId());
-                emp.setUser(user);
-            });
+            Company company = emp.getCompany();
+            User linkedUser = userRepository.findByEmail(req.getEmail()).orElse(null);
+            if (linkedUser == null) {
+                // No user account exists — create one, using the explicit password if provided,
+                // otherwise fall back to the phone number as the initial password.
+                log.info("[employee-update] no user found for email={}, auto-registering account", req.getEmail());
+                RegisterRequest reg = new RegisterRequest();
+                reg.setUsername(req.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+                reg.setEmail(req.getEmail());
+                reg.setPassword(EmployeeInitialPassword.resolve(req.getPassword(), emp.getPhone(),
+                        company.getCountry() != null && !company.getCountry().isBlank() ? company.getCountry() : req.getCountry()));
+                reg.setFirstName(emp.getFirstName());
+                reg.setLastName(emp.getLastName());
+                reg.setCompanyId(null); // role assignment handled explicitly below
+                linkedUser = authService.register(reg);
+                linkedUser.setMustChangePassword(true);
+                linkedUser = userRepository.save(linkedUser);
+                log.info("[employee-update] created userId={} for employeeId={}", linkedUser.getId(), emp.getId());
+                // Assign baseline self-service EMPLOYEE role
+                assignOnboardingRole(linkedUser.getId(), company.getId(), Role.RoleName.EMPLOYEE,
+                        UserRole.AccessScope.SELF);
+                // Assign any additional role requested in this update
+                if (req.getRole() != null && req.getRole() != Role.RoleName.EMPLOYEE) {
+                    assignOnboardingRole(linkedUser.getId(), company.getId(), req.getRole(),
+                            req.getAccessScope() != null ? req.getAccessScope() : UserRole.AccessScope.SELF);
+                }
+            } else {
+                employeeCompanyGuard.validateEmployment(linkedUser.getId(), company.getId());
+            }
+            emp.setUser(linkedUser);
         }
         Employee saved = employeeRepository.save(emp);
 
@@ -600,8 +633,20 @@ public class EmployeeService {
     @Transactional
     public void doDelete(Long id) {
         Employee emp = findEmployee(id);
+        positionAccessService.requirePositionChange(emp.getCompany().getId(),emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null,null,null);
+        requireArchivalChange(emp);
         emp.setActive(false);
         employeeRepository.save(emp);
+    }
+
+    @Transactional
+    public int bulkSetActive(List<Long> ids,boolean active) {
+        var employees=employeeRepository.findAllById(ids).stream()
+                .sorted(java.util.Comparator.comparing(Employee::getId)).toList();
+        for (Employee employee:employees) {
+            if (active) doRestore(employee.getId()); else doDelete(employee.getId());
+        }
+        return employees.size();
     }
 
     public void restore(Long id, Long companyId) {
@@ -612,6 +657,9 @@ public class EmployeeService {
     @Transactional
     public void doRestore(Long id) {
         Employee emp = findEmployee(id);
+        positionAccessService.requirePositionChange(emp.getCompany().getId(),emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null,null,null);
+        requireArchivalChange(emp);
+        if (!emp.isActive()) requireEmployeeCapacity(emp.getCompany());
         emp.setActive(true);
         employeeRepository.save(emp);
     }
@@ -846,9 +894,79 @@ public class EmployeeService {
         return code.toString();
     }
 
-    private Employee findEmployee(Long id) {
-        return employeeRepository.findById(id)
+    private void requireEmployeeCapacity(Company company) {
+        Organization org = company.getOrganization();
+        if (org != null) entityManager.refresh(org,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (org != null && org.getSubscriptionPlan() != null) {
+            int planMaxEmployees = org.getSubscriptionPlan().getMaxEmployees();
+            if (org.getPurchasedSeats()!=null) planMaxEmployees=Math.min(planMaxEmployees,org.getPurchasedSeats());
+            if (planMaxEmployees != Integer.MAX_VALUE) {
+                List<Company> orgCompanies = companyRepository.findByOrganizationId(org.getId());
+                long currentCount = orgCompanies.stream()
+                        .mapToLong(c -> employeeRepository.countByCompanyIdAndIsActiveTrue(c.getId()))
+                        .sum();
+                if (currentCount >= planMaxEmployees) {
+                    throw new BadRequestException(
+                            "Employee limit of " + planMaxEmployees + " reached for subscription plan '"
+                            + org.getSubscriptionPlan().name() + "'. Upgrade your plan to add more employees.");
+                }
+            }
+        }
+    }
+
+    private void assignOnboardingRole(Long userId, Long companyId, Role.RoleName role,
+                                      UserRole.AccessScope scope) {
+        if (userRoleService.hasRole(userId, companyId, role)) return;
+        AssignRoleRequest request = new AssignRoleRequest();
+        request.setUserId(userId);
+        request.setCompanyId(companyId);
+        request.setRoleName(role);
+        request.setAccessScope(scope);
+        request.setReason("Automatic assignment during employee creation");
+        userRoleService.assignRole(request);
+    }
+
+    /** The same scope check protects detail reads and every ID-based mutation. */
+    @Transactional(readOnly = true)
+    public Employee requireAccessibleEmployee(Long id) {
+        Employee employee = employeeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope != null && !scope.hasUnrestrictedAccess()) {
+            boolean allowed = employee.getCompany() != null && scope.canAccess(employee.getCompany().getId());
+            if (scope.isSelfScope()) {
+                allowed &= employee.getUser() != null && java.util.Objects.equals(
+                        scope.getUserId(), employee.getUser().getId());
+            }
+            if (scope.getScope() == UserRole.AccessScope.DEPARTMENT) {
+                allowed &= scope.getDepartmentId() != null && employee.getDepartment() != null
+                        && scope.getDepartmentId().equals(employee.getDepartment().getId());
+            }
+            if (!allowed) throw new ResourceNotFoundException("Employee", id);
+        }
+        return employee;
+    }
+
+    private void requireArchivalChange(Employee employee) {
+        if (employee.getUser() == null) return;
+        var account = userRepository.findByIdForUpdate(employee.getUser().getId()).orElseThrow();
+        var scope = AccessScopeContext.get();
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        Long actorId = auth != null && auth.getPrincipal() instanceof com.example.demo.auth.security.UserPrincipal principal
+                ? principal.getId() : scope == null ? null : scope.getUserId();
+        if (account.getId().equals(actorId)) throw new BadRequestException("You cannot archive or restore your own employee record");
+        if (com.example.demo.auth.security.UserPrincipal.hasEffectivePlatformSuperAdminRole(account))
+            throw new BadRequestException("Platform administrator employees cannot be archived here");
+        boolean platform = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"));
+        if (!platform) for (var grant : account.getUserRoles()) {
+            if (!grant.isEffectiveOn(java.time.LocalDate.now())) continue;
+            if (grant.getCompany() == null) throw new org.springframework.security.access.AccessDeniedException("Account access is outside your company scope");
+            com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(grant.getCompany().getId());
+        }
+    }
+
+    private Employee findEmployee(Long id) {
+        return requireAccessibleEmployee(id);
     }
 
     private EmployeeResponse responseWithManager(Employee employee, Contract contract) {
@@ -864,6 +982,21 @@ public class EmployeeService {
     private Employee buildEmployee(Employee emp, EmployeeRequest req) {
         Company company = companyRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
+        if(!java.util.Objects.equals(normalizeEmail(emp.getEmail()),normalizeEmail(req.getEmail())))
+            positionAccessService.requireIdentityChange(emp.getCompany()!=null ? emp.getCompany().getId() : null,emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null);
+        positionAccessService.requirePositionChange(emp.getCompany()!=null ? emp.getCompany().getId() : null,
+                emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null, company.getId(),
+                req.getJobPositionId()!=null ? req.getJobPositionId() : emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null);
+        if(req.getDepartmentId()!=null) {
+            var department=departmentRepository.findById(req.getDepartmentId()).orElseThrow(() -> new BadRequestException("Department not found"));
+            if(!department.getCompany().getId().equals(company.getId())) throw new BadRequestException("Department does not belong to the employee company");
+        }
+        if(req.getJobPositionId()!=null) {
+            var position=jobPositionRepository.findById(req.getJobPositionId()).orElseThrow(() -> new BadRequestException("Job position not found"));
+            if(!position.getCompany().getId().equals(company.getId())) throw new BadRequestException("Job position does not belong to the employee company");
+            Long selectedDepartment=req.getDepartmentId()!=null ? req.getDepartmentId() : emp.getDepartment()!=null ? emp.getDepartment().getId() : null;
+            if(selectedDepartment==null || !position.getDepartment().getId().equals(selectedDepartment)) throw new BadRequestException("Job position does not belong to the selected department");
+        }
         emp.setCompany(company);
         emp.setFirstName(req.getFirstName());
         emp.setLastName(req.getLastName());
@@ -898,7 +1031,12 @@ public class EmployeeService {
         if (req.getWorkTypeId() != null) emp.setWorkType(workTypeRepository.findById(req.getWorkTypeId()).orElse(null));
         if (req.getShiftId() != null) emp.setShift(shiftScheduleRepository.findById(req.getShiftId()).orElse(null));
         if (req.getReportingManagerId() != null) emp.setReportingManager(reportingManagers.validate(emp, req.getReportingManagerId()));
-        if (req.getIsActive() != null) emp.setActive(req.getIsActive());
+        if (req.getIsActive() != null && req.getIsActive()!=emp.isActive()) {
+            positionAccessService.requirePositionChange(company.getId(),emp.getJobPosition()!=null ? emp.getJobPosition().getId() : null,null,null);
+            if (emp.getId()!=null) requireArchivalChange(emp);
+            if (req.getIsActive() && emp.getId()!=null) requireEmployeeCapacity(company);
+            emp.setActive(req.getIsActive());
+        }
         return emp;
     }
 }
