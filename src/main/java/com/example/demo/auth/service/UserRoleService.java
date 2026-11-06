@@ -44,6 +44,8 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class UserRoleService {
 
+    private final com.example.demo.platformops.PlatformTeamAccess platformTeam;
+    private final ThreadLocal<AssignRoleRequest> onboardingGrant = new ThreadLocal<>();
     private final UserRoleRepository userRoleRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -55,7 +57,7 @@ public class UserRoleService {
 
     @Transactional
     public UserRoleDto assignRole(AssignRoleRequest request) {
-        requireCompanyAccess(request.getCompanyId());
+        if (onboardingGrant.get()!=request) requireCompanyAccess(request.getCompanyId());
         var targetUser = userRepository.findByIdForUpdate(request.getUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", request.getUserId()));
 
@@ -67,6 +69,7 @@ public class UserRoleService {
         Company selectedCompany = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
 
+        if (com.example.demo.platformops.PlatformTeamAccess.ROLES.contains(request.getRoleName())) platformTeam.requireGrant(request.getUserId(),request.getCompanyId());
         validateDates(request);
         validateCanonicalGrantAuthority(request.getRoleName(), request.getUserId());
         validateScopeShape(request, selectedCompany);
@@ -151,6 +154,14 @@ public class UserRoleService {
         return UserRoleDto.from(saved);
     }
 
+    @Transactional
+    public UserRoleDto assignInitialOrganizationAdmin(AssignRoleRequest request) {
+        platformTeam.requireOperations();
+        if(request.getRoleName()!=Role.RoleName.ENTERPRISE_ADMIN || !userRoleRepository.findByUserId(request.getUserId()).isEmpty() || !userRoleRepository.findByCompanyId(request.getCompanyId()).isEmpty())throw new BadRequestException("Initial administrator requires a new user and new company");
+        onboardingGrant.set(request);
+        try{return assignRole(request);}finally{onboardingGrant.remove();}
+    }
+
     public boolean hasRole(Long userId, Long companyId, Role.RoleName roleName) {
         return userRoleRepository.findByUserIdAndCompanyId(userId, companyId).stream()
                 .anyMatch(ur -> ur.getRole().getName().equals(roleName));
@@ -163,6 +174,7 @@ public class UserRoleService {
                 .filter(ur -> ur.getRole().getId().equals(roleId) && ur.getAssignmentStatus() == UserRole.AssignmentStatus.ACTIVE)
                 .findFirst().orElseThrow(() -> new ResourceNotFoundException("Role assignment", roleId));
         Role.RoleName role = assignment.getRole().getName();
+        if ((com.example.demo.platformops.PlatformTeamAccess.ROLES.contains(role) || role==Role.RoleName.PLATFORM_SUPER_ADMIN) && !platformTeam.superAdmin()) throw new org.springframework.security.access.AccessDeniedException("Only Platform Super Admin can revoke platform roles");
         if (role == Role.RoleName.SUPER_ADMIN || role == Role.RoleName.PLATFORM_SUPER_ADMIN) {
             long count = userRoleRepository.countActiveByRoleNames(
                     List.of(Role.RoleName.SUPER_ADMIN, Role.RoleName.PLATFORM_SUPER_ADMIN), UserRole.AssignmentStatus.ACTIVE);
@@ -322,6 +334,7 @@ public class UserRoleService {
 
     private void validateCanonicalGrantAuthority(Role.RoleName targetRole, Long targetUserId) {
         Set<String> roles = currentAuthorities();
+        if ((com.example.demo.platformops.PlatformTeamAccess.ROLES.contains(targetRole) || targetRole==Role.RoleName.PLATFORM_SUPER_ADMIN) && !platformTeam.superAdmin()) throw new org.springframework.security.access.AccessDeniedException("Only Platform Super Admin can grant platform roles");
         if (roles.contains("ROLE_COMPANY_MANAGER")) throw new BadRequestException("Company Managers cannot assign roles");
         if (targetRole == Role.RoleName.SUPER_ADMIN || targetRole == Role.RoleName.PLATFORM_SUPER_ADMIN
                 || targetRole == Role.RoleName.ACCOUNT_MANAGER) requireSuperAdmin();
@@ -333,6 +346,7 @@ public class UserRoleService {
 
     private void validateScopeShape(AssignRoleRequest request, Company company) {
         if (request.getAccessScope() == null) throw new BadRequestException("An explicit access scope is required");
+        if(com.example.demo.platformops.PlatformTeamAccess.ROLES.contains(request.getRoleName()) && (request.getAccessScope()!=UserRole.AccessScope.SELF || request.getDepartmentId()!=null || request.getTeamId()!=null || request.getEmployeeScopeId()!=null))throw new BadRequestException("Platform team roles must use SELF scope in the employee's internal employment company");
         switch (request.getRoleName()) {
             case ACCOUNT_MANAGER, SUPER_ADMIN -> {
                 if (request.getAccessScope() != UserRole.AccessScope.ENTERPRISE
@@ -430,10 +444,17 @@ public class UserRoleService {
             // Platform super admin: show all users
             userStream = userRepository.findAll().stream();
         } else {
-            // Enterprise/Branch admin: show only users who have a role within accessible companies
-            userStream = userRoleRepository.findByCompanyIdIn(scope.getAccessibleCompanyIds()).stream()
-                    .map(UserRole::getUser)
-                    .distinct();
+            // Enterprise/Branch admin: show users who have a role or employee record within accessible companies
+            java.util.Set<Long> userIds = userRoleRepository.findByCompanyIdIn(scope.getAccessibleCompanyIds()).stream()
+                    .map(ur -> ur.getUser().getId())
+                    .collect(Collectors.toSet());
+            for (Long compId : scope.getAccessibleCompanyIds()) {
+                employeeRepository.findByCompanyId(compId).stream()
+                        .map(e -> e.getUser() != null ? e.getUser().getId() : null)
+                        .filter(java.util.Objects::nonNull)
+                        .forEach(userIds::add);
+            }
+            userStream = userRepository.findAllById(userIds).stream();
         }
 
         return userStream.map(u -> {

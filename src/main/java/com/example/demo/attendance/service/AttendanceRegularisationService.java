@@ -17,6 +17,8 @@ import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.employee.entity.Employee;
 import com.example.demo.employee.repository.EmployeeRepository;
+import com.example.demo.employee.service.ReportingManagerService;
+import com.example.demo.auth.entity.UserRole;
 import com.example.demo.notification.entity.Notification;
 import com.example.demo.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,6 +49,7 @@ public class AttendanceRegularisationService {
     private final UserRoleRepository userRoleRepository;
     private final AttendanceService attendanceService;
     private final NotificationService notificationService;
+    private final ReportingManagerService reportingManagers;
 
     private static final List<Role.RoleName> ADMIN_APPROVER_ROLES = List.of(
             Role.RoleName.BRANCH_ADMIN, Role.RoleName.ENTERPRISE_ADMIN,
@@ -193,7 +198,7 @@ public class AttendanceRegularisationService {
         if (request.getStatus() != RequestStatus.PENDING) {
             throw new BadRequestException("Request is not pending approval");
         }
-        requireCompanyAccess(request.getCompany().getId());
+        requireReviewAccess(request, approverEmployee, approverUserId);
         if (!attendanceService.attendanceRequired(request.getEmployee(), effectiveDate(request)))
             throw new BadRequestException("Attendance regularisation is not needed on an exempt date");
         if (request.getAttendance() != null) {
@@ -228,13 +233,14 @@ public class AttendanceRegularisationService {
             java.time.LocalTime requestedCheckOut,
             Double requestedOvertimeHours) {
         var shift = att.getShift();
-        int graceMinutes = attendanceService.resolveGraceMinutes(att);
+        int inGrace = attendanceService.resolveCheckInGraceMinutes(att);
+        int outGrace = attendanceService.resolveCheckOutGraceMinutes(att);
 
         boolean missingPunch = att.getCheckIn() == null || att.getCheckOut() == null;
         boolean lateArrival = shift != null && shift.getStartTime() != null && att.getCheckIn() != null
-                && att.getCheckIn().isAfter(shift.getStartTime().plusMinutes(graceMinutes));
+                && att.getCheckIn().isAfter(shift.getStartTime().plusMinutes(inGrace));
         boolean earlyCheckout = shift != null && shift.getEndTime() != null && att.getCheckOut() != null
-                && att.getCheckOut().isBefore(shift.getEndTime().minusMinutes(graceMinutes));
+                && att.getCheckOut().isBefore(shift.getEndTime().minusMinutes(outGrace));
         double workedHours = att.getWorkedHour() != null ? att.getWorkedHour() : 0.0;
         double minimumHours = att.getMinimumHour() != null ? att.getMinimumHour() : 0.0;
         boolean shortHours = minimumHours > 0 && workedHours < minimumHours;
@@ -302,7 +308,7 @@ public class AttendanceRegularisationService {
         if (request.getStatus() != RequestStatus.PENDING) {
             throw new BadRequestException("Request is not pending approval");
         }
-        requireCompanyAccess(request.getCompany().getId());
+        requireReviewAccess(request, approverEmployee, approverUserId);
         requireRemarks(remarks, "Rejection reason is required");
 
         request.setRejectedBy(approverEmployee);
@@ -328,7 +334,9 @@ public class AttendanceRegularisationService {
     @Transactional(readOnly = true)
     public List<RegularisationRequestDto> getPendingApproval(Long companyId) {
         requireCompanyAccess(companyId);
-        return requestRepository.findPendingApproval(companyId)
+        return requestRepository.findAll(visibleRequests(companyId)
+                .and((root, query, cb) -> cb.equal(root.get("status"), RequestStatus.PENDING)),
+                Sort.by(Sort.Direction.ASC, "createdAt"))
                 .stream().map(RegularisationRequestDto::from).collect(Collectors.toList());
     }
 
@@ -358,7 +366,8 @@ public class AttendanceRegularisationService {
     @Transactional(readOnly = true)
     public List<RegularisationRequestDto> getAllForCompany(Long companyId) {
         requireCompanyAccess(companyId);
-        return requestRepository.findByCompanyIdOrderByCreatedAtDesc(companyId)
+        return requestRepository.findAll(visibleRequests(companyId),
+                Sort.by(Sort.Direction.DESC, "createdAt"))
                 .stream().map(RegularisationRequestDto::from).collect(Collectors.toList());
     }
 
@@ -366,11 +375,8 @@ public class AttendanceRegularisationService {
     public RegularisationRequestDto getById(Long requestId) {
         AttendanceRegularisationRequest request = findRequest(requestId);
         requireCompanyAccess(request.getCompany().getId());
-        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
-        if (scope.isSelfScope()
-                && (request.getEmployee() == null || request.getEmployee().getUser() == null
-                    || !scope.getUserId().equals(request.getEmployee().getUser().getId()))) {
-            throw new AccessDeniedException("Employees can only view their own regularisation requests");
+        if (!canViewRequest(request)) {
+            throw new AccessDeniedException("You cannot view this regularisation request");
         }
         return RegularisationRequestDto.from(request);
     }
@@ -378,10 +384,60 @@ public class AttendanceRegularisationService {
     @Transactional(readOnly = true)
     public long countPendingApproval(Long companyId) {
         requireCompanyAccess(companyId);
-        return requestRepository.countPendingApproval(companyId);
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        if (scope.isSelfScope()) return 0;
+        return requestRepository.count(visibleRequests(companyId)
+                .and((root, query, cb) -> cb.equal(root.get("status"), RequestStatus.PENDING)));
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private Specification<AttendanceRegularisationRequest> visibleRequests(Long companyId) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        Specification<AttendanceRegularisationRequest> company =
+                (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId);
+        if (scope.isSelfScope()) {
+            return company.and((root, query, cb) ->
+                    cb.equal(root.get("employee").get("user").get("id"), scope.getUserId()));
+        }
+        if (scope.getScope() == UserRole.AccessScope.DEPARTMENT) {
+            if (scope.getDepartmentId() == null)
+                return company.and((root, query, cb) -> cb.disjunction());
+            return company.and((root, query, cb) ->
+                    cb.equal(root.get("employee").get("department").get("id"), scope.getDepartmentId()));
+        }
+        return company;
+    }
+
+    private boolean canViewRequest(AttendanceRegularisationRequest request) {
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        Employee employee = request.getEmployee();
+        if (employee == null) return false;
+        if (scope.isSelfScope())
+            return employee.getUser() != null && scope.getUserId().equals(employee.getUser().getId());
+        if (scope.getScope() == UserRole.AccessScope.DEPARTMENT)
+            return scope.getDepartmentId() != null && employee.getDepartment() != null
+                    && scope.getDepartmentId().equals(employee.getDepartment().getId());
+        return true;
+    }
+
+    private void requireReviewAccess(AttendanceRegularisationRequest request,
+                                     Employee approver, Long approverUserId) {
+        requireCompanyAccess(request.getCompany().getId());
+        AccessScopeContext.ScopeData scope = AccessScopeContext.get();
+        Employee employee = request.getEmployee();
+        if (!approverUserId.equals(scope.getUserId()) || !approver.isActive()
+                || employee == null || employee.getId().equals(approver.getId())) {
+            throw new AccessDeniedException("You cannot review this regularisation request");
+        }
+        Employee reportingManager = reportingManagers.resolve(employee);
+        if (reportingManager != null && reportingManager.isActive()
+                && reportingManager.getId().equals(approver.getId())
+                && reportingManager.getCompany() != null
+                && reportingManager.getCompany().getId().equals(request.getCompany().getId())) return;
+        if (!scope.isSelfScope() && canViewRequest(request)) return;
+        throw new AccessDeniedException("You cannot review this regularisation request");
+    }
 
     private AttendanceRegularisationRequest findRequest(Long id) {
         return requestRepository.findById(id)

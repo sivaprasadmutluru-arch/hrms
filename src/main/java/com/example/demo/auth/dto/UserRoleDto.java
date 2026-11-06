@@ -14,6 +14,8 @@ public class UserRoleDto {
     private Long userId;
     private String username;
     private String email;
+    private String firstName;
+    private String lastName;
 
     private Long roleId;
     private String roleName;
@@ -40,6 +42,8 @@ public class UserRoleDto {
             dto.setUserId(ur.getUser().getId());
             dto.setUsername(ur.getUser().getUsername());
             dto.setEmail(ur.getUser().getEmail());
+            dto.setFirstName(ur.getUser().getFirstName());
+            dto.setLastName(ur.getUser().getLastName());
         }
         if (ur.getRole() != null) {
             dto.setRoleId(ur.getRole().getId());

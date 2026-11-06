@@ -54,6 +54,23 @@ public class AttendanceSettingsController {
         return ResponseEntity.ok(spec != null ? graceTimeRepository.findAll(spec) : graceTimeRepository.findAll());
     }
 
+    private void normalizeGraceTime(GraceTime gt) {
+        if (gt.getAllowedTimeInSeconds() == null && gt.getAllowedTime() != null && !gt.getAllowedTime().isBlank()) {
+            String[] parts = gt.getAllowedTime().trim().split(":");
+            try {
+                if (parts.length == 3) {
+                    gt.setAllowedTimeInSeconds(Integer.parseInt(parts[0]) * 3600 + Integer.parseInt(parts[1]) * 60 + Integer.parseInt(parts[2]));
+                } else if (parts.length == 2) {
+                    gt.setAllowedTimeInSeconds(Integer.parseInt(parts[0]) * 3600 + Integer.parseInt(parts[1]) * 60);
+                }
+            } catch (Exception ignored) {}
+        }
+        if (gt.getAllowedTime() == null && gt.getAllowedTimeInSeconds() != null) {
+            int s = gt.getAllowedTimeInSeconds();
+            gt.setAllowedTime(String.format("%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60));
+        }
+    }
+
     @PostMapping("/grace-times")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Transactional
@@ -65,6 +82,7 @@ public class AttendanceSettingsController {
         if (graceTime.getOrganization() != null && graceTime.getOrganization().getId() != null) {
             graceTime.setOrganization(organizationRepository.getReferenceById(graceTime.getOrganization().getId()));
         }
+        normalizeGraceTime(graceTime);
         return ResponseEntity.ok(graceTimeRepository.save(graceTime));
     }
 
@@ -80,6 +98,7 @@ public class AttendanceSettingsController {
         gt.setAllowedClockIn(updated.getAllowedClockIn());
         gt.setAllowedClockOut(updated.getAllowedClockOut());
         gt.setIsDefault(updated.getIsDefault());
+        normalizeGraceTime(gt);
         return ResponseEntity.ok(graceTimeRepository.save(gt));
     }
 

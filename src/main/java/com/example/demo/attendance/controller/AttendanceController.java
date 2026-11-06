@@ -134,7 +134,7 @@ public class AttendanceController {
     @Operation(summary = "Detect late-come / early-out based on shift schedule and record entries")
     public ResponseEntity<Map<String, String>> detectLateEarly(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "0") int graceMinutes) {
+            @RequestParam(defaultValue = "60") int graceMinutes) {
         attendanceService.detectLateComeEarlyOut(id, graceMinutes);
         return ResponseEntity.ok(Map.of("message", "Late/early detection completed"));
     }

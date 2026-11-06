@@ -151,12 +151,46 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public Page<AttendanceResponse> getFullView(Long companyId, LocalDate from, LocalDate to,
                                                 Long departmentId, Long employeeId, String statusFilter, Pageable pageable) {
+        if (from == null && to == null) {
+            Specification<Attendance> spec = (root, query, cb) -> cb.conjunction();
+            if (companyId != null) {
+                spec = spec.and((root, query, cb) -> cb.or(
+                        cb.equal(root.get("company").get("id"), companyId),
+                        cb.and(cb.isNull(root.get("company")), cb.equal(root.get("employee").get("company").get("id"), companyId))
+                ));
+            }
+            if (employeeId != null) {
+                spec = spec.and((root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId));
+            } else if (departmentId != null) {
+                spec = spec.and((root, query, cb) -> cb.equal(root.get("employee").get("department").get("id"), departmentId));
+            }
+            if (statusFilter != null && !statusFilter.isBlank()) {
+                spec = spec.and((root, query, cb) -> cb.equal(cb.upper(root.get("attendanceStatus").as(String.class)), statusFilter.toUpperCase()));
+            }
+
+            Pageable sortedPageable = (pageable != null && pageable.getSort().isSorted())
+                    ? pageable
+                    : org.springframework.data.domain.PageRequest.of(
+                            pageable != null ? pageable.getPageNumber() : 0,
+                            pageable != null ? pageable.getPageSize() : 20,
+                            org.springframework.data.domain.Sort.by(
+                                    org.springframework.data.domain.Sort.Direction.DESC, "attendanceDate", "id"
+                            )
+                    );
+
+            Page<Attendance> page = attendanceRepository.findAll(spec, sortedPageable);
+            return new org.springframework.data.domain.PageImpl<>(policyResponses(page.getContent()), sortedPageable, page.getTotalElements());
+        }
+
         LocalDate today = LocalDate.now(DUBAI_ZONE);
         LocalDate end = to != null ? (to.isAfter(today) ? today : to) : today;
         // A single selected "To" date represents that day.  Previously it
         // paired that date with today's start date, producing start > end and
         // an empty result set for every historical one-date filter.
-        LocalDate start = from != null ? from : (to != null ? end : today);
+        LocalDate start = from != null ? from : end;
+        if (start.isAfter(end)) {
+            start = end;
+        }
 
         // Read stored attendance first.  Historical punches remain reportable after an
         // employee is made inactive; deactivation stops future work, it must not erase
@@ -328,28 +362,57 @@ public class AttendanceService {
 
         generateWorkRecord(att, worked);
 
-        int graceMinutes = resolveGraceMinutes(att);
-        detectLateComeEarlyOut(att.getId(), graceMinutes);
+        int inGrace = resolveCheckInGraceMinutes(att);
+        int outGrace = resolveCheckOutGraceMinutes(att);
+        detectLateComeEarlyOut(att.getId(), inGrace, outGrace);
 
-        evaluateAttendanceStatus(att, graceMinutes);
+        evaluateAttendanceStatus(att, inGrace, outGrace);
         attendanceRepository.save(att);
     }
 
-    /** Resolve grace period minutes from company → org fallback. */
-    public int resolveGraceMinutes(Attendance att) {
-        if (att.getCompany() == null) return 0;
+    public static final int DEFAULT_CHECKIN_GRACE_MINUTES = 60; // Default 1 hour grace time at check-in
+
+    /** Resolve grace period minutes for check-in from company → org fallback. Defaults to 60 minutes (1 hour). */
+    public int resolveCheckInGraceMinutes(Attendance att) {
+        if (att == null || att.getCompany() == null) return DEFAULT_CHECKIN_GRACE_MINUTES;
         Long companyId = att.getCompany().getId();
         return graceTimeRepository
                 .findFirstByCompanyIdAndIsDefaultTrue(companyId)
+                .filter(g -> Boolean.TRUE.equals(g.getAllowedClockIn()))
+                .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : DEFAULT_CHECKIN_GRACE_MINUTES)
+                .orElseGet(() -> {
+                    Organization org = att.getCompany().getOrganization();
+                    if (org == null) return DEFAULT_CHECKIN_GRACE_MINUTES;
+                    return graceTimeRepository
+                            .findFirstByOrganizationIdAndIsDefaultTrue(org.getId())
+                            .filter(g -> Boolean.TRUE.equals(g.getAllowedClockIn()))
+                            .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : DEFAULT_CHECKIN_GRACE_MINUTES)
+                            .orElse(DEFAULT_CHECKIN_GRACE_MINUTES);
+                });
+    }
+
+    /** Resolve grace period minutes for check-out from company → org fallback. Defaults to 0 minutes. */
+    public int resolveCheckOutGraceMinutes(Attendance att) {
+        if (att == null || att.getCompany() == null) return 0;
+        Long companyId = att.getCompany().getId();
+        return graceTimeRepository
+                .findFirstByCompanyIdAndIsDefaultTrue(companyId)
+                .filter(g -> Boolean.TRUE.equals(g.getAllowedClockOut()))
                 .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : 0)
                 .orElseGet(() -> {
                     Organization org = att.getCompany().getOrganization();
                     if (org == null) return 0;
                     return graceTimeRepository
                             .findFirstByOrganizationIdAndIsDefaultTrue(org.getId())
+                            .filter(g -> Boolean.TRUE.equals(g.getAllowedClockOut()))
                             .map(g -> g.getAllowedTimeInSeconds() != null ? (int) Math.round(g.getAllowedTimeInSeconds() / 60.0) : 0)
                             .orElse(0);
                 });
+    }
+
+    /** Resolve grace period minutes from company → org fallback (returns check-in grace minutes, default 60 min). */
+    public int resolveGraceMinutes(Attendance att) {
+        return resolveCheckInGraceMinutes(att);
     }
 
     /**
@@ -392,10 +455,9 @@ public class AttendanceService {
 
     /**
      * Automatically evaluate and set attendanceStatus (REGULAR / IRREGULAR).
-     * Called after checkout. Only sets IRREGULAR — never touches REGULARISED
-     * (that is set by the regularisation approval workflow).
+     * Evaluates late come with checkInGraceMinutes and early out with checkOutGraceMinutes.
      */
-    public void evaluateAttendanceStatus(Attendance att, int graceMinutes) {
+    public void evaluateAttendanceStatus(Attendance att, int checkInGraceMinutes, int checkOutGraceMinutes) {
         if (!attendancePolicies.required(att.getEmployee(), att.getAttendanceDate())) {
             att.setAttendanceStatus(Attendance.AttendanceQualityStatus.REGULAR);
             att.setDeductionMinutes(0); att.setDeductionAmount(0.0);
@@ -415,14 +477,14 @@ public class AttendanceService {
         int lateMinutes = 0;
         if (shift.getStartTime() != null && att.getCheckIn().isAfter(shift.getStartTime())) {
             long raw = ChronoUnit.MINUTES.between(shift.getStartTime(), att.getCheckIn());
-            lateMinutes = (int) Math.max(0, raw - graceMinutes);
+            lateMinutes = (int) Math.max(0, raw - checkInGraceMinutes);
         }
 
         int earlyMinutes = 0;
         if (att.getCheckOut() != null && shift.getEndTime() != null
                 && att.getCheckOut().isBefore(shift.getEndTime())) {
             long raw = ChronoUnit.MINUTES.between(att.getCheckOut(), shift.getEndTime());
-            earlyMinutes = (int) Math.max(0, raw - graceMinutes);
+            earlyMinutes = (int) Math.max(0, raw - checkOutGraceMinutes);
         }
 
         int shortageMinutes = 0;
@@ -442,6 +504,10 @@ public class AttendanceService {
             att.setDeductionMinutes(0);
             att.setDeductionAmount(0.0);
         }
+    }
+
+    public void evaluateAttendanceStatus(Attendance att, int graceMinutes) {
+        evaluateAttendanceStatus(att, graceMinutes, 0);
     }
 
     /**
@@ -733,18 +799,20 @@ public class AttendanceService {
             att.setAtWorkSecond((int)(minutes * 60L));
 
             computeOvertimeFields(att, worked);
-            evaluateAttendanceStatus(att, resolveGraceMinutes(att));
+            int inGrace = resolveCheckInGraceMinutes(att);
+            int outGrace = resolveCheckOutGraceMinutes(att);
+            detectLateComeEarlyOut(att.getId(), inGrace, outGrace);
+            evaluateAttendanceStatus(att, inGrace, outGrace);
         }
         return AttendanceResponse.from(attendanceRepository.save(att));
     }
 
     /**
      * Detect late-come / early-out for an attendance record based on its shift schedule.
-     * Creates AttendanceLateComeEarlyOut records when thresholds are exceeded.
-     * Default grace: 0 minutes (no grace). Caller can pass graceMinutes from TrackLateComeEarlyOut settings.
+     * Evaluates late come against checkInGraceMinutes (default 60 mins) and early out against checkOutGraceMinutes (default 0 mins).
      */
     @Transactional
-    public void detectLateComeEarlyOut(Long attendanceId, int graceMinutes) {
+    public void detectLateComeEarlyOut(Long attendanceId, int checkInGraceMinutes, int checkOutGraceMinutes) {
         Attendance att = find(attendanceId);
         if (!attendancePolicies.required(att.getEmployee(), att.getAttendanceDate())) return;
         ShiftSchedule shift = att.getShift();
@@ -753,9 +821,9 @@ public class AttendanceService {
         // Late come
         if (shift.getStartTime() != null) {
             long lateMinutes = ChronoUnit.MINUTES.between(shift.getStartTime(), att.getCheckIn());
-            if (lateMinutes > graceMinutes) {
-                // FIX #2: compute net late seconds (after grace) and store on the entity
-                int netLateSeconds = (int)((lateMinutes - graceMinutes) * 60L);
+            if (lateMinutes > checkInGraceMinutes) {
+                // compute net late seconds (after grace) and store on the entity
+                int netLateSeconds = (int)((lateMinutes - checkInGraceMinutes) * 60L);
                 int lh = netLateSeconds / 3600;
                 int lm = (netLateSeconds % 3600) / 60;
 
@@ -776,9 +844,9 @@ public class AttendanceService {
         // Early out
         if (shift.getEndTime() != null && att.getCheckOut() != null) {
             long earlyMinutes = ChronoUnit.MINUTES.between(att.getCheckOut(), shift.getEndTime());
-            if (earlyMinutes > graceMinutes) {
-                // FIX #2: compute net early seconds (after grace) and store on the entity
-                int netEarlySeconds = (int)((earlyMinutes - graceMinutes) * 60L);
+            if (earlyMinutes > checkOutGraceMinutes) {
+                // compute net early seconds (after grace) and store on the entity
+                int netEarlySeconds = (int)((earlyMinutes - checkOutGraceMinutes) * 60L);
                 int eh = netEarlySeconds / 3600;
                 int em = (netEarlySeconds % 3600) / 60;
 
@@ -795,6 +863,11 @@ public class AttendanceService {
                 lateComeEarlyOutRepository.save(early);
             }
         }
+    }
+
+    @Transactional
+    public void detectLateComeEarlyOut(Long attendanceId, int graceMinutes) {
+        detectLateComeEarlyOut(attendanceId, graceMinutes, 0);
     }
 
     /**
@@ -1097,6 +1170,11 @@ public class AttendanceService {
         att.setCheckInAccuracyMeters(accuracyMeters);
         if (source != null) att.setClockInSource(source);
         attendanceRepository.save(att);
+        if (firstCheckInOfDay) {
+            int inGrace = resolveCheckInGraceMinutes(att);
+            int outGrace = resolveCheckOutGraceMinutes(att);
+            detectLateComeEarlyOut(att.getId(), inGrace, outGrace);
+        }
         scheduleAddressResolution(att.getId(), activity.getId(), latitude, longitude, true,
                 true);
 
