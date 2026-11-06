@@ -10,10 +10,10 @@ import Button from '../../components/common/Button'
 import './SubscriptionPage.css'
 
 const COPY = {
-  FREE: { description: 'Free starter plan for micro teams and early startups.', features: ['Up to 15 active employees', '1 branch included', 'Employee records & directory', 'Attendance & leave tracking', 'Basic payslip generation', 'Free starter · No credit card required'] },
-  BASIC: { description: 'Essential compliance and payroll for growing teams.', features: ['Up to 50 employees', '2 branches included', 'India Statutory Payroll (PF, ESI, PT, TDS)', 'Biometric & web attendance integration', 'Document & letter generation', 'Salary register & accounting ledger'] },
-  STANDARD: { description: 'Multi-branch operations and advanced workforce management.', features: ['Up to 200 employees', '5 branches included', 'Everything in Basic', 'Cross-branch admin access', 'Department rosters & rotating shifts', 'Statutory compliance review & audit logs'] },
-  ENTERPRISE: { description: 'Full-scale platform for unlimited growth and customization.', features: ['Unlimited employees & branches', 'Everything in Standard', 'Custom roles & granular permissions', 'Multi-entity accounting & consolidation', 'Priority onboarding & dedicated support'] },
+  FREE: { description: 'Free forever plan for early startups and micro teams.', features: ['Up to 15 active employees', '1 branch included', 'Core HR & Employee directory', 'Attendance & Leave tracking', 'Basic payslip generation', 'Free Forever · No credit card required'] },
+  BASIC: { description: 'Essential compliance and statutory payroll for growing startups (15–50 employees).', features: ['Up to 50 employees', '2 branches included', 'Everything in Free', 'India Statutory Compliance (PF, ESI, PT, TDS)', 'Biometric sync & web attendance', 'Document & letter generation'] },
+  STANDARD: { description: 'Multi-branch operations and advanced workforce management (50–200 employees).', features: ['Up to 200 employees', '5 branches included', 'Everything in Basic', 'Cross-branch access & admin control', 'Multi-entity accounting & ledger', 'Audit logs, Shift & roster management'] },
+  ENTERPRISE: { description: 'Full-scale platform for unlimited growth, custom roles and multi-branch networks.', features: ['Unlimited employees & branches', 'Everything in Standard', 'Unlimited scale & branches', 'Custom roles & granular permissions', 'Dedicated support & priority assistance'] },
 }
 const money = (minor, currency = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: minor % 100 ? 2 : 0 }).format(minor / 100)
 const date = value => value ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(value)) : 'Not recorded'
@@ -160,17 +160,17 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
 
     {ready && <section className="billing-summary" aria-label="Subscription dates and renewal">
       <div className="billing-summary-title"><div><span className="pricing-section-label">YOUR SUBSCRIPTION</span><h2>{snapshot.organizationName}</h2></div><span className={`billing-status ${snapshot.accessAllowed ? 'is-active' : 'is-inactive'}`}>{snapshot.status.replaceAll('_', ' ')}</span></div>
-      {snapshot.legacyAccess && <p className="billing-notice">Your organization has legacy access with no subscription selected. Choose Free access for up to 15 active employees, or a monthly or yearly paid plan below. Start and expiry dates are recorded when the plan is activated; legacy access continues until then.</p>}
-      {!snapshot.accessAllowed && <p className="pricing-error">{snapshot.plan === 'FREE' ? 'Your Free access has ended. Choose a paid plan to continue using this organization’s workspace.' : snapshot.status === 'PAST_DUE' || snapshot.status === 'UNPAID' ? 'Payment is overdue. Open the Razorpay payment link or contact support to update your payment method.' : 'An active paid subscription is required to use this organization’s workspace.'}</p>}
-      {snapshot.plan === 'FREE' && !snapshot.legacyAccess && <p className="billing-notice">Free plan · up to 15 active employees and 1 branch. Upgrade anytime to unlock additional capacity and features.</p>}
+      {snapshot.legacyAccess && <p className="billing-notice">Your organization has legacy access with no subscription selected. Choose Free Forever access for up to 15 active employees, or a monthly or yearly paid plan below.</p>}
+      {!snapshot.accessAllowed && <p className="pricing-error">{snapshot.status === 'PAST_DUE' || snapshot.status === 'UNPAID' ? 'Payment is overdue. Open the Razorpay payment link or contact support to update your payment method.' : 'An active subscription is required to use this organization’s workspace.'}</p>}
+      {snapshot.plan === 'FREE' && !snapshot.legacyAccess && <p className="billing-notice">Free Starter plan · up to 15 active employees and 1 branch (Free Forever). Upgrade anytime to unlock statutory compliance and additional capacity.</p>}
       {snapshot.manualAccess && <p className="billing-notice">Manual access · no payment collected. Renew manually before access expires; no automatic charges.</p>}
       {snapshot.cancelAtPeriodEnd && !snapshot.manualAccess && <p className="billing-notice">Renewal is cancelled. Paid access continues until {date(snapshot.paidUntil)}.</p>}
       {snapshot.syncWarning && <p className="billing-notice">The last Razorpay synchronization failed. Refresh billing or contact the platform administrator.</p>}
       <dl className="billing-dates">
-        {[['Subscription started', snapshot.startedAt], ['Current period starts', snapshot.periodStart], [snapshot.manualAccess || snapshot.plan === 'FREE' ? 'Access until' : 'Paid through', snapshot.paidUntil], [snapshot.plan === 'FREE' ? 'Automatic renewal' : snapshot.manualAccess ? 'Renewal due' : 'Next renewal', snapshot.nextRenewalAt]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{snapshot.plan === 'FREE' && label === 'Automatic renewal' ? 'No · choose a paid plan' : label === 'Next renewal' && snapshot.cancelAtPeriodEnd ? 'Not renewing' : billingDate(value)}</dd></div>)}
+        {[['Subscription started', snapshot.startedAt], ['Current period starts', snapshot.periodStart], [snapshot.manualAccess ? 'Access until' : snapshot.plan === 'FREE' ? 'Access' : 'Paid through', snapshot.plan === 'FREE' ? 'Permanent · Free Forever' : snapshot.paidUntil], [snapshot.plan === 'FREE' ? 'Renewal' : snapshot.manualAccess ? 'Renewal due' : 'Next renewal', snapshot.nextRenewalAt]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{snapshot.plan === 'FREE' ? (label === 'Renewal' ? 'No renewal needed (Free Forever)' : value) : label === 'Next renewal' && snapshot.cancelAtPeriodEnd ? 'Not renewing' : billingDate(value)}</dd></div>)}
       </dl>
       {snapshot.pricingModel === 'EXISTING_PER_USER' && <p className="billing-notice">Your current subscription retains its existing user capacity and expiry. The fixed package and its full included-user limit apply at your next activation or renewal.</p>}
-      <div className="billing-summary-actions"><small>Dates shown in IST. {snapshot.manualAccess ? 'No payment collected. Manual renewal required.' : snapshot.amountMinor != null ? `${money(snapshot.amountMinor, snapshot.currency)} / ${snapshot.cycle === 'YEARLY' ? 'year' : 'month'}.` : ''}{snapshot.hasPaidSubscription && !snapshot.cancelAtPeriodEnd ? ' Renews automatically through Razorpay.' : ''}</small>
+      <div className="billing-summary-actions"><small>Dates shown in IST. {snapshot.manualAccess ? 'No payment collected. Manual renewal required.' : snapshot.plan === 'FREE' ? 'Free Forever Starter tier. No renewal fees or automatic charges.' : snapshot.amountMinor != null ? `${money(snapshot.amountMinor, snapshot.currency)} / ${snapshot.cycle === 'YEARLY' ? 'year' : 'month'}.` : ''}{snapshot.hasPaidSubscription && !snapshot.cancelAtPeriodEnd ? ' Renews automatically through Razorpay.' : ''}</small>
         <div><Button variant="secondary" size="sm" onClick={refresh} disabled={refreshing || saving}><RefreshCw size={14} className={refreshing ? 'mr-2 animate-spin' : 'mr-2'} />Refresh</Button>
           {snapshot.hasPaidSubscription && !snapshot.cancelAtPeriodEnd && <Button size="sm" loading={saving} onClick={() => setConfirmCancel(true)}>Cancel renewal</Button>}</div></div>
     </section>}
@@ -186,12 +186,12 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
           {plan.id === 'STANDARD' && <div className="pricing-popular"><Sparkles size={13} /> THE GROWING TEAM FAVORITE</div>}
           <div className="pricing-card-title"><h2>{plan.name}</h2>{current && <span>Current plan</span>}</div>
           <p className="pricing-description">{plan.description}</p>
-          <div className="pricing-price"><strong>{money(yearly ? Math.round(amount / 12) : amount)}</strong><span>{plan.id === 'FREE' ? '/ free starter' : yearly ? '/ mo (billed yearly)' : '/ month'}</span></div>
+          <div className="pricing-price"><strong>{money(yearly ? Math.round(amount / 12) : amount)}</strong><span>{plan.id === 'FREE' ? '/ Free Forever' : yearly ? '/ mo (billed yearly)' : '/ month'}</span></div>
           {plan.id !== 'FREE' && <p className="mt-0.5 text-xs text-slate-500 font-medium">+ 18% GST applicable</p>}
-          <p className="pricing-cadence">{plan.id === 'FREE' ? 'Free starter plan · up to 15 employees · no card needed' : yearly ? `${money(amount)} billed yearly (Save 2 months) + GST` : 'Fixed package, billed monthly + GST'}</p>
-          <button className="pricing-plan-button" type="button" disabled={!ready || (plan.id !== 'FREE' && !catalog.checkoutAvailable && !manual) || freeUsed || exceedsUsage || saving || snapshot?.hasPaidSubscription}
-            onClick={() => !snapshot.hasPaidSubscription && setPendingPlan({ ...plan, requestId: crypto.randomUUID() })}>{freeUsed ? current && snapshot.accessAllowed ? 'Current plan' : 'Free month already used' : exceedsUsage ? 'Current usage exceeds this plan' : snapshot?.hasPaidSubscription ? 'Current subscription active' : plan.id === 'FREE' ? 'Choose Free' : manual ? `${current && snapshot?.cycle === (yearly ? 'YEARLY' : 'MONTHLY') ? 'Renew' : 'Activate'} ${plan.name}` : `Checkout ${plan.name}`}<ArrowRight size={16} /></button>
-          <div className="pricing-features-heading">{plan.id === 'FREE' ? 'Your team’s first workspace' : plan.id === 'BASIC' ? 'The essentials, together' : plan.id === 'STANDARD' ? 'Space to do more' : 'Room for every team'}</div>
+          <p className="pricing-cadence">{plan.id === 'FREE' ? '₹0 · Free Forever / Starter · up to 15 employees · no card needed' : yearly ? `${money(amount)} billed yearly (Save 2 months) + GST` : 'Fixed package, billed monthly + GST'}</p>
+          <button className="pricing-plan-button" type="button" disabled={!ready || (plan.id !== 'FREE' && !catalog.checkoutAvailable && !manual) || current || exceedsUsage || saving || snapshot?.hasPaidSubscription}
+            onClick={() => !snapshot.hasPaidSubscription && setPendingPlan({ ...plan, requestId: crypto.randomUUID() })}>{current ? 'Current plan' : exceedsUsage ? 'Current usage exceeds this plan' : snapshot?.hasPaidSubscription ? 'Current subscription active' : plan.id === 'FREE' ? 'Activate Free Forever' : manual ? `${current && snapshot?.cycle === (yearly ? 'YEARLY' : 'MONTHLY') ? 'Renew' : 'Activate'} ${plan.name}` : `Checkout ${plan.name}`}<ArrowRight size={16} /></button>
+          <div className="pricing-features-heading">{plan.id === 'FREE' ? 'Early startups & micro teams' : plan.id === 'BASIC' ? 'Growing startups (15–50 staff)' : plan.id === 'STANDARD' ? 'Mid-sized companies (50–200 staff)' : 'Large orgs / multi-branch networks'}</div>
           <ul>{plan.features.map(feature => <li key={feature}><Check size={17} /><span>{feature}</span></li>)}</ul>
         </article>
       })}
@@ -267,13 +267,13 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
           )}
           {isFree && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-lg font-semibold text-emerald-900">₹0 · Free Starter Plan</p>
-              <p className="text-xs text-emerald-700 mt-1">Up to 15 active employees and 1 branch included. No credit card or payment required.</p>
+              <p className="text-lg font-semibold text-emerald-900">₹0 · Free Forever / Starter Plan</p>
+              <p className="text-xs text-emerald-700 mt-1">Up to 15 active employees and 1 branch included. Free Forever · No credit card or payment required.</p>
             </div>
           )}
           <p className="text-xs text-slate-500">
             {pendingPlan?.id === 'FREE'
-              ? 'Activate the Free plan for up to 15 active employees and 1 branch. Upgrade anytime to unlock statutory payroll, biometric attendance, and additional capacity.'
+              ? 'Activate the Free Forever plan for up to 15 active employees and 1 branch. Upgrade anytime to unlock India statutory compliance and additional capacity.'
               : manual
                 ? `Activate ${yearly ? 'one year' : 'one month'} of manual access. Renewing extends current expiry. This action is recorded against your admin account.`
                 : 'You will be redirected to Razorpay to complete your payment securely. Razorpay supports UPI, NetBanking, Credit/Debit cards and EMI. A GST-compliant invoice is generated upon payment.'}
