@@ -106,7 +106,17 @@ export default function AttendanceSettingsPage() {
     }
   }, [trackSettings])
 
-  const openCreateGt = () => { setEditingGt(null); gtForm.reset({ isDefault: true, allowedClockIn: true, allowedClockOut: false }); setGtModalOpen(true) }
+  const openCreateGt = () => {
+    setEditingGt(null)
+    gtForm.reset({
+      isDefault: true,
+      allowedClockIn: true,
+      allowedClockOut: false,
+      allowedTime: '01:00:00',
+      allowedTimeInSeconds: 3600,
+    })
+    setGtModalOpen(true)
+  }
   const openEditGt = (gt) => {
     setEditingGt(gt)
     gtForm.reset({

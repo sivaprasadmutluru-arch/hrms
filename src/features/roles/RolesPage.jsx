@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import api from '../../services/api'
+import { userDisplayName } from '../../utils/userDisplayName'
+import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
+import { Search, X, RefreshCw, Filter } from 'lucide-react'
 import {
-  fetchUserRoles, fetchUsers, registerUser, assignRole, assignRoleToCompanies, revokeRole,
+  fetchUserRoles, fetchUsers, assignRole, assignRoleToCompanies, revokeRole,
   fetchCrossAccess, grantAccess, revokeAccess, selectUsers, selectUserRoles
 } from './rolesSlice'
 import { adminResetPassword } from '../auth/authSlice'
@@ -39,6 +42,8 @@ const ASSIGNABLE_ROLES = {
 
 export default function RolesPage() {
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, user } = useAuth()
+  const [platformTeamConfig,setPlatformTeamConfig]=useState(null)
+  useEffect(()=>{if(isPlatformAdmin())api.get('/user-roles/platform-team').then(({data})=>setPlatformTeamConfig(data)).catch(()=>setPlatformTeamConfig(null))},[])
   const dispatch = useDispatch()
   const userRoles = useSelector(selectUserRoles)
   const users = useSelector(selectUsers)
@@ -54,11 +59,16 @@ export default function RolesPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [userSearch, setUserSearch] = useState('')
   const [selectedCompanyIds, setSelectedCompanyIds] = useState([])
+  const [refreshing, setRefreshing] = useState(false)
+  const [roleSearch, setRoleSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState('ALL')
+  const [companyFilter, setCompanyFilter] = useState('ALL')
+  const [scopeFilter, setScopeFilter] = useState('ALL')
+  const [accessSearch, setAccessSearch] = useState('')
 
   const canManageCrossAccess = isPlatformAdmin() || isEnterpriseAdmin()
   const TABS = [
     'User Roles',
-    'Create User',
     'Reset Password',
     ...(canManageCrossAccess ? ['Cross-Branch Access'] : []),
   ]
@@ -73,7 +83,6 @@ export default function RolesPage() {
     defaultValues: { accessScope: 'ENTERPRISE', accessLevel: 'FULL' },
   })
   const { register: regAccess, handleSubmit: handleAccessSubmit, reset: resetAccess } = useForm()
-  const { register: regUser, handleSubmit: handleUserSubmit, reset: resetUser, formState: { errors: userErrors } } = useForm()
   const { register: regReset, handleSubmit: handleResetSubmit, reset: resetResetForm, formState: { errors: resetErrors } } = useForm()
 
   const userId = user?.userId || user?.id
@@ -99,7 +108,7 @@ export default function RolesPage() {
       const payload = {
         userId: Number(formData.userId),
         roleName: formData.roleName,
-        accessScope: formData.accessScope,
+        accessScope: ['PLATFORM_ORGANIZATION_OPERATIONS','PLATFORM_SUPPORT','PLATFORM_BILLING'].includes(formData.roleName) ? 'SELF' : formData.accessScope,
         accessLevel: formData.accessLevel || 'FULL',
         effectiveFrom: formData.effectiveFrom || undefined,
         expiresOn: formData.expiresOn || undefined,
@@ -146,15 +155,6 @@ export default function RolesPage() {
     } catch { toast.error('Failed') }
   }
 
-  const onCreateUser = async (formData) => {
-    try {
-      await dispatch(registerUser(formData)).unwrap()
-      toast.success(`User "${formData.username}" created successfully`)
-      resetUser()
-      dispatch(fetchUsers())
-    } catch (e) { toast.error(e || 'Failed to create user') }
-  }
-
   const openResetModal = (u) => {
     setResetTarget(u)
     resetResetForm()
@@ -180,17 +180,49 @@ export default function RolesPage() {
     }
   }
 
-  const filteredUsers = users.filter(u => {
-    const q = userSearch.toLowerCase()
-    return !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-  })
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        dispatch(fetchUserRoles()).unwrap(),
+        dispatch(fetchUsers()).unwrap(),
+        userId ? dispatch(fetchCrossAccess(userId)).unwrap() : Promise.resolve(),
+        isPlatformAdmin() ? api.get('/user-roles/platform-team').then(({ data }) => setPlatformTeamConfig(data)).catch(() => {}) : Promise.resolve(),
+      ])
+      toast.success('Roles and user directory refreshed')
+    } catch {
+      toast.error('Could not refresh data')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const usersById = useMemo(() => new Map(users.map(person => [String(person.id), person])), [users])
+
+  const resolvePersonName = (assignment) => {
+    const fromMap = usersById.get(String(assignment.userId))
+    if (fromMap && (fromMap.firstName || fromMap.lastName)) {
+      return userDisplayName(fromMap)
+    }
+    if (assignment.firstName || assignment.lastName) {
+      return userDisplayName(assignment)
+    }
+    return userDisplayName(fromMap || assignment)
+  }
 
   const roleColumns = [
-    { accessorKey: 'username', header: 'Username' },
+    {
+      id: 'person', header: 'Employee / User',
+      accessorFn: assignment => resolvePersonName(assignment),
+      cell: ({ row, getValue }) => <div>
+        <div className="font-semibold text-gray-900">{getValue()}</div>
+        <div className="text-xs text-gray-500 mt-0.5">Username: {row.original.username || row.original.email || '—'}</div>
+      </div>,
+    },
     { accessorKey: 'email', header: 'Email' },
     { accessorKey: 'roleName', header: 'Role', cell: ({ getValue }) => <Badge label={getValue()?.replace(/_/g, ' ')} variant="primary" /> },
     { accessorKey: 'companyName', header: 'Company' },
-    { accessorKey: 'accessScope', header: 'Scope', cell: ({ getValue }) => <Badge label={getValue()} variant="secondary" /> },
+    { accessorKey: 'accessScope', header: 'Scope', cell: ({ getValue }) => <Badge label={getValue()?.replace(/_/g, ' ')} variant="secondary" /> },
     {
       id: 'actions', header: '',
       cell: ({ row }) => (
@@ -207,6 +239,75 @@ export default function RolesPage() {
     { accessorKey: 'createdAt', header: 'Granted', cell: ({ getValue }) => formatDate(getValue()) },
     { id: 'actions', header: '', cell: ({ row }) => <Button size="sm" variant="danger" onClick={() => onRevokeAccess(row.original)}>Revoke</Button> },
   ]
+
+  const distinctRoles = useMemo(() => {
+    const set = new Set(userRoles.map(r => r.roleName).filter(Boolean))
+    return Array.from(set).sort()
+  }, [userRoles])
+
+  const distinctCompanies = useMemo(() => {
+    const map = new Map()
+    userRoles.forEach(r => {
+      if (r.companyId && r.companyName) map.set(String(r.companyId), r.companyName)
+    })
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [userRoles])
+
+  const distinctScopes = useMemo(() => {
+    const set = new Set(userRoles.map(r => r.accessScope).filter(Boolean))
+    return Array.from(set).sort()
+  }, [userRoles])
+
+  const filteredUserRoles = useMemo(() => {
+    const q = roleSearch.trim().toLowerCase()
+    return userRoles.filter(item => {
+      if (roleFilter !== 'ALL' && item.roleName !== roleFilter) return false
+      if (companyFilter !== 'ALL' && String(item.companyId) !== String(companyFilter)) return false
+      if (scopeFilter !== 'ALL' && item.accessScope !== scopeFilter) return false
+      if (!q) return true
+      const personName = resolvePersonName(item).toLowerCase()
+      const username = String(item.username || '').toLowerCase()
+      const email = String(item.email || '').toLowerCase()
+      const roleName = String(item.roleName || '').toLowerCase().replace(/_/g, ' ')
+      const companyName = String(item.companyName || '').toLowerCase()
+      const scope = String(item.accessScope || '').toLowerCase().replace(/_/g, ' ')
+      return personName.includes(q) || username.includes(q) || email.includes(q) || roleName.includes(q) || companyName.includes(q) || scope.includes(q)
+    })
+  }, [userRoles, roleSearch, roleFilter, companyFilter, scopeFilter, usersById])
+
+  const filteredCrossAccess = useMemo(() => {
+    const q = accessSearch.trim().toLowerCase()
+    if (!q) return crossAccess
+    return crossAccess.filter(item => {
+      const u = usersById.get(String(item.userId))
+      const userName = u ? resolvePersonName(u).toLowerCase() : ''
+      const source = String(item.grantedByCompany?.name || '').toLowerCase()
+      const target = String(item.targetCompany?.name || '').toLowerCase()
+      const reason = String(item.reason || '').toLowerCase()
+      const userId = String(item.userId || '').toLowerCase()
+      return userName.includes(q) || source.includes(q) || target.includes(q) || reason.includes(q) || userId.includes(q)
+    })
+  }, [crossAccess, accessSearch, usersById])
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    return users.filter(u => {
+      if (!q) return true
+      const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim().toLowerCase()
+      const name = userDisplayName(u).toLowerCase()
+      const username = String(u.username || '').toLowerCase()
+      const email = String(u.email || '').toLowerCase()
+      const id = String(u.id || '')
+      return fullName.includes(q) || name.includes(q) || username.includes(q) || email.includes(q) || id.includes(q)
+    })
+  }, [users, userSearch])
+
+  const clearRolesFilters = () => {
+    setRoleSearch('')
+    setRoleFilter('ALL')
+    setCompanyFilter('ALL')
+    setScopeFilter('ALL')
+  }
 
   const userOptions = users.map(u => {
     const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
@@ -232,6 +333,7 @@ export default function RolesPage() {
 
   const roleOptions = assignableRoles.map(r => ({ value: r, label: r.replace(/_/g, ' ') }))
   const selectedRole = watchAssign('roleName')
+  const isPlatformTeamRole=['PLATFORM_ORGANIZATION_OPERATIONS','PLATFORM_SUPPORT','PLATFORM_BILLING'].includes(selectedRole)
   const isMultiCompanyRole = selectedRole === 'SUPER_ADMIN' || selectedRole === 'ACCOUNT_MANAGER'
   const assignedPeople = new Set(userRoles.map(role => role.userId ?? role.username).filter(Boolean)).size
   const assignedCompanies = new Set(userRoles.map(role => role.companyId ?? role.companyName).filter(Boolean)).size
@@ -252,6 +354,12 @@ export default function RolesPage() {
           isEnterpriseAdmin() ? 'Manage roles across all branches and cross-branch access' :
           'Manage branch user roles and assignments'
         }
+        actions={
+          <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing || loading}>
+            <RefreshCw size={14} className={refreshing ? 'mr-1.5 animate-spin' : 'mr-1.5'} />
+            Refresh
+          </Button>
+        }
       />
       <div className="roles-tabs flex gap-1 mb-4 border-b border-gray-200">
         {TABS.map(t => (
@@ -270,38 +378,99 @@ export default function RolesPage() {
             <div><span>People with access</span><strong>{assignedPeople}</strong><small>Unique user accounts</small></div>
             <div><span>Organizations</span><strong>{assignedCompanies}</strong><small>Across assigned access</small></div>
           </div>
-          <div className="roles-actions">
-            <Button onClick={() => { resetAssign({ accessScope: 'ENTERPRISE', accessLevel: 'FULL' }); setSelectedCompanyIds([]); setAssignModal(true) }}>+ Assign Role</Button>
-          </div>
-          <div className="roles-table"><DataTable columns={roleColumns} data={userRoles} loading={loading} /></div>
-        </>
-      )}
 
-      {/* Create User Tab */}
-      {tab === 'Create User' && (
-        <div className="roles-user-panel max-w-md bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Create New User</h2>
-          <form onSubmit={handleUserSubmit(onCreateUser)} className="space-y-4">
-            <Input label="Username" {...regUser('username', { required: 'Required' })} error={userErrors.username?.message} />
-            <Input label="Email" type="email" {...regUser('email', { required: 'Required' })} error={userErrors.email?.message} />
-            <Input label="Password" type="password" {...regUser('password', { required: 'Required', minLength: { value: 6, message: 'Min 6 chars' } })} error={userErrors.password?.message} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="First Name" {...regUser('firstName')} />
-              <Input label="Last Name" {...regUser('lastName')} />
+          {/* Dynamic Search & Filters Toolbar */}
+          <div className="roles-toolbar bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by employee name, username, email, role, company, or scope..."
+                  value={roleSearch}
+                  onChange={e => setRoleSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-all"
+                />
+                {roleSearch && (
+                  <button onClick={() => setRoleSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5">
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button onClick={() => { resetAssign({ accessScope: 'ENTERPRISE', accessLevel: 'FULL' }); setSelectedCompanyIds([]); setAssignModal(true) }}>+ Assign Role</Button>
+              </div>
             </div>
-            {!isPlatformAdmin() && (
-              <Select
-                label="Company"
-                options={companyOptions}
-                {...regUser('companyId', { required: 'Required' })}
-                error={userErrors.companyId?.message}
-              />
-            )}
-            <div className="flex justify-end pt-2">
-              <Button type="submit" loading={loading}>Create User</Button>
+
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 text-xs">
+              <span className="text-gray-500 font-medium flex items-center gap-1 mr-1">
+                <Filter size={13} /> Filters:
+              </span>
+              
+              <select
+                value={roleFilter}
+                onChange={e => setRoleFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="ALL">All Roles ({userRoles.length})</option>
+                {distinctRoles.map(r => (
+                  <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+
+              {distinctCompanies.length > 1 && (
+                <select
+                  value={companyFilter}
+                  onChange={e => setCompanyFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="ALL">All Companies / Branches</option>
+                  {distinctCompanies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {distinctScopes.length > 1 && (
+                <select
+                  value={scopeFilter}
+                  onChange={e => setScopeFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="ALL">All Scopes</option>
+                  {distinctScopes.map(s => (
+                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              )}
+
+              {(roleSearch || roleFilter !== 'ALL' || companyFilter !== 'ALL' || scopeFilter !== 'ALL') && (
+                <button
+                  onClick={clearRolesFilters}
+                  className="text-indigo-600 hover:text-indigo-800 font-semibold text-xs ml-auto flex items-center gap-1"
+                >
+                  <X size={12} /> Reset filters
+                </button>
+              )}
             </div>
-          </form>
-        </div>
+
+            <div className="text-xs text-gray-400">
+              Showing <strong>{filteredUserRoles.length}</strong> of <strong>{userRoles.length}</strong> role assignments
+            </div>
+          </div>
+
+          {filteredUserRoles.length === 0 && !loading ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+              <Search size={28} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-600">No role assignments match your search or filter.</p>
+              {(roleSearch || roleFilter !== 'ALL' || companyFilter !== 'ALL' || scopeFilter !== 'ALL') && (
+                <Button variant="secondary" size="sm" className="mt-3" onClick={clearRolesFilters}>Clear search & filters</Button>
+              )}
+            </div>
+          ) : (
+            <div className="roles-table"><DataTable columns={roleColumns} data={filteredUserRoles} loading={loading} /></div>
+          )}
+        </>
       )}
 
       {/* Reset Password Tab */}
@@ -313,28 +482,24 @@ export default function RolesPage() {
 
           {/* Search */}
           <div className="relative mb-3">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by username or email..."
+              placeholder="Search by name, username or email..."
               value={userSearch}
               onChange={e => setUserSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+              className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
             />
-            <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
             {userSearch && (
-              <button onClick={() => setUserSearch('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <button onClick={() => setUserSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5">
+                <X size={15} />
               </button>
             )}
           </div>
 
           {/* Count */}
           <p className="text-xs text-gray-400 mb-2">
-            {filteredUsers.length} of {users.length} users
+            Showing <strong>{filteredUsers.length}</strong> of <strong>{users.length}</strong> users
           </p>
 
           {/* User list */}
@@ -345,7 +510,7 @@ export default function RolesPage() {
               filteredUsers.map(u => (
                 <div key={u.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm hover:bg-gray-50">
                   <div className="min-w-0 flex-1">
-                    <span className="font-medium text-gray-900">{u.username}</span>
+                    <span className="font-medium text-gray-900">{userDisplayName(u)}</span>
                     <span className="text-gray-400 ml-2 text-xs">{u.email}</span>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
@@ -364,10 +529,40 @@ export default function RolesPage() {
       {/* Cross-Branch Access Tab */}
       {tab === 'Cross-Branch Access' && (
         <>
-          <div className="roles-actions">
+          <div className="roles-toolbar bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search cross-branch access by user, source branch, target branch, or reason..."
+                value={accessSearch}
+                onChange={e => setAccessSearch(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-all"
+              />
+              {accessSearch && (
+                <button onClick={() => setAccessSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5">
+                  <X size={15} />
+                </button>
+              )}
+            </div>
             <Button onClick={() => { resetAccess({}); setAccessModal(true) }}>+ Grant Access</Button>
           </div>
-          <div className="roles-table"><DataTable columns={accessColumns} data={crossAccess} loading={loading} /></div>
+
+          <div className="text-xs text-gray-400">
+            Showing <strong>{filteredCrossAccess.length}</strong> of <strong>{crossAccess.length}</strong> records
+          </div>
+
+          {filteredCrossAccess.length === 0 && !loading ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+              <Search size={28} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-600">{crossAccess.length === 0 ? 'No cross-branch access records yet.' : 'No cross-branch records match your search.'}</p>
+              {accessSearch && (
+                <Button variant="secondary" size="sm" className="mt-3" onClick={() => setAccessSearch('')}>Clear search</Button>
+              )}
+            </div>
+          ) : (
+            <div className="roles-table"><DataTable columns={accessColumns} data={filteredCrossAccess} loading={loading} /></div>
+          )}
         </>
       )}
 
@@ -410,10 +605,11 @@ export default function RolesPage() {
               <p className="mt-1.5 text-xs text-gray-500">Existing assignments are retained; revoked assignments are safely reactivated.</p>
             </div>
           ) : (
-            <Select label="Company" options={companyOptions} {...regAssign('companyId', { required: 'Company is required' })} error={assignErrors.companyId?.message} />
+            <Select label="Company" options={isPlatformTeamRole ? companyOptions.filter(c=>platformTeamConfig?.companies?.some(internal=>String(internal.id)===String(c.value))) : companyOptions} {...regAssign('companyId', { required: 'Company is required' })} error={assignErrors.companyId?.message} />
           )}
 
-          <Select label="Access Scope" options={ACCESS_SCOPES} {...regAssign('accessScope', { required: 'Access scope is required' })} error={assignErrors.accessScope?.message} />
+          <Select label="Access Scope" options={isPlatformTeamRole ? [{value:'SELF',label:'Internal employment only — platform duties granted separately'}] : ACCESS_SCOPES} {...regAssign('accessScope', { required: 'Access scope is required' })} error={assignErrors.accessScope?.message} />
+          {isPlatformTeamRole && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Only Platform Super Admin can grant this role to an active employee of {platformTeamConfig?.organizations?.[0]?.name || 'the configured internal Accrue organization'}. Customer employee/payroll/internal helpdesk access is not granted. Effective and expiry dates apply.</p>}
           {selectedRole === 'ACCOUNT_MANAGER' && (
             <Select label="Access Level" options={[{ value: 'FULL', label: 'Full access' }, { value: 'PARTIAL', label: 'Partial access — payroll excluded' }]} {...regAssign('accessLevel')} />
           )}
@@ -440,10 +636,10 @@ export default function RolesPage() {
         <div className="roles-form">
           <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
             <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-              {resetTarget?.username?.[0]?.toUpperCase()}
+              {userDisplayName(resetTarget)[0]?.toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900">{resetTarget?.username}</p>
+              <p className="text-sm font-medium text-gray-900">{userDisplayName(resetTarget)}</p>
               <p className="text-xs text-gray-400 truncate">{resetTarget?.email}</p>
             </div>
           </div>
