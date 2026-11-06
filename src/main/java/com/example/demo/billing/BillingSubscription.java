@@ -44,14 +44,8 @@ public class BillingSubscription {
     public boolean hasAccess(Instant now) {
         if (legacyAccess) return true;
         if (plan == SubscriptionPlan.FREE) {
-            // Free is a single calendar month, never an automatically renewed entitlement.
-            Instant freeEnd = paidUntil != null ? paidUntil : periodEnd;
-            if (freeEnd == null && startedAt != null) {
-                freeEnd = startedAt.atZone(java.time.ZoneId.of("Asia/Kolkata"))
-                        .plusMonths(1).toInstant();
-            }
-            return "free_active".equals(status) && endedAt == null
-                    && freeEnd != null && now.isBefore(freeEnd);
+            // Free plan is Free Forever for micro teams & early startups (up to 15 employees, 1 branch)
+            return "free_active".equals(status) && endedAt == null;
         }
         if (manualAccess) return paidUntil != null && now.isBefore(paidUntil);
         return paidUntil != null && now.isBefore(paidUntil)

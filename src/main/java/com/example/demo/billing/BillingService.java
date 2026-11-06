@@ -97,17 +97,13 @@ public class BillingService {
         if (s.getRazorpaySubscriptionId()!=null || s.getStripeSubscriptionId()!=null)
             throw new BillingFailure(409,"Cancel the existing paid subscription before switching to Free");
         if (s.getPlan()==SubscriptionPlan.FREE && "free_active".equals(s.getStatus())) {
-            if (!s.hasAccess(Instant.now())) throw new BillingFailure(409,"The one-month Free plan has ended. Choose a paid plan to continue.");
             return summary(orgId,0);
         }
-        if (events.existsByOrganizationIdAndType(orgId,"FREE_ACTIVATED"))
-            throw new BillingFailure(409,"The one-month Free plan has already been used by this organization.");
         usage.validateFit(orgId,SubscriptionPlan.FREE);
         Instant now=Instant.now();
-        Instant end=manualPeriodEnd(now,now,BillingCycle.MONTHLY);
         s.setPlan(SubscriptionPlan.FREE); s.setCycle(null); s.setStatus("free_active");
         s.setLegacyAccess(false); s.setManualAccess(false); s.setStartedAt(now);
-        s.setPeriodStart(now); s.setPeriodEnd(end); s.setPaidUntil(end); s.setEndedAt(null);
+        s.setPeriodStart(now); s.setPeriodEnd(null); s.setPaidUntil(null); s.setEndedAt(null);
         s.setCanceledAt(null); s.setCancelAtPeriodEnd(false); s.setAmountMinor(0L); s.setCurrency("inr"); s.setSyncError(null);
         s.setCheckoutSessionId(null); s.setCheckoutUrl(null); s.setCheckoutPriceId(null); s.setCheckoutExpiresAt(null);
         s.setRazorpaySubscriptionId(null); s.setRazorpayPlanId(null);
@@ -117,7 +113,7 @@ public class BillingService {
         usage.applyPlanLimits(orgId,SubscriptionPlan.FREE); organizations.save(org);
         var event=new BillingEvent(); event.setId("free_"+UUID.randomUUID()); event.setOrganizationId(orgId);
         event.setType("FREE_ACTIVATED"); event.setActor(SecurityContextHolder.getContext().getAuthentication().getName());
-        event.setProcessedAt(now); event.setDetails("{\"plan\":\"FREE\",\"endsAt\":\""+end+"\",\"amountCollectedMinor\":0}"); events.saveAndFlush(event);
+        event.setProcessedAt(now); event.setDetails("{\"plan\":\"FREE\",\"forever\":true,\"amountCollectedMinor\":0}"); events.saveAndFlush(event);
         return summary(orgId,0);
     }
     @Transactional

@@ -18,19 +18,15 @@ class FreeActivationTest {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("owner","",List.of()));
     }
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
-    @Test void freeAccessEndsAfterOneCalendarMonthWithoutPayment() {
+    @Test void freeAccessRemainsActiveIndefinitelyWithoutPayment() {
         f.config.setKeyId(""); f.config.setManualEnabled(false);
         var result=f.service.activateFree(2L);
         assertThat(result.get("status")).isEqualTo("FREE_ACTIVE");
         assertThat(s.isLegacyAccess()).isFalse(); assertThat(s.isManualAccess()).isFalse();
         assertThat(s.getPlan()).isEqualTo(SubscriptionPlan.FREE);
         assertThat(s.getCycle()).isNull();
-        assertThat(s.getPeriodStart()).isEqualTo(s.getStartedAt());
-        assertThat(s.getPaidUntil()).isEqualTo(BillingService.manualPeriodEnd(s.getStartedAt(),s.getStartedAt(),BillingCycle.MONTHLY));
-        assertThat(s.getPeriodEnd()).isEqualTo(s.getPaidUntil());
-        assertThat(s.hasAccess(s.getPaidUntil().minusNanos(1))).isTrue();
-        assertThat(s.hasAccess(s.getPaidUntil())).isFalse();
-        assertThat(result.get("freeUsed")).isEqualTo(true);
+        assertThat(s.hasAccess(Instant.now())).isTrue();
+        assertThat(s.hasAccess(Instant.now().plus(365, java.time.temporal.ChronoUnit.DAYS))).isTrue();
         assertThat(f.org.getSubscriptionPlan()).isEqualTo(SubscriptionPlan.FREE);
         verify(f.usage).validateFit(2L,SubscriptionPlan.FREE);
         verify(f.usage).applyPlanLimits(2L,SubscriptionPlan.FREE);
@@ -43,22 +39,6 @@ class FreeActivationTest {
         assertThatThrownBy(() -> f.service.activateFree(2L)).isInstanceOf(BillingFailure.class);
         verify(f.subscriptions,never()).saveAndFlush(any());
         assertThat(f.org.getSubscriptionPlan()).isEqualTo(SubscriptionPlan.BASIC);
-    }
-    @Test void expiredFreeCannotBeRestarted() {
-        f.service.activateFree(2L);
-        s.setPaidUntil(Instant.now().minusSeconds(1));
-        assertThatThrownBy(() -> f.service.activateFree(2L))
-                .isInstanceOf(BillingFailure.class).hasMessageContaining("has ended");
-        verify(f.events,times(1)).saveAndFlush(any());
-    }
-    @Test void priorFreeActivationCannotBeRepeatedAfterChangingPlans() {
-        f.service.activateFree(2L);
-        s.setPlan(SubscriptionPlan.BASIC);
-        s.setStatus("manual_active");
-        when(f.events.existsByOrganizationIdAndType(2L,"FREE_ACTIVATED")).thenReturn(true);
-        assertThatThrownBy(() -> f.service.activateFree(2L))
-                .isInstanceOf(BillingFailure.class).hasMessageContaining("already been used");
-        verify(f.events,times(1)).saveAndFlush(any());
     }
     @Test void freeCannotBeActivatedThroughPaidFlows() {
         assertThatThrownBy(() -> f.service.checkout(2L,SubscriptionPlan.FREE,BillingCycle.MONTHLY)).isInstanceOf(BillingFailure.class);

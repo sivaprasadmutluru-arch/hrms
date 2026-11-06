@@ -29,9 +29,7 @@ public class BillingAccessInterceptor implements HandlerInterceptor {
         var subscription=subscriptions.findById(orgIds.get(0)).orElse(null);
         if (subscription==null || subscription.hasAccess(Instant.now())) return true;
         response.setStatus(402); response.setContentType("application/json");
-        String message = subscription.getPlan()==com.example.demo.base.enums.SubscriptionPlan.FREE
-                ? "Your one-month Free access has ended. An organization administrator can choose a paid plan from Subscription."
-                : "Your organization needs an active subscription. An organization administrator can renew it from Subscription.";
+        String message = "Your organization needs an active subscription. An organization administrator can choose a plan from Subscription.";
         response.getWriter().write("{\"status\":402,\"code\":\"SUBSCRIPTION_REQUIRED\",\"message\":\""+message+"\"}");
         return false;
     }
