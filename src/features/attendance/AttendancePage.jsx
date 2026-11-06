@@ -25,6 +25,7 @@ import SearchInput from '../../components/common/SearchInput'
 import { formatAttendanceTime, formatDate } from '../../utils/formatters'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import api from '../../services/api'
+import IndividualAttendanceModal from './IndividualAttendanceModal'
 
 const TABS = ['Attendance', 'Punches', 'Late / Early Out', 'Overtime']
 
@@ -84,15 +85,16 @@ export default function AttendancePage() {
   // can be one day behind/ahead here, which made the date filter and max date
   // disagree with the records returned by the server around midnight.
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
+  const defaultMonthStart = today.substring(0, 7) + '-01'
   const [filterStatus, setFilterStatus] = useState('')
-  // Keep the values being edited separate from the values sent to the API.
-  // This makes it explicit when the table is showing a date range rather than
-  // silently refetching on every date picker change.
-  const [filterDateFrom, setFilterDateFrom] = useState(today)
+  // Default to current month start and today so all month records are shown immediately
+  const [filterDateFrom, setFilterDateFrom] = useState(defaultMonthStart)
   const [filterDateTo, setFilterDateTo] = useState(today)
-  const [selectedDateFrom, setSelectedDateFrom] = useState(today)
+  const [selectedDateFrom, setSelectedDateFrom] = useState(defaultMonthStart)
   const [selectedDateTo, setSelectedDateTo] = useState(today)
   const [filterDept, setFilterDept] = useState('')
+  const [filterEmployee, setFilterEmployee] = useState('')
+  const [historyModal, setHistoryModal] = useState({ open: false, employeeId: null, employeeName: '', employeeCode: '' })
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [exportModal, setExportModal] = useState(false)
   const [exportMode, setExportMode] = useState('all')
@@ -118,27 +120,28 @@ export default function AttendancePage() {
   useEffect(() => {
     if (!companyId) return
     if (isEmp) {
-      const params = { page: 0, size: 20, isEmp: true }
+      const params = { page: 0, size: 50, isEmp: true }
       if (filterStatus) params.status = filterStatus
       if (filterDateFrom) params.from = filterDateFrom
       if (filterDateTo) params.to = filterDateTo
       dispatch(fetchFullView(params))
     } else {
-      const params = { companyId, page: 0, size: 20 }
+      const params = { companyId, page: 0, size: 50 }
       if (filterStatus) params.status = filterStatus
       if (filterDateFrom) params.from = filterDateFrom
       if (filterDateTo) params.to = filterDateTo
       if (filterDept) params.departmentId = filterDept
+      if (filterEmployee) params.employeeId = filterEmployee
       dispatch(fetchFullView(params))
     }
-  }, [dispatch, companyId, isEmp, filterStatus, filterDateFrom, filterDateTo, filterDept])
+  }, [dispatch, companyId, isEmp, filterStatus, filterDateFrom, filterDateTo, filterDept, filterEmployee])
 
   const applyDateFilter = () => {
-    if (!selectedDateFrom || !selectedDateTo) {
-      toast.error('Select both a From and To date')
+    if (!selectedDateFrom && !selectedDateTo) {
+      toast.error('Select a date to filter')
       return
     }
-    if (selectedDateFrom > selectedDateTo) {
+    if (selectedDateFrom && selectedDateTo && selectedDateFrom > selectedDateTo) {
       toast.error('From date cannot be after To date')
       return
     }
@@ -274,7 +277,33 @@ export default function AttendancePage() {
   }
 
   const attendanceColumns = [
-    { accessorKey: 'employeeName', header: 'Employee' },
+    {
+      accessorKey: 'employeeName',
+      header: 'Employee',
+      cell: ({ row }) => {
+        const name = row.original.employeeName || '—'
+        const empId = row.original.employeeId
+        if (!empId) return <span>{name}</span>
+        return (
+          <button
+            type="button"
+            onClick={() => setHistoryModal({
+              open: true,
+              employeeId: empId,
+              employeeName: name,
+              employeeCode: row.original.employeeBadgeId || '',
+            })}
+            className="text-left font-medium text-indigo-600 hover:text-indigo-900 hover:underline inline-flex items-center gap-1.5 group cursor-pointer"
+            title="Click to view full attendance history"
+          >
+            <span>{name}</span>
+            <svg className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 opacity-70 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        )
+      },
+    },
     { accessorKey: 'companyName', header: 'Branch', cell: ({ getValue }) => getValue() || '—' },
     { accessorKey: 'attendanceDate', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
     { id: 'checkIn', header: 'Check In', cell: ({ row }) => formatAttendanceTime(row.original.checkIn, row.original.checkInUtc) },
@@ -384,22 +413,37 @@ export default function AttendancePage() {
       <LocationLink latitude={row.original.checkOutLatitude} longitude={row.original.checkOutLongitude} address={row.original.checkOutAddress} />
     )},
     { id: 'actions', header: '', cell: ({ row }) => {
-      if (!isEmp) {
-        if (row.original.id) {
-          return <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
-        }
-        const ds = row.original.displayStatus
-        if (ds === 'ABSENT') {
-          return (
+      const empId = row.original.employeeId
+      return (
+        <div className="flex items-center justify-end gap-1.5">
+          {empId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setHistoryModal({
+                open: true,
+                employeeId: empId,
+                employeeName: row.original.employeeName,
+                employeeCode: row.original.employeeBadgeId || '',
+              })}
+              className="text-xs text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50"
+              title="View attendance history"
+            >
+              History
+            </Button>
+          )}
+          {!isEmp && row.original.id && (
+            <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
+          )}
+          {!isEmp && !row.original.id && row.original.displayStatus === 'ABSENT' && (
             <Button size="sm" variant="secondary" onClick={() => {
               setEditTarget(null)
               reset({ employeeId: row.original.employeeId, attendanceDate: row.original.attendanceDate })
               setModalOpen(true)
             }}>+ Record</Button>
-          )
-        }
-      }
-      return null
+          )}
+        </div>
+      )
     }},
   ]
 
@@ -458,6 +502,27 @@ export default function AttendancePage() {
             <SearchInput onSearch={setSearch} className="w-48" />
             {tab === 'Attendance' && (
               <>
+                {!isEmp && employees.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const targetEmp = filterEmployee
+                        ? employees.find(e => String(e.id) === String(filterEmployee)) || employees[0]
+                        : employees[0]
+                      if (targetEmp) {
+                        setHistoryModal({
+                          open: true,
+                          employeeId: targetEmp.id,
+                          employeeName: `${targetEmp.firstName || ''} ${targetEmp.lastName || ''}`.trim(),
+                          employeeCode: targetEmp.badgeId || targetEmp.employeeCode || '',
+                        })
+                      }
+                    }}
+                    title="View individual employee attendance history"
+                  >
+                    Individual History
+                  </Button>
+                )}
                 <Button variant="secondary" onClick={() => setExportModal(true)}>Export Excel</Button>
                 {!isEmp && (
                   <Button onClick={() => { setEditTarget(null); reset({}); setModalOpen(true) }}>+ Record</Button>
@@ -514,25 +579,54 @@ export default function AttendancePage() {
               </select>
             </div>
           )}
+          {!isEmp && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">Employee:</label>
+              <select
+                value={filterEmployee}
+                onChange={e => setFilterEmployee(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 max-w-[200px]"
+              >
+                <option value="">All Employees</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.firstName} {e.lastName || ''} ({e.badgeId || e.employeeCode || `ID:${e.id}`})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <Button size="sm" onClick={applyDateFilter} disabled={loading}>
             Filter
           </Button>
           <span className="self-center text-xs text-gray-500 whitespace-nowrap">
-            Showing: <span className="font-medium text-gray-700">{filterDateFrom} to {filterDateTo}</span>
+            Showing: <span className="font-medium text-gray-700">
+              {filterEmployee && employees.find(e => String(e.id) === String(filterEmployee))
+                ? `${employees.find(e => String(e.id) === String(filterEmployee)).firstName} ${employees.find(e => String(e.id) === String(filterEmployee)).lastName || ''} • `
+                : ''}
+              {filterDateFrom && filterDateTo
+                ? `${filterDateFrom} to ${filterDateTo}`
+                : filterDateFrom
+                  ? `From ${filterDateFrom}`
+                  : filterDateTo
+                    ? `Up to ${filterDateTo}`
+                    : 'All dates'}
+            </span>
           </span>
-          {(filterStatus || filterDateFrom || filterDateTo || filterDept) && (
+          {(filterStatus || filterDept || filterEmployee || filterDateFrom !== defaultMonthStart || filterDateTo !== today || selectedDateFrom !== defaultMonthStart || selectedDateTo !== today) && (
             <button
               onClick={() => {
                 setFilterStatus('')
-                setFilterDateFrom(today)
+                setFilterEmployee('')
+                setFilterDateFrom(defaultMonthStart)
                 setFilterDateTo(today)
-                setSelectedDateFrom(today)
+                setSelectedDateFrom(defaultMonthStart)
                 setSelectedDateTo(today)
                 setFilterDept('')
               }}
-              className="text-xs text-indigo-600 hover:underline ml-1"
+              className="text-xs text-indigo-600 hover:underline ml-1 cursor-pointer"
             >
-              Clear filters
+              Reset filters
             </button>
           )}
         </div>
@@ -551,11 +645,12 @@ export default function AttendancePage() {
         <>
           <DataTable columns={attendanceColumns} data={filteredData} loading={loading} />
           <Pagination page={pagination.page} totalPages={Math.ceil(pagination.total / pagination.size)} onPageChange={p => {
-            const params = { page: p, size: 20, ...(isEmp ? { isEmp: true } : { companyId }) }
+            const params = { page: p, size: 50, ...(isEmp ? { isEmp: true } : { companyId }) }
             if (filterStatus) params.status = filterStatus
             if (filterDateFrom) params.from = filterDateFrom
             if (filterDateTo) params.to = filterDateTo
             if (!isEmp && filterDept) params.departmentId = filterDept
+            if (!isEmp && filterEmployee) params.employeeId = filterEmployee
             // Use the same endpoint and filters as the first page. Previously
             // employee pagination switched to /attendance and dropped dates.
             dispatch(fetchFullView(params))
@@ -851,6 +946,17 @@ export default function AttendancePage() {
           )}
         </div>
       </Modal>
+
+      {/* Individual Attendance History Modal */}
+      <IndividualAttendanceModal
+        open={historyModal.open}
+        onClose={() => setHistoryModal({ open: false, employeeId: null, employeeName: '', employeeCode: '' })}
+        employeeId={historyModal.employeeId}
+        companyId={companyId}
+        employeeName={historyModal.employeeName}
+        employeeCode={historyModal.employeeCode}
+        allEmployees={employees}
+      />
     </div>
   )
 }

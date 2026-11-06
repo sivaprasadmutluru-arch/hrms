@@ -25,10 +25,12 @@ import DocumentsTab from './profile-tabs/DocumentsTab'
 import BonusPointsTab from './profile-tabs/BonusPointsTab'
 import PermissionsTab from './profile-tabs/PermissionsTab'
 import EncashmentConditionTab from './profile-tabs/EncashmentConditionTab'
+import AttendanceTab from './profile-tabs/AttendanceTab'
 
 const TABS = [
   { key: 'about',       label: 'About' },
   { key: 'work-info',   label: 'Work Info' },
+  { key: 'attendance',  label: 'Attendance' },
   { key: 'payroll',     label: 'Payroll' },
   { key: 'bank',        label: 'Bank Details' },
   { key: 'documents',   label: 'Documents' },
@@ -63,7 +65,7 @@ export default function EmployeeDetailPage() {
 
   const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, control, setValue, handleSubmit, reset, formState: { errors } } = useForm()
 
   useEffect(() => {
     setLoading(true)
@@ -146,7 +148,7 @@ export default function EmployeeDetailPage() {
 
   const departmentOptions       = departments.map(d => ({ value: d.id, label: d.name }))
   const jobPositionOptions      = jobPositions.map(p => ({ value: p.id, label: p.name }))
-  const jobRoleOptions          = jobRoles.map(r => ({ value: r.id, label: r.name }))
+  const jobRoleOptions          = jobRoles.map(r => ({ value: r.id, label: r.name, jobPositionId: r.jobPositionId ?? r.jobPosition?.id }))
   const workTypeOptions         = workTypes.map(w => ({ value: w.id, label: w.name }))
   const shiftOptions            = shiftSchedules.map(s => ({ value: s.id, label: s.name }))
   const reportingManagerOptions = employees.map(e => ({ value: e.id, label: e.fullName || e.firstName }))
@@ -383,9 +385,10 @@ export default function EmployeeDetailPage() {
             </div>
 
             {/* Tab content */}
-            <div className="employee-detail-content p-6">
+            <div className="employee-detail-content profile-information p-4 sm:p-6">
               {activeTab === 'about'       && <AboutTab profile={profile} />}
               {activeTab === 'work-info'   && <WorkInfoTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
+              {activeTab === 'attendance'  && <AttendanceTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} profile={profile} />}
               {activeTab === 'payroll'     && <PayrollTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
               {activeTab === 'bank'        && <BankDetailsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
               {activeTab === 'documents'   && <DocumentsTab employeeId={profile.id} companyId={profile.companyId || companyIdParam} />}
@@ -412,6 +415,9 @@ export default function EmployeeDetailPage() {
         >
           <EmployeeFormFields
             register={register}
+          control={control}
+          setValue={setValue}
+          defaultCompanyId={profile?.companyId}
             errors={errors}
             isEdit={true}
             badgeId={profile?.badgeId}
