@@ -112,52 +112,52 @@ export default function PrivacyPolicyPage() {
         <article className="mx-auto w-full max-w-7xl bg-white px-6 py-8 sm:px-10 sm:py-9 lg:px-16">
           <div className="mb-8 max-w-6xl border-b border-slate-200 pb-6 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">
             <p className="text-[17px] font-bold leading-7 text-[#062B74] sm:text-lg">Accrue Technologies is committed to respecting your privacy and protecting your personal information.</p>
-            <p className="mt-3">Accrue Technologies (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) supports employees, users, administrators, and organizations using the Accrue AI Human Resource Management System (&ldquo;HRMS&rdquo;) portal.</p>
-            <p className="mt-3">This Privacy Policy explains what information may be collected, how it may be used and protected, and the choices and rights available when using the Accrue AI HRMS Portal and related services.</p>
+            <p className="mt-3">Accrue Technologies (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;) supports employees, users, administrators, and organizations using the AccrueHRMS portal.</p>
+            <p className="mt-3">This Privacy Policy explains what information is collected, how it is processed and protected, and the choices and rights available when using the AccrueHRMS portal and related services.</p>
             <p className="mt-3">By accessing or using the application, you acknowledge that you have read and understood this Privacy Policy.</p>
           </div>
 
           <SectionTitle number="1" title="Information We Collect" icon={FileLock2} />
-          <p className="mb-6 max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Depending on how the HRMS application is configured and used by your organization, we may collect the following categories of information.</p>
+          <p className="mb-6 max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Depending on the modules and features enabled by your organization, we collect the following categories of information.</p>
 
           <Subsection number="1.1" title="Personal and Employee Information" icon={UserRound}>
-            <p className="mb-3 text-[15px] font-medium text-slate-600 sm:text-base">This may include:</p><BulletGrid items={personalInformation} />
+            <p className="mb-3 text-[15px] font-medium text-slate-600 sm:text-base">This includes:</p><BulletGrid items={personalInformation} />
           </Subsection>
           <Subsection number="1.2" title="Attendance and Work Information" icon={CalendarCheck}>
-            <p className="mb-3 text-[15px] font-medium text-slate-600 sm:text-base">The application may process information relating to:</p><BulletGrid items={workInformation} />
+            <p className="mb-3 text-[15px] font-medium text-slate-600 sm:text-base">The application processes information relating to:</p><BulletGrid items={workInformation} />
           </Subsection>
           <Subsection number="1.3" title="Location Information" icon={MapPin}>
-            <p className="text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Where location-based attendance or workforce management features are enabled by your organization, the application may collect location information during relevant attendance or work-related activities.</p>
-            <div className="my-4 flex gap-3 rounded-2xl bg-blue-50 p-4 text-sm leading-6 text-[#0B3D91] sm:text-base"><LocateFixed className="mt-1 h-6 w-6 shrink-0" />Location information is used for legitimate HR and workforce management purposes, such as verifying attendance at an authorized workplace or work location.</div>
-            <p className="text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">The application does not continuously track your location unless such functionality is specifically enabled, disclosed, and permitted by the applicable configuration and law.</p>
+            <p className="text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Where location-based attendance features are enabled by your organization, the application collects geolocation coordinates exclusively during relevant attendance check-in and check-out punches.</p>
+            <div className="my-4 flex gap-3 rounded-2xl bg-blue-50 p-4 text-sm leading-6 text-[#0B3D91] sm:text-base"><LocateFixed className="mt-1 h-6 w-6 shrink-0" />Location information is used strictly for legitimate HR and workforce management purposes, such as verifying presence within an authorized branch or geofenced workplace.</div>
+            <p className="text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">The application does not continuously track your location. Geolocation capture occurs solely at the moment of punch submission.</p>
           </Subsection>
           <Subsection number="1.4" title="Device and Technical Information" icon={Laptop}>
-            <p className="mb-4 text-slate-600">We may automatically collect certain technical information, including:</p>
+            <p className="mb-4 text-slate-600">We collect technical information required to maintain system stability, security, and performance, including:</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{technicalInformation.map(([label, Icon]) => <div key={label} className="rounded-xl border border-slate-200 p-3 text-center text-xs font-semibold text-slate-700"><Icon className="mx-auto mb-2 h-6 w-6 text-[#1769D1]" />{label}</div>)}</div>
             <p className="mt-4 leading-7 text-slate-700">This information helps us maintain application security, troubleshoot technical issues, and improve application performance.</p>
           </Subsection>
           <Subsection number="1.5" title="Login and Authentication Information" icon={LockKeyhole}>
-            <p className="mb-4 text-slate-600">To provide secure access, we may process:</p>
+            <p className="mb-4 text-slate-600">To provide secure access, we process:</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">{authenticationInformation.map(([label, Icon]) => <div key={label} className="rounded-xl border border-slate-200 p-3 text-center text-xs font-semibold text-slate-700"><Icon className="mx-auto mb-2 h-6 w-6 text-[#0B3D91]" />{label}</div>)}</div>
             <div className="mt-4 flex gap-3 rounded-2xl bg-blue-50 p-4 text-sm text-[#0B3D91]"><ShieldCheck className="h-5 w-5 shrink-0" />Passwords are not stored in plain text, and appropriate security measures are applied to protect authentication information.</div>
           </Subsection>
 
           <div className="my-7 border-t border-slate-200" />
           <SectionTitle number="2" title="How We Use Your Information" icon={Wrench} />
-          <p className="mb-5 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">We may use information collected through the HRMS application to:</p>
+          <p className="mb-5 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">We use information collected through the HRMS application strictly to:</p>
           <div className="grid gap-1.5 sm:grid-cols-2">{uses.map(([label, Icon]) => <div key={label} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-[15px] font-semibold text-slate-600 sm:text-base"><Icon className="h-5 w-5 shrink-0 text-[#1769D1]" />{label}</div>)}</div>
-          <p className="mt-5 font-semibold text-slate-700">We do not use employee information for unrelated purposes without an appropriate legal basis or authorization.</p>
+          <p className="mt-5 font-semibold text-slate-700">We do not sell, rent, or monetize employee information, nor do we use it for unrelated marketing purposes.</p>
 
           <div className="my-7 border-t border-slate-200" />
           <SectionTitle number="3" title="Organization-Controlled Data" icon={Building2} color="text-emerald-700" />
-          <p className="max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Accrue AI HRMS may be provided to organizations, employers, or other authorized entities. Your organization controls what employee information is collected, which HRMS features are enabled, who can access employee information, how employee information is used within the organization, and how long information is retained.</p>
-          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950 sm:text-base">Your employer or organization may therefore have its own privacy policies and internal procedures governing employee information. If you have questions about information collected specifically by your employer, you should also contact your organization&apos;s HR or privacy administrator.</div>
+          <p className="max-w-6xl text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">AccrueHRMS is provided directly to organizations, employers, and authorized enterprise clients. Your organization controls what employee information is collected, which HRMS features are enabled, who can access employee records, how employee data is processed within the organization, and how long information is retained.</p>
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950 sm:text-base">Your employer or organization maintains its own internal privacy policies and employment guidelines governing employee records. For questions about information managed specifically by your employer, contact your organization&apos;s HR or administrative team.</div>
 
           <div className="my-7 border-t border-slate-200" />
           <SectionTitle number="4" title="Location-Based Attendance" icon={MapPin} color="text-violet-700" />
-          <p className="mb-4 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">Some organizations may enable GPS or location-based attendance functionality. Where enabled, location data may be used to:</p>
+          <p className="mb-4 text-[15px] font-medium leading-[1.55] text-slate-600 sm:text-base">When an organization enables GPS or location-based attendance verification, location data is used strictly to:</p>
           <BulletGrid items={['Verify attendance at an approved workplace', 'Confirm check-in or check-out locations', 'Ensure compliance with organizational attendance policies', 'Support workforce operations and safety']} />
-          <div className="mt-5 flex gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-5 text-sm leading-6 text-violet-950 sm:text-base"><ShieldCheck className="h-6 w-6 shrink-0" />Location data is collected only when required for attendance or workforce activities and is not used for continuous tracking without your consent and applicable legal basis.</div>
+          <div className="mt-5 flex gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-5 text-sm leading-6 text-violet-950 sm:text-base"><ShieldCheck className="h-6 w-6 shrink-0" />Location data is recorded exclusively at the moment of clock-in and clock-out punches. The application does not conduct background or continuous tracking.</div>
         </article>
       </main>
 
@@ -166,7 +166,7 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-black">5. Contact Us</h2>
           <p className="mt-2 text-sm text-blue-100">For any questions, concerns, or requests regarding this Privacy Policy or your personal information, please contact us:</p>
           <div className="mt-5 flex flex-col gap-3 text-sm sm:flex-row sm:gap-8">
-            <a href="mailto:sivaprasadmutluru@gmail.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />sivaprasadmutluru@gmail.com</a>
+            <a href="mailto:siva@accruetechnologies.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />siva@accruetechnologies.com</a>
             <a href="tel:+919381934911" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Phone className="h-5 w-5" />9381934911</a>
           </div>
           <p className="mt-7 border-t border-white/15 pt-5 text-xs text-blue-200">© 2026 Accrue Technologies. Your privacy. Our responsibility.</p>

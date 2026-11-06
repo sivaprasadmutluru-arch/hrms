@@ -5,11 +5,15 @@ import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import SecureCarrRoute from './features/carr/SecureCarrRoute'
 
+const WebsiteEnquiriesPage = lazy(() => import('./features/platform/WebsiteEnquiriesPage'))
+const PlatformOperationsPage = lazy(() => import('./features/platform/PlatformOperationsPage'))
 const LoginPage               = lazy(() => import('./features/auth/LoginPage'))
+const CareersPage             = lazy(() => import('./features/recruitment/CareersPage'))
 const ForgotPasswordPage      = lazy(() => import('./features/auth/ForgotPasswordPage'))
 const ForbiddenPage           = lazy(() => import('./features/auth/ForbiddenPage'))
 const SuspendedPage           = lazy(() => import('./features/auth/SuspendedPage'))
 const PrivacyPolicyPage       = lazy(() => import('./features/legal/PrivacyPolicyPage'))
+const TermsAndConditionsPage  = lazy(() => import('./features/legal/TermsAndConditionsPage'))
 const AccountSettingsPage     = lazy(() => import('./features/auth/AccountSettingsPage'))
 const RequiredPasswordChangePage = lazy(() => import('./features/auth/RequiredPasswordChangePage'))
 const GeneralSettingsPage     = lazy(() => import('./features/settings/GeneralSettingsPage'))
@@ -27,6 +31,8 @@ const WorkTypesPage           = lazy(() => import('./features/base/WorkTypesPage
 const ShiftSchedulesPage      = lazy(() => import('./features/base/ShiftSchedulesPage'))
 const AttendancePage          = lazy(() => import('./features/attendance/AttendancePage'))
 const LeavePage               = lazy(() => import('./features/leave/LeavePage'))
+const StaffingPage = lazy(() => import('./features/staffing/StaffingPage'))
+const AccountingPage = lazy(() => import('./features/accounting/AccountingPage'))
 const ContractsPage           = lazy(() => import('./features/payroll/ContractsPage'))
 const PayslipsPage            = lazy(() => import('./features/payroll/PayslipsPage'))
 const PayrollPage             = lazy(() => import('./features/payroll/PayrollPage'))
@@ -81,6 +87,7 @@ const DepartmentManagersPage  = lazy(() => import('./features/helpdesk/Departmen
 const ResignationsPage        = lazy(() => import('./features/offboarding/ResignationsPage'))
 const ExitReasonsPage         = lazy(() => import('./features/offboarding/ExitReasonsPage'))
 const DocumentRequestsPage    = lazy(() => import('./features/documents/DocumentRequestsPage'))
+const LettersPage             = lazy(() => import('./features/documents/LettersPage'))
 const MyDocumentsPage         = lazy(() => import('./features/documents/MyDocumentsPage'))
 const AuditLogPage            = lazy(() => import('./features/audit/AuditLogPage'))
 const AnnouncementsPage       = lazy(() => import('./features/announcements/AnnouncementsPage'))
@@ -139,10 +146,14 @@ export default function App() {
       <Suspense fallback={<div className="min-h-screen bg-white" />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/careers/:slug" element={<CareersPage />} />
+          <Route path="/careers/:slug/:jobId" element={<CareersPage />} />
           <Route path="/change-password-required" element={<RequiredPasswordChangePage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/suspended" element={<SuspendedPage />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+          <Route path="/terms" element={<TermsAndConditionsPage />} />
           <Route path="/carr/login" element={<LoginPage />} />
           <Route path="/carr/*" element={<SecureCarrRoute><ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE']} element={<CarrModulePage />} /></SecureCarrRoute>} />
           <Route path="/" element={<AppLayout />}>
@@ -151,8 +162,12 @@ export default function App() {
           <Route path="forbidden" element={<ForbiddenPage />} />
 
           {/* Platform Super Admin only */}
-          <Route path="organizations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<OrganizationsPage />} />} />
-          <Route path="organizations/:id/subscription" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<SubscriptionPage />} />} />
+          <Route path="organizations" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','PLATFORM_ORGANIZATION_OPERATIONS']} element={<OrganizationsPage />} />} />
+          <Route path="subscription" element={<SubscriptionPage />} />
+          <Route path="organizations/:id/subscription" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','PLATFORM_BILLING']} element={<SubscriptionPage />} />} />
+          <Route path="platform/website-enquiries" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<WebsiteEnquiriesPage />} />} />
+          <Route path="platform/billing" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','PLATFORM_BILLING']} element={<PlatformOperationsPage />} />} />
+          <Route path="platform/support" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','PLATFORM_SUPPORT','ENTERPRISE_ADMIN','CEO','COMPANY_ADMIN','SUPER_ADMIN']} element={<PlatformOperationsPage />} />} />
           <Route path="platform/monitor" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<PlatformMonitorPage />} />} />
 
           {/* Mail Automation — admin + HR */}
@@ -203,6 +218,8 @@ export default function App() {
           <Route path="policies"               element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<PoliciesPage />} />} />
 
           {/* Finance routes */}
+          <Route path="accounting" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','ACCOUNTANT','COMPANY_ADMIN','ACCOUNTS_MANAGER','CEO','SUPER_ADMIN','ACCOUNT_MANAGER','COMPANY_MANAGER']} element={<AccountingPage />} />} />
+          <Route path="accounting/staffing" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','ACCOUNTANT','COMPANY_ADMIN','ACCOUNTS_MANAGER','CEO','SUPER_ADMIN','ACCOUNT_MANAGER','COMPANY_MANAGER']} element={<StaffingPage />} />} />
           <Route path="payroll/payroll"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<PayrollPage />} />} />
           <Route path="payroll/manual"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT']} element={<ManualPayrollPage />} />} />
           <Route path="payroll/automated"      element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<AutomatedPayrollPage />} />} />
@@ -265,6 +282,7 @@ export default function App() {
           <Route path="helpdesk/claims"          element={<ClaimsPage />} />
           <Route path="helpdesk/department-managers" element={<DepartmentManagersPage />} />
           <Route path="documents/requests"       element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DocumentRequestsPage />} />} />
+          <Route path="documents/letters"        element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<LettersPage />} />} />
           <Route path="documents/my"             element={<MyDocumentsPage />} />
           <Route path="audit/logs"               element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<AuditLogPage />} />} />
           <Route path="announcements"            element={<AnnouncementsPage />} />
@@ -284,7 +302,7 @@ export default function App() {
 
           {/* Settings & integrations */}
           <Route path="settings/ldap"           element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<LdapSettingsPage />} />} />
-          <Route path="settings/backup"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<BackupPage />} />} />
+          <Route path="settings/backup"         element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<BackupPage />} />} />
           <Route path="settings/outlook-auth"   element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<OutlookAuthPage />} />} />
           <Route path="settings/accessibility"  element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN']} element={<AccessibilityPage />} />} />
           <Route path="settings/dynamic-fields" element={<ProtectedRoute roles={['PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER']} element={<DynamicFieldsPage />} />} />
