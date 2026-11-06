@@ -1,11 +1,12 @@
 package com.example.demo.base.enums;
 
 /**
- * Subscription tiers for client organizations on the Prabha Tech platform.
+ * Subscription tiers for client organizations on the AccrueHr platform.
  * Enforced at branch creation, employee creation, and cross-branch access grant.
  */
 public enum SubscriptionPlan {
 
+    FREE(1, 15, false),
     BASIC(2, 50, false),
     STANDARD(5, 200, true),
     ENTERPRISE(Integer.MAX_VALUE, Integer.MAX_VALUE, true);

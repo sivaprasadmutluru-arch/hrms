@@ -20,7 +20,7 @@ class BillingRestorationUsageTest {
     }
     @Test void prospectiveEmployeeBoundaryAndPreviousAgreementCapacityAreEnforced() {
         var usage=spy(new BillingUsage(mock(JdbcTemplate.class)));
-        doReturn(Map.of("currentEmployees",20L,"currentBranches",1L)).when(usage).forOrganizationIncluding(1L,SubscriptionPlan.FREE,List.of(11L));
+        doReturn(Map.of("currentEmployees",15L,"currentBranches",1L)).when(usage).forOrganizationIncluding(1L,SubscriptionPlan.FREE,List.of(11L));
         assertThatCode(() -> usage.validateRestoration(1L,SubscriptionPlan.FREE,List.of(11L),null)).doesNotThrowAnyException();
         assertThatThrownBy(() -> usage.validateRestoration(1L,SubscriptionPlan.FREE,List.of(11L),10)).isInstanceOf(BillingFailure.class);
     }

@@ -78,7 +78,7 @@ class FreeActivationTest {
         f.config.getPrices().remove("free-monthly"); f.config.getPrices().remove("free-yearly");
         assertThat(f.config.configured()).isTrue();
         assertThat(BillingCatalog.entries()).hasSize(4);
-        assertThat(SubscriptionPlan.FREE.getMaxEmployees()).isEqualTo(20);
+        assertThat(SubscriptionPlan.FREE.getMaxEmployees()).isEqualTo(15);
         assertThat(BillingCatalog.plan(SubscriptionPlan.FREE).monthlyAmountMinor()).isZero();
     }
 }

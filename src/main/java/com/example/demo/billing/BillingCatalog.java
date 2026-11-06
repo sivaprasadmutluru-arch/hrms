@@ -8,7 +8,7 @@ public final class BillingCatalog {
         public long amount(BillingCycle cycle) { return cycle==BillingCycle.YEARLY ? yearlyAmountMinor : monthlyAmountMinor; }
     }
     public static List<Plan> entries() { return List.of(
-        new Plan(SubscriptionPlan.FREE,"Free",0,0,1,20,false),
+        new Plan(SubscriptionPlan.FREE,"Free",0,0,1,15,false),
         new Plan(SubscriptionPlan.BASIC,"Basic",99900,999000,2,50,false),
         new Plan(SubscriptionPlan.STANDARD,"Standard",299900,2999000,5,200,true),
         new Plan(SubscriptionPlan.ENTERPRISE,"Enterprise",699900,6999000,null,null,true)); }
