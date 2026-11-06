@@ -10,7 +10,7 @@ import Button from '../../components/common/Button'
 import './SubscriptionPage.css'
 
 const COPY = {
-  FREE: { description: 'Free starter plan for micro teams and early startups.', features: ['Up to 20 active employees', '1 branch included', 'Employee records & directory', 'Attendance & leave tracking', 'Basic payslip generation', 'Free starter · No credit card required'] },
+  FREE: { description: 'Free starter plan for micro teams and early startups.', features: ['Up to 15 active employees', '1 branch included', 'Employee records & directory', 'Attendance & leave tracking', 'Basic payslip generation', 'Free starter · No credit card required'] },
   BASIC: { description: 'Essential compliance and payroll for growing teams.', features: ['Up to 50 employees', '2 branches included', 'India Statutory Payroll (PF, ESI, PT, TDS)', 'Biometric & web attendance integration', 'Document & letter generation', 'Salary register & accounting ledger'] },
   STANDARD: { description: 'Multi-branch operations and advanced workforce management.', features: ['Up to 200 employees', '5 branches included', 'Everything in Basic', 'Cross-branch admin access', 'Department rosters & rotating shifts', 'Statutory compliance review & audit logs'] },
   ENTERPRISE: { description: 'Full-scale platform for unlimited growth and customization.', features: ['Unlimited employees & branches', 'Everything in Standard', 'Custom roles & granular permissions', 'Multi-entity accounting & consolidation', 'Priority onboarding & dedicated support'] },
@@ -160,9 +160,9 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
 
     {ready && <section className="billing-summary" aria-label="Subscription dates and renewal">
       <div className="billing-summary-title"><div><span className="pricing-section-label">YOUR SUBSCRIPTION</span><h2>{snapshot.organizationName}</h2></div><span className={`billing-status ${snapshot.accessAllowed ? 'is-active' : 'is-inactive'}`}>{snapshot.status.replaceAll('_', ' ')}</span></div>
-      {snapshot.legacyAccess && <p className="billing-notice">Your organization has legacy access with no subscription selected. Choose one month of Free access for up to 20 active employees, or a monthly or yearly paid plan below. Start and expiry dates are recorded when the plan is activated; legacy access continues until then.</p>}
-      {!snapshot.accessAllowed && <p className="pricing-error">{snapshot.plan === 'FREE' ? 'Your one-month Free access has ended. Choose a paid plan to continue using this organization’s workspace.' : snapshot.status === 'PAST_DUE' || snapshot.status === 'UNPAID' ? 'Payment is overdue. Open the Razorpay payment link or contact support to update your payment method.' : 'An active paid subscription is required to use this organization’s workspace.'}</p>}
-      {snapshot.plan === 'FREE' && !snapshot.legacyAccess && <p className="billing-notice">Free plan · up to 20 active employees and 1 branch until {billingDate(snapshot.paidUntil)}. It does not renew or charge automatically. Choose a paid plan to continue afterward.</p>}
+      {snapshot.legacyAccess && <p className="billing-notice">Your organization has legacy access with no subscription selected. Choose Free access for up to 15 active employees, or a monthly or yearly paid plan below. Start and expiry dates are recorded when the plan is activated; legacy access continues until then.</p>}
+      {!snapshot.accessAllowed && <p className="pricing-error">{snapshot.plan === 'FREE' ? 'Your Free access has ended. Choose a paid plan to continue using this organization’s workspace.' : snapshot.status === 'PAST_DUE' || snapshot.status === 'UNPAID' ? 'Payment is overdue. Open the Razorpay payment link or contact support to update your payment method.' : 'An active paid subscription is required to use this organization’s workspace.'}</p>}
+      {snapshot.plan === 'FREE' && !snapshot.legacyAccess && <p className="billing-notice">Free plan · up to 15 active employees and 1 branch. Upgrade anytime to unlock additional capacity and features.</p>}
       {snapshot.manualAccess && <p className="billing-notice">Manual access · no payment collected. Renew manually before access expires; no automatic charges.</p>}
       {snapshot.cancelAtPeriodEnd && !snapshot.manualAccess && <p className="billing-notice">Renewal is cancelled. Paid access continues until {date(snapshot.paidUntil)}.</p>}
       {snapshot.syncWarning && <p className="billing-notice">The last Razorpay synchronization failed. Refresh billing or contact the platform administrator.</p>}
@@ -188,7 +188,7 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
           <p className="pricing-description">{plan.description}</p>
           <div className="pricing-price"><strong>{money(yearly ? Math.round(amount / 12) : amount)}</strong><span>{plan.id === 'FREE' ? '/ free starter' : yearly ? '/ mo (billed yearly)' : '/ month'}</span></div>
           {plan.id !== 'FREE' && <p className="mt-0.5 text-xs text-slate-500 font-medium">+ 18% GST applicable</p>}
-          <p className="pricing-cadence">{plan.id === 'FREE' ? 'Free starter plan · up to 20 employees · no card needed' : yearly ? `${money(amount)} billed yearly (Save 2 months) + GST` : 'Fixed package, billed monthly + GST'}</p>
+          <p className="pricing-cadence">{plan.id === 'FREE' ? 'Free starter plan · up to 15 employees · no card needed' : yearly ? `${money(amount)} billed yearly (Save 2 months) + GST` : 'Fixed package, billed monthly + GST'}</p>
           <button className="pricing-plan-button" type="button" disabled={!ready || (plan.id !== 'FREE' && !catalog.checkoutAvailable && !manual) || freeUsed || exceedsUsage || saving || snapshot?.hasPaidSubscription}
             onClick={() => !snapshot.hasPaidSubscription && setPendingPlan({ ...plan, requestId: crypto.randomUUID() })}>{freeUsed ? current && snapshot.accessAllowed ? 'Current plan' : 'Free month already used' : exceedsUsage ? 'Current usage exceeds this plan' : snapshot?.hasPaidSubscription ? 'Current subscription active' : plan.id === 'FREE' ? 'Choose Free' : manual ? `${current && snapshot?.cycle === (yearly ? 'YEARLY' : 'MONTHLY') ? 'Renew' : 'Activate'} ${plan.name}` : `Checkout ${plan.name}`}<ArrowRight size={16} /></button>
           <div className="pricing-features-heading">{plan.id === 'FREE' ? 'Your team’s first workspace' : plan.id === 'BASIC' ? 'The essentials, together' : plan.id === 'STANDARD' ? 'Space to do more' : 'Room for every team'}</div>
@@ -268,12 +268,12 @@ function CompanySubscription({ companyId, organizationId, companyName }) {
           {isFree && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-lg font-semibold text-emerald-900">₹0 · Free Starter Plan</p>
-              <p className="text-xs text-emerald-700 mt-1">Up to 20 active employees and 1 branch included. No credit card or payment required.</p>
+              <p className="text-xs text-emerald-700 mt-1">Up to 15 active employees and 1 branch included. No credit card or payment required.</p>
             </div>
           )}
           <p className="text-xs text-slate-500">
             {pendingPlan?.id === 'FREE'
-              ? 'Activate the Free plan for up to 20 active employees and 1 branch. Upgrade anytime to unlock statutory payroll, biometric attendance, and additional capacity.'
+              ? 'Activate the Free plan for up to 15 active employees and 1 branch. Upgrade anytime to unlock statutory payroll, biometric attendance, and additional capacity.'
               : manual
                 ? `Activate ${yearly ? 'one year' : 'one month'} of manual access. Renewing extends current expiry. This action is recorded against your admin account.`
                 : 'You will be redirected to Razorpay to complete your payment securely. Razorpay supports UPI, NetBanking, Credit/Debit cards and EMI. A GST-compliant invoice is generated upon payment.'}
