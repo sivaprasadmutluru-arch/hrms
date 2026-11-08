@@ -351,7 +351,9 @@ public class EmployeeService {
                             "companyName", company.getName(),
                             "username", saved.getUser().getUsername(),
                             "loginUrl", emailService.loginUrl(),
-                            "passwordResetUrl", emailService.passwordResetUrl()), saved);
+                            "passwordResetUrl", emailService.passwordResetUrl(),
+                            "termsUrl", emailService.termsUrl(),
+                            "privacyUrl", emailService.privacyUrl()), saved);
         }
         log.info("[create] done for employee id={}", saved.getId());
         return responseWithManager(saved, contract);

@@ -41,6 +41,7 @@ public class TenantProvisioningService {
     private final UserRepository userRepository;
     private final EmployeeRepository employeeRepository;
     private final SchemaProvisioningService schemaProvisioningService;
+    private final com.example.demo.base.service.StandardCompanySetup standardCompanySetup;
     private final EmailService emailService;
 
     @org.springframework.context.annotation.Lazy
@@ -142,6 +143,7 @@ public class TenantProvisioningService {
             }
 
             schemaProvisioningService.provisionSchema(company.getSchemaName());
+            standardCompanySetup.ensureTree(company.getId());
             self.createInitialAdminEmployee(jobId, company.getSchemaName());
             self.complete(jobId);
             notifyAccountReady(jobId, company.getSchemaName());
@@ -163,7 +165,8 @@ public class TenantProvisioningService {
             emailService.sendFromTemplate(company.getId(), EmailService.ACCOUNT_READY_TEMPLATE, user.getEmail(),
                     java.util.Map.of("recipientName", user.getFirstName() == null ? "there" : user.getFirstName(),
                             "companyName", company.getName(), "username", user.getUsername(),
-                            "loginUrl", "https://grecha.ai/login", "passwordResetUrl", "https://grecha.ai/forgot-password"), null);
+                            "loginUrl", emailService.loginUrl(), "passwordResetUrl", emailService.passwordResetUrl(),
+                            "termsUrl", emailService.termsUrl(), "privacyUrl", emailService.privacyUrl()), null);
         } catch (Exception e) {
             log.warn("[TenantProvisioning] Account-ready email could not be sent for job {}: {}", jobId, e.getMessage());
         } finally {
