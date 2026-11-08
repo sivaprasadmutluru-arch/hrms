@@ -407,6 +407,41 @@ export default function OrganizationsPage() {
                 maxLength: { value: 100, message: 'Administrator password must be at most 100 characters' },
                 validate: value => !!value?.trim() || 'Admin password is required',
               })} />
+
+              <div className="pt-2">
+                <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#286CB2] focus:ring-[#286CB2]"
+                    {...register('agreeTerms', {
+                      required: 'You must acknowledge and accept the Terms & Conditions and Privacy Policy to create an organization',
+                    })}
+                  />
+                  <span>
+                    I confirm that this organization and its administrators agree to the{' '}
+                    <a
+                      href="/terms-and-conditions"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-[#286CB2] underline hover:text-[#173858]"
+                    >
+                      Terms and Conditions
+                    </a>{' '}
+                    and{' '}
+                    <a
+                      href="/privacy-policy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-[#286CB2] underline hover:text-[#173858]"
+                    >
+                      Privacy Policy
+                    </a>.
+                  </span>
+                </label>
+                {errors.agreeTerms && (
+                  <p className="mt-1 text-xs text-red-600">{errors.agreeTerms.message}</p>
+                )}
+              </div>
             </>
           )}
         </fieldset>

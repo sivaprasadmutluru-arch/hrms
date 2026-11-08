@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, memo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
 import {
@@ -19,6 +19,7 @@ import WelcomeHeader from '../../components/common/WelcomeHeader'
 import Badge from '../../components/common/Badge'
 import Spinner from '../../components/common/Spinner'
 import Avatar from '../../components/common/Avatar'
+import GettingStartedChecklist from '../../components/common/GettingStartedChecklist'
 import { fetchAll as fetchLeave, fetchHolidays } from '../leave/leaveSlice'
 import { fetchAll as fetchTickets } from '../helpdesk/helpdeskSlice'
 import { fetchAll as fetchOrganizations } from '../organizations/organizationsSlice'
@@ -32,7 +33,24 @@ import { fetchAll as fetchNotifications, markAllRead as markAllNotificationsRead
 import { formatAttendanceTime, formatDate } from '../../utils/formatters'
 import { STATUS_COLORS } from '../../config/constants'
 import useAuth from '../../hooks/useAuth'
+import api from '../../services/api'
 import { useLocationPermission } from '../../hooks/useLocationPermission'
+
+const dashboardDestinations = {
+  'Active Organizations': '/organizations',
+  'Total Employees': '/employees', 'Active Employees': '/employees', 'Inactive Employees': '/employees', 'Team Employees': '/employees',
+  'Pending Leaves': '/leave', 'Pending Leave Approvals': '/leave',
+  'Open Tickets': '/helpdesk', 'Branch Companies': '/companies', 'Departments': '/departments',
+  'Finance Overview': '/payroll/dashboard',
+}
+function DashboardStatCard(props) {
+  const auth = useAuth()
+  let to = dashboardDestinations[props.title]
+  if (['/employees', '/departments'].includes(to) && !auth.hasRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')) to = undefined
+  if (to === '/companies' && !auth.hasRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN')) to = undefined
+  if (to && !auth.canAccessPath(to)) to = undefined
+  return <StatCard {...props} to={to} />
+}
 
 // ─── Attendance calendar helpers (used inline on dashboard) ───────────────────
 const CAL_DAY_TYPE = {
@@ -265,20 +283,20 @@ function PlatformAdminSummary({ organizations, headcount, leave, helpdesk }) {
 
   return (
     <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard title="Active Organizations" value={activeOrgs.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
-      <StatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="emerald" />
-      <StatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-      <StatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
+      <DashboardStatCard title="Active Organizations" value={activeOrgs.length || '—'} icon={BuildingOffice2Icon} color="indigo" />
+      <DashboardStatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="emerald" />
+      <DashboardStatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+      <DashboardStatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
     </div>
   )
 }
 
-const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branchSummaryList, headcount, leave, attendanceReport, helpdesk, companies }) {
+const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branchSummaryList, headcount, leave, attendanceReport, helpdesk, companies, departmentCount }) {
   const pendingLeaves = useMemo(() => (leave.data || []).filter(l => l.status === 'PENDING'), [leave.data])
   const openTickets = useMemo(() => (helpdesk.data || []).filter(t => t.status === 'OPEN'), [helpdesk.data])
 
   const deptData = useMemo(() => (headcount?.departmentBreakdown || []).map(d => ({
-    name: d.department?.length > 12 ? d.department.slice(0, 12) + '…' : d.department,
+    name: (d.department || d.name || d.dept || 'Unassigned').length > 12 ? (d.department || d.name || d.dept).slice(0, 12) + '…' : (d.department || d.name || d.dept || 'Unassigned'),
     count: d.count,
   })), [headcount?.departmentBreakdown])
 
@@ -291,22 +309,22 @@ const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branch
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="indigo" />
-        <StatCard title="Active Employees" value={headcount?.active ?? '—'} icon={CheckCircleIcon} color="emerald" />
-        <StatCard title="Inactive Employees" value={headcount?.inactive ?? '—'} icon={XCircleIcon} color="red" />
-        <StatCard title="Branch Companies" value={branchSummaryList.length} icon={BuildingOffice2Icon} color="violet" />
+        <DashboardStatCard title="Total Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="indigo" />
+        <DashboardStatCard title="Active Employees" value={headcount?.active ?? '—'} icon={CheckCircleIcon} color="emerald" />
+        <DashboardStatCard title="Inactive Employees" value={headcount?.inactive ?? '—'} icon={XCircleIcon} color="red" />
+        <DashboardStatCard title="Branch Companies" value={branchSummaryList.length} icon={BuildingOffice2Icon} color="violet" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-        <StatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
-        <StatCard title="Departments" value={deptData.length || '—'} icon={UserGroupIcon} color="emerald" />
+        <DashboardStatCard title="Pending Leaves" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+        <DashboardStatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
+        <DashboardStatCard title="Departments" value={departmentCount ?? '—'} icon={UserGroupIcon} color="emerald" />
       </div>
 
       {/* Branch table */}
       <Card className="mb-6">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">
-          Branch Companies <span className="text-gray-400 font-normal">({branchSummaryList.length}/5)</span>
+          Branch Companies <span className="text-gray-400 font-normal">({branchSummaryList.length})</span>
         </h3>
         {companies?.loading ? <Spinner size="sm" /> : (
           <div className="overflow-x-auto">
@@ -420,12 +438,12 @@ const EnterpriseAdminDashboard = memo(function EnterpriseAdminDashboard({ branch
   )
 })
 
-const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanceDashboard, attendanceReport, leave, helpdesk, user }) {
+const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanceDashboard, attendanceReport, leave, helpdesk, user, departmentCount }) {
   const pendingLeaves = useMemo(() => (leave.data || []).filter(l => l.status === 'PENDING'), [leave.data])
   const openTickets = useMemo(() => (helpdesk.data || []).filter(t => t.status === 'OPEN'), [helpdesk.data])
 
   const deptData = useMemo(() => (headcount?.departmentBreakdown || []).map(d => ({
-    name: d.department?.length > 14 ? d.department.slice(0, 14) + '…' : d.department,
+    name: (d.department || d.name || d.dept || 'Unassigned').length > 14 ? (d.department || d.name || d.dept).slice(0, 14) + '…' : (d.department || d.name || d.dept || 'Unassigned'),
     count: d.count,
   })), [headcount?.departmentBreakdown])
 
@@ -446,17 +464,17 @@ const BranchHRDashboard = memo(function BranchHRDashboard({ headcount, attendanc
     <>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {todayStats.map(s => (
-          <div key={s.label} className={`${s.bg} rounded-xl p-4 border border-white shadow-sm`}>
+          <Link key={s.label} to={s.label.includes("Employees") ? "/employees" : "/attendance"} aria-label={`View ${s.label}`} className={`${s.bg} block rounded-xl p-4 border border-white shadow-sm hover:shadow-md focus-visible:outline-2 focus-visible:outline-blue-600`}>
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
             <div className="text-xs text-gray-500 mt-1 font-medium">{s.label}</div>
-          </div>
+          </Link>
         ))}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-        <StatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
-        <StatCard title="Departments" value={deptData.length || '—'} icon={ChartBarIcon} color="violet" />
+        <DashboardStatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+        <DashboardStatCard title="Open Tickets" value={openTickets.length} icon={TicketIcon} color="red" />
+        <DashboardStatCard title="Departments" value={departmentCount ?? '—'} icon={ChartBarIcon} color="violet" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -543,9 +561,9 @@ function AccountantDashboard({ leave, helpdesk }) {
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-        <StatCard title="Open Tickets" value={(helpdesk.data || []).filter(t => t.status === 'OPEN').length} icon={TicketIcon} color="red" />
-        <StatCard title="Finance Overview" value="—" icon={BanknotesIcon} color="emerald" />
+        <DashboardStatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+        <DashboardStatCard title="Open Tickets" value={(helpdesk.data || []).filter(t => t.status === 'OPEN').length} icon={TicketIcon} color="red" />
+        <DashboardStatCard title="Finance Overview" value="—" icon={BanknotesIcon} color="emerald" />
       </div>
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Leave Requests</h3>
@@ -578,9 +596,9 @@ function DeptManagerDashboard({ leave, headcount }) {
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Team Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="indigo" />
-        <StatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
-        <StatCard title="Active Employees" value={headcount?.active ?? '—'} icon={CheckCircleIcon} color="emerald" />
+        <DashboardStatCard title="Team Employees" value={headcount?.total ?? '—'} icon={UsersIcon} color="indigo" />
+        <DashboardStatCard title="Pending Leave Approvals" value={pendingLeaves.length} icon={CalendarDaysIcon} color="amber" />
+        <DashboardStatCard title="Active Employees" value={headcount?.active ?? '—'} icon={CheckCircleIcon} color="emerald" />
       </div>
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Pending Leave Requests</h3>
@@ -657,7 +675,7 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
       {/* Attendance Calendar */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-indigo-700">Attendance Calendar</h3>
+          <h3 className="text-base font-bold text-indigo-700"><Link to="/attendance/calendar" className="hover:underline">Attendance Calendar</Link></h3>
           <div className="flex items-center gap-1">
             <button onClick={prevMonth} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
               <ChevronLeftIcon className="h-3.5 w-3.5 text-gray-500" />
@@ -717,19 +735,19 @@ function PersonalAttendanceSection({ attendanceDashboard }) {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="text-base font-bold text-indigo-700 mb-4">Quick Actions</h3>
         <div className="space-y-3">
-          <a href="/payroll/payslips" className="flex items-center justify-center w-full border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-colors">
+          <Link to="/payroll/payslips" className="flex items-center justify-center w-full border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-colors">
             Download Payslip
-          </a>
-          <a href="/leave" className="flex items-center justify-center w-full border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-colors">
+          </Link>
+          <Link to="/leave" className="flex items-center justify-center w-full border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-colors">
             Apply Leave
-          </a>
+          </Link>
         </div>
       </div>
 
       {/* Notifications */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-indigo-700">Notifications</h3>
+          <h3 className="text-base font-bold text-indigo-700"><Link to="/notifications" className="hover:underline">Notifications</Link></h3>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <button
               onClick={() => dispatch(markAllNotificationsRead())}
@@ -798,6 +816,20 @@ export default function DashboardPage() {
   const isManagerTier = isSuperAdmin || isEntAdmin || isBranchMgr || isHR || isAcc || isDeptMgr
 
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const enterpriseBranchFilter = useSelector(s => s.auth.enterpriseBranchFilter)
+  const departmentScopeKey = `${selectedCompanyId || 'all'}:${effectiveCompanyId || 'all'}:${enterpriseBranchFilter || 'all'}`
+  const [departmentSummary, setDepartmentSummary] = useState(null)
+  const departmentCount = departmentSummary?.scope === departmentScopeKey ? departmentSummary.count : null
+  useEffect(() => {
+    if (!(isSuperAdmin || isEntAdmin || isBranchMgr || isHR)) return
+    let active = true
+    setDepartmentSummary(null)
+    api.get('/departments').then(({ data }) => {
+      if (active) setDepartmentSummary({ scope: departmentScopeKey, count: data.length })
+    }).catch(() => { if (active) setDepartmentSummary(null) })
+    return () => { active = false }
+  }, [departmentScopeKey, isSuperAdmin, isEntAdmin, isBranchMgr, isHR])
+
   const isSuperAdminViewingCompany = isSuperAdmin && !!selectedCompanyId
 
   // If the selected company is a branch, resolve to its parent head office for branch-summary calls
@@ -865,6 +897,12 @@ export default function DashboardPage() {
           helpdesk={helpdesk}
         />
       )}
+
+      {/* Zoho-style Getting Started Checklist for organization admins */}
+      {!user?.quickStartTourCompleted && (isSuperAdmin || isEntAdmin || isBranchMgr || isHR) && (
+        <GettingStartedChecklist />
+      )}
+
       {/* Welcome + Check-in side by side */}
       <div className="flex flex-col xl:flex-row items-stretch gap-4 mb-6">
         <div className="flex-1 flex"><WelcomeHeader /></div>
@@ -877,6 +915,7 @@ export default function DashboardPage() {
       {/* Role-specific content */}
       {isSuperAdminViewingCompany && (
         <EnterpriseAdminDashboard
+          departmentCount={departmentCount}
           branchSummaryList={branchSummaryList}
           headcount={headcount}
           leave={leave}
@@ -886,8 +925,9 @@ export default function DashboardPage() {
         />
       )}
 
-      {isEntAdmin && (
+      {isEntAdmin && !isSuperAdmin && (
         <EnterpriseAdminDashboard
+          departmentCount={departmentCount}
           branchSummaryList={branchSummaryList}
           headcount={headcount}
           leave={leave}
@@ -897,8 +937,9 @@ export default function DashboardPage() {
         />
       )}
 
-      {(isBranchMgr || isHR) && (
+      {!isSuperAdmin && !isEntAdmin && (isBranchMgr || isHR) && (
         <BranchHRDashboard
+          departmentCount={departmentCount}
           headcount={employeeDashboard || headcount}
           attendanceDashboard={attendanceDashboard}
           attendanceReport={attendanceReport}
@@ -908,11 +949,11 @@ export default function DashboardPage() {
         />
       )}
 
-      {isAcc && (
+      {!isSuperAdmin && !isEntAdmin && !isBranchMgr && !isHR && isAcc && (
         <AccountantDashboard leave={leave} helpdesk={helpdesk} />
       )}
 
-      {isDeptMgr && (
+      {!isSuperAdmin && !isEntAdmin && !isBranchMgr && !isHR && !isAcc && isDeptMgr && (
         <DeptManagerDashboard leave={leave} headcount={employeeDashboard || headcount} />
       )}
     </div>

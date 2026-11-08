@@ -60,7 +60,12 @@ export const login = createAsyncThunk('auth/login', async (credentials, { reject
     const res = await api.post('/auth/login', credentials)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Login failed')
+    if (err.response?.status === 401 && err.response?.data?.code === 'ACCOUNT_ON_HOLD') return rejectWithValue('Your account is on hold. Please contact HR.')
+    if (err.response?.status === 401) return rejectWithValue('Incorrect username or password. Please try again.')
+    if (!err.response) return rejectWithValue('Unable to connect. Check your internet connection and try again.')
+    if (err.response.status >= 500) return rejectWithValue('Sign-in is temporarily unavailable. Please try again shortly.')
+    if (err.response.status === 429) return rejectWithValue('Too many sign-in attempts. Please wait and try again.')
+    return rejectWithValue(err.response?.data?.message || 'Unable to sign in. Please try again.')
   }
 })
 
@@ -79,6 +84,13 @@ const authSlice = createSlice({
     error: null,
   },
   reducers: {
+    clearLoginError: state => { state.error = null },
+    setTourCompleted: (state) => {
+      if (state.user) {
+        state.user = { ...state.user, quickStartTourCompleted: true }
+        localStorage.setItem('user', JSON.stringify(state.user))
+      }
+    },
     setSelectedCompany: (state, action) => {
       state.selectedCompanyId = action.payload
       if (action.payload) {
@@ -125,12 +137,12 @@ const authSlice = createSlice({
         localStorage.removeItem('selectedCompanyId')
         localStorage.removeItem('enterpriseBranchFilter')
         state.loading = false
-        state.user = action.payload
+        state.user = { ...action.payload, loginCompanyId: action.payload.companyId }
         state.roles = action.payload.roles || []
         state.token = action.payload.token
         state.isAuthenticated = true
         localStorage.setItem('token', action.payload.token)
-        localStorage.setItem('user', JSON.stringify(action.payload))
+        localStorage.setItem('user', JSON.stringify(state.user))
         localStorage.setItem('roles', JSON.stringify(action.payload.roles || []))
       })
       .addCase(login.rejected, (state, action) => { state.loading = false; state.error = action.payload })
@@ -154,6 +166,9 @@ const authSlice = createSlice({
         // Merge companyId, companyName, organizationId and employeeId into user object if backend returns them
         if (state.user) {
           const updates = {}
+          for (const key of ['permissions', 'positionAccess', 'accessScope', 'canManagePositionAccess', 'name', 'lastName', 'quickStartTourCompleted']) {
+            if (action.payload[key] !== undefined) updates[key] = action.payload[key]
+          }
           if (action.payload.companyId !== undefined) updates.companyId = action.payload.companyId
           if (action.payload.companyName !== undefined) updates.companyName = action.payload.companyName
           if (action.payload.organizationId !== undefined) updates.organizationId = action.payload.organizationId
@@ -172,7 +187,7 @@ const authSlice = createSlice({
   },
 })
 
-export const { setCredentials, logout, setSelectedCompany, setEnterpriseBranchFilter } = authSlice.actions
+export const { setCredentials, logout, setSelectedCompany, setEnterpriseBranchFilter, clearLoginError, setTourCompleted } = authSlice.actions
 export const selectAuth = (state) => state.auth
 export const selectUser = (state) => state.auth.user
 export const selectRoles = (state) => state.auth.roles?.length ? state.auth.roles : (state.auth.user?.roles || [])
