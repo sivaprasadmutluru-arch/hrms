@@ -1615,17 +1615,17 @@ public class PayrollController {
             try { phd = new ObjectMapper().readValue(p.getPayHeadData(), new TypeReference<>() {}); } catch (Exception ignored) {}
         }
 
-        // Use ISO currency code as prefix (e.g. "AED 39,612.90") matching screen display
+        // Use ISO currency code as prefix (e.g. "INR 15,000.00") matching screen display
         String _isoCode = (p.getCompany() != null && p.getCompany().getCurrency() != null)
-                ? p.getCompany().getCurrency() : "";
-        final String currSym = _isoCode.isBlank() ? "" : _isoCode + " ";
+                ? p.getCompany().getCurrency() : "INR";
+        final String currSym = _isoCode.isBlank() ? "INR " : _isoCode + " ";
         final boolean currPrefix = true;
         java.util.function.Function<Double, String> fmtCurr = v -> {
-            String n = String.format("%.2f", v);
+            String n = String.format("%,.2f", v);
             return currPrefix ? currSym + n : n + currSym;
         };
         java.util.function.Function<java.math.BigDecimal, String> fmtCurrBD = v -> {
-            String n = v != null ? v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() : "0.00";
+            String n = v != null ? String.format("%,.2f", v.doubleValue()) : "0.00";
             return currPrefix ? currSym + n : n + currSym;
         };
 
@@ -1701,9 +1701,8 @@ public class PayrollController {
         rulCell.setBorderColorBottom(INDIGO_B); rulCell.setBorderWidthBottom(1f);
         rulCell.setPaddingBottom(0f); rulCell.setFixedHeight(1f); rule.addCell(rulCell); doc.add(rule);
 
-        // Summary cards (5 cards)
-        PdfPTable cards = new PdfPTable(5); cards.setWidthPercentage(100); cards.setSpacingAfter(14f);
-        double paidDays = toDouble(phd.getOrDefault("paid_days", 0));
+        // Summary cards (4 cards)
+        PdfPTable cards = new PdfPTable(4); cards.setWidthPercentage(100); cards.setSpacingAfter(14f);
         String payStatus = p.getStatus() != null ? switch (p.getStatus()) {
             case DRAFT           -> "Draft";
             case REVIEW_ONGOING  -> "Pending";
@@ -1714,7 +1713,6 @@ public class PayrollController {
             {"Net Salary",       fmtCurrBD.apply(p.getNetPay())},
             {"Gross Salary",     fmtCurrBD.apply(p.getGrossPay())},
             {"Total Deductions", fmtCurrBD.apply(p.getDeduction())},
-            {"Paid Days",        String.format("%.2f", paidDays)},
             {"Payment Status",   payStatus},
         };
         for (String[] cd : cardData) {
@@ -1747,60 +1745,8 @@ public class PayrollController {
         empBox.addCell(row2Wrapper);
         doc.add(empBox);
 
-        // ── Attendance Summary ────────────────────────────────────────────────
-        long calDays     = toLong(phd.getOrDefault("total_calendar_days", 0));
-        long wrkDays     = toLong(phd.getOrDefault("working_days", 0));
-        long presDays    = toLong(phd.getOrDefault("present_days", 0));
-        long absDays     = toLong(phd.getOrDefault("absent_days", 0));
-        double pldDays   = toDouble(phd.getOrDefault("paid_leave_days", 0));
-        double unpaidD   = toDouble(phd.getOrDefault("unpaid_days", 0));
-        long lateD       = toLong(phd.getOrDefault("late_coming_days", 0));
-        long earlyD      = toLong(phd.getOrDefault("early_leaving_days", 0));
-        double otHrs     = toDouble(phd.getOrDefault("overtime_hours", toDouble(phd.getOrDefault("overtime_hours", 0))));
-
-        if (calDays > 0 || presDays > 0 || wrkDays > 0) {
-            PdfPTable attBox = new PdfPTable(1); attBox.setWidthPercentage(100); attBox.setSpacingAfter(14f);
-            PdfPCell attHead = new PdfPCell(new Phrase("Attendance Summary", fSecHead));
-            attHead.setBackgroundColor(INDIGO_L); attHead.setBorderColor(INDIGO_B);
-            attHead.setBorderWidth(0.5f); attHead.setPadding(8f); attBox.addCell(attHead);
-
-            String[][] attFields = {
-                {"Total Calendar Days", String.valueOf(calDays)},
-                {"Working Days",        String.valueOf(wrkDays)},
-                {"Present Days",        String.valueOf(presDays)},
-                {"Absent Days",         String.valueOf(absDays)},
-                {"Paid Leave Days",     String.format("%.1f", pldDays)},
-                {"Unpaid Leave Days",   String.format("%.1f", unpaidD)},
-                {"Late Coming",         String.valueOf(lateD) + " day(s)"},
-                {"Early Leaving",       String.valueOf(earlyD) + " day(s)"},
-                {"Overtime Hours",      String.format("%.2f", otHrs)},
-            };
-            // 3-column grid: label | value | label | value | label | value
-            PdfPTable attGrid = new PdfPTable(6);
-            attGrid.setWidthPercentage(100);
-            attGrid.setWidths(new float[]{2f, 1.2f, 2f, 1.2f, 2f, 1.2f});
-            Font fAttLbl = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, GRAY_M);
-            Font fAttVal = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.5f, BLACK);
-            int col = 0;
-            for (String[] af : attFields) {
-                PdfPCell lc = new PdfPCell(new Phrase(af[0], fAttLbl));
-                lc.setBorderColor(INDIGO_B); lc.setBorderWidth(0.5f); lc.setPadding(6f);
-                lc.setBackgroundColor(col % 2 == 0 ? INDIGO_L : WHITE);
-                PdfPCell vc = new PdfPCell(new Phrase(af[1], fAttVal));
-                vc.setBorderColor(INDIGO_B); vc.setBorderWidth(0.5f); vc.setPadding(6f);
-                vc.setBackgroundColor(col % 2 == 0 ? INDIGO_L : WHITE);
-                attGrid.addCell(lc); attGrid.addCell(vc);
-                col++;
-            }
-            // Pad to complete the last row if needed (9 fields → 3 rows of 3 = full)
-            PdfPCell attWrapper = new PdfPCell(attGrid);
-            attWrapper.setPadding(0); attWrapper.setBorderColor(INDIGO_B); attWrapper.setBorderWidth(0.5f);
-            attWrapper.setBorderWidthTop(0);
-            attBox.addCell(attWrapper);
-            doc.add(attBox);
-        }
-
-        // ── Overtime Details ──────────────────────────────────────────────────
+        // ── Overtime Details (if applicable) ──────────────────────────────────
+        double otHrs = toDouble(phd.getOrDefault("overtime_hours", toDouble(phd.getOrDefault("overtime_hours", 0))));
         if (overtime > 0 && otHrs > 0) {
             double otRate = otHrs > 0 ? overtime / otHrs : 0.0;
             PdfPTable otBox = new PdfPTable(1); otBox.setWidthPercentage(100); otBox.setSpacingAfter(14f);
