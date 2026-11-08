@@ -44,11 +44,12 @@ const STATUS_LABEL = {
 }
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const dateInputValue = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 export default function PayslipsPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { user, isEmployee, isAccountant, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, isHRManager } = useAuth()
+  const { user, effectiveCompanyId, isEmployee, isAccountant, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, isHRManager } = useAuth()
   const isEmp = isEmployee()
   // Can approve/pay/reopen payslips — roles with payroll:approve authority
   const canApprovePayroll = isAccountant() || isBranchAdmin() || isEnterpriseAdmin() || isPlatformAdmin()
@@ -63,7 +64,8 @@ export default function PayslipsPage() {
   const [genModal, setGenModal] = useState(false)
   const [pdfPreview, setPdfPreview] = useState(null)
   const [search, setSearch] = useState('')
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
+  const generationStartDate = watch('startDate')
 
   // Month-folder navigation (PAY-006 req #2-4) — admin/HR/accountant view only
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -75,7 +77,7 @@ export default function PayslipsPage() {
   const [payModal, setPayModal] = useState(null) // { id } | { bulk: true, ids }
   const [reopenModal, setReopenModal] = useState(null) // { id }
   const [paymentReference, setPaymentReference] = useState('')
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentDate, setPaymentDate] = useState(() => dateInputValue(new Date()))
   const [reopenReason, setReopenReason] = useState('')
 
   useEffect(() => {
@@ -165,9 +167,10 @@ export default function PayslipsPage() {
   }
 
   const handleBulkGenerate = async (formData) => {
+    if (!effectiveCompanyId) { toast.error('Select a company before generating payslips'); return }
     try {
       const result = await dispatch(generateBulkPayslips({
-        companyId: user?.companyId,
+        companyId: effectiveCompanyId,
         startDate: formData.startDate,
         endDate: formData.endDate,
       })).unwrap()
@@ -176,6 +179,15 @@ export default function PayslipsPage() {
       reset()
       reload()
     } catch (e) { toast.error(e || 'Generation failed') }
+  }
+
+  const openGenerate = () => {
+    const month = selectedMonth || new Date().getMonth() + 1
+    reset({
+      startDate: dateInputValue(new Date(selectedYear, month - 1, 1)),
+      endDate: dateInputValue(new Date(selectedYear, month, 0)),
+    })
+    setGenModal(true)
   }
 
   // Group into Year > Month folders (PAY-006 req #2/3)
@@ -416,8 +428,10 @@ export default function PayslipsPage() {
             </button>
             {canApprovePayroll && (
               <button
-                onClick={() => { reset({}); setGenModal(true) }}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#286CB2] to-[#4389D2] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(48,116,186,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(48,116,186,0.28)]"
+                onClick={openGenerate}
+                disabled={!effectiveCompanyId}
+                title={!effectiveCompanyId ? 'Select a company first' : 'Generate payslips for the selected company'}
+                className="payslip-generate-button inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -491,6 +505,7 @@ export default function PayslipsPage() {
                 </button>
               )}
               <select
+                aria-label="Payroll year"
                 value={selectedYear}
                 onChange={(e) => changeYear(Number(e.target.value))}
                 className="rounded-xl border border-[#DCE7F2] bg-[#F8FAFC] px-3.5 py-2.5 text-sm font-semibold text-[#294766] outline-none transition focus:border-[#77A9D9] focus:ring-4 focus:ring-[#E6F0FA]"
@@ -656,8 +671,6 @@ export default function PayslipsPage() {
           const salaryAdvance = payHead?.salary_advance ?? 0
           const bonus = payHead?.bonus ?? 0
           const totalAdditions = Number(overtime) + Number(salaryAdvance) + Number(bonus)
-          const paidDays = payHead?.paid_days ?? 0
-          const unpaidDays = payHead?.unpaid_days ?? 0
           const hasAnyDeductions = pretaxDeductions.length > 0 || taxDeductions.length > 0 ||
             postTaxDeductions.length > 0 || netDeductions.length > 0 || federalTax > 0
           const name = detail.employee
@@ -881,15 +894,10 @@ export default function PayslipsPage() {
               {/* ── Summary ── */}
               <div className="my-3 border-t border-gray-100" />
 
-              {payHead && (
-                <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-400">
-                    Paid Days: <span className="text-gray-700 font-medium">{Number(paidDays).toFixed(1)}</span>
-                    {unpaidDays > 0 && <span className="ml-3 text-red-400">Unpaid: <span className="font-medium">{Number(unpaidDays).toFixed(1)}</span></span>}
-                  </span>
-                  <span className="text-gray-400 text-xs">Total Deductions: <span className="text-red-500 font-medium">{formatCurrency(detail.deduction)}</span></span>
-                </div>
-              )}
+              <div className="flex justify-between text-sm py-1">
+                <span className="text-gray-500">Total Deductions</span>
+                <span className="text-red-500 font-medium">-{formatCurrency(detail.deduction)}</span>
+              </div>
 
               <div className="flex justify-between items-center py-1">
                 <span className="font-semibold text-gray-900">Net Pay</span>
@@ -952,7 +960,8 @@ export default function PayslipsPage() {
           <Input label="Start Date" type="date" error={errors.startDate?.message}
             {...register('startDate', { required: 'Required' })} />
           <Input label="End Date" type="date" error={errors.endDate?.message}
-            {...register('endDate', { required: 'Required' })} />
+            min={generationStartDate || undefined}
+            {...register('endDate', { required: 'Required', validate: value => !generationStartDate || value >= generationStartDate || 'End date must be on or after start date' })} />
         </div>
       </Modal>
 
