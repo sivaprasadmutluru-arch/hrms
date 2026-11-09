@@ -23,9 +23,12 @@ public class ChatbotController {
 
     @PostMapping("/ask")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Ask the self-service chatbot a supported question, answered from the caller's own data")
+    @Operation(summary = "Ask the self-service chatbot a supported question or feature query")
     public ResponseEntity<ChatAnswerResponse> ask(@RequestBody ChatQuestionRequest req) {
-        String answer = chatbotService.answer(req.getIntent(), getCurrentUserId());
+        String query = (req.getIntent() != null && !req.getIntent().trim().isEmpty())
+                ? req.getIntent().trim()
+                : (req.getQuestion() != null ? req.getQuestion().trim() : "");
+        String answer = chatbotService.answer(query, getCurrentUserId());
         return ResponseEntity.ok(new ChatAnswerResponse(answer));
     }
 
