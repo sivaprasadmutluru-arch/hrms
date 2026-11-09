@@ -16,9 +16,12 @@ function persistMessages(messages) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
 }
 
-export const askQuestion = createAsyncThunk('chatbot/ask', async (intent, { rejectWithValue }) => {
+export const askQuestion = createAsyncThunk('chatbot/ask', async (intentOrPayload, { rejectWithValue }) => {
   try {
-    const res = await api.post('/chatbot/ask', { intent })
+    const payload = typeof intentOrPayload === 'string'
+      ? { intent: intentOrPayload }
+      : (intentOrPayload || {})
+    const res = await api.post('/chatbot/ask', payload)
     return res.data.answer
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || "Sorry, I couldn't get an answer for that.")
@@ -28,7 +31,7 @@ export const askQuestion = createAsyncThunk('chatbot/ask', async (intent, { reje
 const chatbotSlice = createSlice({
   name: 'chatbot',
   initialState: {
-    messages: loadStoredMessages(), // { from: 'user' | 'bot', text: string }
+    messages: loadStoredMessages(), // { from: 'user' | 'bot', text: string, action?: { label, path }, related?: Array }
     loading: false,
   },
   reducers: {
@@ -37,7 +40,10 @@ const chatbotSlice = createSlice({
       persistMessages(state.messages)
     },
     addBotMessage(state, action) {
-      state.messages.push({ from: 'bot', text: action.payload })
+      const payload = typeof action.payload === 'string'
+        ? { from: 'bot', text: action.payload }
+        : { from: 'bot', ...action.payload }
+      state.messages.push(payload)
       persistMessages(state.messages)
     },
     resetChat(state) {
