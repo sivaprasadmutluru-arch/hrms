@@ -87,7 +87,7 @@ export default function GettingStartedChecklist({ onDismiss }) {
           <div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-[#EBF3FB] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#286CB2]">
-                Zoho-Style Setup
+                Quick Start Guide
               </span>
               <h2 className="text-lg font-bold text-[#17324F]">Getting Started with AccrueHRMS</h2>
             </div>

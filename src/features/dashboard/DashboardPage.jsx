@@ -898,7 +898,7 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Zoho-style Getting Started Checklist for organization admins */}
+      {/* Getting Started Checklist for organization admins */}
       {!user?.quickStartTourCompleted && (isSuperAdmin || isEntAdmin || isBranchMgr || isHR) && (
         <GettingStartedChecklist />
       )}
