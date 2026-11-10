@@ -1,0 +1,646 @@
+{
+  "run": "7a09bd3eea",
+  "baseUrl": "http://127.0.0.1:8082/api",
+  "checks": [
+    {
+      "check": "platform authentication",
+      "passed": true
+    },
+    {
+      "check": "Unauthenticated directory blocked",
+      "status": 401,
+      "passed": true
+    },
+    {
+      "check": "Missing initial admin rejected",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "software organization/admin creation",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "software durable workspace provisioning",
+      "passed": true
+    },
+    {
+      "check": "owner_software authentication",
+      "passed": true
+    },
+    {
+      "check": "software Legacy subscription",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "software Legacy has no fabricated billing dates",
+      "passed": true
+    },
+    {
+      "check": "software industry catalog",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "medical organization/admin creation",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "medical durable workspace provisioning",
+      "passed": true
+    },
+    {
+      "check": "owner_medical authentication",
+      "passed": true
+    },
+    {
+      "check": "medical Legacy subscription",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "medical Legacy has no fabricated billing dates",
+      "passed": true
+    },
+    {
+      "check": "medical industry catalog",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Industry catalogs differ",
+      "passed": true
+    },
+    {
+      "check": "Cross-organization billing denied",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Cross-organization company selection denied",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Current organization deletion blocked",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Owner can choose Free",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Owner cannot use platform payment bypass",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Free first branch",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Free second branch denied",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Create worker",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "worker authentication",
+      "passed": true
+    },
+    {
+      "check": "Initial employee password change",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "worker authentication",
+      "passed": true
+    },
+    {
+      "check": "Employee self-service profile",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Self-service returns own employee",
+      "passed": true
+    },
+    {
+      "check": "Employee cannot manage directory",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Employee cannot manage billing",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Free filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Free user 21 denied",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Archive first branch",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Replacement branch",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Free branch restoration denied",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Activate BASIC MONTHLY",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Basic branch restoration allowed",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Basic third branch denied",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Over-limit Free downgrade denied",
+      "status": 409,
+      "passed": true
+    },
+    {
+      "check": "Archive employee",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create Basic filler",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Basic user 51 denied",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Single restore respects capacity",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Bulk restore respects capacity",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Release one slot",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Over-limit restoration batch rejected",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "Restoration batch rolled back",
+      "passed": true
+    },
+    {
+      "check": "Concurrent final-slot creation serialized",
+      "passed": true
+    },
+    {
+      "check": "Activate BASIC MONTHLY",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Activate BASIC MONTHLY",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Renewal retains start and extends expiry once",
+      "passed": true
+    },
+    {
+      "check": "Unconfigured Stripe checkout fails cleanly",
+      "status": 503,
+      "passed": true
+    },
+    {
+      "check": "Read CEO policy",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Configure CEO policy",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create CEO",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "CEO authentication",
+      "passed": true
+    },
+    {
+      "check": "CEO first password change",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "CEO authentication",
+      "passed": true
+    },
+    {
+      "check": "CEO workforce access",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Read COO policy",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Configure COO policy",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create COO",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "COO authentication",
+      "passed": true
+    },
+    {
+      "check": "COO first password change",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "COO authentication",
+      "passed": true
+    },
+    {
+      "check": "COO workforce access",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "CEO organization billing",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "CEO payroll",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "CEO excluded from platform",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "COO excluded from payroll",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "COO excluded from billing",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "COO cannot grant CEO policy",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Read CEO revocation version",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Revoke CEO policy",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Existing CEO token immediately loses access",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "Create medical branch",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Create branch admin",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "branch authentication",
+      "passed": true
+    },
+    {
+      "check": "Branch admin first password change",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "branch authentication",
+      "passed": true
+    },
+    {
+      "check": "Create outside branch",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "Branch cannot read head-office employee",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "Branch cannot bulk-edit head-office employee",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "Branch can read own workforce",
+      "status": 200,
+      "passed": true
+    }
+  ]
+}

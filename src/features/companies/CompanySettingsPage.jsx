@@ -15,6 +15,7 @@ import DataTable from '../../components/common/DataTable'
 import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
+import { LAUNCH_COUNTRIES as COUNTRIES } from '../../config/countries'
 import useAuth from '../../hooks/useAuth'
 import useCurrency from '../../hooks/useCurrency'
 import api from '../../services/api'
@@ -24,6 +25,7 @@ const TAB_META = {
   'Email Config': { icon: Mail, note: 'SMTP delivery' },
   Tags: { icon: TagsIcon, note: 'People labels' },
   'Penalty Accounts': { icon: ShieldAlert, note: 'Deductions' },
+  Country: { icon: Landmark, note: 'Organization payroll profile' },
   Currency: { icon: CircleDollarSign, note: 'Payroll display' },
   'Module Visibility': { icon: Eye, note: 'Workspace access' },
 }
@@ -72,7 +74,7 @@ function currencyPreview(code) {
 
 export default function CompanySettingsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, isPlatformAdmin } = useAuth()
   const { currency: activeCurrency } = useCurrency()
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const companyId = selectedCompanyId ?? user?.companyId
@@ -87,6 +89,24 @@ export default function CompanySettingsPage() {
   const [penaltyModal, setPenaltyModal] = useState(false)
   const [editingPenalty, setEditingPenalty] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
+
+  const [countryInput, setCountryInput] = useState('')
+  const [countryCompany, setCountryCompany] = useState(null)
+  const [countrySaving, setCountrySaving] = useState(false)
+  useEffect(() => {
+    setCountryCompany(null); setCountryInput('')
+    if (!companyId || !isPlatformAdmin()) return
+    let active = true
+    api.get(`/companies/${companyId}`).then(({data})=>{if(active){setCountryCompany(data);setCountryInput(data.country || '')}}).catch(()=>{})
+    return () => {active=false}
+  }, [companyId, user])
+  const saveCountry = async () => {
+    if (countrySaving || !countryInput || !countryCompany || !isPlatformAdmin()) return
+    setCountrySaving(true)
+    try { const {data}=await api.patch(`/companies/${companyId}/country`,{country:countryInput}); setCountryCompany(data); dispatch(fetchById(companyId)); toast.success('Organization country saved') }
+    catch(error) {toast.error(error.response?.data?.message || 'Unable to save country')}
+    finally {setCountrySaving(false)}
+  }
 
   // Currency tab state
   const [currencyInput, setCurrencyInput] = useState(activeCurrency)
@@ -268,7 +288,7 @@ export default function CompanySettingsPage() {
       </section>
 
       <div role="tablist" aria-label="Company settings sections" className="flex gap-2 overflow-x-auto rounded-2xl border border-[#DDE9F4] bg-white/90 p-2 shadow-[0_6px_18px_rgba(39,87,138,0.05)]">
-        {TABS.map(t => {
+        {[...TABS,...(isPlatformAdmin()?['Country']:[])].map(t => {
           const Icon = TAB_META[t].icon
           const selected = tab === t
           return (
@@ -405,6 +425,15 @@ export default function CompanySettingsPage() {
         </div>
       )}
 
+      {tab === 'Country' && isPlatformAdmin() && <section className="rounded-2xl border border-[#DDE9F4] bg-white p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-[#173858]">Organization country</h2>
+        <p className="text-sm text-slate-600">Launch countries: India, United States (USA), United Arab Emirates (Dubai / UAE) and United Kingdom (UK). Platform administrators manage the head-office country used by employee accounting. Changing it requires review of incompatible payroll classifications; existing journal history is preserved.</p>
+        {!countryCompany ? <p>Select a company in the header to load its country.</p> : countryCompany.companyType !== 'HEAD_OFFICE' ? <p className="text-sm text-amber-700">Select this organization's head office to change its country.</p> : <>
+          <p className="text-sm font-medium">{countryCompany.name}</p>
+          <label className="block text-sm font-medium">Country<select aria-label="Organization country" className="mt-2 block w-full max-w-md rounded-lg border border-slate-300 bg-white p-3" value={countryInput} disabled={countrySaving} onChange={e=>setCountryInput(e.target.value)}><option value="">Select country</option>{countryInput && !COUNTRIES.some(c=>c.value===countryInput) && <option value={countryInput}>{countryInput}</option>}{COUNTRIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></label>
+          <Button disabled={countrySaving || !countryInput} onClick={saveCountry}>{countrySaving?'Saving…':'Save country'}</Button>
+        </>}
+      </section>}
       {tab === 'Currency' && (
         <section className="mx-auto w-full max-w-[1480px] overflow-hidden rounded-2xl border border-[#DCE8F4] bg-white shadow-[0_12px_30px_rgba(39,87,138,0.07)]">
           <div className="flex items-start gap-3 border-b border-[#E7EFF7] bg-gradient-to-r from-[#F3F9FF] via-white to-[#FFFAE9] px-6 py-5 sm:px-7">

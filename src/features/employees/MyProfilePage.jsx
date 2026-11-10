@@ -266,7 +266,7 @@ export default function MyProfilePage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2
                   ${activeTab === tab.key
-                    ? 'text-indigo-600 border-indigo-600'
+                    ? 'text-[#2f73b9] border-[#2f73b9]'
                     : 'text-gray-500 border-transparent hover:text-gray-700'
                   }`}
               >
@@ -276,7 +276,7 @@ export default function MyProfilePage() {
           </div>
 
           {/* Tab content */}
-          <div className="p-6">
+          <div className="profile-information p-4 sm:p-6">
             {activeTab === 'about'     && <AboutTab profile={profile} />}
             {activeTab === 'work-info' && <WorkInfoTab employeeId={profile.id} isSelf={true} />}
             {activeTab === 'payroll'   && <PayrollTab employeeId={profile.id} />}

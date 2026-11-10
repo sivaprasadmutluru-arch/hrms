@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../services/api'
 
+const postView = p => ({ ...p, title: p.name || p.title, deadline: p.endDate || p.deadline, type: p.employmentType || 'FULL_TIME' })
 export const fetchAll = createAsyncThunk('recruitment/fetchAll', async (params, { rejectWithValue }) => {
   try {
     const res = await api.get('/recruitment/posts', { params })
@@ -75,8 +76,8 @@ export const updateApplicantStage = createAsyncThunk('recruitment/updateApplican
 
 export const fetchApplicants = createAsyncThunk('recruitment/fetchApplicants', async (params, { rejectWithValue }) => {
   try {
-    const res = await api.get('/recruitment/applicants', { params })
-    return res.data
+    const res = await api.get('/recruitment/candidate-applications', { params })
+    return res.data.map(a => ({ ...a, stage: a.status === 'HIRED' || a.status === 'REJECTED' ? a.status : a.stageType === 'INTERVIEW' ? 'INTERVIEW' : a.stageType === 'OFFER' ? 'OFFERED' : a.stageName === 'Screening' ? 'SCREENING' : 'APPLIED' }))
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to fetch applicants')
   }
@@ -275,7 +276,7 @@ export const upsertRecruitmentSettings = createAsyncThunk('recruitment/upsertRec
 })
 
 export const fetchPipeline = createAsyncThunk('recruitment/fetchPipeline', async (postId, { rejectWithValue }) => {
-  try { const res = await api.get(`/recruitment/posts/${postId}/pipeline`); return res.data }
+  try { const res = await api.get(`/recruitment/posts/${postId}/pipeline`); return res.data.map(stage => ({ ...stage, applicants: (stage.applicants || []).map(a => ({ ...a, candidateName: a.candidate?.name, email: a.candidate?.email, phone: a.candidate?.mobile })) })) }
   catch (err) { return rejectWithValue(err.response?.data?.message || 'Failed') }
 })
 
@@ -355,7 +356,8 @@ const recruitmentSlice = createSlice({
       .addCase(fetchAll.pending, (state) => { state.loading = true; state.error = null })
       .addCase(fetchAll.fulfilled, (state, action) => {
         state.loading = false
-        state.posts = action.payload.content || action.payload
+        state.posts = (action.payload.content || action.payload).map(postView)
+        state.pagination.total = action.payload.totalElements ?? state.posts.length
         if (action.payload.totalElements !== undefined) {
           state.pagination.total = action.payload.totalElements
           state.pagination.page = action.payload.number ?? state.pagination.page

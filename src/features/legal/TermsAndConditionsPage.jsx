@@ -283,9 +283,9 @@ export default function TermsAndConditionsPage() {
             For contractual inquiries, legal notices, or formal correspondence regarding these Terms & Conditions, contact Accrue Technologies:
           </p>
           <div className="mt-5 flex flex-col gap-3 text-sm sm:flex-row sm:gap-8">
-            <a href="mailto:siva@accruetechnologies.com" className="flex items-center gap-2 font-semibold hover:text-blue-200">
+            <a href="mailto:hr@accruetechnologies.com" className="flex items-center gap-2 font-semibold hover:text-blue-200">
               <Mail className="h-5 w-5" />
-              siva@accruetechnologies.com
+              hr@accruetechnologies.com
             </a>
             <a href="tel:+919381934911" className="flex items-center gap-2 font-semibold hover:text-blue-200">
               <Phone className="h-5 w-5" />

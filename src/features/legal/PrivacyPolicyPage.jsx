@@ -166,7 +166,7 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-black">5. Contact Us</h2>
           <p className="mt-2 text-sm text-blue-100">For any questions, concerns, or requests regarding this Privacy Policy or your personal information, please contact us:</p>
           <div className="mt-5 flex flex-col gap-3 text-sm sm:flex-row sm:gap-8">
-            <a href="mailto:siva@accruetechnologies.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />siva@accruetechnologies.com</a>
+            <a href="mailto:hr@accruetechnologies.com" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Mail className="h-5 w-5" />hr@accruetechnologies.com</a>
             <a href="tel:+919381934911" className="flex items-center gap-2 font-semibold hover:text-blue-200"><Phone className="h-5 w-5" />9381934911</a>
           </div>
           <p className="mt-7 border-t border-white/15 pt-5 text-xs text-blue-200">© 2026 Accrue Technologies. Your privacy. Our responsibility.</p>

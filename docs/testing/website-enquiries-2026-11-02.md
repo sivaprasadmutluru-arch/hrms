@@ -1,0 +1,15 @@
+# Website promotion and AccrueHR enquiry intake
+
+The Desktop project /Users/berymo/Desktop/accruetechnologies-website now promotes AccrueHR on its homepage, main navigation and footer. /accruehr contains the product overview, verified module descriptions, fixed monthly package prices/capacities, setup journey, FAQs and customer contact links. /accruehr/contact supports registration, support and feedback categories with organization and employee-range fields. This is an enquiry, not automatic account provisioning or payment.
+
+Website submissions are saved in SQLite and HMAC-SHA256-signed to /api/public/website-enquiries. The backend validates signatures and timestamp freshness, validates fields and stores requests in public.website_enquiries with an idempotent reference and payload hash. Public callers cannot read or update the inbox. Platform administrators use /platform/website-enquiries to search, filter, review and update status/internal notes. These actions do not send email or create organizations.
+
+Delivery failures remain pending in the website database. The website supports a retry worker and authenticated admin retry control. A production minute schedule must be configured when hosting. See the website ACCRUEHR-SETUP.md for secrets, origins, migrations, retention and operational setup. No server deployment or host scheduler was created.
+
+Validation: 6 website tests passed using in-memory SQLite and mocked fetch, covering three product categories, HMAC generation, outage retry, unconfigured delivery, validation, unrelated project enquiries, and false delivery acknowledgements. Five backend integration tests passed in disposable schema-only hrms_website_test, covering authenticated intake/idempotency, invalid/stale/tampered signatures, invalid/duplicate payloads, platform-only access and status update. Website TypeScript, the Sites/Vinext production build, the native Next.js production build used by the existing Dockerfile, and the HR frontend production build passed. The retry worker also ran successfully against the local preview database.
+
+Browser QA: submitted the explicitly disposable local registration fixture SHV-FEEC34EB, observed website confirmation of portal receipt, inspected the received organization/range/message in the platform inbox, and updated the fixture to CONTACTED with internal notes. No live email was configured or sent by the website preview. The fixture was subsequently removed from both local databases and the test database dropped. No organization, subscription or customer account was created.
+
+Local V39 migration applied; backend restarted with ignored private website signing configuration. Production requires applying V39 and configuring a separate production signing secret, HTTPS origins, durable storage, retry schedule and a portal enquiry retention policy before real customer use. Website acknowledgement email remains optional and unconfigured locally.
+
+Screenshots: /private/tmp/accrue-technologies-accruehr.png and /private/tmp/accruehr-website-enquiry-received.png. The enquiry screenshot depicts disposable QA data, not a real customer.

@@ -13,11 +13,14 @@ import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import PositionAccessModal from './PositionAccessModal'
+import OrganizationTemplatePanel from './OrganizationTemplatePanel'
 import { BriefcaseBusiness, Building2 } from 'lucide-react'
 
 export default function JobPositionsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, effectiveCompanyId } = useAuth()
+  const [accessPosition, setAccessPosition] = useState(null)
   const jobPositions = useSelector(selectJobPositions)
   const departments = useSelector(selectDepartments)
   const [modalOpen, setModalOpen] = useState(false)
@@ -42,13 +45,13 @@ export default function JobPositionsPage() {
     } else {
       reset({})
     }
-  }, [modalOpen, editing])
+  }, [modalOpen, editing, reset])
 
   const onSubmit = async (data) => {
     const payload = {
       name: data.name,
       department: data.departmentId ? { id: Number(data.departmentId) } : undefined,
-      company: user?.companyId ? { id: user.companyId } : undefined,
+      company: effectiveCompanyId ? { id: effectiveCompanyId } : undefined,
     }
     try {
       if (editing) {
@@ -77,6 +80,7 @@ export default function JobPositionsPage() {
     {
       id: 'actions', header: '', cell: ({ row }) => (
         <div className="flex gap-2 setup-table-actions">
+          {user?.canManagePositionAccess && <Button size="sm" variant="secondary" onClick={() => setAccessPosition(row.original)}>Access</Button>}
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setDeleteTarget(row.original)}>Delete</Button>
         </div>
@@ -86,7 +90,8 @@ export default function JobPositionsPage() {
 
   return (
     <>
-      <SetupDirectory title="Job positions" subtitle="Define the positions your teams hire for and connect them to the right department." icon={<BriefcaseBusiness size={22} />} itemLabel="position" data={jobPositions} columns={columns} searchText={item => `${item.name || ''} ${item.department?.name || ''}`} action={<Button className="setup-primary-button" onClick={openCreate}>+ New position</Button>} />
+      <OrganizationTemplatePanel key={effectiveCompanyId || 'none'} companyId={effectiveCompanyId} onApplied={() => { dispatch(fetchJobPositions()); dispatch(fetchDepartments({ page: 0, size: 100 })) }} />
+      <SetupDirectory title="Job positions" subtitle="Define positions, connect departments, and configure CEO, COO or employee access through the Access action." icon={<BriefcaseBusiness size={22} />} itemLabel="position" data={jobPositions} columns={columns} searchText={item => `${item.name || ''} ${item.department?.name || ''}`} action={<Button className="setup-primary-button" onClick={openCreate}>+ New position</Button>} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="lg" panelClassName="setup-form-modal" title={editing ? 'Edit job position' : 'New job position'}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Create'}</Button></div>}>
@@ -103,6 +108,7 @@ export default function JobPositionsPage() {
 
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Delete Job Position" message={`Delete "${deleteTarget?.name}"?`} confirmLabel="Delete" />
+      {accessPosition && <PositionAccessModal position={accessPosition} onClose={() => setAccessPosition(null)} />}
     </>
   )
 }

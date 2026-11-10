@@ -1,9 +1,12 @@
 import axios from 'axios'
+import { apiErrorDetails } from './apiErrors'
 import { API_BASE_URL } from '../config/constants'
 
 const api = axios.create({ baseURL: API_BASE_URL })
+const isPublicAuthRequest = config => /\/auth\/(login|forgot-password|reset-password)$/.test((config?.url || '').split('?')[0])
 
 api.interceptors.request.use((config) => {
+  if (isPublicAuthRequest(config)) return config
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   const enterpriseBranchFilter = localStorage.getItem('enterpriseBranchFilter')
@@ -53,7 +56,10 @@ api.interceptors.response.use(
     }
     return response
   },
-  (error) => {
+  async (error) => {
+    if (error.response?.status === 402 && error.response?.data?.code === 'SUBSCRIPTION_REQUIRED' && window.location.pathname !== '/subscription') {
+      window.location.assign('/subscription')
+    }
     if (error.response?.status === 403 && error.response?.data?.message === 'ORGANIZATION_SUSPENDED') {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -62,11 +68,17 @@ api.interceptors.response.use(
       window.location.href = '/suspended'
       return Promise.reject(error)
     }
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isPublicAuthRequest(error.config)) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'
     }
+    if (error.response?.data instanceof Blob) {
+      try { error.response.data = JSON.parse(await error.response.data.text()) } catch { /* Use the status fallback for non-JSON downloads. */ }
+    }
+    const details = apiErrorDetails(error)
+    if (error.response) error.response.data = { ...(typeof error.response.data === 'object' && !(error.response.data instanceof Blob) ? error.response.data : {}), ...details }
+    error.message = details.message
     return Promise.reject(error)
   }
 )

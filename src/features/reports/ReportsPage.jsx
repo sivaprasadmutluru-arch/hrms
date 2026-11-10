@@ -52,7 +52,9 @@ function ReportEmptyState({ title = 'No report data yet', description = 'Data wi
 
 function ReportRepositoryTab() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
+  const payrollAllowed = !permissions.includes('POSITION_PAYROLL_EXCLUDED')
+  const reportTypes = REPOSITORY_REPORT_TYPES.filter(item => payrollAllowed || item.value !== 'PAYROLL')
   const history = useSelector(selectReportHistory)
   const loading = useSelector(selectHistoryLoading)
   const generating = useSelector(selectGenerating)
@@ -163,7 +165,7 @@ function ReportRepositoryTab() {
             <label className="block text-xs text-gray-500 mb-1">Report Type</label>
             <select value={genType} onChange={e => setGenType(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              {REPOSITORY_REPORT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {reportTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div>
@@ -186,7 +188,7 @@ function ReportRepositoryTab() {
           <select value={filterType} onChange={e => setFilterType(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
             <option value="">All Report Types</option>
-            {REPOSITORY_REPORT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {reportTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <input type="number" placeholder="Year" value={filterYear} onChange={e => setFilterYear(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-24" />
@@ -383,7 +385,8 @@ function TabReportHistory({ reportType, companyId, refreshKey }) {
 
 export default function ReportsPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
+  const payrollAllowed = !permissions.includes('POSITION_PAYROLL_EXCLUDED')
   const loading = useSelector(selectLoading)
   const headcount = useSelector(s => s.reports.headcount)
   const attendance = useSelector(s => s.reports.attendance)
@@ -392,7 +395,8 @@ export default function ReportsPage() {
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const companyId = selectedCompanyId || localStorage.getItem('selectedCompanyId') || user?.companyId || user?.company?.id
   const generating = useSelector(selectGenerating)
-  const [tab, setTab] = useState('Headcount')
+  const [selectedTab, setTab] = useState('Headcount')
+  const tab = !payrollAllowed && selectedTab === 'Payroll' ? 'Headcount' : selectedTab
   const [dateRange, setDateRange] = useState({ from: thirtyDaysAgo, to: today })
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -434,7 +438,7 @@ export default function ReportsPage() {
 
       {/* Tabs */}
       <div className="reports-tabs flex gap-1 mb-4 border-b border-gray-200">
-        {TABS.map(t => (
+        {TABS.filter(item => payrollAllowed || item !== 'Payroll').map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === t ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             {t}

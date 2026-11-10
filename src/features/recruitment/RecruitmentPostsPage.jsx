@@ -1,3 +1,4 @@
+import CareersIntegrationPanel from './CareersIntegrationPanel'
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
@@ -11,10 +12,14 @@ import Input from '../../components/common/Input'
 import Select from '../../components/common/Select'
 import Pagination from '../../components/common/Pagination'
 import ConfirmModal from '../../components/common/ConfirmModal'
+import api from '../../services/api'
+import useAuth from '../../hooks/useAuth'
 import { formatDate } from '../../utils/formatters'
 
 export default function RecruitmentPostsPage() {
   const dispatch = useDispatch()
+  const { effectiveCompanyId } = useAuth()
+  const [careers, setCareers] = useState(null)
   const posts = useSelector(s => s.recruitment.posts)
   const loading = useSelector(selectLoading)
   const pagination = useSelector(selectPagination)
@@ -25,7 +30,15 @@ export default function RecruitmentPostsPage() {
 
   useEffect(() => { dispatch(fetchAll({ page: 0, size: 20 })) }, [dispatch])
 
-  const openCreate = () => { setEditing(null); reset({}); setModalOpen(true) }
+  useEffect(() => {
+    let active = true
+    setCareers(null)
+    if (effectiveCompanyId) api.get('/recruitment/careers-settings').then(r => { if (active) setCareers(r.data) }).catch(() => {})
+    return () => { active = false }
+  }, [effectiveCompanyId])
+  const careersUrl = careers ? (careers.careersUrl || `${window.location.origin}/careers/${careers.slug}`) : null
+  const share = async url => { try { await navigator.clipboard.writeText(url); toast.success('Link copied') } catch { toast.error('Could not copy; use the Open careers page link') } }
+  const openCreate = () => { setEditing(null); reset({ isPublished: true, status: 'OPEN', type: 'FULL_TIME' }); setModalOpen(true) }
   const openEdit = (row) => { setEditing(row); reset(row); setModalOpen(true) }
 
   const handleDelete = (row) => setConfirmModal({ open: true, post: row })
@@ -36,9 +49,10 @@ export default function RecruitmentPostsPage() {
   }
 
   const onSubmit = async (formData) => {
+    const payload = { name: formData.title, department: formData.department, location: formData.location, employmentType: formData.type, endDate: formData.deadline || null, description: formData.description, isPublished: !!formData.isPublished, status: formData.status || 'OPEN' }
     try {
-      if (editing) { await dispatch(update({ id: editing.id, data: formData })).unwrap(); toast.success('Post updated') }
-      else { await dispatch(create(formData)).unwrap(); toast.success('Job post created') }
+      if (editing) { await dispatch(update({ id: editing.id, data: payload })).unwrap(); toast.success('Post updated') }
+      else { await dispatch(create(payload)).unwrap(); toast.success('Job post created') }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 20 }))
     } catch (e) { toast.error(e || 'Error') }
@@ -50,6 +64,7 @@ export default function RecruitmentPostsPage() {
   return (
     <div className="recruitment-workspace">
       <PageHeader title="Job Posts" subtitle="Manage open positions and recruitment" actions={<Button onClick={openCreate}>+ New Post</Button>} />
+      {careers && <CareersIntegrationPanel settings={careers} />}
       <div className="recruitment-post-stats">
         <div><span>Open positions</span><strong>{loading ? '—' : openCount}</strong><small>Currently accepting applications</small></div>
         <div><span>All job posts</span><strong>{loading ? '—' : pagination.total}</strong><small>Across the current workspace</small></div>
@@ -61,7 +76,7 @@ export default function RecruitmentPostsPage() {
             <article className="recruitment-job-card" key={post.id}>
               <div className="recruitment-job-card-top">
                 <div className="recruitment-job-mark">{(post.title || 'J').slice(0, 1).toUpperCase()}</div>
-                <Badge label={post.status || 'OPEN'} variant={post.status === 'CLOSED' ? 'danger' : 'success'} />
+                <Badge label={!post.isPublished ? 'DRAFT' : post.status || 'OPEN'} variant={post.status === 'CLOSED' ? 'danger' : 'success'} />
               </div>
               <h2>{post.title || 'Untitled position'}</h2>
               <p className="recruitment-job-department">{post.department || 'Department not specified'}</p>
@@ -74,6 +89,7 @@ export default function RecruitmentPostsPage() {
                 <span>Closes {post.deadline ? formatDate(post.deadline) : 'No deadline'}</span>
               </div>
               <div className="recruitment-job-actions">
+                {post.isPublished && post.status === 'OPEN' && careersUrl && <><a href={`${careersUrl}/${post.id}`} target="_blank" rel="noreferrer" className="px-3 py-2 text-sm text-blue-700">View & apply</a><Button size="sm" variant="secondary" onClick={() => share(`${careersUrl}/${post.id}`)}>Copy job link</Button></>}
                 <Button size="sm" variant="secondary" onClick={() => openEdit(post)}>Edit post</Button>
                 <Button size="sm" variant="danger" onClick={() => handleDelete(post)}>Delete</Button>
               </div>
@@ -92,8 +108,9 @@ export default function RecruitmentPostsPage() {
         loading={loading}
       />
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Job Post' : 'New Job Post'} size="lg" panelClassName="recruitment-form-modal recruitment-job-modal"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Publish'}</Button></div>}>
+        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Save post'}</Button></div>}>
         <div className="recruitment-job-form">
+          <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2 text-sm"><input type="checkbox" {...register('isPublished')} />Publish on careers page</label><Select label="Status" options={[{value:'OPEN',label:'Open'},{value:'CLOSED',label:'Closed'}]} {...register('status')} /></div>
           <Input label="Job Title" error={errors.title?.message} {...register('title', { required: 'Required' })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Department" {...register('department')} />

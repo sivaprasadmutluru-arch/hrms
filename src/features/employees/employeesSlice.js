@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../services/api'
+import { apiErrorDetails } from '../../services/apiErrors'
 
 export const fetchAll = createAsyncThunk('employees/fetchAll', async (params, { rejectWithValue }) => {
   try {
@@ -27,9 +28,7 @@ export const create = createAsyncThunk('employees/create', async (data, { reject
     const res = await api.post('/employees', data)
     return res.data
   } catch (err) {
-    const d = err.response?.data
-    const msg = d?.message || (d?.errors ? Object.values(d.errors).join(', ') : null) || 'Failed to create employee'
-    return rejectWithValue(msg)
+    return rejectWithValue(apiErrorDetails(err, 'Unable to create employee'))
   }
 })
 
@@ -38,7 +37,7 @@ export const update = createAsyncThunk('employees/update', async ({ id, data }, 
     const res = await api.put(`/employees/${id}`, data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to update employee')
+    return rejectWithValue(apiErrorDetails(err, 'Unable to update employee'))
   }
 })
 
@@ -54,6 +53,15 @@ export const remove = createAsyncThunk('employees/remove', async ({ id, companyI
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Failed to delete employee')
   }
+})
+
+export const setEmployeeArchived = createAsyncThunk('employees/setEmployeeArchived', async ({ id, archived, companyId }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/employees/${id}/${archived ? 'archive' : 'restore'}`, null, {
+      params: { companyId }, headers: companyId ? { 'X-Company-Id': companyId } : {},
+    })
+    return res.data
+  } catch (err) { return rejectWithValue(err.response?.data?.message || `Unable to ${archived ? 'archive' : 'restore'} employee`) }
 })
 
 export const setEmployeeActive = createAsyncThunk('employees/setEmployeeActive', async ({ ids, active, companyId }, { rejectWithValue }) => {
@@ -218,8 +226,9 @@ const employeesSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchAll.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchAll.pending, (state, action) => { state.listRequestId = action.meta.requestId; state.loading = true; state.error = null; state.data = []; state.pagination.total = 0 })
       .addCase(fetchAll.fulfilled, (state, action) => {
+        if (state.listRequestId !== action.meta.requestId) return
         state.loading = false
         state.data = action.payload.content || action.payload
         if (action.payload.totalElements !== undefined) {
@@ -228,10 +237,11 @@ const employeesSlice = createSlice({
           state.pagination.size = action.payload.size ?? state.pagination.size
         }
       })
-      .addCase(fetchAll.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(fetchAll.rejected, (state, action) => { if (state.listRequestId !== action.meta.requestId) return; state.loading = false; state.error = action.payload })
 
-      .addCase(fetchAllGlobal.pending, (state) => { state.loading = true; state.error = null })
+      .addCase(fetchAllGlobal.pending, (state, action) => { state.listRequestId = action.meta.requestId; state.loading = true; state.error = null; state.data = []; state.pagination.total = 0 })
       .addCase(fetchAllGlobal.fulfilled, (state, action) => {
+        if (state.listRequestId !== action.meta.requestId) return
         state.loading = false
         state.data = action.payload.content || action.payload
         if (action.payload.totalElements !== undefined) {
@@ -240,11 +250,11 @@ const employeesSlice = createSlice({
           state.pagination.size = action.payload.size ?? state.pagination.size
         }
       })
-      .addCase(fetchAllGlobal.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(fetchAllGlobal.rejected, (state, action) => { if (state.listRequestId !== action.meta.requestId) return; state.loading = false; state.error = action.payload })
 
       .addCase(create.pending, (state) => { state.loading = true; state.error = null })
       .addCase(create.fulfilled, (state, action) => { state.loading = false; state.data.unshift(action.payload) })
-      .addCase(create.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(create.rejected, (state, action) => { state.loading = false; state.error = action.payload?.message || action.payload })
 
       .addCase(update.pending, (state) => { state.loading = true; state.error = null })
       .addCase(update.fulfilled, (state, action) => {
@@ -252,7 +262,7 @@ const employeesSlice = createSlice({
         const idx = state.data.findIndex(e => e.id === action.payload.id)
         if (idx !== -1) state.data[idx] = action.payload
       })
-      .addCase(update.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(update.rejected, (state, action) => { state.loading = false; state.error = action.payload?.message || action.payload })
 
       .addCase(remove.pending, (state) => { state.loading = true; state.error = null })
       .addCase(remove.fulfilled, (state, action) => {

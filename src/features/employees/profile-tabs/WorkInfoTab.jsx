@@ -1,3 +1,4 @@
+import { Section, Field } from './ProfileFields'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../../services/api'
@@ -6,20 +7,6 @@ import { formatDate } from '../../../utils/formatters'
 import useCurrency from '../../../hooks/useCurrency'
 import useAuth from '../../../hooks/useAuth'
 import AttendancePolicySettings from './AttendancePolicySettings'
-
-const Section = ({ title, children }) => (
-  <div className="employee-detail-section mb-6">
-    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{title}</h4>
-    <dl className="employee-detail-fields grid grid-cols-1 gap-2">{children}</dl>
-  </div>
-)
-
-const Field = ({ label, value }) => (
-  <div className="employee-detail-field">
-    <dt className="employee-detail-field-label">{label}</dt>
-    <dd className="employee-detail-field-value">{value != null && value !== '' ? value : '—'}</dd>
-  </div>
-)
 
 export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
   const formatCurrency = useCurrency().format
@@ -67,7 +54,7 @@ export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
   )
 
   return (
-    <div className="space-y-2">
+    <div className="profile-info-stack">
       {attendancePolicy}
       {canEdit && (
         <div className="flex justify-end mb-2">
@@ -92,8 +79,6 @@ export default function WorkInfoTab({ employeeId, companyId, isSelf = false }) {
         <Field label="Date of Joining"   value={formatDate(info.dateJoining)} />
         <Field label="Contract End Date" value={formatDate(info.contractEndDate)} />
       </Section>
-
-      <div className="border-t border-gray-100" />
 
       <Section title="Salary Components">
         <Field label="Basic Salary"          value={info.basicSalary != null ? formatCurrency(info.basicSalary) : null} />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm, Controller } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -101,9 +101,25 @@ function defaultValues(lt) {
 
 export default function LeaveTypesPage() {
   const dispatch = useDispatch()
-  const { isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin } = useAuth()
+  const { isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin, effectiveCompanyId } = useAuth()
   const leaveTypes = useSelector(selectLeaveTypes)
   const loading = useSelector(selectLoading)
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const targetCompanyId = isPlatformAdmin() ? selectedCompanyId : effectiveCompanyId
+  const [defaultRegion, setDefaultRegion] = useState('BOTH')
+  const [addingDefaults, setAddingDefaults] = useState(false)
+  const defaultsSubmitting = useRef(false)
+  const addDefaults = async () => {
+    if (!targetCompanyId || defaultsSubmitting.current) return
+    defaultsSubmitting.current = true
+    setAddingDefaults(true)
+    try {
+      const { data } = await api.post('/leave/types/defaults', null, { params: { region: defaultRegion }, headers: { 'X-Company-Id': targetCompanyId } })
+      toast.success(data.added ? `Added ${data.added} leave types` : 'Defaults are already configured; existing types were preserved')
+      dispatch(fetchLeaveTypes())
+    } catch (error) { toast.error(error.response?.data?.message || 'Unable to add default leave types') }
+    finally { defaultsSubmitting.current = false; setAddingDefaults(false) }
+  }
 
   const [employeeTypes, setEmployeeTypes] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -117,7 +133,7 @@ export default function LeaveTypesPage() {
   useEffect(() => {
     dispatch(fetchLeaveTypes())
     api.get('/employee-types').then(r => setEmployeeTypes(r.data || [])).catch(() => {})
-  }, [dispatch])
+  }, [dispatch, targetCompanyId])
 
   const openAdd = () => {
     setEditTarget(null)
@@ -258,6 +274,18 @@ export default function LeaveTypesPage() {
         actions={canManage && <Button onClick={openAdd}>+ Add Leave Type</Button>}
       />
 
+      {canManage && <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="font-semibold text-blue-950">Default leave types</h2><p className="mt-1 text-sm text-slate-600">India and Dubai/UAE starter catalogs. Custom leave types and existing balances stay unchanged.</p></div>
+          <div className="flex items-center gap-2">
+            <select aria-label="Default leave region" value={defaultRegion} disabled={addingDefaults} onChange={e => setDefaultRegion(e.target.value)} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm">
+              <option value="BOTH">India + Dubai/UAE</option><option value="INDIA">India</option><option value="UAE">Dubai / UAE</option>
+            </select>
+            <Button onClick={addDefaults} disabled={!targetCompanyId || addingDefaults}>{addingDefaults ? 'Adding…' : 'Add defaults'}</Button>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-slate-600">New defaults start with 0 days and HR approval. Review entitlement, eligibility and payment settings before allocating leave. {targetCompanyId ? '' : 'Select a company to add defaults.'}</p>
+      </div>}
       <DataTable columns={columns} data={leaveTypes} loading={loading} />
 
       {/* Add / Edit Modal */}

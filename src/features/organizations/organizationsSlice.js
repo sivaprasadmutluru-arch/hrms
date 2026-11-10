@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../services/api'
+import { apiErrorDetails } from '../../services/apiErrors'
 
 export const fetchAll = createAsyncThunk('organizations/fetchAll', async (params, { rejectWithValue }) => {
   try {
@@ -24,7 +25,7 @@ export const create = createAsyncThunk('organizations/create', async (data, { re
     const res = await api.post('/organizations', data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to create organization')
+    return rejectWithValue(apiErrorDetails(err, 'Unable to create organization'))
   }
 })
 
@@ -33,7 +34,7 @@ export const update = createAsyncThunk('organizations/update', async ({ id, data
     const res = await api.put(`/organizations/${id}`, data)
     return res.data
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to update organization')
+    return rejectWithValue(apiErrorDetails(err, 'Unable to update organization'))
   }
 })
 
@@ -99,6 +100,9 @@ const organizationsSlice = createSlice({
           state.pagination.total = action.payload.totalElements
           state.pagination.page = action.payload.number ?? state.pagination.page
           state.pagination.size = action.payload.size ?? state.pagination.size
+        } else if (Array.isArray(action.payload)) {
+          state.pagination.total = action.payload.length
+          state.pagination.page = 0
         }
       })
       .addCase(fetchAll.rejected, (state, action) => { state.loading = false; state.error = action.payload })
@@ -114,7 +118,7 @@ const organizationsSlice = createSlice({
         state.loading = false
         state.data.push(action.payload.organization)
       })
-      .addCase(create.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(create.rejected, (state, action) => { state.loading = false; state.error = action.payload?.message || action.payload })
 
       .addCase(update.pending, (state) => { state.loading = true; state.error = null })
       .addCase(update.fulfilled, (state, action) => {
@@ -123,12 +127,13 @@ const organizationsSlice = createSlice({
         if (idx !== -1) state.data[idx] = action.payload
         if (state.selected?.id === action.payload.id) state.selected = action.payload
       })
-      .addCase(update.rejected, (state, action) => { state.loading = false; state.error = action.payload })
+      .addCase(update.rejected, (state, action) => { state.loading = false; state.error = action.payload?.message || action.payload })
 
       .addCase(remove.pending, (state) => { state.loading = true; state.error = null })
       .addCase(remove.fulfilled, (state, action) => {
         state.loading = false
         state.data = state.data.filter((item) => item.id !== action.payload)
+        state.pagination.total = Math.max(0, state.pagination.total - 1)
       })
       .addCase(remove.rejected, (state, action) => { state.loading = false; state.error = action.payload })
 

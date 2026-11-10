@@ -1,4 +1,5 @@
-import { Navigate } from 'react-router-dom'
+import useAuth from '../../hooks/useAuth'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { selectRoles } from '../../features/auth/authSlice'
 
@@ -10,8 +11,10 @@ import { selectRoles } from '../../features/auth/authSlice'
  *   <ProtectedRoute roles={['PLATFORM_SUPER_ADMIN']} element={<OrganizationsPage />} />
  */
 export default function ProtectedRoute({ roles = [], element }) {
+  const { canAccessPath } = useAuth()
+  const { pathname } = useLocation()
   const userRoles = useSelector(selectRoles)
   const hasAccess = roles.some(r => userRoles.includes(r))
-  if (!hasAccess) return <Navigate to="/forbidden" replace />
+  if (!hasAccess || !canAccessPath(pathname)) return <Navigate to="/forbidden" replace />
   return element
 }

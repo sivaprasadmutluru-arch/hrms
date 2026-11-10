@@ -20,6 +20,8 @@ import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import { formatDate } from '../../utils/formatters'
 import ProbationPage from './ProbationPage'
+import api from '../../services/api'
+import Select from '../../components/common/Select'
 
 const TABS = ['Portals', 'Stages', 'Candidates', 'Tasks', 'Probation']
 
@@ -37,6 +39,11 @@ export default function OnboardingPage() {
   const [editing, setEditing] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null, action: null })
   const [modalType, setModalType] = useState('')
+  const [candidateOptions, setCandidateOptions] = useState([])
+  const [employeeOptions, setEmployeeOptions] = useState([])
+  const [conversionTarget, setConversionTarget] = useState(null)
+  const [conversionSetup, setConversionSetup] = useState(null)
+
 
   // filters for child entities
   const [selectedPortalId, setSelectedPortalId] = useState('')
@@ -47,7 +54,7 @@ export default function OnboardingPage() {
   const [detailCandidate, setDetailCandidate] = useState(null)
   const [detailTab, setDetailTab] = useState('stages')
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm()
 
   useEffect(() => { dispatch(fetchPortals()) }, [dispatch])
 
@@ -92,9 +99,27 @@ export default function OnboardingPage() {
 
   // ── Candidate helpers ─────────────────────────────────────────────────────
 
-  const openCandidateAdd = () => {
+  const selectedPortal = portals.find(p => String(p.id) === String(selectedPortalId))
+  const openCandidateAdd = async () => {
     if (!selectedPortalId) { toast.error('Select a portal first'); return }
-    setModalType('candidate'); setEditing(null); reset({}); setModalOpen(true)
+    try { const { data } = await api.get(`/onboarding/portals/${selectedPortalId}/eligible-candidates`); setCandidateOptions(data); setModalType('candidate'); setEditing(null); reset({}); setModalOpen(true) }
+    catch(e) { toast.error(e.response?.data?.message || 'Could not load hired candidates') }
+  }
+  const openEmployeeAdd = async () => {
+    if (!selectedPortalId) { toast.error('Select a portal first'); return }
+    try {
+      const { data } = await api.get('/employees', { params: {page:0,size:1000,isActive:true}, headers: {'X-Company-Id': selectedPortal.companyId} })
+      setEmployeeOptions((data.content || data).filter(e => String(e.companyId) === String(selectedPortal.companyId)))
+      setModalType('employee'); setEditing(null); reset({}); setModalOpen(true)
+    } catch(e) { toast.error(e.response?.data?.message || 'Could not load employees') }
+  }
+  const openConvert = async row => {
+    try {
+      const headers={'X-Company-Id':selectedPortal.companyId}
+      const [setup,roles,shifts] = await Promise.all([api.get(`/companies/${selectedPortal.companyId}/employee-setup`,{headers}),api.get('/job-roles',{headers}),api.get('/shift-schedules',{headers})])
+      setConversionSetup({...setup.data,roles:roles.data,shifts:shifts.data}); setConversionTarget(row)
+      const now=new Date();reset({dateJoining:`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`});setModalType('convert');setEditing(null);setModalOpen(true)
+    } catch(e) { toast.error(e.response?.data?.message || 'Could not load employee setup') }
   }
 
   const handleCompleteOnboarding = async (id) => {
@@ -150,6 +175,13 @@ export default function OnboardingPage() {
           await dispatch(createStage({ portalId: selectedPortalId, data: formData })).unwrap()
           toast.success('Stage created')
         }
+      } else if (modalType === 'convert') {
+        const data={dateJoining:formData.dateJoining,departmentId:Number(formData.departmentId),jobPositionId:Number(formData.jobPositionId),jobRoleId:formData.jobRoleId?Number(formData.jobRoleId):null,shiftId:formData.shiftId?Number(formData.shiftId):null}
+        const { data: result } = await api.post(`/onboarding/candidates/${conversionTarget.id}/convert-employee`,data)
+        toast.success(result.message);dispatch(fetchOnboardingCandidates(selectedPortalId))
+      } else if (modalType === 'employee') {
+        await api.post(`/onboarding/portals/${selectedPortalId}/employees/${formData.employeeId}`)
+        toast.success('Employee added to onboarding');dispatch(fetchOnboardingCandidates(selectedPortalId))
       } else if (modalType === 'candidate') {
         await dispatch(addOnboardingCandidate({ portalId: selectedPortalId, data: formData })).unwrap()
         toast.success('Candidate added')
@@ -190,15 +222,16 @@ export default function OnboardingPage() {
   ]
 
   const candidateColumns = [
-    { accessorKey: 'candidate.firstName', header: 'First Name' },
-    { accessorKey: 'candidate.lastName', header: 'Last Name' },
+    { id: 'candidateName', header: 'Candidate', cell: ({ row }) => row.original.candidate?.name || 'Candidate' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() || 'IN_PROGRESS'} variant={getValue() === 'COMPLETED' ? 'success' : getValue() === 'CANCELLED' ? 'danger' : 'warning'} /> },
     { id: 'actions', header: '', cell: ({ row }) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={() => openCandidateDetail(row.original)}>Details</Button>
-        {row.original.status !== 'COMPLETED' && (
+        {row.original.status === 'IN_PROGRESS' && (
           <Button size="sm" variant="success" onClick={() => handleCompleteOnboarding(row.original.id)}>Complete</Button>
         )}
+        {row.original.status === 'COMPLETED' && !row.original.candidate?.employeeId && <Button size="sm" onClick={() => openConvert(row.original)}>Convert to employee</Button>}
+        {row.original.candidate?.employeeId && <span className="text-xs text-blue-700">Employee #{row.original.candidate.employeeId}</span>}
       </div>
     )},
   ]
@@ -226,7 +259,9 @@ export default function OnboardingPage() {
   const modalTitle = {
     portal: editing ? 'Edit Portal' : 'New Onboarding Portal',
     stage: editing ? 'Edit Stage' : 'New Stage',
-    candidate: 'Add Candidate to Portal',
+    candidate: 'Add Hired Candidate',
+    employee: 'Add Existing Employee',
+    convert: 'Convert to Employee',
     task: 'Assign Task to Candidate',
     candidateStage: 'Add Stage Progress',
   }[modalType] || ''
@@ -293,7 +328,8 @@ export default function OnboardingPage() {
               <option value="">Select Portal</option>
               {portals.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
-            <Button onClick={openCandidateAdd}>+ Add Candidate</Button>
+            <Button onClick={openCandidateAdd}>+ Add Hired Candidate</Button>
+            <Button variant="secondary" onClick={openEmployeeAdd}>+ Add Existing Employee</Button>
           </div>
           {selectedPortalId ? (
             <DataTable columns={candidateColumns} data={onboardingCandidates} loading={loading} />
@@ -327,7 +363,7 @@ export default function OnboardingPage() {
                 <option value="">Select Candidate</option>
                 {onboardingCandidates.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.candidate?.firstName} {c.candidate?.lastName}
+                    {c.candidate?.name || `Candidate #${c.id}`}
                   </option>
                 ))}
               </select>
@@ -352,7 +388,7 @@ export default function OnboardingPage() {
       />
       {/* Candidate detail modal (stages + tasks) */}
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)}
-        title={`Candidate: ${detailCandidate?.candidate?.firstName || ''} ${detailCandidate?.candidate?.lastName || ''}`}
+        title={`Candidate: ${detailCandidate?.candidate?.name || ''}`}
         footer={<Button variant="secondary" onClick={() => setDetailOpen(false)}>Close</Button>}>
         <div className="space-y-4">
           {/* Sub-tabs */}
@@ -390,7 +426,7 @@ export default function OnboardingPage() {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : 'Save'}</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{editing ? 'Update' : modalType === 'convert' ? 'Convert to employee' : 'Save'}</Button>
           </div>
         }>
         <div className="space-y-4">
@@ -416,9 +452,18 @@ export default function OnboardingPage() {
 
           {/* Add candidate form */}
           {modalType === 'candidate' && (
-            <Input label="Candidate ID" error={errors.candidate?.message}
-              {...register('candidate.id', { required: 'Required', valueAsNumber: true })} />
+            <><Select label="Hired candidate" options={[{value:'',label:'Select candidate…'},...candidateOptions.map(c=>({value:c.id,label:`${c.name} — ${c.email}`}))]} error={errors.candidate?.id?.message} {...register('candidate.id',{required:'Select a hired candidate',valueAsNumber:true})}/>{!candidateOptions.length && <p className="text-sm text-slate-600">No eligible hired candidates. Mark the selected applicant as Hired in Recruitment first.</p>}</>
           )}
+
+          {modalType === 'employee' && <Select label="Employee" options={[{value:'',label:'Select employee…'},...employeeOptions.map(e=>({value:e.id,label:[e.firstName,e.lastName].filter(Boolean).join(' ')}))]} error={errors.employeeId?.message} {...register('employeeId',{required:'Select an employee'})}/>}
+          {modalType === 'convert' && conversionSetup && <>
+            <p className="text-sm text-slate-600">{conversionTarget?.candidate?.name} will become an employee in the selected company. A login is linked or created with the employee role and any configured position permissions. Password setup uses Forgot Password.</p>
+            <Input label="Joining date" type="date" error={errors.dateJoining?.message} {...register('dateJoining',{required:'Joining date is required'})}/>
+            <Select label="Department" options={[{value:'',label:'Select department…'},...conversionSetup.departments.map(d=>({value:d.id,label:d.name}))]} error={errors.departmentId?.message} {...register('departmentId',{required:'Select department',onChange:()=>{setValue('jobPositionId','');setValue('jobRoleId','')}})}/>
+            <Select label="Job position" options={[{value:'',label:'Select position…'},...conversionSetup.jobPositions.filter(p=>String(p.departmentId)===String(watch('departmentId'))).map(p=>({value:p.id,label:p.name}))]} error={errors.jobPositionId?.message} {...register('jobPositionId',{required:'Select position',onChange:()=>setValue('jobRoleId','')})}/>
+            <Select label="Job role" options={[{value:'',label:'None'},...conversionSetup.roles.filter(r=>String(r.jobPositionId ?? r.jobPosition?.id)===String(watch('jobPositionId'))).map(r=>({value:r.id,label:r.name}))]} {...register('jobRoleId')}/>
+            <Select label="Shift" options={[{value:'',label:'None'},...conversionSetup.shifts.map(s=>({value:s.id,label:s.name}))]} {...register('shiftId')}/>
+          </>}
 
           {/* Assign task form */}
           {modalType === 'task' && (

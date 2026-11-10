@@ -30,8 +30,14 @@ export const formatAttendanceTime = (time, utc) => {
   return `${String(displayHour).padStart(2, '0')}:${match[2]}:${match[3] || '00'} ${suffix}`
 }
 
-export const formatCurrency = (amount, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount ?? 0)
+export const formatCurrency = (amount, currency = 'INR') => {
+  const locale = currency === 'INR' ? 'en-IN' : currency === 'AED' ? 'en-AE' : currency === 'GBP' ? 'en-GB' : 'en-US'
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount ?? 0)
+  } catch {
+    return `${currency} ${Number(amount ?? 0).toFixed(2)}`
+  }
+}
 
 export const capitalize = (str) =>
   str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : ''

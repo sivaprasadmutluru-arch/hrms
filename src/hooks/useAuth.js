@@ -10,6 +10,15 @@ export default function useAuth() {
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const enterpriseBranchFilter = useSelector(s => s.auth.enterpriseBranchFilter)
 
+  const permissions = user?.permissions || []
+  const canAccessPath = (path) => {
+    if (path === '/settings/backup' && !roles.includes(ROLES.PLATFORM_SUPER_ADMIN)) return false
+    if (permissions.includes('POSITION_PAYROLL_EXCLUDED') && (path.startsWith('/payroll') || path.startsWith('/accounting'))) return false
+    if (permissions.includes('POSITION_SECURITY_EXCLUDED') && (path.startsWith('/roles') || path.startsWith('/audit'))) return false
+    if (permissions.includes('POSITION_BILLING_EXCLUDED') && path === '/subscription') return false
+    return true
+  }
+
   const hasRole = (...checkRoles) => checkRoles.some(r => roles.includes(r))
 
   // Role predicates — ordered by hierarchy
@@ -28,6 +37,11 @@ export default function useAuth() {
   const isDeptManager      = () => hasRole(ROLES.DEPARTMENT_MANAGER)
   const isTeamLead         = () => hasRole(ROLES.TEAM_LEAD)
   const isEmployee         = () => hasRole(ROLES.EMPLOYEE)
+
+  const canPlatformOperations = () => isPlatformAdmin() || hasRole('PLATFORM_ORGANIZATION_OPERATIONS')
+  const canPlatformSupport = () => isPlatformAdmin() || hasRole('PLATFORM_SUPPORT')
+  const canPlatformBilling = () => isPlatformAdmin() || hasRole('PLATFORM_BILLING')
+  const isPlatformTeam = () => hasRole('PLATFORM_ORGANIZATION_OPERATIONS','PLATFORM_SUPPORT','PLATFORM_BILLING')
 
   // Convenience groupings
   const isHeadOfficeLevel  = () => isPlatformAdmin() || isEnterpriseAdmin()
@@ -67,6 +81,12 @@ export default function useAuth() {
     isAuthenticated,
     effectiveCompanyId,
     hasRole,
+    permissions,
+    canAccessPath,
+    canPlatformOperations,
+    canPlatformSupport,
+    canPlatformBilling,
+    isPlatformTeam,
     isPlatformAdmin,
     isCompanyScopeAdmin,
     isEnterpriseAdmin,

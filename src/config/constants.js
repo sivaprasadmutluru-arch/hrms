@@ -1,9 +1,12 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-export const APP_NAME = 'Accrue Technologies'
+export const APP_NAME = 'AccrueHRMS'
 
 export const ROLES = {
-  PLATFORM_SUPER_ADMIN: 'PLATFORM_SUPER_ADMIN',  // Prabha Tech internal
+  PLATFORM_SUPER_ADMIN: 'PLATFORM_SUPER_ADMIN',
+  PLATFORM_ORGANIZATION_OPERATIONS: 'PLATFORM_ORGANIZATION_OPERATIONS',
+  PLATFORM_SUPPORT: 'PLATFORM_SUPPORT',
+  PLATFORM_BILLING: 'PLATFORM_BILLING',  // AccrueHR internal
   SUPER_ADMIN: 'SUPER_ADMIN',                    // Assigned company-wide access
   ACCOUNT_MANAGER: 'ACCOUNT_MANAGER',            // May be assigned to multiple companies
   ENTERPRISE_ADMIN: 'ENTERPRISE_ADMIN',            // Head Office / Company Admin

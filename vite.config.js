@@ -14,7 +14,7 @@ export default defineConfig({
     // Keep the deployed bundle with the actual backend project. The previous
     // relative path targeted a separate sibling folder, leaving production on
     // an old web build even when the frontend build completed successfully.
-    outDir: '../../hrmsbackend/hrms/src/main/resources/static',
+    outDir: '../hrms-backend/hrms/src/main/resources/static',
     emptyOutDir: true,
     rollupOptions: {
       output: {

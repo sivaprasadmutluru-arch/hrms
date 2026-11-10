@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?node/
 node/node
+.tmp-*/
+dist-release/
+marketing-video/
+promo/
+__pycache__/
+*.pyc

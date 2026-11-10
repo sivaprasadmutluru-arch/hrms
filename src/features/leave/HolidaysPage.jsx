@@ -1,3 +1,5 @@
+import api from '../../services/api'
+import { COUNTRIES } from '../../config/countries'
 import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
@@ -20,8 +22,51 @@ const TABS = ['Holidays', 'Allocations']
 
 export default function HolidaysPage() {
   const dispatch = useDispatch()
-  const { user, effectiveCompanyId } = useAuth()
-  const companyId = effectiveCompanyId
+  const { user, effectiveCompanyId, isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager } = useAuth()
+  const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
+  const companyId = isPlatformAdmin() ? selectedCompanyId : effectiveCompanyId
+  const canManage = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+  const currentYear = new Date().getFullYear()
+  const [holidayYear, setHolidayYear] = useState(currentYear)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarCountry, setCalendarCountry] = useState('')
+  const [calendarYear, setCalendarYear] = useState(currentYear)
+  const [calendar, setCalendar] = useState(null)
+  const [calendarKeys, setCalendarKeys] = useState([])
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarError, setCalendarError] = useState('')
+  const [datesConfirmed, setDatesConfirmed] = useState(false)
+  const [calendarSaving, setCalendarSaving] = useState(false)
+  const calendarSubmitting = useRef(false)
+  useEffect(() => {
+    setCalendarCountry(''); setCalendar(null); setCalendarKeys([]); setCalendarOpen(false)
+  }, [companyId])
+  useEffect(() => {
+    if (!calendarOpen || !companyId) return
+    const controller = new AbortController()
+    setCalendar(null); setCalendarKeys([]); setDatesConfirmed(false); setCalendarError(''); setCalendarLoading(true)
+    api.get('/leave/holidays/catalog', { params: { year: calendarYear, ...(calendarCountry ? { country: calendarCountry } : {}) }, headers: { 'X-Company-Id': companyId }, signal: controller.signal })
+      .then(({ data }) => {
+        if (controller.signal.aborted) return
+        setCalendar(data)
+        setCalendarKeys(data.entries.filter(entry => !entry.reviewDates).map(entry => entry.key))
+        if (!calendarCountry && data.country) setCalendarCountry(data.country)
+      }).catch(error => { if (!controller.signal.aborted) setCalendarError(error.response?.data?.message || 'Unable to load holiday calendar') })
+      .finally(() => { if (!controller.signal.aborted) setCalendarLoading(false) })
+    return () => controller.abort()
+  }, [calendarOpen, companyId, calendarCountry, calendarYear])
+  const previewMatches = calendar && calendar.year === calendarYear && (!calendarCountry || calendar.country === calendarCountry)
+  const needsDateConfirmation = calendar?.entries.some(entry => calendarKeys.includes(entry.key) && entry.reviewDates)
+  const importCalendar = async () => {
+    if (calendarSubmitting.current || !previewMatches || !companyId || !calendarKeys.length || (needsDateConfirmation && !datesConfirmed)) return
+    calendarSubmitting.current = true; setCalendarSaving(true)
+    try {
+      const { data } = await api.post('/leave/holidays/catalog', { country: calendar.country, year: calendarYear, keys: calendarKeys, confirmVariableDates: datesConfirmed }, { headers: { 'X-Company-Id': companyId } })
+      toast.success(`Added ${data.added} holidays${data.skipped ? `; ${data.skipped} existing holidays preserved` : ''}`)
+      setCalendarOpen(false); setHolidayYear(calendarYear); dispatch(fetchHolidays({ companyId }))
+    } catch (error) { toast.error(error.response?.data?.message || 'Unable to add holiday calendar') }
+    finally { calendarSubmitting.current = false; setCalendarSaving(false) }
+  }
 
   const holidays = useSelector(s => s.leave.holidays)
   const allocations = useSelector(s => s.leave.holidayAllocations)
@@ -170,7 +215,8 @@ export default function HolidaysPage() {
       <Button variant="secondary" onClick={() => importRef.current?.click()}>Import</Button>
       <input ref={importRef} type="file" accept=".xlsx" className="hidden"
         onChange={e => { const f = e.target.files[0]; if (f) handleImport(f); e.target.value = '' }} />
-      <Button onClick={openCreate}>Add Holiday</Button>
+      {canManage && <Button variant="secondary" disabled={!companyId} onClick={() => { setCalendarYear(holidayYear); setCalendarOpen(true) }}>Country calendar</Button>}
+      <Button onClick={openCreate} disabled={!companyId}>Add Holiday</Button>
     </div>
   ) : (
     <Button onClick={openAllocModal}>Add Allocation</Button>
@@ -194,11 +240,45 @@ export default function HolidaysPage() {
       </div>
 
       {/* Holidays tab */}
-      {tab === 'Holidays' && <DataTable columns={holidayColumns} data={holidays} />}
+      {tab === 'Holidays' && <>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-600">Choose your organization's country calendar or add custom state, local and company holidays.</p>
+          <select aria-label="Holiday year" value={holidayYear} onChange={e => setHolidayYear(Number(e.target.value))} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+            {[...new Set([currentYear, currentYear + 1, currentYear + 2, ...holidays.map(h => Number(h.startDate?.slice(0,4))).filter(Boolean)])].sort((a,b) => a-b).map(year => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </div>
+        {!companyId && <p className="mb-3 text-sm text-amber-700">Select a company to manage its holidays.</p>}
+        <DataTable columns={holidayColumns} data={(companyId ? holidays : []).filter(h => h.recurring || h.startDate?.startsWith(`${holidayYear}-`)).sort((a,b) => (a.startDate || '').localeCompare(b.startDate || ''))} />
+      </>}
 
       {/* Allocations tab */}
-      {tab === 'Allocations' && <DataTable columns={allocColumns} data={allocations} />}
+      {tab === 'Allocations' && <DataTable columns={allocColumns} data={companyId ? allocations : []} />}
 
+      <Modal open={calendarOpen} onClose={() => { if (!calendarSubmitting.current) setCalendarOpen(false) }} title="Add country holidays" size="xl" busy={calendarSaving}>
+        <fieldset disabled={calendarSaving} className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">Country<select aria-label="Holiday calendar country" value={calendarCountry} onChange={e => setCalendarCountry(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2"><option value="">Select country</option>{COUNTRIES.map(country => <option key={country.value} value={country.value}>{country.label}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Year<select aria-label="Holiday calendar year" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2">{[currentYear - 1,currentYear,currentYear+1,currentYear+2].filter(year => year >= 2026).map(year => <option key={year}>{year}</option>)}</select></label>
+          </div>
+          {calendarLoading && <p role="status" className="text-sm text-slate-500">Loading calendar…</p>}
+          {calendarError && <p role="alert" className="text-sm text-red-600">{calendarError}</p>}
+          {calendar && <>
+            <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">{calendar.message}</p>
+            {calendar.entries.length > 0 && <>
+              <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={calendarKeys.length === calendar.entries.length} onChange={e => { setCalendarKeys(e.target.checked ? calendar.entries.map(entry => entry.key) : []); setDatesConfirmed(false) }} />Select all holidays</label>
+              <div className="max-h-80 divide-y divide-slate-100 overflow-auto rounded-lg border border-slate-200">
+                {calendar.entries.map(entry => <div key={entry.key} className="flex items-start gap-3 p-3">
+                  <input type="checkbox" aria-label={entry.name} checked={calendarKeys.includes(entry.key)} onChange={e => { setCalendarKeys(keys => e.target.checked ? [...keys,entry.key] : keys.filter(key => key !== entry.key)); setDatesConfirmed(false) }} className="mt-1" />
+                  <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-800">{entry.name}{entry.reviewDates && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Confirm dates</span>}</p><p className="mt-1 text-xs text-slate-500">{entry.startDate}{entry.endDate !== entry.startDate ? ` → ${entry.endDate}` : ''} · <a href={entry.source} target="_blank" rel="noreferrer" className="text-blue-700 underline">Official reference</a></p></div>
+                </div>)}
+              </div>
+              {needsDateConfirmation && <label className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><input type="checkbox" checked={datesConfirmed} onChange={e => setDatesConfirmed(e.target.checked)} className="mt-1" />I verified the dates marked for confirmation for our organization and sector. If dates differ, I will deselect the holiday and add a custom date.</label>}
+              <p className="text-xs text-slate-500">Only selected holidays will be added. Existing and customized holidays stay unchanged. No employee notifications or allocations are sent automatically.</p>
+            </>}
+          </>}
+          <div className="flex justify-end gap-2"><Button variant="secondary" disabled={calendarSaving} onClick={() => setCalendarOpen(false)}>Cancel</Button><Button onClick={importCalendar} disabled={calendarSaving || calendarLoading || !previewMatches || !calendarKeys.length || (needsDateConfirmation && !datesConfirmed)}>{calendarSaving ? 'Adding…' : `Add selected (${calendarKeys.length})`}</Button></div>
+        </fieldset>
+      </Modal>
       {/* Holiday create/edit modal */}
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Holiday' : 'New Holiday'}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

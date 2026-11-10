@@ -21,7 +21,12 @@ export default function AppLayout() {
     if (isAuthenticated) {
       dispatch(fetchMe())
     }
-  }, [isAuthenticated])
+    if (!isAuthenticated) return
+    const refresh = () => dispatch(fetchMe())
+    window.addEventListener('focus', refresh)
+    const interval = setInterval(refresh, 60000)
+    return () => { window.removeEventListener('focus', refresh); clearInterval(interval) }
+  }, [isAuthenticated, dispatch])
 
   // Poll unread notification count every 30 seconds so the bell badge stays current.
   useEffect(() => {

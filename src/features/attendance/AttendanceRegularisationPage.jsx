@@ -16,6 +16,7 @@ import DataTable from '../../components/common/DataTable'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
 import { formatDate } from '../../utils/formatters'
+import api from '../../services/api'
 
 const REQUEST_TYPES = [
   { value: 'LATE_ARRIVAL',              label: 'Late Arrival' },
@@ -43,13 +44,6 @@ const STATUS_LABELS = {
 function RemarksModal({ open, onClose, onConfirm, title, loading, required = false }) {
   const [remarks, setRemarks] = useState('')
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setRemarks('')
-      setError('')
-    }
-  }, [open])
 
   const confirm = () => {
     if (required && !remarks.trim()) {
@@ -88,11 +82,14 @@ export default function AttendanceRegularisationPage() {
   const dispatch = useDispatch()
   const {
     isEmployee, isHRManager, isBranchAdmin, isEnterpriseAdmin, isPlatformAdmin,
+    isDeptManager, isTeamLead,
     effectiveCompanyId,
   } = useAuth()
   const companyId = effectiveCompanyId
   const isEmp = isEmployee()
   const canApprove = isPlatformAdmin() || isEnterpriseAdmin() || isBranchAdmin() || isHRManager()
+    || isDeptManager() || isTeamLead()
+  const [teamRequests, setTeamRequests] = useState([])
   const loading = useSelector(selectRegLoading)
   const myRequests = useSelector(selectMyRequests)
   const pendingApproval = useSelector(selectPendingApproval)
@@ -103,6 +100,7 @@ export default function AttendanceRegularisationPage() {
   const tabs = [
     'My Requests',
     ...(canApprove ? ['Pending Approval', 'All Requests'] : []),
+    ...(teamRequests.length ? ['Team Requests'] : []),
   ]
   const [tab, setTab] = useState('My Requests')
   const [submitOpen, setSubmitOpen] = useState(false)
@@ -121,6 +119,17 @@ export default function AttendanceRegularisationPage() {
     dispatch(fetchAttendance({ page: 0, size: 200, status: 'IRREGULAR' }))
   }, [dispatch])
 
+  const loadTeamRequests = async () => {
+    try {
+      const { data } = await api.get('/team/regularisation')
+      setTeamRequests(Array.isArray(data) ? data : [])
+    } catch {
+      setTeamRequests([])
+    }
+  }
+
+  useEffect(() => { loadTeamRequests() }, [companyId])
+
   useEffect(() => {
     if (tab === 'Pending Approval' && companyId) dispatch(fetchPendingApproval(companyId))
     if (tab === 'All Requests' && companyId) dispatch(fetchAllForCompany(companyId))
@@ -137,18 +146,21 @@ export default function AttendanceRegularisationPage() {
     } catch (e) { toast.error(e || 'Failed to submit') }
   }
 
-  const handleAction = (id, action) => {
-    setRemarksModal({ open: true, id, action })
+  const handleAction = (id, action, team = false) => {
+    setRemarksModal({ open: true, id, action, team })
   }
 
   const onConfirmRemarks = async (remarks) => {
-    const { id, action } = remarksModal
+    const { id, action, team } = remarksModal
     if (action === 'reject' && !remarks.trim()) {
       toast.error('Rejection reason is required')
       return
     }
     try {
-      if (action === 'approve') await dispatch(approveRequest({ id, remarks })).unwrap()
+      if (team) {
+        await api.post(`/team/regularisation/${id}/${action}`, { remarks })
+        await loadTeamRequests()
+      } else if (action === 'approve') await dispatch(approveRequest({ id, remarks })).unwrap()
       else if (action === 'reject') await dispatch(rejectRequest({ id, remarks })).unwrap()
       toast.success('Done')
       setRemarksModal({ open: false, id: null, action: null })
@@ -179,6 +191,16 @@ export default function AttendanceRegularisationPage() {
         <Button size="sm" variant="danger" onClick={() => handleAction(row.original.id, 'reject')}>Reject</Button>
       </div>
     )},
+  ]
+
+  const teamColumns = [
+    ...baseColumns,
+    { id: 'actions', header: '', cell: ({ row }) => row.original.canReview ? (
+      <div className="flex gap-2">
+        <Button size="sm" variant="success" onClick={() => handleAction(row.original.id, 'approve', true)}>Approve</Button>
+        <Button size="sm" variant="danger" onClick={() => handleAction(row.original.id, 'reject', true)}>Reject</Button>
+      </div>
+    ) : null },
   ]
 
   const myColumns = [
@@ -247,6 +269,10 @@ export default function AttendanceRegularisationPage() {
 
       {tab === 'Pending Approval' && (
         <DataTable columns={approvalActionColumns} data={pendingApproval} loading={loading} />
+      )}
+
+      {tab === 'Team Requests' && (
+        <DataTable columns={teamColumns} data={teamRequests} loading={loading} />
       )}
 
       {tab === 'All Requests' && (
@@ -364,7 +390,7 @@ export default function AttendanceRegularisationPage() {
       </Modal>
 
       {/* Approve / Reject with remarks modal */}
-      <RemarksModal
+      {remarksModal.open && <RemarksModal
         open={remarksModal.open}
         onClose={() => setRemarksModal({ open: false, id: null, action: null })}
         onConfirm={onConfirmRemarks}
@@ -373,7 +399,7 @@ export default function AttendanceRegularisationPage() {
         }
         loading={loading}
         required={remarksModal.action?.includes('reject')}
-      />
+      />}
     </div>
   )
 }

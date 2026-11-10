@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { formatOrganizationId } from '../../utils/organizationId'
+import { userDisplayName } from '../../utils/userDisplayName'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { LogOut } from 'lucide-react'
+import { Camera, LogOut } from 'lucide-react'
 import api from '../../services/api'
 import Avatar from '../../components/common/Avatar'
-import Badge from '../../components/common/Badge'
+import { useDispatch } from 'react-redux'
+import { fetchMe } from '../auth/authSlice'
 import Button from '../../components/common/Button'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import Spinner from '../../components/common/Spinner'
@@ -39,6 +42,9 @@ const EMPLOYEE_TABS = [
 
 export default function AdminProfilePage() {
   const { logout } = useAuth()
+  const dispatch = useDispatch()
+  const photoInputRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
   const [user, setUser]       = useState(null)
   const [company, setCompany] = useState(null)
   const [employeeProfile, setEmployeeProfile] = useState(null)
@@ -67,12 +73,31 @@ export default function AdminProfilePage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const uploadPhoto = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type)) { toast.error('Choose a JPEG or PNG image'); return }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Profile pictures must be 5 MB or smaller'); return }
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await api.post(employeeProfile ? '/ess/me/photo' : '/auth/me/photo', form)
+      if (employeeProfile) setEmployeeProfile(previous => ({ ...previous, photoPath: data.photoPath }))
+      setUser(previous => ({ ...previous, photoPath: data.photoPath }))
+      await dispatch(fetchMe())
+      toast.success('Profile picture updated')
+    } catch (error) { toast.error(error.response?.data?.message || 'Could not upload profile picture. Try again.') }
+    finally { setUploading(false) }
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>
   if (!user)   return <p className="text-gray-500 p-6">Could not load your profile.</p>
 
   const displayName = employeeProfile?.fullName
     || `${employeeProfile?.firstName || ''} ${employeeProfile?.lastName || ''}`.trim()
-    || user.username || user.email || 'Admin'
+    || userDisplayName(user)
 
   // Compute profile photo URL from user.photoPath
   const photoPath = employeeProfile?.photoPath || user?.photoPath
@@ -97,23 +122,33 @@ export default function AdminProfilePage() {
       <section className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#17324F] via-[#214F78] to-[#3676A9] p-6 text-white shadow-[0_18px_42px_rgba(23,50,79,0.18)] sm:p-8">
         <div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full border-[34px] border-white/[0.06]" />
         <div className="pointer-events-none absolute -bottom-40 right-1/4 h-72 w-72 rounded-full bg-[#F6E7B7]/[0.07] blur-2xl" />
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-5 sm:gap-6">
-            <div className="shrink-0 rounded-full bg-white p-1.5 shadow-xl ring-4 ring-white/15"><Avatar name={displayName} src={photoUrl} size="lg" /></div>
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <button type="button" onClick={() => photoInputRef.current?.click()} disabled={uploading} aria-label="Change profile picture" className="relative rounded-full bg-white p-1.5 shadow-xl ring-4 ring-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white disabled:opacity-60">
+                <Avatar name={displayName} src={photoUrl} size="xl" />
+                <span className="absolute -bottom-1 -right-1 rounded-full bg-[#1F5F9D] p-1.5 text-white ring-2 ring-white"><Camera size={13} /></span>
+              </button>
+              <button type="button" className="text-xs font-semibold text-white underline underline-offset-4 disabled:opacity-60" onClick={() => photoInputRef.current?.click()} disabled={uploading}>{uploading ? 'Uploading…' : 'Change photo'}</button>
+              <span className="text-[10px] text-blue-100">JPEG / PNG · up to 5 MB</span>
+              <input ref={photoInputRef} type="file" accept="image/jpeg,image/png" className="hidden" aria-label="Profile picture file" onChange={uploadPhoto} disabled={uploading} />
+            </div>
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#F6E7B7]">Your account</p>
               <h2 className="mt-1 truncate text-2xl font-bold tracking-tight sm:text-3xl">{displayName}</h2>
               <p className="mt-1 truncate text-sm text-blue-100">{employeeProfile?.jobPositionName || user.email}</p>
               {employeeProfile?.jobPositionName && <p className="mt-0.5 truncate text-xs text-blue-200">{user.email}</p>}
+              {!!user.positionAccess?.length && <p className="mt-2 text-xs text-blue-100">Position access: {user.positionAccess.map(item => `${item.positionName} · ${item.profile}`).join(', ')}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 {(user.roles || []).map(role => <span key={role} className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold tracking-wide text-white">{role.replace(/_/g, ' ')}</span>)}
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:min-w-[330px]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:min-w-[330px]">
             <div className="rounded-2xl border border-white/15 bg-white/[0.09] px-4 py-3 backdrop-blur-sm">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-200">Organization</p>
               <p className="mt-1 truncate text-sm font-semibold text-white">{company?.name || (user.companyId ? `Company ID ${user.companyId}` : 'Platform access')}</p>
+              {user.organizationId && <p className="mt-1 font-mono text-xs text-blue-100">Organization ID: {formatOrganizationId(user.organizationId)}</p>}
             </div>
             <div className="rounded-2xl border border-white/15 bg-white/[0.09] px-4 py-3 backdrop-blur-sm">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-200">Username</p>

@@ -1,0 +1,67 @@
+name: accruehr
+services:
+  postgres:
+    image: postgres:16-alpine
+    command: [postgres, -c, shared_buffers=128MB, -c, max_connections=80]
+    env_file: /opt/accruehr/shared/database.env
+    volumes:
+      - /opt/accruehr/shared/postgres:/var/lib/postgresql/data
+      - /opt/accruehr/shared/init-database.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    networks: [database]
+    mem_limit: 768m
+    cpus: 0.75
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d accruehr"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  backend:
+    image: accruehr-backend:${RELEASE_ID}
+    build: {context: ., dockerfile: docker/backend.Dockerfile}
+    env_file: /opt/accruehr/shared/backend.env
+    volumes:
+      - /opt/accruehr/shared/data:/data
+      - /opt/accruehr/shared/config:/run/config:ro
+    networks: [database, frontend]
+    depends_on:
+      postgres: {condition: service_healthy}
+    mem_limit: 1536m
+    cpus: 1.0
+    read_only: true
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: [CMD-SHELL, "test \"$$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/auth/me)\" = 401"]
+      interval: 20s
+      timeout: 8s
+      start_period: 180s
+      retries: 6
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '5'}}
+  frontend:
+    image: accruehr-frontend:${RELEASE_ID}
+    build: {context: ., dockerfile: docker/frontend.Dockerfile}
+    ports: ["127.0.0.1:4184:8080"]
+    networks: [frontend]
+    depends_on:
+      backend: {condition: service_healthy}
+    mem_limit: 64m
+    cpus: 0.25
+    read_only: true
+    tmpfs: ["/var/cache/nginx:size=16m,uid=101,gid=101,mode=700", "/var/run:size=1m,uid=101,gid=101,mode=700", "/tmp:size=16m,uid=101,gid=101,mode=700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+networks:
+  database: {internal: true}
+  frontend: {}

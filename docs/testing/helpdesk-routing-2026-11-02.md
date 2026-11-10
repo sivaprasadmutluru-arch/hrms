@@ -1,0 +1,11 @@
+# Helpdesk department routing — 2 November 2026
+
+Department manager assignments now route new tickets. The requester selects a support department by name. The server derives the requester and company from the signed-in employee, ignores client assignee overrides, and chooses the oldest active contact assignment whose employee and login are active and belong to the same company. If none is eligible, the ticket remains open and unassigned. General support also uses manual assignment. Existing tickets keep their current assignees when contacts are removed or changed.
+
+The helpdesk queue shows department and assignee names, provides working text search, and a “Tickets I can handle” filter. Ticket details allow existing helpdesk editors to search employees and reassign tickets. An assigned contact may resolve, close or reopen that specific ticket without a global role grant. Company access is checked on ticket ID operations. Comments use the signed-in employee as author; ticket/comment responses contain only the identity fields needed by the interface. No automatic emails or notifications were added; contacts use the Helpdesk queue.
+
+Validation: 18 integration tests passed (8 department-contact tests and 10 routing tests), with zero failures/errors, using the disposable schema-only database hrms_ticket_routing_test. Coverage includes deterministic primary selection, removed/inactive contact fallback, inactive login fallback, general-support manual handling, requester/company/assignee spoofing, cross-company/inactive departments, manual reassignment, assigned-contact action authorization, company boundaries, comment authorship and support-department filtering. Production frontend build passed. No real tickets or contact assignments were created for testing.
+
+Release: backend V38__helpdesk_department_routing.sql adds nullable tickets.department_id and an index. Execute with each target tenant schema selected in search_path, including public. Existing ticket data is retained. This project does not automatically run these release migrations. The additive migration was applied only to the local public and accrue_technologies schemas; the local backend was restarted and frontend assets packaged.
+
+Browser proof: /private/tmp/accruehr-helpdesk-department-routing.png.

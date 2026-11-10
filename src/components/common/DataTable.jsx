@@ -9,7 +9,7 @@ export default function DataTable({ columns, data = [], loading = false, onRowCl
   const table = useReactTable({ data, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() })
   if (loading) return <TableSkeleton rows={6} cols={columns.length || 5} />
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
+    <div className="glass-table overflow-x-auto rounded-xl border border-gray-100">
       <table className="min-w-full divide-y divide-gray-100">
         <thead className="bg-gray-50">
           {table.getHeaderGroups().map(hg => (

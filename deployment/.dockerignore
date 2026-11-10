@@ -1,0 +1,6 @@
+*
+!app.jar
+!frontend/
+!frontend/**
+!docker/
+!docker/**

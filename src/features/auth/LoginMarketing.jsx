@@ -95,7 +95,7 @@ const PLAN_DATA = [
       'Dedicated support & priority assistance',
     ],
     cta: 'Contact Sales',
-    ctaLink: 'mailto:siva@accruetechnologies.com?subject=AccrueHRMS%20Enterprise%20Enquiry',
+    ctaLink: 'mailto:hr@accruetechnologies.com?subject=AccrueHRMS%20Enterprise%20Enquiry',
   },
 ]
 
@@ -212,7 +212,7 @@ export default function LoginMarketing() {
 
       <footer className="login-footer">
         <span>© {new Date().getFullYear()} Accrue Technologies · AccrueHRMS</span>
-        <a href="mailto:siva@accruetechnologies.com">Contact us</a>
+        <a href="mailto:hr@accruetechnologies.com">Contact us</a>
         <a href="/privacy-policy">Privacy policy</a>
         <a href="/terms-and-conditions">Terms & conditions</a>
         <a href="#signin">Sign in ↑</a>

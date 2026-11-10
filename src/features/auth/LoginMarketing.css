@@ -1,0 +1,61 @@
+html body:has(.login-marketing){overflow-y:auto;overflow-x:hidden;background:#edf4fc}
+.login-marketing{color:#19334d;background:radial-gradient(circle at 14% 12%,rgba(135,187,245,.28),transparent 30%),radial-gradient(circle at 86% 23%,rgba(176,155,239,.18),transparent 28%),linear-gradient(145deg,#f3f8ff,#fff 52%,#eaf3fc);font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.5}
+.login-marketing *{box-sizing:border-box}
+.login-marketing a{text-decoration:none}
+.login-marketing a:focus-visible,.login-marketing button:focus-visible{outline:3px solid #ba8623;outline-offset:4px}
+.login-nav{max-width:1280px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:25px;padding:23px 36px;border-bottom:1px solid #e8edf2}
+.login-brand{display:flex;align-items:center;gap:10px;color:#19334d;flex-shrink:0}
+.login-brand img{width:40px;height:40px;object-fit:contain;display:block;filter:none}
+.login-brand>span{font-size:25px;font-weight:750;letter-spacing:-1px;line-height:1.1}
+.login-brand-hr{color:#286eb4;letter-spacing:-.7px}
+.login-brand small{display:block;margin-top:6px;font-size:8px;font-weight:650;letter-spacing:1.6px;color:#6c7f91}
+.login-nav nav{display:flex;align-items:center;gap:28px;font-size:13px;font-weight:600}
+.login-nav nav>a{color:#52677b}.login-nav nav>a:hover{color:#205f9f}
+.login-nav .login-nav-signin{display:flex;align-items:center;gap:10px;color:#2469ac;padding:9px 17px;border:1px solid #cddfec;border-radius:7px}
+.login-marketing .signin-page{display:grid;grid-template-columns:minmax(0,1.14fr) minmax(350px,.86fr);grid-template-rows:auto;height:auto;min-height:0;max-width:1280px;width:100%;overflow:visible;margin:auto;padding:54px 36px 56px;gap:65px;background:transparent;color:inherit}
+.login-product-hero{min-width:0;padding:10px 0 0}
+.login-eyebrow{font-size:10px;letter-spacing:2px;font-weight:750;color:#3478b6}
+.login-product-hero h1{font-size:clamp(40px,4.5vw,64px);line-height:1.08;font-weight:730;letter-spacing:-2.6px;margin:16px 0 21px}
+.login-product-hero h1 em{font-style:normal;color:#2b74b4}
+.login-product-hero>p{font-size:15px;line-height:1.8;color:#657b8e;max-width:455px;margin:0 0 23px}
+.login-hero-cta{display:inline-flex;gap:16px;align-items:center;background:#1d5f9e;color:white;padding:12px 19px;border-radius:7px;font-size:13px;font-weight:650}
+.login-hero-cta:hover{background:#164c81}.login-free-note{display:inline-block;margin:12px 0 0 14px;font-size:11px;color:#687e90}
+.login-hero-photo{position:relative;height:180px;max-width:540px;border-radius:14px;overflow:hidden;margin-top:27px;background:#e9f1f8}
+.login-hero-photo img{width:100%;height:100%;object-fit:cover;object-position:center 65%;display:block}
+.login-hero-photo>span{position:absolute;left:16px;bottom:14px;padding:7px 12px;background:#fffffff0;border:1px solid #fff;border-radius:6px;color:#2b4b69;font-size:11px;font-weight:600}
+.login-marketing .signin-panel{display:flex;align-items:flex-start;justify-content:center;grid-column:2;grid-row:1;min-height:0;padding:8px 0 0;background:none;scroll-margin-top:25px}
+.login-marketing .signin-panel-inner{max-width:435px;width:100%;transform:none;padding:33px 32px 25px;border:1px solid rgba(255,255,255,.9);border-radius:20px;background:linear-gradient(155deg,rgba(255,255,255,.89),rgba(245,250,255,.72));box-shadow:0 24px 65px rgba(29,71,100,.14),inset 0 1px #fff;backdrop-filter:blur(20px) saturate(1.2)}
+.login-marketing .signin-panel-inner::before{height:3px;background:linear-gradient(90deg,#3278b8,#8ab4da,#e8c674)}
+.login-form-eyebrow{font-size:9px;font-weight:700;letter-spacing:1.7px;color:#70869a}
+.login-marketing .signin-welcome{margin:17px 0 24px}
+.login-marketing .signin-product{font-size:32px;margin:0 0 10px;letter-spacing:-1px;line-height:1.15;font-weight:700}
+.login-marketing .signin-welcome>p{font-size:13px;max-width:280px}
+.login-marketing .signin-auth-error{font-size:12px}
+.login-marketing .signin-assurance{margin-top:18px}
+.login-marketing .signin-privacy{margin-top:16px}
+.login-benefits{max-width:1280px;margin:auto;padding:50px 36px 60px;border-top:1px solid #e5edf3;scroll-margin-top:20px}
+.login-section-heading{text-align:center;max-width:650px;margin:0 auto 32px}
+.login-section-heading h2{font-size:clamp(25px,2.5vw,34px);line-height:1.25;letter-spacing:-1px;font-weight:700;margin:12px 0}
+.login-section-heading>p{color:#6b7f91;font-size:14px;line-height:1.7}
+.login-billing-toggle{display:inline-flex;align-items:center;gap:6px;background:#dfeaf5;padding:4px;border-radius:9999px;margin:20px auto 0}
+.login-billing-toggle button{border:none;background:none;padding:7px 18px;border-radius:9999px;font-size:12px;font-weight:650;color:#526e86;cursor:pointer;transition:all .18s ease;display:inline-flex;align-items:center;gap:6px}
+.login-billing-toggle button.active{background:#1d5f9e;color:#fff;box-shadow:0 3px 10px rgba(29,95,158,.25)}
+.login-billing-toggle .badge-save{display:inline-block;padding:2px 7px;font-size:10px;font-weight:700;background:#10b981;color:#fff;border-radius:9999px;letter-spacing:0}
+.login-plan-savings{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:#059669;background:#d1fae5;padding:2px 8px;border-radius:6px;align-self:flex-start}
+.login-plan-limits{font-size:12px;color:#1e293b;font-weight:600;margin:10px 0 6px}
+.login-plan-gst{font-size:11px;color:#64748b;line-height:1.4;margin-bottom:12px;padding:6px 8px;background:rgba(241,245,249,.85);border-radius:6px;border:1px solid #e2e8f0}
+.login-benefit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:36px}
+.login-benefit-grid article{padding:12px 20px;text-align:center}.login-feature-icon{display:inline-grid;place-items:center;width:48px;height:48px;border-radius:12px;background:#edf4fc;color:#347ab6}
+.login-benefit-grid h3{margin:16px 0 8px;font-size:16px;font-weight:650}.login-benefit-grid p{color:#6b7f91;font-size:13px;line-height:1.85;margin:0}
+.login-pricing{background:rgba(234,243,253,.56);padding:56px 36px 38px;border-block:1px solid rgba(255,255,255,.85);scroll-margin-top:20px}
+.login-plan-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;max-width:1208px;margin:auto}
+.login-plan{display:flex;flex-direction:column;min-width:0;background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(255,255,255,.7));border:1px solid rgba(255,255,255,.9);border-radius:16px;padding:25px 22px;box-shadow:0 14px 38px rgba(37,83,132,.08),inset 0 1px #fff}.login-plan-free{border-color:#80acd0}
+.login-plan-kicker{font-size:8px;letter-spacing:1.3px;font-weight:750;color:#6c8297}.login-plan h3{font-size:21px;font-weight:700;margin:12px 0 14px;letter-spacing:-.6px}
+.login-plan-price{font-size:29px;line-height:1.2;font-weight:730;letter-spacing:-1px;white-space:nowrap}.login-plan-price>span{font-size:11px;font-weight:400;color:#7a8b9b;letter-spacing:0}.login-plan>p{font-size:12px;color:#57718a;margin:10px 0 18px}
+.login-plan ul{list-style:none;margin:0 0 24px;padding:18px 0 0;border-top:1px solid #edf1f5;display:grid;gap:10px}.login-plan li{display:flex;align-items:flex-start;gap:7px;font-size:11px;color:#62798e}.login-plan li svg{flex-shrink:0;color:#4b967b;margin-top:1px}
+.login-plan>a{display:flex;align-items:center;justify-content:space-between;gap:5px;border:1px solid #d4e1ec;color:#285d89;border-radius:6px;padding:10px 11px;font-size:11px;font-weight:650;margin-top:auto}.login-plan-free>a{background:#246da9;color:white;border-color:#246da9}.login-plan>a:hover{filter:brightness(.94)}
+.login-pricing-note,.login-pricing-status{text-align:center;font-size:11px;color:#6f8395;margin:25px auto 0;max-width:700px;line-height:1.9}.login-pricing-note a,.login-pricing-status button{color:#286ba4;text-decoration:underline}.login-pricing-status button{border:0;background:none;cursor:pointer;font:inherit}
+.login-footer{max-width:1280px;margin:auto;padding:25px 36px;display:flex;flex-wrap:wrap;align-items:center;gap:24px;font-size:11px;color:#7890a3}.login-footer>span{margin-right:auto}.login-footer a{color:#526e86}
+@media(max-width:1050px){.login-marketing .signin-page{gap:32px;padding:40px 30px}.login-product-hero h1{font-size:49px}.login-marketing .signin-panel-inner{padding:28px 25px}.login-free-note{display:block;margin-left:0}.login-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.login-nav{padding:18px 20px;gap:15px}.login-brand>span{font-size:22px}.login-brand img{width:35px;height:35px}.login-brand small{font-size:7px}.login-nav nav{gap:15px;font-size:12px}.login-nav .login-nav-signin{display:none}.login-marketing .signin-page{grid-template-columns:minmax(0,1fr);padding:28px 20px 36px;gap:35px;overflow:visible}.login-marketing .signin-panel{grid-column:1;grid-row:1;padding:0}.login-product-hero{grid-column:1;grid-row:2;max-width:540px;margin:auto;width:100%;text-align:center}.login-product-hero h1{font-size:45px}.login-product-hero>p{margin-left:auto;margin-right:auto}.login-free-note{margin-top:13px}.login-hero-photo{height:190px}.login-benefits,.login-pricing{padding:38px 20px}.login-benefit-grid{grid-template-columns:1fr;gap:12px}.login-benefit-grid article{padding:12px}.login-footer{padding:22px 20px;gap:16px}.login-footer>span{width:100%}.login-marketing .signin-product{font-size:30px}.login-plan-grid{gap:12px}.login-plan{padding:20px 16px}.login-plan-price{font-size:25px}}
+@media(max-width:430px){.login-plan-grid{grid-template-columns:minmax(0,1fr)}.login-plan{padding:25px}.login-plan ul{gap:11px}.login-plan li{font-size:12px}.login-plan-price{font-size:32px}.login-plan>a{font-size:12px}.login-product-hero h1{font-size:40px}}

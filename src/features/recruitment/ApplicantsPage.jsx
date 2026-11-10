@@ -6,6 +6,8 @@ import PageHeader from '../../components/common/PageHeader'
 import Button from '../../components/common/Button'
 import Badge from '../../components/common/Badge'
 import Modal from '../../components/common/Modal'
+import api from '../../services/api'
+import Input from '../../components/common/Input'
 import { formatDate } from '../../utils/formatters'
 
 export default function ApplicantsPage() {
@@ -13,6 +15,27 @@ export default function ApplicantsPage() {
   const applicants = useSelector(s => s.recruitment.applicants)
   const loading = useSelector(selectLoading)
   const [detail, setDetail] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const [posts, setPosts] = useState([])
+  const [saving, setSaving] = useState(false)
+  async function openCreate() {
+    try { const { data } = await api.get('/recruitment/posts'); setPosts((data.content || data).filter(p => p.isActive !== false && p.status === 'OPEN')); setCreating(true) }
+    catch(e) { toast.error(e.response?.data?.message || 'Could not load job posts') }
+  }
+  async function createCandidate(event) {
+    event.preventDefault(); setSaving(true)
+    try {
+      await api.post('/recruitment/candidates',new FormData(event.currentTarget))
+      toast.success('Candidate created'); setCreating(false); dispatch(fetchApplicants())
+    } catch(e) { toast.error(e.response?.data?.message || 'Could not create candidate') }
+    finally { setSaving(false) }
+  }
+  async function downloadResume(id) {
+    try {
+      const { data } = await api.get(`/recruitment/private-resumes/${id}`,{responseType:'blob'})
+      const url=URL.createObjectURL(data); const link=document.createElement('a');link.href=url;link.download='resume.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+    } catch { toast.error('Resume could not be downloaded') }
+  }
 
   useEffect(() => { dispatch(fetchApplicants({ page: 0, size: 20 })) }, [dispatch])
 
@@ -35,7 +58,7 @@ export default function ApplicantsPage() {
 
   return (
     <div className="recruitment-workspace">
-      <PageHeader title="Applicants" subtitle="Review and manage job applicants" />
+      <PageHeader title="Applicants" subtitle="Review and manage job applicants" actions={<Button onClick={openCreate}>+ Add Candidate</Button>} />
       <div className="applicant-overview">
         <div><span>Total candidates</span><strong>{loading ? '—' : applicants.length}</strong></div>
         <div><span>In interview</span><strong>{loading ? '—' : stageCounts.INTERVIEW || 0}</strong></div>
@@ -65,6 +88,15 @@ export default function ApplicantsPage() {
           })}
         </div>
       )}
+      <Modal open={creating} onClose={() => setCreating(false)} title="Add Candidate">
+        <form onSubmit={createCandidate} className="space-y-4">
+          <label className="block text-sm">Job opening<select name="jobId" required className="mt-2 w-full rounded border p-2"><option value="">Select job opening</option>{posts.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          {!posts.length && <p>Create an open job post before adding a candidate.</p>}
+          <Input label="Full name" name="name" required maxLength={200}/><Input label="Email" name="email" type="email" required maxLength={254}/><Input label="Phone" name="phone" maxLength={40}/>
+          <Input label="Resume (PDF, up to 5 MB)" name="resume" type="file" accept=".pdf,application/pdf"/>
+          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={()=>setCreating(false)}>Cancel</Button><Button type="submit" disabled={saving || !posts.length}>{saving?'Saving…':'Create candidate'}</Button></div>
+        </form>
+      </Modal>
       <Modal open={!!detail} onClose={() => setDetail(null)} title="Applicant Details" size="md" panelClassName="recruitment-form-modal">
         {detail && (
           <div className="space-y-3 text-sm">
@@ -74,7 +106,7 @@ export default function ApplicantsPage() {
             <div className="flex justify-between"><span className="text-gray-500">Position</span><span>{detail.jobTitle}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Applied</span><span>{formatDate(detail.appliedDate)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Stage</span><Badge label={detail.stage} variant="primary" /></div>
-            {detail.resumeUrl && <a href={detail.resumeUrl} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 hover:underline">View Resume</a>}
+            <p>Candidate ID: <strong>{detail.candidateId}</strong> · Use this ID when adding the candidate to onboarding.</p>{detail.resumeId && <Button variant="secondary" onClick={() => downloadResume(detail.resumeId)}>Download resume</Button>}
           </div>
         )}
       </Modal>

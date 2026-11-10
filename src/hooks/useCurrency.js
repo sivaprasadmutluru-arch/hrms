@@ -1,18 +1,15 @@
 import { useSelector } from 'react-redux'
 
 /**
- * Returns the active company's currency code and a formatter function.
+ * Returns the active company's currency code and a locale-aware formatter function.
  *
- * Companies can live in three different Redux locations depending on role/page:
- *   - state.platform.companies  → loaded by CompanySwitcher (most reliable)
- *   - state.companies.data      → loaded by fetchMyCompany / fetchAll
- *   - state.companies.selected  → loaded by fetchById
- *
- * Falls back to 'USD' if no match found.
+ * Automatically resolves the currency based on company country:
+ *   - India (IN/IND) → INR formatted in Indian locale (₹)
+ *   - UAE (AE)       → AED
+ *   - UK (GB)        → GBP (£)
+ *   - US (US)        → USD ($)
  */
 export default function useCurrency() {
-  // Use Redux-tracked selectedCompanyId so the hook re-renders on company switch
-  // Fall back to user's own companyId for ENTERPRISE_ADMIN/BRANCH_ADMIN (who have no selectedCompanyId)
   const selectedCompanyId = useSelector(s => s.auth.selectedCompanyId)
   const userCompanyId     = useSelector(s => s.auth.user?.companyId)
   const selectedId = selectedCompanyId
@@ -25,15 +22,39 @@ export default function useCurrency() {
 
   const id = String(selectedId)
   const company =
-    platformCompanies.find(c => String(c.id) === id) ||
-    companiesData.find(c => String(c.id) === id)     ||
-    (String(selectedCompany?.id) === id ? selectedCompany : null)
+    (platformCompanies || []).find(c => String(c.id) === id) ||
+    (companiesData || []).find(c => String(c.id) === id)     ||
+    (String(selectedCompany?.id) === id ? selectedCompany : null) ||
+    platformCompanies?.[0] ||
+    companiesData?.[0] ||
+    null
 
-  const currency = company?.currency || 'USD'
+  const countryNormalized = (company?.country || '').trim().toLowerCase().replace(/[.\s_-]/g, '')
+  let currency = company?.currency?.toUpperCase()?.trim() || ''
+
+  // If country is India (or starts with ind), currency must be INR
+  if (['india', 'in', 'ind'].includes(countryNormalized) || countryNormalized.startsWith('ind')) {
+    currency = 'INR'
+  } else if (!currency || currency === 'USD') {
+    if (['unitedarabemirates', 'uae', 'ae', 'are', 'dubai'].includes(countryNormalized)) {
+      currency = 'AED'
+    } else if (['unitedkingdom', 'uk', 'gb', 'gbr', 'greatbritain', 'britain'].includes(countryNormalized)) {
+      currency = 'GBP'
+    } else if (['unitedstates', 'unitedstatesofamerica', 'us', 'usa'].includes(countryNormalized)) {
+      currency = 'USD'
+    } else if (!currency) {
+      currency = 'INR'
+    }
+  }
+
+  const locale = currency === 'INR' ? 'en-IN'
+               : currency === 'AED' ? 'en-AE'
+               : currency === 'GBP' ? 'en-GB'
+               : 'en-US'
 
   const format = (amount) => {
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount ?? 0)
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount ?? 0)
     } catch {
       return `${currency} ${Number(amount ?? 0).toFixed(2)}`
     }

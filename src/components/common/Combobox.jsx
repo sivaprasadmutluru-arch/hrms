@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Combobox as HeadlessCombobox } from '@headlessui/react'
 import { ChevronDownIcon, CheckIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
@@ -22,8 +22,11 @@ export default function Combobox({
   helperText,
   disabled = false,
   className = '',
+  onSearchChange,
+  inlineOptions = false,
 }) {
   const [query, setQuery] = useState('')
+  const inputId = useId()
 
   const normalized = options.map((o) =>
     typeof o === 'string' ? { value: o, label: o } : o
@@ -41,20 +44,21 @@ export default function Combobox({
 
   return (
     <div className={`w-full ${className}`}>
-      {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+      {label && <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
       <HeadlessCombobox value={value ?? ''} onChange={onChange} disabled={disabled}>
         <div className="relative">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
           <HeadlessCombobox.Input
+            id={inputId}
             className={`block w-full rounded-lg border ${error ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'} pl-9 pr-9 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500`}
             displayValue={() => selected?.label ?? ''}
             placeholder={selected ? '' : placeholder}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); onSearchChange?.(e.target.value) }}
           />
           <HeadlessCombobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
             <ChevronDownIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
           </HeadlessCombobox.Button>
-          <HeadlessCombobox.Options className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg focus:outline-none">
+          <HeadlessCombobox.Options className={`${inlineOptions ? 'relative' : 'absolute'} z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg focus:outline-none`}>
             {filtered.length === 0 && (
               <div className="px-3 py-2 text-gray-400">{emptyText}</div>
             )}

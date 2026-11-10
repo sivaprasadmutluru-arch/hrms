@@ -1,3 +1,4 @@
+import { userDisplayName } from '../../utils/userDisplayName'
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
@@ -25,6 +26,7 @@ const EMPLOYEE_GROUP = {
     { label: 'My Profile',           to: '/employees/me' },
     { label: 'Employees',            to: '/employees' },
     { label: 'Document Requests',    to: '/documents/requests' },
+    { label: 'Letters & Certificates', to: '/documents/letters' },
     { label: 'Disciplinary Actions', to: '/disciplinary-actions' },
     { label: 'Bonus Points',         to: '/bonus-points' },
     { label: 'Employee Notes',       to: '/employee-notes' },
@@ -243,7 +245,9 @@ const SETTINGS_GROUP = {
 
 // ─── Navigation definitions per role ─────────────────────────────────────────
 
-function getNavSections(auth) {
+// Shared with the header search so navigation results follow the exact sidebar role rules.
+// eslint-disable-next-line react-refresh/only-export-components
+export function getNavSections(auth) {
   const { isPlatformAdmin, isEnterpriseAdmin, isBranchAdmin, isHRManager, isAccountant, isDeptManager, isTeamLead } = auth
 
   // Platform Super Admin — full access to everything
@@ -257,6 +261,10 @@ function getNavSections(auth) {
         title: 'Platform',
         items: [
           { label: 'Organizations',    to: '/organizations',    icon: ShieldCheck },
+          { label: 'Subscription',     to: '/subscription',     icon: Receipt },
+          { label: 'Website enquiries', to: '/platform/website-enquiries', icon: Ticket },
+          { label: 'Organization billing', to: '/platform/billing', icon: Receipt },
+          { label: 'AccrueHRMS support', to: '/platform/support', icon: Ticket },
           { label: 'Platform Monitor', to: '/platform/monitor', icon: PieChart },
         ],
       },
@@ -277,6 +285,10 @@ function getNavSections(auth) {
           PAYROLL_GROUP,
           ASSETS_GROUP,
         ],
+      },
+      {
+        title: 'Accounting',
+        items: [{ label: 'Accounting', to: '/accounting', icon: Banknote }, { label: 'Staffing & contracts', to: '/accounting/staffing', icon: UserPlus }],
       },
       {
         title: 'Talent',
@@ -320,6 +332,19 @@ function getNavSections(auth) {
   }
 
   // Enterprise / Head Office Admin — full visibility across all branches
+  if (auth.isPlatformTeam()) {
+    return [
+      { title: 'Overview', items: [{label:'Dashboard',to:'/dashboard',icon:Home}] },
+      { title: 'Platform team', items: [
+        ...(auth.canPlatformOperations() ? [{label:'Organizations',to:'/organizations',icon:ShieldCheck}] : []),
+        ...(auth.canPlatformSupport() ? [{label:'AccrueHRMS support',to:'/platform/support',icon:Ticket}] : []),
+        ...(auth.canPlatformBilling() ? [{label:'Organization billing',to:'/platform/billing',icon:Receipt}] : []),
+      ] },
+      { title: 'My work', items: [{label:'My Profile',to:'/employees/me',icon:UserPlus},{label:'Helpdesk',to:'/helpdesk',icon:Ticket}] },
+      { title: 'Account', items: [{label:'Notifications',to:'/notifications',icon:Bell}] },
+    ]
+  }
+
   if (isEnterpriseAdmin()) {
     return [
       {
@@ -330,6 +355,7 @@ function getNavSections(auth) {
         title: 'Organization',
         items: [
           { label: 'Companies', to: '/companies', icon: Building2 },
+          { label: 'Subscription', to: '/subscription', icon: Receipt },
           COMPANY_GROUP,
           ORG_SETUP_GROUP,
         ],
@@ -343,6 +369,10 @@ function getNavSections(auth) {
           PAYROLL_GROUP,
           { label: 'Assets',   to: '/assets', icon: Archive },
         ],
+      },
+      {
+        title: 'Accounting',
+        items: [{ label: 'Accounting', to: '/accounting', icon: Banknote }, { label: 'Staffing & contracts', to: '/accounting/staffing', icon: UserPlus }],
       },
       {
         title: 'Talent',
@@ -360,6 +390,7 @@ function getNavSections(auth) {
       {
         title: 'Support',
         items: [
+          { label: 'AccrueHRMS support', to: '/platform/support', icon: Ticket },
           { label: 'Helpdesk',      to: '/helpdesk',       icon: Ticket },
           { label: 'Announcements', to: '/announcements',  icon: Megaphone },
         ],
@@ -406,6 +437,10 @@ function getNavSections(auth) {
           PAYROLL_GROUP,
           ASSETS_GROUP,
         ],
+      },
+      {
+        title: 'Accounting',
+        items: [{ label: 'Accounting', to: '/accounting', icon: Banknote }, { label: 'Staffing & contracts', to: '/accounting/staffing', icon: UserPlus }],
       },
       {
         title: 'Talent',
@@ -515,6 +550,10 @@ function getNavSections(auth) {
           PAYROLL_GROUP,
           ASSETS_GROUP,
         ],
+      },
+      {
+        title: 'Accounting',
+        items: [{ label: 'Accounting', to: '/accounting', icon: Banknote }, { label: 'Staffing & contracts', to: '/accounting/staffing', icon: UserPlus }],
       },
       {
         title: 'Reports',
@@ -673,6 +712,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
   }, [companyIdForModules])
 
   const isModuleVisible = (path) => {
+    if (!auth.canAccessPath(path)) return false
     if (path === '/payroll/payslips') return moduleVisibility.payslips !== false
     if (path === '/payroll/loans') return moduleVisibility.loans !== false
     if (path === '/payroll/reimbursements') return moduleVisibility.reimbursements !== false
@@ -757,9 +797,6 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
       className={`app-sidebar group/sidebar relative flex h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[#E3EAF1] text-[#304B65] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${mobileOpen ? 'mobile-open' : ''} ${
         collapsed ? 'w-[72px]' : 'w-60'
       }`}
-      style={{
-        background: 'linear-gradient(180deg, #fffdf5 0%, #f8fbff 48%, #edf5ff 100%)',
-      }}
     >
       {/* ── Logo / Brand ─────────────────────────────────────────────── */}
       <div className={`relative flex items-center border-b border-[#E3EAF1] ${collapsed ? 'justify-center px-3' : 'justify-between px-4'} h-16 flex-shrink-0`}>
@@ -775,7 +812,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
             ) : (
               <img
                 src="/accrue-mark.svg"
-                alt="Accrue Technologies logo"
+                alt="AccrueHRMS logo"
                 className="h-full w-full object-contain p-1.5"
               />
             )}
@@ -935,11 +972,11 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
       {/* ── User footer ──────────────────────────────────────────────── */}
       <div className="border-t border-[#E3EAF1] bg-white p-3">
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-          <Avatar name={user?.name || user?.username || 'User'} src={userPhotoUrl} size="sm" />
+          <Avatar name={userDisplayName(user)} src={userPhotoUrl} size="sm" />
           {!collapsed && (
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-[#173858]">{user?.name || user?.username}</p>
+                <p className="truncate text-sm font-medium text-[#173858]">{userDisplayName(user)}</p>
                 <p className="truncate text-xs capitalize text-[#74899F]">{user?.role?.replace(/_/g, ' ')}</p>
               </div>
               <button

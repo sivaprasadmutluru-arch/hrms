@@ -299,7 +299,10 @@ const onboardingSlice = createSlice({
       .addCase(addCandidateStage.fulfilled, (state, action) => { state.candidateStages.push(action.payload) })
       .addCase(completeCandidateStage.fulfilled, (state, action) => {
         const idx = state.candidateStages.findIndex(s => s.id === action.payload.id)
-        if (idx !== -1) state.candidateStages[idx] = action.payload
+        if (idx !== -1) {
+          const previous = state.candidateStages[idx]
+          state.candidateStages[idx] = { ...previous, ...action.payload, stage: action.payload.stage ?? previous.stage }
+        }
       })
 
       // Candidate tasks
@@ -307,7 +310,10 @@ const onboardingSlice = createSlice({
       .addCase(assignCandidateTask.fulfilled, (state, action) => { state.candidateTasks.push(action.payload) })
       .addCase(completeCandidateTask.fulfilled, (state, action) => {
         const idx = state.candidateTasks.findIndex(t => t.id === action.payload.id)
-        if (idx !== -1) state.candidateTasks[idx] = action.payload
+        if (idx !== -1) {
+          const previous = state.candidateTasks[idx]
+          state.candidateTasks[idx] = { ...previous, ...action.payload, stage: action.payload.stage ?? previous.stage }
+        }
       })
   },
 })

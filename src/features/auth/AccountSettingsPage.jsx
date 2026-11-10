@@ -1,3 +1,4 @@
+import PasswordInput from '../../components/common/PasswordInput'
 import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useForm } from 'react-hook-form'
@@ -57,8 +58,8 @@ function ChangePasswordForm() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-sm">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-          <input
-            type="password"
+          <PasswordInput
+            visibilityLabel="current password" aria-label="Current Password" autoComplete="current-password"
             {...register('currentPassword', { required: 'Required' })}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
@@ -66,8 +67,8 @@ function ChangePasswordForm() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-          <input
-            type="password"
+          <PasswordInput
+            visibilityLabel="new password" aria-label="New Password" autoComplete="new-password"
             {...register('newPassword', { required: 'Required', minLength: { value: 6, message: 'Min 6 characters' } })}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
@@ -75,8 +76,8 @@ function ChangePasswordForm() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-          <input
-            type="password"
+          <PasswordInput
+            visibilityLabel="confirm new password" aria-label="Confirm New Password" autoComplete="new-password"
             {...register('confirmPassword', {
               required: 'Required',
               validate: (v) => v === watch('newPassword') || 'Passwords do not match',

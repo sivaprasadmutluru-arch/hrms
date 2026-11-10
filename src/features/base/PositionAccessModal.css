@@ -1,0 +1,4 @@
+.position-access-modal { display: flex; flex-direction: column; max-height: calc(100dvh - 2rem); }
+.position-access-modal > :first-child,
+.position-access-modal > :last-child { flex-shrink: 0; }
+.position-access-modal > :nth-child(2) { overflow-y: auto; min-height: 0; }

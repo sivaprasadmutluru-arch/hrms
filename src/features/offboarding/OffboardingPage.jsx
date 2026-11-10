@@ -48,6 +48,7 @@ export default function OffboardingPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailRecord, setDetailRecord] = useState(null)
   const [detailTab, setDetailTab] = useState('tasks')
+  const [readiness, setReadiness] = useState(null)
   const [noteText, setNoteText] = useState('')
   const [taskModalOpen, setTaskModalOpen] = useState(false)
 
@@ -62,6 +63,8 @@ export default function OffboardingPage() {
     if (detailRecord) {
       dispatch(fetchEmployeeTasks(detailRecord.id))
       dispatch(fetchOffboardingNotes(detailRecord.id))
+      setReadiness(null)
+      api.get(`/offboarding/${detailRecord.id}/completion-readiness`).then(r=>setReadiness(r.data)).catch(e=>setReadiness({ready:false,blockers:[e.response?.data?.message || 'Could not load completion checks']}))
     }
   }, [dispatch, detailRecord])
 
@@ -81,12 +84,12 @@ export default function OffboardingPage() {
   }
 
   const handleComplete = async (id) => {
-    try { await api.put(`/offboarding/${id}/complete`); toast.success('Completed'); dispatch(fetchAll({ page: 0, size: 20 })) }
-    catch { toast.error('Failed') }
+    try { await api.put(`/offboarding/${id}/complete`); toast.success('Offboarding completed'); setDetailOpen(false); setDetailRecord(null); dispatch(fetchAll({page:0,size:20})); dispatch(fetchLeavers({page:0,size:20})) }
+    catch(e) { toast.error(e.response?.data?.message || 'Could not complete offboarding') }
   }
 
   const handleCompleteTask = async (id) => {
-    try { await dispatch(completeEmployeeTask(id)).unwrap(); toast.success('Task completed') }
+    try { await dispatch(completeEmployeeTask(id)).unwrap(); toast.success('Task completed'); const {data}=await api.get(`/offboarding/${detailRecord.id}/completion-readiness`);setReadiness(data) }
     catch (e) { toast.error(e || 'Failed') }
   }
 
@@ -117,7 +120,7 @@ export default function OffboardingPage() {
       }
       setModalOpen(false)
       dispatch(fetchAll({ page: 0, size: 20 }))
-    } catch (e) { toast.error(e || 'Error') }
+    } catch (e) { toast.error(e.response?.data?.message || e || 'Error') }
   }
 
   const onTaskSubmit = async (formData) => {
@@ -126,7 +129,8 @@ export default function OffboardingPage() {
       toast.success('Task assigned')
       setTaskModalOpen(false)
       resetTask({})
-    } catch (e) { toast.error(e || 'Error') }
+      const {data}=await api.get(`/offboarding/${detailRecord.id}/completion-readiness`);setReadiness(data)
+    } catch (e) { toast.error(e.response?.data?.message || e || 'Error') }
   }
 
   const columns = [
@@ -142,7 +146,7 @@ export default function OffboardingPage() {
           <Button size="sm" variant="secondary" onClick={() => openEdit(row.original)}>Edit</Button>
         )}
         {row.original.status !== 'COMPLETED' && (
-          <Button size="sm" variant="success" onClick={() => handleComplete(row.original.id)}>Complete</Button>
+          <Button size="sm" variant="success" onClick={() => openDetail(row.original)}>Review completion</Button>
         )}
       </div>
     )},
@@ -164,7 +168,7 @@ export default function OffboardingPage() {
     { accessorKey: 'dueDate', header: 'Due', cell: ({ getValue }) => formatDate(getValue()) },
     { accessorKey: 'isCompleted', header: 'Status', cell: ({ getValue }) => <Badge label={getValue() ? 'Done' : 'Pending'} variant={getValue() ? 'success' : 'warning'} /> },
     { id: 'actions', header: '', cell: ({ row }) => (
-      !row.original.isCompleted && <Button size="sm" variant="success" onClick={() => handleCompleteTask(row.original.id)}>Mark Done</Button>
+      !row.original.isCompleted && detailRecord?.status !== 'COMPLETED' && <Button size="sm" variant="success" onClick={() => handleCompleteTask(row.original.id)}>Mark Done</Button>
     )},
   ]
 
@@ -231,11 +235,17 @@ export default function OffboardingPage() {
         title={`Offboarding: ${detailRecord?.employee?.firstName || ''} ${detailRecord?.employee?.lastName || ''}`}
         footer={
           <div className="flex justify-between items-center">
-            <Button size="sm" onClick={() => { resetTask({}); setTaskModalOpen(true) }}>+ Assign Task</Button>
+            {detailRecord?.status !== 'COMPLETED' && <Button size="sm" onClick={() => { resetTask({}); setTaskModalOpen(true) }}>+ Assign Task</Button>}
             <Button variant="secondary" onClick={() => setDetailOpen(false)}>Close</Button>
           </div>
         }>
         <div className="space-y-4">
+          <section className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm">
+            <h3 className="font-semibold">Completion checks</h3>
+            <p className="mt-1">{readiness?.accessEnded ? 'Company employment access has ended.' : 'Access ends on the last working date; pending clearance does not extend it.'}</p>
+            {!readiness ? <p>Checking checklist, company assets and payroll…</p> : readiness.blockers.length ? <ul className="mt-3 list-disc space-y-1 pl-5">{readiness.blockers.map(reason=><li key={reason}>{reason}</li>)}</ul> : <p className="mt-2 text-green-700">All completion checks passed.</p>}
+            {detailRecord?.status !== 'COMPLETED' && <Button className="mt-3" disabled={!readiness?.ready} onClick={()=>handleComplete(detailRecord.id)}>Complete offboarding</Button>}
+          </section>
           <div className="flex gap-4 border-b border-gray-200 mb-2">
             {['tasks', 'notes'].map(t => (
               <button key={t} onClick={() => setDetailTab(t)}

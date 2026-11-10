@@ -99,17 +99,18 @@ export default function CompanySwitcher({ allowAll = true }) {
 
           <MenuItems
             anchor="bottom end"
-            className="w-72 origin-top-right rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none [--anchor-gap:6px]"
+            portal
+            className="z-[60] flex w-72 max-w-[calc(100vw-1rem)] flex-col overflow-hidden origin-top-right rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none [--anchor-gap:6px] [--anchor-padding:8px]"
           >
             {/* Search box (non-closeable on type) */}
-            <div className="p-2 border-b border-gray-100">
+            <div className="shrink-0 p-2 border-b border-gray-100">
               <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 rounded-lg">
                 <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search companies..."
-                  className="text-sm bg-transparent outline-none flex-1 text-gray-700 placeholder:text-gray-400"
+                  className="min-w-0 text-sm bg-transparent outline-none flex-1 text-gray-700 placeholder:text-gray-400"
                 />
                 {search && (
                   <button
@@ -121,7 +122,7 @@ export default function CompanySwitcher({ allowAll = true }) {
               </div>
             </div>
 
-            <div className="max-h-80 overflow-y-auto py-1">
+            <div className="min-h-0 max-h-80 overflow-y-auto overscroll-contain py-1">
               {/* Only Platform Super Admin has an unrestricted all-company scope. */}
               {allowAll && (
                 <MenuItem>

@@ -1,23 +1,10 @@
+import { Section, Field } from './ProfileFields'
 import { formatDate, formatDateTime, formatStatus } from '../../../utils/formatters'
-
-const Section = ({ title, children }) => (
-  <div className="employee-detail-section mb-6">
-    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{title}</h4>
-    <dl className="employee-detail-fields grid grid-cols-1 gap-2">{children}</dl>
-  </div>
-)
-
-const Field = ({ label, value }) => (
-  <div className="employee-detail-field">
-    <dt className="employee-detail-field-label">{label}</dt>
-    <dd className="employee-detail-field-value">{value != null && value !== '' ? value : '—'}</dd>
-  </div>
-)
 
 export default function AboutTab({ profile }) {
   if (!profile) return null
   return (
-    <div className="space-y-2">
+    <div className="profile-info-stack">
       <Section title="Personal Information">
         <Field label="First Name"      value={profile.firstName} />
         <Field label="Last Name"       value={profile.lastName} />
@@ -35,8 +22,6 @@ export default function AboutTab({ profile }) {
         <Field label="Children"        value={profile.children} />
       </Section>
 
-      <div className="border-t border-gray-100" />
-
       <Section title="Work Information">
         <Field label="Department"         value={profile.departmentName} />
         <Field label="Job Position"       value={profile.jobPositionName} />
@@ -52,8 +37,6 @@ export default function AboutTab({ profile }) {
         <Field label="Created At"         value={formatDateTime(profile.createdAt)} />
       </Section>
 
-      <div className="border-t border-gray-100" />
-
       <Section title="Address">
         <Field label="Permanent Address" value={profile.permanentAddress} />
         <Field label="Current Address"   value={profile.currentAddress} />
@@ -62,8 +45,6 @@ export default function AboutTab({ profile }) {
         <Field label="City"              value={profile.city} />
         <Field label="ZIP Code"          value={profile.zip} />
       </Section>
-
-      <div className="border-t border-gray-100" />
 
       <Section title="Emergency Contact">
         <Field label="Contact Name"     value={profile.emergencyContactName} />

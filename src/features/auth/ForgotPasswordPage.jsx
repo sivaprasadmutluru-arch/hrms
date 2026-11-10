@@ -1,25 +1,28 @@
+import PasswordInput from '../../components/common/PasswordInput'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useDispatch } from 'react-redux'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { forgotPassword, resetPassword } from './authSlice'
 import { APP_NAME } from '../../config/constants'
 import toast from 'react-hot-toast'
 
 export default function ForgotPasswordPage() {
   const dispatch = useDispatch()
-  const [step, setStep] = useState('request') // 'request' | 'reset'
+  const [searchParams] = useSearchParams()
+  const resetToken = searchParams.get('token') || ''
+  const [step, setStep] = useState(resetToken ? 'reset' : 'request')
   const [loading, setLoading] = useState(false)
 
   const requestForm = useForm()
-  const resetForm = useForm()
+  const resetForm = useForm({ defaultValues: { token: resetToken } })
 
   const onRequestSubmit = async (data) => {
     setLoading(true)
     try {
       await dispatch(forgotPassword(data)).unwrap()
       toast.success('Reset instructions sent to your email')
-      setStep('reset')
+      setStep('sent')
     } catch (err) {
       toast.error(err || 'Failed to send reset email')
     } finally {
@@ -85,12 +88,18 @@ export default function ForgotPasswordPage() {
                 </button>
               </form>
             </>
+          ) : step === 'sent' ? (
+            <div role="status">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Check your email</h2>
+              <p className="text-sm text-gray-500 mb-4">Open the password reset link sent to your registered account email. The link expires in 15 minutes. Check your spam folder too.</p>
+              <button type="button" onClick={() => setStep('request')} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">Try another email</button>
+            </div>
           ) : (
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">Reset your password</h2>
-              <p className="text-sm text-gray-500 mb-6">Enter the token from your email and choose a new password.</p>
+              <p className="text-sm text-gray-500 mb-6">Choose a new password for your account.</p>
               <form onSubmit={resetForm.handleSubmit(onResetSubmit)} className="space-y-4">
-                <div>
+                <div hidden={Boolean(resetToken)}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Reset Token</label>
                   <input
                     {...resetForm.register('token', { required: 'Token is required' })}
@@ -104,9 +113,9 @@ export default function ForgotPasswordPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                  <input
+                  <PasswordInput
                     {...resetForm.register('newPassword', { required: 'Password is required', minLength: { value: 8, message: 'Minimum 8 characters' } })}
-                    type="password"
+                    visibilityLabel="new password" aria-label="New Password" autoComplete="new-password"
                     placeholder="New password"
                     className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
@@ -116,9 +125,9 @@ export default function ForgotPasswordPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                  <input
+                  <PasswordInput
                     {...resetForm.register('confirmPassword', { required: 'Please confirm your password' })}
-                    type="password"
+                    visibilityLabel="confirm new password" aria-label="Confirm New Password" autoComplete="new-password"
                     placeholder="Confirm new password"
                     className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />

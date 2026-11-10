@@ -83,6 +83,66 @@ export const fetchSubmissionStatus = createAsyncThunk('documents/fetchSubmission
   }
 })
 
+// ─── Generated Letters & Certificates ─────────────────────────────────────────
+
+export const fetchLetters = createAsyncThunk('documents/fetchLetters', async (params = {}, { rejectWithValue }) => {
+  try {
+    const query = new URLSearchParams()
+    if (params.type) query.append('type', params.type)
+    if (params.search) query.append('search', params.search)
+    const queryString = query.toString() ? `?${query.toString()}` : ''
+    const res = await api.get(`/documents/letters${queryString}`)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch letters')
+  }
+})
+
+export const fetchMyLetters = createAsyncThunk('documents/fetchMyLetters', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/documents/letters/my')
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch your letters')
+  }
+})
+
+export const createLetter = createAsyncThunk('documents/createLetter', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/documents/letters', data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to create document')
+  }
+})
+
+export const updateLetter = createAsyncThunk('documents/updateLetter', async ({ id, ...data }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/documents/letters/${id}`, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update document')
+  }
+})
+
+export const deleteLetter = createAsyncThunk('documents/deleteLetter', async (id, { rejectWithValue }) => {
+  try {
+    await api.delete(`/documents/letters/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to delete document')
+  }
+})
+
+export const sendLetterEmail = createAsyncThunk('documents/sendLetterEmail', async ({ id, to, subject, message }, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/documents/letters/${id}/send-email`, { to, subject, message })
+    return { id, data: res.data, to }
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to send email')
+  }
+})
+
 const documentsSlice = createSlice({
   name: 'documents',
   initialState: {
@@ -91,6 +151,10 @@ const documentsSlice = createSlice({
     documents: [],
     submissionStatus: [],
     submissionLoading: false,
+    letters: [],
+    myLetters: [],
+    lettersLoading: false,
+    lettersError: null,
     loading: false,
     error: null,
   },
@@ -123,6 +187,38 @@ const documentsSlice = createSlice({
       .addCase(fetchSubmissionStatus.pending, (state) => { state.submissionLoading = true })
       .addCase(fetchSubmissionStatus.fulfilled, (state, action) => { state.submissionLoading = false; state.submissionStatus = action.payload })
       .addCase(fetchSubmissionStatus.rejected, (state) => { state.submissionLoading = false })
+
+      // Letters & Certificates
+      .addCase(fetchLetters.pending, (state) => { state.lettersLoading = true; state.lettersError = null })
+      .addCase(fetchLetters.fulfilled, (state, action) => {
+        state.lettersLoading = false
+        state.letters = Array.isArray(action.payload) ? action.payload : (action.payload?.content || [])
+      })
+      .addCase(fetchLetters.rejected, (state, action) => { state.lettersLoading = false; state.lettersError = action.payload })
+
+      .addCase(fetchMyLetters.fulfilled, (state, action) => {
+        state.myLetters = Array.isArray(action.payload) ? action.payload : (action.payload?.content || [])
+      })
+
+      .addCase(createLetter.fulfilled, (state, action) => {
+        state.letters.unshift(action.payload)
+      })
+      .addCase(updateLetter.fulfilled, (state, action) => {
+        const idx = state.letters.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.letters[idx] = action.payload
+      })
+      .addCase(deleteLetter.fulfilled, (state, action) => {
+        state.letters = state.letters.filter(l => l.id !== action.payload)
+      })
+      .addCase(sendLetterEmail.fulfilled, (state, action) => {
+        const { id, to } = action.payload
+        const letter = state.letters.find(l => l.id === id)
+        if (letter) {
+          letter.status = 'SENT'
+          letter.sentToEmail = to
+          letter.sentAt = new Date().toISOString()
+        }
+      })
   },
 })
 
@@ -132,4 +228,8 @@ export const selectDocuments = (state) => state.documents.documents
 export const selectDocumentsLoading = (state) => state.documents.loading
 export const selectSubmissionStatus = (state) => state.documents.submissionStatus
 export const selectSubmissionLoading = (state) => state.documents.submissionLoading
+export const selectLetters = (state) => state.documents.letters
+export const selectMyLetters = (state) => state.documents.myLetters
+export const selectLettersLoading = (state) => state.documents.lettersLoading
 export default documentsSlice.reducer
+

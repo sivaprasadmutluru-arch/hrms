@@ -1,0 +1,96 @@
+[
+  {
+    "check": "Employee can view assigned CARR",
+    "status": 200,
+    "passed": true
+  },
+  {
+    "check": "Multi-item edit preserves KPI identifiers and unmeasured actuals",
+    "passed": true
+  },
+  {
+    "check": "Employee cannot approve own CARR",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Administrator cannot acknowledge for employee",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Cannot publish by skipping acknowledgement",
+    "status": 409,
+    "passed": true
+  },
+  {
+    "check": "Employee cannot edit draft content directly",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Employee cannot read admin audit log",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Browser acknowledgement, review date and evidence-backed KPI update persisted",
+    "status": 200,
+    "passed": true
+  },
+  {
+    "check": "Employee cannot overwrite KPI actuals",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Acknowledgement cannot be replayed",
+    "status": 409,
+    "passed": true
+  },
+  {
+    "check": "Published CARR content is locked",
+    "status": 409,
+    "passed": true
+  },
+  {
+    "check": "KPI actual requires source evidence",
+    "status": 400,
+    "passed": true
+  },
+  {
+    "check": "Audit history records complete approval and review lifecycle",
+    "status": 200,
+    "passed": true
+  },
+  {
+    "check": "Browser new-record creation uses required job title, dates and unmeasured KPI actual",
+    "status": 201,
+    "passed": true
+  },
+  {
+    "check": "Department manager lists only own and explicitly assigned records",
+    "status": 200,
+    "passed": true
+  },
+  {
+    "check": "Department manager cannot read or approve another managers record",
+    "status": 403,
+    "passed": true
+  },
+  {
+    "check": "Assigned department manager can approve to employee acknowledgement",
+    "status": 200,
+    "passed": true
+  },
+  {
+    "check": "Browser role-template creation and assignment persist a valid employee-position draft",
+    "status": 201,
+    "passed": true
+  },
+  {
+    "check": "Manager retains own draft alongside explicitly assigned team CARR",
+    "status": 200,
+    "passed": true
+  }
+]

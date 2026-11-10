@@ -1,7 +1,8 @@
 import Card from './Card'
+import { Link } from 'react-router-dom'
 import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/outline'
 
-export default function StatCard({ title, value, icon: Icon, trend, trendLabel, color = 'indigo' }) {
+export default function StatCard({ title, value, icon: Icon, trend, trendLabel, color = 'indigo', to }) {
   const colors = {
     indigo: 'bg-[#EDF5FD] text-[#3479BC] ring-[#DCEBFA]',
     emerald: 'bg-[#ECF8F3] text-[#318367] ring-[#D8EFE5]',
@@ -10,7 +11,7 @@ export default function StatCard({ title, value, icon: Icon, trend, trendLabel, 
     violet: 'bg-[#F2F0FF] text-[#6858B7] ring-[#E4E0FA]',
   }
 
-  return (
+  const content = (
     <Card padding={false} className="min-h-[112px] p-5 transition duration-200 hover:border-[#C9D9E8] hover:shadow-[0_10px_28px_rgba(30,65,96,0.085)] sm:p-5">
       <div className="flex h-full items-center justify-between gap-4">
         <div>
@@ -27,4 +28,5 @@ export default function StatCard({ title, value, icon: Icon, trend, trendLabel, 
       </div>
     </Card>
   )
+  return to ? <Link to={to} aria-label={`View ${title}`} className="block rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">{content}</Link> : content
 }

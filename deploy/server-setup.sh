@@ -53,7 +53,8 @@ DB_USERNAME=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
 DDL_AUTO=update
-CORS_ALLOWED_ORIGINS=http://200.97.171.126,https://200.97.171.126,http://grecha.ai,https://grecha.ai,http://www.grecha.ai,https://www.grecha.ai
+CORS_ALLOWED_ORIGINS=http://200.97.171.126,https://200.97.171.126
+APP_FRONTEND_URL=http://200.97.171.126
 FILE_UPLOAD_DIR=${APP_DIR}/media
 EOF
 chmod 600 "$APP_DIR/.env"
@@ -81,7 +82,7 @@ EOF
 cat > /etc/nginx/sites-available/cloudhrms <<'EOF'
 server {
     listen 80;
-    server_name 200.97.171.126 grecha.ai www.grecha.ai;
+    server_name 200.97.171.126;
 
     client_max_body_size 64m;
 

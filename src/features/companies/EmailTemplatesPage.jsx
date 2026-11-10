@@ -13,23 +13,57 @@ import Modal from '../../components/common/Modal'
 import Input from '../../components/common/Input'
 import ConfirmModal from '../../components/common/ConfirmModal'
 import useAuth from '../../hooks/useAuth'
+import api from '../../services/api'
 
-const TEMPLATE_TYPES = ['LEAVE_APPROVAL', 'LEAVE_REJECTION', 'ATTENDANCE_REMINDER', 'PAYSLIP', 'ONBOARDING', 'OFFBOARDING', 'GENERAL']
+const TEMPLATE_TYPES = ['ACCOUNT_READY', 'EMPLOYEE_ACCOUNT_CREATED', 'LEAVE_APPROVED', 'LEAVE_REJECTED', 'PAYSLIP_GENERATED', 'LEAVE_APPROVAL', 'LEAVE_REJECTION', 'PAYSLIP', 'ATTENDANCE_REMINDER', 'ONBOARDING', 'OFFBOARDING', 'GENERAL']
+
+const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
+const previewValues = { recipientName: 'Alex', companyName: 'Your organization', employeeName: 'Alex', username: 'alex@example.com', loginUrl: 'https://hr.accruetechnologies.com/login', passwordResetUrl: 'https://hr.accruetechnologies.com/forgot-password' }
+function emailPreview(subject, body, branding) {
+  const heading = escapeHtml(subject || 'An update for you')
+  const draft = body || '<p>Your email message will appear here.</p>'
+  const name = escapeHtml(branding?.name || 'Your organization')
+  const color = /^#[0-9a-fA-F]{6}$/.test(branding?.color || '') ? branding.color : '#2F73B7'
+  const brightness = (parseInt(color.slice(1, 3), 16) * 299 + parseInt(color.slice(3, 5), 16) * 587 + parseInt(color.slice(5, 7), 16) * 114) / 1000
+  const headerTextColor = brightness > 175 ? '#173858' : '#ffffff'
+  const values = { ...previewValues, companyName: branding?.name || previewValues.companyName, brandColor: color, brandTextColor: headerTextColor }
+  const substitute = value => value.replace(/\{\{(\w+)\}\}/g, (_, key) => escapeHtml(values[key] || `Sample ${key}`))
+  if (/^\s*(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i.test(draft)) {
+    return substitute(draft)
+  }
+  const sample = substitute(/<\s*(?:p|div|h[1-6]|a|span|strong|b|br|table|ul|ol|li|blockquote|section|img)\b[^>]*>/i.test(draft) ? draft : escapeHtml(draft).replace(/\n/g, '<br>'))
+  const headingBlock = /^\s*<h[12]\b/i.test(draft) ? '' : `<h1 style="margin:0 0 22px;color:#173858;font-size:24px;line-height:1.3">${heading}</h1>`
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#edf4fb;font-family:Arial,Helvetica,sans-serif;color:#294762"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#edf4fb"><tr><td align="center" style="padding:24px 12px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#fff;border:1px solid #dce8f4;border-radius:16px"><tr><td style="background:${color};padding:25px 34px;border-radius:16px 16px 0 0"><span style="font-size:24px;font-weight:700;color:${headerTextColor}">${name}</span></td></tr><tr><td height="4" style="background:${color};font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="padding:34px">${headingBlock}<div style="color:#38536e;font-size:15px;line-height:1.7">${sample}</div></td></tr><tr><td style="padding:22px 34px;background:#f5f9fd;border-top:1px solid #dce8f4;border-radius:0 0 16px 16px"><p style="margin:0 0 7px;color:#173858;font-size:13px;font-weight:700">${name}</p><p style="margin:0;color:#6b8095;font-size:12px;line-height:1.6">This message was sent by ${name}. Contact your HR team if you need help.</p></td></tr></table></td></tr></table></body></html>`
+}
 
 export default function EmailTemplatesPage() {
   const dispatch = useDispatch()
-  const { user } = useAuth()
+  const { effectiveCompanyId, roles } = useAuth()
+  const selectedCompanyId = useSelector(state => state.auth.selectedCompanyId)
+  const activeCompanyId = roles.includes('PLATFORM_SUPER_ADMIN') ? selectedCompanyId : effectiveCompanyId
   const templates = useSelector(selectMailTemplates)
   const loading = useSelector(selectBaseExtrasLoading)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [confirmModal, setConfirmModal] = useState({ open: false, id: null })
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
-  const typeCount = new Set(templates.map(template => template.templateType).filter(Boolean)).size
+  const [branding, setBranding] = useState({ name: 'Your organization', color: '#2F73B7' })
+  const [addingDefaults, setAddingDefaults] = useState(false)
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm()
+  const previewSubject = watch('subject')
+  const previewBody = watch('body')
+  const visibleTemplates = activeCompanyId ? templates : []
+  const typeCount = new Set(visibleTemplates.map(template => template.templateType).filter(Boolean)).size
 
-  useEffect(() => { dispatch(fetchMailTemplates()) }, [dispatch])
+  useEffect(() => {
+    if (!activeCompanyId) { setBranding({ name: 'Select an organization', color: '#2F73B7' }); return }
+    setBranding({ name: 'Loading organization…', color: '#2F73B7' })
+    dispatch(fetchMailTemplates())
+    let active = true
+    api.get('/mail-templates/branding').then(({ data }) => { if (active) setBranding(data) }).catch(() => {})
+    return () => { active = false }
+  }, [dispatch, activeCompanyId])
 
-  const openCreate = () => { setEditing(null); reset({}); setModalOpen(true) }
+  const openCreate = () => { setEditing(null); reset({ templateType: 'GENERAL' }); setModalOpen(true) }
   const openEdit = (row) => {
     setEditing(row)
     reset({ title: row.title, subject: row.subject, body: row.body, templateType: row.templateType })
@@ -42,7 +76,7 @@ export default function EmailTemplatesPage() {
         await dispatch(updateMailTemplate({ id: editing.id, data })).unwrap()
         toast.success('Template updated')
       } else {
-        await dispatch(createMailTemplate({ ...data, company: { id: user?.companyId } })).unwrap()
+        await dispatch(createMailTemplate(data)).unwrap()
         toast.success('Template created')
       }
       setModalOpen(false)
@@ -50,6 +84,15 @@ export default function EmailTemplatesPage() {
   }
 
   const handleDelete = (id) => setConfirmModal({ open: true, id })
+  const addDefaults = async () => {
+    setAddingDefaults(true)
+    try {
+      await api.post('/mail-templates/defaults')
+      await dispatch(fetchMailTemplates()).unwrap()
+      toast.success('Missing standard templates added')
+    } catch (error) { toast.error(error.response?.data?.message || 'Could not add standard templates') }
+    finally { setAddingDefaults(false) }
+  }
   const onConfirmDelete = async () => {
     try { await dispatch(deleteMailTemplate(confirmModal.id)).unwrap(); toast.success('Deleted') }
     catch (e) { toast.error(e || 'Error') }
@@ -85,20 +128,23 @@ export default function EmailTemplatesPage() {
         <div className="flex flex-wrap items-center justify-between gap-5">
           <div className="flex items-start gap-4">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#2F73B7] to-[#5AA3E6] text-white shadow-lg shadow-blue-900/15 ring-4 ring-white/70"><Mail className="h-6 w-6" /></span>
-            <div><p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-[#B18A2B]">Company workspace</p><h1 className="text-2xl font-bold tracking-tight text-[#173858] sm:text-[28px]">Email templates</h1><p className="mt-1 max-w-2xl text-sm text-[#647B95]">Keep company notifications clear, consistent and on brand.</p></div>
+            <div><p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-[#B18A2B]">{branding.name}</p><h1 className="text-2xl font-bold tracking-tight text-[#173858] sm:text-[28px]">Email templates</h1><p className="mt-1 max-w-2xl text-sm text-[#647B95]">Shared by your organization’s head office and branches.</p></div>
           </div>
-          <Button onClick={openCreate} className="!rounded-xl !bg-[#2F73B7] !px-5 !py-2.5 !shadow-md !shadow-blue-900/15 hover:!bg-[#245F9B]"><span className="inline-flex items-center gap-2"><MailPlus className="h-4 w-4" />New template</span></Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" disabled={addingDefaults || !activeCompanyId} onClick={addDefaults}>Add standard templates</Button>
+            <Button disabled={!activeCompanyId} onClick={openCreate} className="!rounded-xl !bg-[#2F73B7] !px-5 !py-2.5 !shadow-md !shadow-blue-900/15 hover:!bg-[#245F9B]"><span className="inline-flex items-center gap-2"><MailPlus className="h-4 w-4" />Create template</span></Button>
+          </div>
         </div>
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex items-center gap-4 rounded-2xl border border-[#DCE8F4] bg-white p-5 shadow-[0_8px_22px_rgba(39,87,138,0.055)]"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF4FF] text-[#3479BC]"><Mail className="h-5 w-5" /></span><div><p className="text-xs font-medium text-[#7A8EA3]">Saved templates</p><p className="mt-1 text-2xl font-bold leading-none text-[#173858]">{loading ? '—' : templates.length}</p></div></div>
+        <div className="flex items-center gap-4 rounded-2xl border border-[#DCE8F4] bg-white p-5 shadow-[0_8px_22px_rgba(39,87,138,0.055)]"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF4FF] text-[#3479BC]"><Mail className="h-5 w-5" /></span><div><p className="text-xs font-medium text-[#7A8EA3]">Saved templates</p><p className="mt-1 text-2xl font-bold leading-none text-[#173858]">{loading ? '—' : visibleTemplates.length}</p></div></div>
         <div className="flex items-center gap-4 rounded-2xl border border-[#E9E5D5] bg-gradient-to-r from-white to-[#FFF9E5] p-5 shadow-[0_8px_22px_rgba(39,87,138,0.045)]"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF3D1] text-[#A87B17]"><Layers3 className="h-5 w-5" /></span><div><p className="text-xs font-medium text-[#7A8EA3]">Notification categories in use</p><p className="mt-1 text-2xl font-bold leading-none text-[#173858]">{loading ? '—' : typeCount}</p></div></div>
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-[#DCE8F4] bg-white p-4 shadow-[0_10px_26px_rgba(39,87,138,0.06)] sm:p-5">
         <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F1F7FD] text-[#4386C5]"><FileText className="h-4 w-4" /></span><div><h2 className="text-sm font-bold text-[#294762]">Template library</h2><p className="mt-0.5 text-xs text-[#8294A7]">Edit the subject and message used by each notification.</p></div></div>
-        <DataTable columns={columns} data={templates} loading={loading} />
+        {!activeCompanyId ? <p className="px-3 py-10 text-center text-sm text-[#647B95]">Select an organization in the header to manage its email templates.</p> : <DataTable columns={columns} data={visibleTemplates} loading={loading} />}
       </section>
       <ConfirmModal
         open={confirmModal.open}
@@ -125,14 +171,15 @@ export default function EmailTemplatesPage() {
             </div>
             <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#38536E]"><Type className="h-4 w-4 text-[#4386C5]" />Email body</label>
-              <textarea placeholder="Write the message your employees will receive…" className="block min-h-52 w-full resize-y rounded-xl border border-[#D7E3EF] bg-white px-3.5 py-3 text-sm leading-relaxed text-[#304D69] shadow-sm placeholder:text-[#9AAABC] focus:border-[#438DD1] focus:outline-none focus:ring-2 focus:ring-[#438DD1]/15" {...register('body')} />
-              <p className="mt-1.5 text-xs text-[#8798AA]">Write a clear message with the important details near the top.</p>
+              <textarea placeholder="Write the message your employees will receive…" className="block min-h-52 w-full resize-y rounded-xl border border-[#D7E3EF] bg-white px-3.5 py-3 text-sm leading-relaxed text-[#304D69] shadow-sm placeholder:text-[#9AAABC] focus:border-[#438DD1] focus:outline-none focus:ring-2 focus:ring-[#438DD1]/15" {...register('body', { required: 'Enter an email message' })} />
+              {errors.body && <p className="mt-1 text-xs text-red-600">{errors.body.message}</p>}
+              <p className="mt-1.5 text-xs text-[#8798AA]">Use HTML for paragraphs and links. Variables such as {'{{recipientName}}'} and {'{{companyName}}'} are filled in when sent.</p>
             </div>
           </div>
           <aside className="rounded-2xl border border-[#DDE9F5] bg-gradient-to-br from-[#F2F8FF] via-white to-[#FFF8E3] p-4">
             <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#3479BC] shadow-sm ring-1 ring-[#DCE8F4]"><Sparkles className="h-4 w-4" /></span>
-            <h3 className="text-sm font-bold text-[#294762]">A clear template</h3>
-            <p className="mt-1 text-xs leading-relaxed text-[#758BA0]">Make notifications easy to scan and understand.</p>
+            <h3 className="text-sm font-bold text-[#294762]">{branding.name} style</h3>
+            <p className="mt-1 text-xs leading-relaxed text-[#758BA0]">Messages use your organization’s name and selected brand color automatically.</p>
             <ul className="mt-4 space-y-3 text-xs leading-relaxed text-[#637B93]">
               <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#D6AB38]" />Use a subject that explains the update.</li>
               <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4386C5]" />Keep the message concise and specific.</li>
@@ -140,6 +187,10 @@ export default function EmailTemplatesPage() {
             </ul>
             <div className="mt-5 flex items-center gap-2 border-t border-[#DDE9F5] pt-3 text-[11px] font-medium text-[#71869C]"><ShieldCheck className="h-4 w-4 text-[#4386C5]" />Only authorized admins can edit templates.</div>
           </aside>
+          <div className="lg:col-span-2">
+            <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-bold text-[#294762]">Email preview</h3><span className="text-xs text-[#8294A7]">Sample values · no email sent</span></div>
+            <iframe title="Email template preview" sandbox="" srcDoc={emailPreview(previewSubject, previewBody, branding)} className="h-[390px] w-full rounded-xl border border-[#D7E3EF] bg-white" />
+          </div>
         </div>
       </Modal>
     </div>

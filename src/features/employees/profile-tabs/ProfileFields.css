@@ -1,0 +1,22 @@
+.profile-information{container-type:inline-size;container-name:profile-details}
+.profile-info-stack{display:grid;gap:18px}
+.profile-info-section{min-width:0;border:1px solid #dfe9f2;border-radius:13px;overflow:hidden;background:#fff}
+.profile-info-heading{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #e5edf5;background:linear-gradient(100deg,#f7faff,#fbfdff)}
+.profile-info-heading h3{margin:0;color:#173858;font-size:14px;font-weight:650;line-height:1.5;letter-spacing:0;text-transform:none}
+.profile-info-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;border:1px solid #dce9f9;border-radius:9px;color:#2f73b9;background:#edf5ff}
+.profile-info-section dl.profile-info-grid{display:grid;grid-template-columns:minmax(0,1fr)!important;column-gap:28px;row-gap:0;margin:0;padding:4px 18px}
+.profile-info-section .profile-info-field{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.2fr);align-items:start;gap:12px;min-width:0;padding:13px 0;border-bottom:1px solid #edf2f7}
+.profile-info-section .profile-info-field:last-child{border-bottom:0}
+.profile-info-field dt{margin:0;color:#718299;font-size:12px;font-weight:500;line-height:1.65}
+.profile-info-field dd{margin:0;color:#1c3b58;font-size:13px;font-weight:550;line-height:1.55;overflow-wrap:anywhere;white-space:pre-line}
+.profile-info-field dd.profile-info-empty{color:#94a3b8;font-weight:400;font-size:12px}
+@container profile-details (min-width:620px){
+ .profile-info-section dl.profile-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .profile-info-section .profile-info-field{grid-template-columns:minmax(0,1fr);gap:4px}
+ .profile-info-section .profile-info-field:nth-last-child(-n+2){border-bottom:0}
+}
+@container profile-details (max-width:360px){
+ .profile-info-section .profile-info-heading{padding:12px}
+ .profile-info-section dl.profile-info-grid{padding:2px 12px}
+ .profile-info-section .profile-info-field{grid-template-columns:minmax(88px,.8fr) minmax(0,1.2fr);gap:8px}
+}
