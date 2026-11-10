@@ -9,6 +9,7 @@ import java.util.List;
 
 @Repository
 public interface ApplicantRepository extends JpaRepository<Applicant, Long>, JpaSpecificationExecutor<Applicant> {
+    long countByRecruitmentId(Long recruitmentId);
     List<Applicant> findByRecruitmentId(Long recruitmentId);
     List<Applicant> findByCandidateId(Long candidateId);
     List<Applicant> findByCompanyId(Long companyId);

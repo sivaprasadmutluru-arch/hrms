@@ -10,12 +10,22 @@ public class LoginResponse {
     private final String tokenType = "Bearer";
     private final Long userId;
     private final String username;
+    private String firstName;
+    private String lastName;
+    private String name;
     private final String email;
     private final List<String> roles;
     private final Long companyId;
     private final String companyName;
     private final Long employeeId;
     private final boolean mustChangePassword;
+
+    public LoginResponse withName(String first,String last) {
+        this.firstName=first;this.lastName=last;
+        this.name=java.util.stream.Stream.of(first,last).filter(v->v!=null&&!v.isBlank()).collect(java.util.stream.Collectors.joining(" ")).strip();
+        if(this.name.isBlank())this.name=username;
+        return this;
+    }
 
     public LoginResponse(String token, Long userId, String username, String email, List<String> roles, Long companyId, String companyName, Long employeeId, boolean mustChangePassword) {
         this.token = token;

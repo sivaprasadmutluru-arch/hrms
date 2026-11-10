@@ -52,9 +52,20 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request) {
         String loginIdentifier = resolveLoginIdentifier(request.getUsernameOrEmail());
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginIdentifier, request.getPassword()));
-        String token = jwtTokenProvider.generateToken(auth);
+        Authentication auth;
+        try {
+            auth = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginIdentifier, request.getPassword()));
+        } catch (org.springframework.security.authentication.DisabledException disabled) {
+            // Reveal account status only after the supplied password has been verified.
+            var heldUser = userRepository.findForLogin(loginIdentifier).orElse(null);
+            if (heldUser != null && heldUser.isLoginHeld()
+                    && request.getPassword() != null
+                    && passwordEncoder.matches(request.getPassword(), heldUser.getPassword())) {
+                throw new com.example.demo.common.exception.LoginHeldException();
+            }
+            throw disabled;
+        }
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         User loginUser = userRepository.findById(principal.getId()).orElse(null);
         boolean hasNeverLoggedIn = loginUser != null && loginUser.getLastLogin() == null;
@@ -72,17 +83,19 @@ public class AuthService {
 
         // Resolve the user's primary company ID — prefer the highest-scope role's company
         // so ENTERPRISE_ADMIN gets their head office ID, not a random branch.
-        UserRole primaryRole = employeeCompanyGuard.primaryRole(principal.getId());
+        UserRole primaryRole = com.example.demo.auth.service.PositionAccessService.primary(employeeCompanyGuard.primaryRole(principal.getId()), principal, companyRepository);
         Long companyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
 
         // Employee rows live inside each company's own tenant schema, so the lookup
         // must switch TenantContext to that schema first — querying without doing so
         // (the previous behaviour) silently misses real data and always returns null.
         Long employeeId = null;
+        String displayFirst=loginUser==null?null:loginUser.getFirstName();
+        String displayLast=loginUser==null?null:loginUser.getLastName();
         if (companyId != null) {
             String schema = companyRepository.findById(companyId).map(Company::getSchemaName).orElse(null);
             Employee emp = findEmployeeInTenant(principal.getId(), schema);
-            if (emp != null) employeeId = emp.getId();
+            if (emp != null) {employeeId = emp.getId();displayFirst=emp.getFirstName();displayLast=emp.getLastName();}
         } else {
             // No role-scoped company — typically Platform Super Admin. Rather than
             // guessing "first head office" (previously non-deterministic: findAll()
@@ -99,6 +112,7 @@ public class AuthService {
                 if (emp != null) {
                     companyId = ho.getId();
                     employeeId = emp.getId();
+                    displayFirst=emp.getFirstName();displayLast=emp.getLastName();
                     break;
                 }
             }
@@ -128,7 +142,8 @@ public class AuthService {
             userRepository.save(loginUser);
             mustChangePassword = true;
         }
-        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId, mustChangePassword);
+        String token = jwtTokenProvider.generateToken(auth, companyId);
+        return new LoginResponse(token, principal.getId(), principal.getUsername(), principal.getEmail(), roles, companyId, companyName, employeeId, mustChangePassword).withName(displayFirst,displayLast);
     }
 
     /** Allows employee phone-number login without duplicating phone data in the public users table. */
@@ -208,29 +223,37 @@ public class AuthService {
 
     @Transactional
     public void requestPasswordReset(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadRequestException("No user found with email: " + email));
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        var userOpt = userRepository.findByEmail(email.trim().toLowerCase());
+        if (userOpt.isEmpty()) {
+            log.info("Password reset requested for non-existent email: {}", email);
+            return;
+        }
+        User user = userOpt.get();
         UserRole primaryRole = employeeCompanyGuard.primaryRole(user.getId());
         Long companyId = primaryRole != null && primaryRole.getCompany() != null
                 ? primaryRole.getCompany().getId() : null;
         if (!emailService.hasActiveSmtpConfig(companyId)) {
-            throw new BadRequestException("Password reset email is not configured for this company. Please contact your HR administrator.");
+            log.warn("Password reset requested for user ID {} but SMTP is not configured for company {}", user.getId(), companyId);
+            return;
         }
         String token = UUID.randomUUID().toString();
         user.setResetToken(token);
         user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(15));
         userRepository.save(user);
 
-        String resetUrl = "https://grecha.ai/forgot-password?token=" + token;
+        String resetUrl = emailService.passwordResetUrl() + "?token=" + token;
         String body = "<p>Hello " + escapeHtml(user.getFirstName()) + ",</p>"
-                + "<p>We received a request to reset your GRECHA.AI password.</p>"
-                + "<p><a href=\"" + resetUrl + "\">Reset your password</a></p>"
+                + "<p>We received a request to reset your account password.</p>"
+                + "<p><a href=\"" + resetUrl + "\" style=\"display:inline-block;background:#2f73b7;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;\">Reset your password</a></p>"
                 + "<p>This secure link expires in 15 minutes and can be used only once. If you did not request this, you can ignore this email.</p>";
-        if (!emailService.sendEmail(companyId, user.getEmail(), "Reset your GRECHA.AI password", body, null)) {
+        if (!emailService.sendEmail(companyId, user.getEmail(), "Reset your password", body, null)) {
             user.setResetToken(null);
             user.setResetTokenExpiry(null);
             userRepository.save(user);
-            throw new BadRequestException("Unable to send password reset email. Please contact your HR administrator.");
+            log.warn("Failed to deliver password reset email to user ID {}", user.getId());
         }
     }
 

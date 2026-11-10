@@ -14,7 +14,7 @@
 --     -c "SET search_path TO akhil_deploys, public;" \
 --     -f V5__attendance_regularisation_single_stage.sql
 --
---   Then repeat for prabha_tech, yuwa_tech_solutions, etc.
+--   Then repeat for accruehr, yuwa_tech_solutions, etc.
 --
 -- Run this BEFORE deploying the new backend jar to that tenant.
 

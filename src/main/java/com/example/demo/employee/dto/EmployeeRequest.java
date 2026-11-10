@@ -19,16 +19,19 @@ public class EmployeeRequest {
 
     private String badgeId;
 
-    @NotBlank
+    @NotBlank(message="Enter the employee’s first name")
+    @jakarta.validation.constraints.Size(max=255,message="First name must be at most 255 characters")
     private String firstName;
 
     private String lastName;
     private String phone;
 
-    @Email
+    @Email(message="Enter a valid email address")
+    @jakarta.validation.constraints.Size(max=254,message="Email must be at most 254 characters")
     private String email;
 
     private Employee.Gender gender;
+    @jakarta.validation.constraints.PastOrPresent(message="Date of birth cannot be in the future")
     private LocalDate dateOfBirth;
     private Employee.MaritalStatus maritalStatus;
     private String nationality;
@@ -40,10 +43,13 @@ public class EmployeeRequest {
     private String state;
     private String city;
     private String zip;
+    @Email(message="Enter a valid work email address")
     private String workEmail;
     private String workPhone;
     private String qualification;
+    @jakarta.validation.constraints.Min(value=0,message="Experience cannot be negative")
     private Integer experience;
+    @jakarta.validation.constraints.Min(value=0,message="Number of children cannot be negative")
     private Integer children;
     private String emergencyContact;
     private String emergencyContactName;
@@ -72,11 +78,23 @@ public class EmployeeRequest {
     private String password;
 
     // Contract fields for auto-generated contract on employee creation
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Basic pay cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=10,fraction=2,message="Basic pay must have at most 10 whole-number digits and 2 decimal places")
     private BigDecimal basicPay;
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Housing allowance cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=10,fraction=2,message="Housing allowance must have at most 10 whole-number digits and 2 decimal places")
     private BigDecimal housingAllowance;
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Transport allowance cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=10,fraction=2,message="Transport allowance must have at most 10 whole-number digits and 2 decimal places")
     private BigDecimal transportAllowance;
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Other allowance cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=10,fraction=2,message="Other allowance must have at most 10 whole-number digits and 2 decimal places")
     private BigDecimal otherAllowance;
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Total salary cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=10,fraction=2,message="Total salary must have at most 10 whole-number digits and 2 decimal places")
     private BigDecimal totalSalary;
+    @jakarta.validation.constraints.DecimalMin(value="0",message="Salary per hour cannot be negative")
+    @jakarta.validation.constraints.Digits(integer=8,fraction=4,message="Salary per hour must have at most 8 whole-number digits and 4 decimal places")
     private BigDecimal salaryPerHour;
     private LocalDate contractEndDate;
     private Contract.WageType wageType;

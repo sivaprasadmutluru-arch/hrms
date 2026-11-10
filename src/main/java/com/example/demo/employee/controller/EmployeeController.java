@@ -73,12 +73,25 @@ public class EmployeeController {
     private final EmployeeWorkInformationRepository employeeWorkInformationRepository;
     private final com.example.demo.attendance.repository.AttendanceRepository attendanceRepository;
 
+    private final com.example.demo.employee.service.EmployeeLoginHoldService employeeLoginHoldService;
+
+    public record LoginHoldRequest(@jakarta.validation.constraints.NotNull Boolean held,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=500) String reason) {}
+
+    @PutMapping("/{id}/login-hold")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String,Object>> loginHold(@PathVariable Long id,
+            @RequestHeader("X-Company-Id") Long companyId, @Valid @RequestBody LoginHoldRequest request) {
+        return ResponseEntity.ok(employeeLoginHoldService.setHold(id, companyId, request.held(), request.reason()));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
     @Operation(summary = "List all employees (company-scoped)")
     public ResponseEntity<Page<EmployeeResponse>> list(
             @RequestParam(required = false) Long filterByCompanyId,
             @RequestParam(defaultValue = "false") boolean archived,
+            @RequestParam(required = false) String q,
             @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
             @AuthenticationPrincipal UserPrincipal currentUser,
             @PageableDefault(size = 20) Pageable pageable) {
@@ -93,11 +106,11 @@ public class EmployeeController {
         // assignments; for every other role require the client to select a company.
         if (companyId == null && !isPlatformAdmin) {
             if (isMultiCompanyAdmin) {
-                return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable));
+                return ResponseEntity.ok(globalEmployeeService.getAllAcrossAssignedOrgs(currentUser.getId(), pageable, !archived, q));
             }
             throw new BadRequestException("X-Company-Id header is required for employee listing");
         }
-        return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId, !archived));
+        return ResponseEntity.ok(employeeService.getAll(pageable, filterByCompanyId, !archived, q));
     }
 
     @GetMapping("/online-status")
@@ -126,8 +139,9 @@ public class EmployeeController {
     @Operation(summary = "List ALL employees across every organization (Super Admin only)")
     public ResponseEntity<Page<EmployeeResponse>> listGlobal(
             @RequestParam(defaultValue = "false") boolean archived,
+            @RequestParam(required = false) String q,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable, !archived));
+        return ResponseEntity.ok(globalEmployeeService.getAllAcrossOrgs(pageable, !archived, q));
     }
 
     @GetMapping("/assigned")
@@ -239,10 +253,8 @@ public class EmployeeController {
                 ? employeeRepository.findAll(spec).stream().map(Employee::getId).collect(Collectors.toList())
                 : longIds;
         List<Long> filteredIds = longIds.stream().filter(accessibleIds::contains).collect(Collectors.toList());
-        List<Employee> employees = employeeRepository.findAllById(filteredIds);
-        employees.forEach(e -> e.setActive(active));
-        employeeRepository.saveAll(employees);
-        return ResponseEntity.ok(Map.of("message", "Updated " + employees.size() + " employees"));
+        int updated=employeeService.bulkSetActive(filteredIds,active);
+        return ResponseEntity.ok(Map.of("message", "Updated " + updated + " employees"));
     }
 
     // ─── Org Chart ────────────────────────────────────────────────────────────
@@ -256,11 +268,13 @@ public class EmployeeController {
         if (chartScope == null || !chartScope.canAccess(companyId)) {
             throw new org.springframework.security.access.AccessDeniedException("Company is outside your access scope");
         }
-        List<Employee> all = employeeRepository.findByCompanyId(companyId).stream().filter(Employee::isActive).toList();
+        List<Employee> all = employeeRepository.findOrgChartEmployees(companyId);
+        var workProfiles=employeeWorkInformationRepository.findByEmployeeCompanyId(companyId).stream()
+            .collect(Collectors.toMap(w->w.getEmployee().getId(),w->w));
         Map<Long, Long> parents = new HashMap<>();
         all.forEach(e -> {
-            Employee manager = employeeWorkInformationRepository.findByEmployeeId(e.getId()).map(w -> java.util.Optional.ofNullable(w.getReportingManager()))
-                    .orElseGet(() -> java.util.Optional.ofNullable(e.getReportingManager())).orElse(null);
+            var profile=workProfiles.get(e.getId());
+            Employee manager = profile==null ? e.getReportingManager() : profile.getReportingManager();
             parents.put(e.getId(), manager == null ? null : manager.getId());
         });
 
@@ -318,11 +332,9 @@ public class EmployeeController {
                 ? employeeRepository.findAll(spec).stream().map(Employee::getId).collect(Collectors.toList())
                 : ids;
         List<Long> filteredIds = ids.stream().filter(accessibleIds::contains).collect(Collectors.toList());
-        List<Employee> employees = employeeRepository.findAllById(filteredIds);
-        employees.forEach(e -> e.setActive(false));
-        employeeRepository.saveAll(employees);
+        int updated = employeeService.bulkSetActive(filteredIds, false);
         Map<String, Object> archiveResp = new java.util.LinkedHashMap<>();
-        archiveResp.put("count", employees.size());
+        archiveResp.put("count", updated);
         return ResponseEntity.ok(archiveResp);
     }
 
@@ -984,10 +996,9 @@ public class EmployeeController {
                     continue;
                 }
 
-                Employee emp = employeeRepository.findById(empId).orElse(null);
-                if (emp == null) {
-                    errors.add("Row " + (i + 1) + ": employee not found for ID " + empId);
-                    continue;
+                Employee emp = employeeService.requireAccessibleEmployee(empId);
+                if (!companyId.equals(emp.getCompany().getId())) {
+                    throw new BadRequestException("Employee does not belong to the selected company");
                 }
 
                 EmployeeWorkInformation wi = employeeWorkInformationRepository
@@ -1034,7 +1045,11 @@ public class EmployeeController {
                 if (mgrIdStr != null && !mgrIdStr.isBlank()) {
                     try {
                         Long mgrId = Long.parseLong(mgrIdStr.trim());
-                        employeeRepository.findById(mgrId).ifPresent(wi::setReportingManager);
+                        Employee manager = employeeService.requireAccessibleEmployee(mgrId);
+                        if (!companyId.equals(manager.getCompany().getId())) {
+                            throw new BadRequestException("Reporting manager does not belong to the selected company");
+                        }
+                        wi.setReportingManager(manager);
                     } catch (NumberFormatException ex) {
                         errors.add("Row " + (i + 1) + ": invalid Reporting Manager ID '" + mgrIdStr + "'");
                     }
@@ -1078,10 +1093,29 @@ public class EmployeeController {
         final com.example.demo.base.entity.JobPosition finalJobPosition = request.jobPositionId() != null
                 ? jobPositionRepository.findById(request.jobPositionId()).orElse(null) : null;
 
+        if ((request.departmentId() != null && finalDept == null)
+                || (request.shiftId() != null && finalShift == null)
+                || (request.workTypeId() != null && finalWorkType == null)
+                || (request.jobPositionId() != null && finalJobPosition == null)) {
+            throw new BadRequestException("Selected work information no longer exists");
+        }
         int updatedCount = 0;
         for (Long empId : request.employeeIds()) {
-            Employee emp = employeeRepository.findById(empId).orElse(null);
-            if (emp == null) continue;
+            Employee emp = employeeService.requireAccessibleEmployee(empId);
+            Long employeeCompany = emp.getCompany().getId();
+            if ((finalDept != null && !employeeCompany.equals(finalDept.getCompany().getId()))
+                    || (finalShift != null && !employeeCompany.equals(finalShift.getCompany().getId()))
+                    || (finalWorkType != null && !employeeCompany.equals(finalWorkType.getCompany().getId()))
+                    || (finalJobPosition != null && !employeeCompany.equals(finalJobPosition.getCompany().getId()))) {
+                throw new BadRequestException("Work information must belong to the employee company");
+            }
+            if (finalJobPosition != null) {
+                Long departmentId = finalDept != null ? finalDept.getId()
+                        : emp.getDepartment() != null ? emp.getDepartment().getId() : null;
+                if (!java.util.Objects.equals(departmentId, finalJobPosition.getDepartment().getId())) {
+                    throw new BadRequestException("Job position does not belong to the selected department");
+                }
+            }
 
             EmployeeWorkInformation wi = employeeWorkInformationRepository
                     .findByEmployeeId(empId)

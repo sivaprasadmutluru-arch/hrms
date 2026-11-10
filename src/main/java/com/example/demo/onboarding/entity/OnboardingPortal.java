@@ -17,6 +17,9 @@ import java.util.UUID;
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class OnboardingPortal extends BaseEntity {
 
+    @com.fasterxml.jackson.annotation.JsonProperty("companyId")
+    public Long companyIdentifier() { return company == null ? null : company.getId(); }
+
     @Column(name = "title", nullable = false)
     private String title;
 

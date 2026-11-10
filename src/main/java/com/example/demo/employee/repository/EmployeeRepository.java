@@ -15,6 +15,13 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long>, JpaSp
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Employee e where e.id = :id")
     Optional<Employee> findByIdForProbationConfirmation(@Param("id") Long id);
+    @Query("select e from Employee e left join EmployeeWorkInformation w on w.employee.id=e.id where e.company.id=:companyId and e.isActive=true and e.id<>:managerId and (case when w.id is null then e.reportingManager.id else w.reportingManager.id end)=:managerId")
+    List<Employee> findActiveDirectReports(@Param("companyId") Long companyId,@Param("managerId") Long managerId);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"department","jobPosition","jobRole","user.userRoles.role"})
+    @Query("select distinct e from Employee e where e.company.id=:companyId and e.isActive=true")
+    List<Employee> findOrgChartEmployees(@Param("companyId") Long companyId);
+
     List<Employee> findByCompanyId(Long companyId);
     List<Employee> findByCompanyIdAndIsActiveTrue(Long companyId);
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"user", "company", "department"})

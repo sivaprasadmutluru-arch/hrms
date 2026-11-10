@@ -36,7 +36,7 @@ import java.util.*;
  * Runs once at application startup to create:
  *   1. All permissions (module:action pairs)
  *   2. All 8 roles with appropriate permission sets
- *   3. The default Prabha Tech organization + Head Office
+ *   3. The default AccrueHr organization + Head Office
  *   4. The Platform Super Admin user (login: admin / admin123)
  *   5. Sample client org "Yuwa Tech Solutions" with:
  *        - Head Office (Chennai)
@@ -49,7 +49,8 @@ import java.util.*;
 @Slf4j
 @Component
 @Profile("!prod")
-@Order(1)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "app.seed.enabled", havingValue = "true", matchIfMissing = true)
+@Order(3)
 @RequiredArgsConstructor
 public class DataSeeder implements CommandLineRunner {
 
@@ -95,14 +96,14 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("Starting data seeding...");
+        log.info("Starting demo data seeding...");
         seedPermissions();
         seedRoles();
         seedDefaultOrganizationAndCompany();
         seedPlatformSuperAdmin();
         seedSampleCompaniesAndUsers();
         seedSampleTenantData();
-        log.info("Data seeding complete.");
+        log.info("Demo data seeding complete.");
     }
 
     // ---------- Step 1: Permissions ----------
@@ -151,12 +152,12 @@ public class DataSeeder implements CommandLineRunner {
                         "payroll:edit", "payroll:approve", "report:view", "report:export"));
 
         /*
-         * PLATFORM_SUPER_ADMIN — Prabha Tech internal admin
+         * PLATFORM_SUPER_ADMIN — AccrueHr internal admin
          * Has all permissions. Manages organizations and companies.
          */
         createRole(Role.RoleName.PLATFORM_SUPER_ADMIN,
                 "Platform Super Admin",
-                "Prabha Tech internal — manages all client organizations",
+                "AccrueHr internal — manages all client organizations",
                 allPermissions(all));
 
         /*
@@ -273,37 +274,37 @@ public class DataSeeder implements CommandLineRunner {
     // ---------- Step 3: Default Organization and Head Office ----------
 
     private void seedDefaultOrganizationAndCompany() {
-        // Create Prabha Tech organization (the platform owner)
-        Organization praabhaTech = organizationRepository.findBySlug("praabha-tech")
+        // Create AccrueHr organization (the platform owner)
+        Organization platformOrganization = organizationRepository.findBySlug("accruehr")
                 .orElseGet(() -> {
                     Organization org = new Organization();
-                    org.setName("Prabha Tech");
-                    org.setSlug("praabha-tech");
-                    org.setContactEmail("admin@prabhatech.com");
+                    org.setName("AccrueHr");
+                    org.setSlug("accruehr");
+                    org.setContactEmail("hr@accruetechnologies.com");
                     org.setSubscriptionPlan(SubscriptionPlan.ENTERPRISE);
                     org.setStatus(Organization.OrgStatus.ACTIVE);
                     Organization saved = organizationRepository.save(org);
-                    log.info("Created default organization: Prabha Tech");
+                    log.info("Created default organization: AccrueHr");
                     return saved;
                 });
 
-        // Create default Head Office under Prabha Tech
-        Company headOffice = companyRepository.findByOrganizationIdAndCompanyType(praabhaTech.getId(), Company.CompanyType.HEAD_OFFICE)
+        // Create default Head Office under AccrueHr
+        Company headOffice = companyRepository.findByOrganizationIdAndCompanyType(platformOrganization.getId(), Company.CompanyType.HEAD_OFFICE)
                 .orElseGet(() -> {
                     Company ho = new Company();
-                    ho.setName("Prabha Tech Head Office");
+                    ho.setName("AccrueHr Head Office");
                     ho.setCompanyType(Company.CompanyType.HEAD_OFFICE);
                     ho.setStatus(Company.CompanyStatus.ACTIVE);
-                    ho.setOrganization(praabhaTech);
+                    ho.setOrganization(platformOrganization);
                     ho.setBranchLimit(5);
-                    ho.setEmail("admin@prabhatech.com");
+                    ho.setEmail("hr@accruetechnologies.com");
                     Company saved = companyRepository.save(ho);
-                    log.info("Created default Head Office: Prabha Tech Head Office (ID: {})", saved.getId());
+                    log.info("Created default Head Office: AccrueHr Head Office (ID: {})", saved.getId());
                     return saved;
                 });
 
-        // Provision tenant schema for the Prabha Tech Head Office (idempotent)
-        String schemaName = SchemaProvisioningService.toSchemaName("prabha_tech");
+        // Provision tenant schema for the AccrueHr Head Office (idempotent)
+        String schemaName = SchemaProvisioningService.toSchemaName("accruehr");
         if (headOffice.getSchemaName() == null) {
             headOffice.setSchemaName(schemaName);
             companyRepository.save(headOffice);
@@ -318,13 +319,17 @@ public class DataSeeder implements CommandLineRunner {
     // ---------- Step 4: Platform Super Admin user ----------
 
     private void seedPlatformSuperAdmin() {
+        // Bootstrap only when no usable platform administrator exists. Removing
+        // the legacy bootstrap login must not recreate it on every restart.
+        if (userRoleRepository.hasUsablePlatformAdministrator(Role.RoleName.PLATFORM_SUPER_ADMIN,
+                UserRole.AssignmentStatus.ACTIVE, java.time.LocalDate.now())) return;
         if (userRepository.findByUsername("admin").isPresent()) {
             return; // Already seeded
         }
 
         User admin = new User();
         admin.setUsername("admin");
-        admin.setEmail("admin@prabhatech.com");
+        admin.setEmail("accruetechnologiesai@gmail.com");
         admin.setPassword(passwordEncoder.encode("admin123"));
         admin.setFirstName("Platform");
         admin.setLastName("Admin");
@@ -334,22 +339,12 @@ public class DataSeeder implements CommandLineRunner {
         Role platformAdminRole = roleRepository.findByName(Role.RoleName.PLATFORM_SUPER_ADMIN)
                 .orElseThrow(() -> new RuntimeException("PLATFORM_SUPER_ADMIN role not found — check seedRoles()"));
 
-        // Assign the Prabha Tech Head Office as the admin's default company.
-        // This is required so that login returns a non-null companyId, which the
-        // frontend puts in the X-Company-Id header. Without this the TenantContext
-        // defaults to the public schema and employee queries return nothing.
-        Company praabhaTechHO = companyRepository
-                .findByOrganizationIdAndCompanyType(
-                        organizationRepository.findBySlug("praabha-tech")
-                                .map(org -> org.getId()).orElse(-1L),
-                        Company.CompanyType.HEAD_OFFICE)
-                .orElse(null);
-
+        // Platform grants must survive deletion of any tenant organization.
         UserRole userRole = new UserRole();
         userRole.setUser(admin);
         userRole.setRole(platformAdminRole);
         userRole.setAccessScope(UserRole.AccessScope.ENTERPRISE);
-        userRole.setCompany(praabhaTechHO); // gives the frontend a valid X-Company-Id to send
+        userRole.setCompany(null);
         userRoleRepository.save(userRole);
 
         log.info("Created Platform Super Admin: username=admin, password=admin123");

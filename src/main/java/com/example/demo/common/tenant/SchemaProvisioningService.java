@@ -183,6 +183,17 @@ public class SchemaProvisioningService {
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
             try {
+                // Platform authority belongs to the account, not to the deleted tenant.
+                // Detach these assignments before the generic company-owned row cleanup.
+                // Keep lifecycle fields unchanged so revoked/expired grants stay ineffective.
+                try (var ps = conn.prepareStatement(
+                        "UPDATE public.user_roles ur SET company_id = NULL " +
+                        "FROM public.roles r WHERE ur.role_id = r.id " +
+                        "AND r.name = 'PLATFORM_SUPER_ADMIN' " +
+                        "AND ur.company_id IN (" + ids + ")")) {
+                    ps.executeUpdate();
+                }
+
                 // Step 1 — tables in public schema with company_id (excluding companies itself).
                 // Uses pg_catalog (fast) instead of information_schema (slow catalog views).
                 List<String> companyTables = new ArrayList<>();

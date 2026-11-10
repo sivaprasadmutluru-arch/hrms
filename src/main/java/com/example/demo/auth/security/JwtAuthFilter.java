@@ -27,10 +27,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
+        // A supplied bearer token must stand on its own; disabled/invalid accounts
+        // must never retain authentication inherited from an earlier context.
+        if (token != null) SecurityContextHolder.clearContext();
         if (token != null && jwtTokenProvider.validateToken(token)) {
             String username = jwtTokenProvider.getUsernameFromToken(token);
             try {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                if (userDetails instanceof UserPrincipal principal) {
+                    principal.setLoginCompanyId(jwtTokenProvider.getLoginCompanyIdFromToken(token));
+                }
                 if (userDetails.isEnabled() && userDetails.isAccountNonLocked()
                         && userDetails.isAccountNonExpired() && userDetails.isCredentialsNonExpired()) {
                     UsernamePasswordAuthenticationToken auth =
@@ -49,6 +55,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String bearer = request.getHeader("Authorization");
         if (StringUtils.hasText(bearer) && bearer.startsWith("Bearer ")) {
             return bearer.substring(7);
+        }
+        String tokenParam = request.getParameter("token");
+        if (StringUtils.hasText(tokenParam)) {
+            return tokenParam.trim();
         }
         return null;
     }

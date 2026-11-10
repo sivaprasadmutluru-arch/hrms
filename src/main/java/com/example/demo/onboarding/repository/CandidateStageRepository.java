@@ -9,5 +9,6 @@ import java.util.List;
 
 @Repository
 public interface CandidateStageRepository extends JpaRepository<CandidateStage, Long>, JpaSpecificationExecutor<CandidateStage> {
+    List<CandidateStage> findByStageId(Long stageId);
     List<CandidateStage> findByOnboardingCandidateId(Long onboardingCandidateId);
 }

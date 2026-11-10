@@ -21,13 +21,9 @@ public class ReportingManagerService {
 
     public java.util.List<Employee> directReports(Employee manager) {
         if (manager == null || !manager.isActive() || manager.getCompany() == null) return java.util.List.of();
-        return employees.findByCompanyId(manager.getCompany().getId()).stream()
-                .filter(Employee::isActive)
-                .filter(employee -> !employee.getId().equals(manager.getId()))
-                .filter(employee -> {
-                    Employee assigned = resolve(employee);
-                    return assigned != null && assigned.isActive() && assigned.getId().equals(manager.getId());
-                }).toList();
+        // Resolve the authoritative work-profile override in SQL, including an
+        // explicitly cleared manager, rather than querying once per colleague.
+        return employees.findActiveDirectReports(manager.getCompany().getId(),manager.getId());
     }
 
     // Existing profiles are authoritative, including an explicitly cleared manager.

@@ -7,5 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.util.Optional;
 
 public interface EmployeeWorkInformationRepository extends JpaRepository<EmployeeWorkInformation, Long>, JpaSpecificationExecutor<EmployeeWorkInformation> {
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"employee","reportingManager"})
+    java.util.List<EmployeeWorkInformation> findByEmployeeCompanyId(Long companyId);
     Optional<EmployeeWorkInformation> findByEmployeeId(Long employeeId);
 }

@@ -23,9 +23,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final AccessScopeInterceptor accessScopeInterceptor;
+    private final com.example.demo.billing.BillingAccessInterceptor billingAccessInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(accessScopeInterceptor).addPathPatterns("/api/**");
+        registry.addInterceptor(accessScopeInterceptor).addPathPatterns("/api/**").excludePathPatterns("/api/public/careers/**", "/api/public/website-enquiries");
+        registry.addInterceptor(billingAccessInterceptor).addPathPatterns("/api/**")
+                .excludePathPatterns("/api/public/careers/**", "/api/public/website-enquiries", "/api/auth/**", "/api/billing/**", "/api/platform/scope/**", "/api/platform-operations/**", "/api/docs/**")
+                .order(20);
     }
 }

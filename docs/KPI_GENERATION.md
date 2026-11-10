@@ -29,7 +29,7 @@ Configuration saves retain existing KPI IDs, avoid replacing task responsibiliti
 
 Back up the database, then run `src/main/resources/db/migration/V21__carr_kpi_generation.sql` once before starting the new backend. This repository does not automatically execute migration files. The script updates existing KPI tables in public and tenant schemas, adds three metadata columns, and removes the actual-value NOT NULL/default constraints. Legacy zeroes without evidence become null because their provenance cannot establish a measured observation. Other observations remain intact. No new tables are introduced. Hibernate continues creating the columns for newly provisioned tenants; the opt-in CARR schema runner includes the structural changes for existing tenants.
 
-For the New_Grecha local installation, the migration was applied to the isolated database on port 5434 after writing `.runtime/kpi-before-migration.dump`. The older installation was not modified.
+For the AccrueHr local installation, the migration was applied to the isolated database on port 5434 after writing `.runtime/kpi-before-migration.dump`. The older installation was not modified.
 
 ## Verification
 

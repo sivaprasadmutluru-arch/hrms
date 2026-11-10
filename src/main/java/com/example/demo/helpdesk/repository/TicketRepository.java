@@ -9,6 +9,10 @@ import java.util.List;
 
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecificationExecutor<Ticket> {
+    @Override
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"department","raisedBy","assignedTo","assignedTo.user"})
+    List<Ticket> findAll(org.springframework.data.jpa.domain.Specification<Ticket> spec);
+
     List<Ticket> findByCompanyId(Long companyId);
     List<Ticket> findByRaisedById(Long employeeId);
     List<Ticket> findByAssignedToId(Long employeeId);

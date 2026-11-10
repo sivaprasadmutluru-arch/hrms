@@ -1,0 +1,1 @@
+function e(e){let t=e==null?``:String(e);return/^[1-9]\d*$/.test(t)?`ORG-${t.padStart(6,`0`)}`:`—`}export{e as t};

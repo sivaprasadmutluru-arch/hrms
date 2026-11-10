@@ -69,6 +69,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/login",
+                    "/api/public/careers/**",
+                    "/api/public/pricing",
+                    "/api/public/website-enquiries",
+                    "/api/billing/webhook",
                     "/api/auth/forgot-password",
                     "/api/auth/reset-password",
                     "/api/files/**",
@@ -102,6 +106,16 @@ public class SecurityConfig {
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Only published careers reads are portable. Never expose authenticated HR
+        // endpoints or credentialed cross-origin application submissions.
+        CorsConfiguration publicJobs = new CorsConfiguration();
+        publicJobs.setAllowedOrigins(List.of("*"));
+        publicJobs.setAllowedMethods(List.of("GET", "OPTIONS"));
+        publicJobs.setAllowedHeaders(List.of("Accept", "Content-Type"));
+        publicJobs.setAllowCredentials(false);
+        publicJobs.setMaxAge(3600L);
+        source.registerCorsConfiguration("/api/public/careers/**", publicJobs);
+        source.registerCorsConfiguration("/careers-widget.js", publicJobs);
         source.registerCorsConfiguration("/**", config);
         return source;
     }

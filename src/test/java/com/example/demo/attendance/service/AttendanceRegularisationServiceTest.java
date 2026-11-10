@@ -9,6 +9,8 @@ import com.example.demo.auth.repository.UserRoleRepository;
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.entity.User;
 import com.example.demo.base.entity.Company;
+import com.example.demo.base.entity.Department;
+import com.example.demo.employee.service.ReportingManagerService;
 import com.example.demo.base.entity.ShiftSchedule;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.employee.entity.Employee;
@@ -43,6 +45,7 @@ class AttendanceRegularisationServiceTest {
     @Mock UserRoleRepository userRoleRepository;
     @Mock AttendanceService attendanceService;
     @Mock NotificationService notificationService;
+    @Mock ReportingManagerService reportingManagers;
     @InjectMocks AttendanceRegularisationService service;
 
     @org.junit.jupiter.api.BeforeEach
@@ -136,6 +139,78 @@ class AttendanceRegularisationServiceTest {
                 LocalDate.of(2026, 9, 9), today));
         assertThrows(BadRequestException.class, () -> AttendanceRegularisationService.validateRequestDate(
                 LocalDate.of(2026, 10, 11), today));
+    }
+
+    @Test
+    void departmentManagerCannotRejectAnotherDepartmentsRequest() {
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                100L, 5L, UserRole.AccessScope.DEPARTMENT, List.of(5L), 7L));
+        AttendanceRegularisationRequest request = request(3L,
+                AttendanceRegularisationRequest.RequestStatus.PENDING);
+        Employee owner = employee(30L);
+        owner.setDepartment(department(8L));
+        request.setEmployee(owner);
+        Employee manager = employee(10L);
+        when(requestRepository.findById(3L)).thenReturn(Optional.of(request));
+        when(employeeRepository.findByUserId(100L)).thenReturn(Optional.of(manager));
+
+        assertThrows(AccessDeniedException.class, () -> service.reject(3L, "No evidence", 100L));
+        org.mockito.Mockito.verify(requestRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void departmentManagerCanRejectOwnDepartmentsRequest() {
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                100L, 5L, UserRole.AccessScope.DEPARTMENT, List.of(5L), 7L));
+        AttendanceRegularisationRequest request = request(3L,
+                AttendanceRegularisationRequest.RequestStatus.PENDING);
+        Employee owner = employee(30L);
+        owner.setDepartment(department(7L));
+        request.setEmployee(owner);
+        Employee manager = employee(10L);
+        when(requestRepository.findById(3L)).thenReturn(Optional.of(request));
+        when(employeeRepository.findByUserId(100L)).thenReturn(Optional.of(manager));
+        when(requestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertEquals("REJECTED", service.reject(3L, "No evidence", 100L).getStatus());
+    }
+
+    @Test
+    void directReportingManagerCanRejectWithSelfScope() {
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                100L, 5L, UserRole.AccessScope.SELF, List.of(5L)));
+        AttendanceRegularisationRequest request = request(3L,
+                AttendanceRegularisationRequest.RequestStatus.PENDING);
+        Employee owner = employee(30L);
+        request.setEmployee(owner);
+        Employee manager = employee(10L);
+        manager.setCompany(request.getCompany());
+        when(requestRepository.findById(3L)).thenReturn(Optional.of(request));
+        when(employeeRepository.findByUserId(100L)).thenReturn(Optional.of(manager));
+        when(reportingManagers.resolve(owner)).thenReturn(manager);
+        when(requestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertEquals("REJECTED", service.reject(3L, "No evidence", 100L).getStatus());
+    }
+
+    @Test
+    void departmentManagerCannotReadAnotherDepartmentsRequest() {
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                100L, 5L, UserRole.AccessScope.DEPARTMENT, List.of(5L), 7L));
+        AttendanceRegularisationRequest request = request(3L,
+                AttendanceRegularisationRequest.RequestStatus.PENDING);
+        Employee owner = employee(30L);
+        owner.setDepartment(department(8L));
+        request.setEmployee(owner);
+        when(requestRepository.findById(3L)).thenReturn(Optional.of(request));
+
+        assertThrows(AccessDeniedException.class, () -> service.getById(3L));
+    }
+
+    private Department department(Long id) {
+        Department department = new Department();
+        department.setId(id);
+        return department;
     }
 
     private AttendanceRegularisationRequest request(

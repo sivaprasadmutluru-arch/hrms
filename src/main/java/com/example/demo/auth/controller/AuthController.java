@@ -33,6 +33,8 @@ import java.util.Optional;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.example.demo.auth.service.PositionAccessService positionAccessService;
+    private final com.example.demo.auth.service.AccountPhotoService accountPhotoService;
     private final com.example.demo.auth.service.EmployeeCompanyGuard employeeCompanyGuard;
     private final UserRoleRepository userRoleRepository;
     private final CompanyRepository companyRepository;
@@ -53,7 +55,7 @@ public class AuthController {
                 .distinct()
                 .collect(java.util.stream.Collectors.toList());
 
-        UserRole primaryRole = employeeCompanyGuard.primaryRole(principal.getId());
+        UserRole primaryRole = com.example.demo.auth.service.PositionAccessService.primary(employeeCompanyGuard.primaryRole(principal.getId()), principal, companyRepository);
 
         Long rawCompanyId = primaryRole != null ? primaryRole.getCompany().getId() : null;
         // For ENTERPRISE scope, ensure we return the head office ID.
@@ -97,18 +99,37 @@ public class AuthController {
         response.put("userId", principal.getId());
         response.put("username", principal.getUsername());
         response.put("email", principal.getEmail());
-        response.put("roles", roles);
+        var effectiveAuth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        response.put("roles", effectiveAuth.getAuthorities().stream().map(a -> a.getAuthority()).filter(a -> a.startsWith("ROLE_")).map(a -> a.substring(5)).distinct().toList());
+        response.put("permissions", effectiveAuth.getAuthorities().stream().map(a -> a.getAuthority()).filter(a -> !a.startsWith("ROLE_")).toList());
+        var scopeData = com.example.demo.common.context.AccessScopeContext.get();
+        response.put("accessScope", scopeData != null && scopeData.getScope()!=null ? scopeData.getScope() : primaryRole != null ? primaryRole.getAccessScope() : null);
+        response.put("canManagePositionAccess", companyId!=null && positionAccessService.canAdminister(companyId) || roles.contains("PLATFORM_SUPER_ADMIN"));
+        response.put("positionAccess", principal.getPositionGrants().stream().filter(p -> scopeData==null || p.appliesTo(scopeData.getCompanyId(),companyId)).map(p -> Map.of("companyId",p.companyId(),"positionId",p.positionId(),"profile",p.profile().name(),"positionName",p.positionName(),"scope",p.profile().scope.name())).toList());
         response.put("companyId", companyId);
         response.put("companyName", companyName);
         response.put("companyLogoUrl", companyLogoUrl);
         response.put("organizationId", organizationId);
         response.put("employeeId", employeeId);
+        var account=userRepository.findById(principal.getId()).orElse(null);
+        if(firstName==null || firstName.isBlank())firstName=account==null?null:account.getFirstName();
+        String lastName=empOpt.map(Employee::getLastName).orElse(account==null?null:account.getLastName());
+        String displayName=java.util.stream.Stream.of(firstName,lastName).filter(v->v!=null&&!v.isBlank()).collect(java.util.stream.Collectors.joining(" ")).strip();
         response.put("firstName", firstName);
-        response.put("photoPath", photoPath);
+        response.put("lastName", lastName);
+        response.put("name",displayName.isBlank()?principal.getUsername():displayName);
         var user = userRepository.findById(principal.getId()).orElse(null);
+        response.put("photoPath", photoPath != null ? photoPath : user != null ? user.getPhotoPath() : null);
         response.put("mustChangePassword", user != null && user.isMustChangePassword());
         response.put("quickStartTourCompleted", user != null && user.isQuickStartTourCompleted());
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(value = "/me/photo", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String,String>> uploadAccountPhoto(@AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
+        return ResponseEntity.ok(Map.of("photoPath", accountPhotoService.upload(principal.getId(), file)));
     }
 
     @PostMapping("/login")
@@ -121,7 +142,7 @@ public class AuthController {
     @Operation(summary = "Request password reset email")
     public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody PasswordResetRequest request) {
         authService.requestPasswordReset(request.getEmail());
-        return ResponseEntity.ok(Map.of("message", "Password reset email sent"));
+        return ResponseEntity.ok(Map.of("message", "If an account exists with that email, password reset instructions have been sent."));
     }
 
     @PostMapping("/reset-password")

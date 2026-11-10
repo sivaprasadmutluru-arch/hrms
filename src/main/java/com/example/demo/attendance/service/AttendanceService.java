@@ -151,43 +151,9 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public Page<AttendanceResponse> getFullView(Long companyId, LocalDate from, LocalDate to,
                                                 Long departmentId, Long employeeId, String statusFilter, Pageable pageable) {
-        if (from == null && to == null) {
-            Specification<Attendance> spec = (root, query, cb) -> cb.conjunction();
-            if (companyId != null) {
-                spec = spec.and((root, query, cb) -> cb.or(
-                        cb.equal(root.get("company").get("id"), companyId),
-                        cb.and(cb.isNull(root.get("company")), cb.equal(root.get("employee").get("company").get("id"), companyId))
-                ));
-            }
-            if (employeeId != null) {
-                spec = spec.and((root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId));
-            } else if (departmentId != null) {
-                spec = spec.and((root, query, cb) -> cb.equal(root.get("employee").get("department").get("id"), departmentId));
-            }
-            if (statusFilter != null && !statusFilter.isBlank()) {
-                spec = spec.and((root, query, cb) -> cb.equal(cb.upper(root.get("attendanceStatus").as(String.class)), statusFilter.toUpperCase()));
-            }
-
-            Pageable sortedPageable = (pageable != null && pageable.getSort().isSorted())
-                    ? pageable
-                    : org.springframework.data.domain.PageRequest.of(
-                            pageable != null ? pageable.getPageNumber() : 0,
-                            pageable != null ? pageable.getPageSize() : 20,
-                            org.springframework.data.domain.Sort.by(
-                                    org.springframework.data.domain.Sort.Direction.DESC, "attendanceDate", "id"
-                            )
-                    );
-
-            Page<Attendance> page = attendanceRepository.findAll(spec, sortedPageable);
-            return new org.springframework.data.domain.PageImpl<>(policyResponses(page.getContent()), sortedPageable, page.getTotalElements());
-        }
-
         LocalDate today = LocalDate.now(DUBAI_ZONE);
         LocalDate end = to != null ? (to.isAfter(today) ? today : to) : today;
-        // A single selected "To" date represents that day.  Previously it
-        // paired that date with today's start date, producing start > end and
-        // an empty result set for every historical one-date filter.
-        LocalDate start = from != null ? from : end;
+        LocalDate start = from != null ? from : end.withDayOfMonth(1);
         if (start.isAfter(end)) {
             start = end;
         }
@@ -259,8 +225,11 @@ public class AttendanceService {
         while (!cursor.isBefore(start)) {
             for (Employee emp : employees) {
                 String key = emp.getId() + "_" + cursor;
-                // Never manufacture absent rows after an employee has been deactivated.
+                // Never manufacture absent rows after an employee has been deactivated or before they joined.
                 if (!emp.isActive() && !attMap.containsKey(key)) {
+                    continue;
+                }
+                if (emp.getDateJoining() != null && cursor.isBefore(emp.getDateJoining()) && !attMap.containsKey(key)) {
                     continue;
                 }
                 AttendanceResponse row;

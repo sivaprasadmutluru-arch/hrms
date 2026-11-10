@@ -21,7 +21,7 @@ public class OnboardingController {
     private final OnboardingService onboardingService;
 
     @GetMapping("/tasks")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     public ResponseEntity<List<OnboardingTask>> listTasks() {
         return ResponseEntity.ok(onboardingService.listTasks());
     }
@@ -33,7 +33,7 @@ public class OnboardingController {
     }
 
     @GetMapping("/employee/{employeeId}")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     public ResponseEntity<List<EmployeeOnboarding>> getEmployeeOnboarding(@PathVariable Long employeeId) {
         return ResponseEntity.ok(onboardingService.getEmployeeOnboarding(employeeId));
     }
@@ -84,7 +84,7 @@ public class OnboardingController {
     // ─── Onboarding Stages ────────────────────────────────────────────────────
 
     @GetMapping("/portals/{portalId}/stages")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "List stages for a portal")
     public ResponseEntity<List<OnboardingStage>> listStages(@PathVariable Long portalId) {
         return ResponseEntity.ok(onboardingService.listStages(portalId));
@@ -114,7 +114,7 @@ public class OnboardingController {
     // ─── Onboarding Candidates ────────────────────────────────────────────────
 
     @GetMapping("/portals/{portalId}/candidates")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "List candidates in a portal")
     public ResponseEntity<List<OnboardingCandidate>> listCandidates(@PathVariable Long portalId) {
         return ResponseEntity.ok(onboardingService.listCandidates(portalId));
@@ -135,17 +135,28 @@ public class OnboardingController {
         return ResponseEntity.ok(onboardingService.completeOnboarding(id));
     }
 
+    @PostMapping("/portals/{id}/employees/{employeeId}")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    public java.util.Map<String,Object> startEmployee(@PathVariable Long id,@PathVariable Long employeeId){return onboardingService.initiateOnboarding(employeeId,id);}
+
+    @GetMapping("/portals/{id}/eligible-candidates")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    public java.util.List<java.util.Map<String,Object>> eligible(@PathVariable Long id){return onboardingService.eligibleCandidates(id);}
+    @PostMapping("/candidates/{id}/convert-employee")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    public java.util.Map<String,Object> convert(@PathVariable Long id,@jakarta.validation.Valid @RequestBody com.example.demo.onboarding.dto.OnboardingConversionRequest form){return onboardingService.convertCandidate(id,form);}
+
     // ─── Candidate Stage Progress ─────────────────────────────────────────────
 
     @GetMapping("/candidates/{candidateId}/stages")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "Get stage progress for an onboarding candidate")
     public ResponseEntity<List<CandidateStage>> listCandidateStages(@PathVariable Long candidateId) {
         return ResponseEntity.ok(onboardingService.listCandidateStages(candidateId));
     }
 
     @PostMapping("/candidates/{candidateId}/stages")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "Add stage progress for an onboarding candidate")
     public ResponseEntity<CandidateStage> addCandidateStage(@PathVariable Long candidateId,
                                                               @RequestBody CandidateStage cs) {
@@ -153,7 +164,7 @@ public class OnboardingController {
     }
 
     @PutMapping("/candidate-stages/{id}/complete")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "Mark a candidate stage as completed")
     public ResponseEntity<CandidateStage> completeCandidateStage(@PathVariable Long id) {
         return ResponseEntity.ok(onboardingService.completeCandidateStage(id));
@@ -162,7 +173,7 @@ public class OnboardingController {
     // ─── Candidate Tasks ──────────────────────────────────────────────────────
 
     @GetMapping("/candidates/{candidateId}/tasks")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "List tasks for an onboarding candidate")
     public ResponseEntity<List<CandidateTask>> listCandidateTasks(@PathVariable Long candidateId) {
         return ResponseEntity.ok(onboardingService.listCandidateTasks(candidateId));
@@ -176,7 +187,7 @@ public class OnboardingController {
     }
 
     @PutMapping("/candidate-tasks/{id}/complete")
-    @PreAuthorize("hasAuthority('onboarding:view')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     @Operation(summary = "Mark a candidate task as completed")
     public ResponseEntity<CandidateTask> completeCandidateTask(@PathVariable Long id) {
         return ResponseEntity.ok(onboardingService.completeTask(id));

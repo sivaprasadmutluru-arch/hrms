@@ -11,6 +11,7 @@ import java.util.List;
 @Repository
 public interface EmployeeOffboardingRepository extends JpaRepository<EmployeeOffboarding, Long>, JpaSpecificationExecutor<EmployeeOffboarding> {
     List<EmployeeOffboarding> findByEmployeeId(Long employeeId);
+    List<EmployeeOffboarding> findByEmployeeDeactivatedAtIsNotNull();
     List<EmployeeOffboarding> findByStatus(EmployeeOffboarding.OffboardingStatus status);
 
     /** Due for automatic deactivation: not yet deactivated, and the effective date has arrived. */

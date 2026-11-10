@@ -22,32 +22,45 @@ public class TicketController {
 
     private final HelpdeskService helpdeskService;
 
+    @GetMapping("/assignees")
+    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    public ResponseEntity<Map<String,Object>> assignees(@RequestParam Long companyId,@RequestParam(defaultValue="") String search) {
+        if(search.length()>150)throw new com.example.demo.common.exception.BadRequestException("Search is too long");
+        return ResponseEntity.ok(helpdeskService.departmentManagerOptions(companyId,search));
+    }
+
+    @GetMapping("/departments")
+    @PreAuthorize("hasAuthority('helpdesk:view')")
+    public ResponseEntity<List<Map<String,Object>>> departments(@RequestParam Long companyId) {
+        return ResponseEntity.ok(helpdeskService.ticketDepartments(companyId));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "List all tickets (company-scoped)")
-    public ResponseEntity<List<Ticket>> list() {
-        return ResponseEntity.ok(helpdeskService.listTickets());
+    public ResponseEntity<List<Map<String,Object>>> list() {
+        return ResponseEntity.ok(helpdeskService.listTicketViews(null,null,null,null,null,null,null));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "Get a ticket by ID")
-    public ResponseEntity<Ticket> get(@PathVariable Long id) {
-        return ResponseEntity.ok(helpdeskService.getTicketById(id));
+    public ResponseEntity<Map<String,Object>> get(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.getTicketById(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('helpdesk:create')")
     @Operation(summary = "Create a new ticket")
-    public ResponseEntity<Ticket> create(@RequestBody Ticket ticket) {
-        return ResponseEntity.ok(helpdeskService.createTicket(ticket));
+    public ResponseEntity<Map<String,Object>> create(@RequestBody Ticket ticket) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.createTicket(ticket)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('helpdesk:edit')")
     @Operation(summary = "Update a ticket")
-    public ResponseEntity<Ticket> update(@PathVariable Long id, @RequestBody Ticket updated) {
-        return ResponseEntity.ok(helpdeskService.updateTicket(id, updated));
+    public ResponseEntity<Map<String,Object>> update(@PathVariable Long id, @RequestBody Ticket updated) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.updateTicket(id, updated)));
     }
 
     @DeleteMapping("/{id}")
@@ -61,69 +74,69 @@ public class TicketController {
     @PostMapping("/{id}/assign/{assigneeId}")
     @PreAuthorize("hasAuthority('helpdesk:edit')")
     @Operation(summary = "Assign a ticket to an employee")
-    public ResponseEntity<Ticket> assign(@PathVariable Long id, @PathVariable Long assigneeId) {
-        return ResponseEntity.ok(helpdeskService.assignTicket(id, assigneeId));
+    public ResponseEntity<Map<String,Object>> assign(@PathVariable Long id, @PathVariable Long assigneeId) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.assignTicket(id, assigneeId)));
     }
 
     @PostMapping("/{id}/resolve")
-    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @PreAuthorize("hasAuthority('helpdesk:edit') or @helpdeskService.isAssignedToCurrentUser(#id)")
     @Operation(summary = "Mark a ticket as resolved")
-    public ResponseEntity<Ticket> resolve(@PathVariable Long id) {
-        return ResponseEntity.ok(helpdeskService.resolveTicket(id));
+    public ResponseEntity<Map<String,Object>> resolve(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.resolveTicket(id)));
     }
 
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @PreAuthorize("hasAuthority('helpdesk:edit') or @helpdeskService.isAssignedToCurrentUser(#id)")
     @Operation(summary = "Close a ticket")
-    public ResponseEntity<Ticket> close(@PathVariable Long id) {
-        return ResponseEntity.ok(helpdeskService.closeTicket(id));
+    public ResponseEntity<Map<String,Object>> close(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.closeTicket(id)));
     }
 
     @PostMapping("/{id}/reopen")
-    @PreAuthorize("hasAuthority('helpdesk:edit')")
+    @PreAuthorize("hasAuthority('helpdesk:edit') or @helpdeskService.isAssignedToCurrentUser(#id)")
     @Operation(summary = "Reopen a closed or resolved ticket")
-    public ResponseEntity<Ticket> reopen(@PathVariable Long id) {
-        return ResponseEntity.ok(helpdeskService.reopenTicket(id));
+    public ResponseEntity<Map<String,Object>> reopen(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.reopenTicket(id)));
     }
 
     @PostMapping("/{id}/escalate")
     @PreAuthorize("hasAuthority('helpdesk:edit')")
     @Operation(summary = "Escalate a ticket to CRITICAL if past SLA (default 48h)")
-    public ResponseEntity<Ticket> escalate(@PathVariable Long id,
+    public ResponseEntity<Map<String,Object>> escalate(@PathVariable Long id,
                                            @RequestParam(defaultValue = "48") int slaHours) {
-        return ResponseEntity.ok(helpdeskService.escalateTicket(id, slaHours));
+        return ResponseEntity.ok(helpdeskService.routingView(helpdeskService.escalateTicket(id, slaHours)));
     }
 
     @GetMapping("/search")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "Search tickets by keyword, status, type, and priority")
-    public ResponseEntity<List<Ticket>> search(
+    public ResponseEntity<List<Map<String,Object>>> search(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Ticket.TicketStatus status,
             @RequestParam(required = false) Long typeId,
             @RequestParam(required = false) Ticket.Priority priority) {
-        return ResponseEntity.ok(helpdeskService.searchTickets(keyword, status, typeId, priority));
+        return ResponseEntity.ok(helpdeskService.listTicketViews(keyword,status,typeId,priority,null,null,null));
     }
 
     @GetMapping("/by-employee/{employeeId}")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "Get tickets raised by a specific employee")
-    public ResponseEntity<List<Ticket>> byEmployee(@PathVariable Long employeeId) {
-        return ResponseEntity.ok(helpdeskService.getTicketsByEmployee(employeeId));
+    public ResponseEntity<List<Map<String,Object>>> byEmployee(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(helpdeskService.listTicketViews(null,null,null,null,employeeId,null,null));
     }
 
     @GetMapping("/by-assignee/{employeeId}")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "Get tickets assigned to a specific employee")
-    public ResponseEntity<List<Ticket>> byAssignee(@PathVariable Long employeeId) {
-        return ResponseEntity.ok(helpdeskService.getTicketsByAssignee(employeeId));
+    public ResponseEntity<List<Map<String,Object>>> byAssignee(@PathVariable Long employeeId) {
+        return ResponseEntity.ok(helpdeskService.listTicketViews(null,null,null,null,null,employeeId,null));
     }
 
     @GetMapping("/by-department/{departmentId}")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "Get tickets raised by employees in a specific department")
-    public ResponseEntity<List<Ticket>> byDepartment(@PathVariable Long departmentId) {
-        return ResponseEntity.ok(helpdeskService.getTicketsByDepartment(departmentId));
+    public ResponseEntity<List<Map<String,Object>>> byDepartment(@PathVariable Long departmentId) {
+        return ResponseEntity.ok(helpdeskService.listTicketViews(null,null,null,null,null,null,departmentId));
     }
 
     @GetMapping("/dashboard")
@@ -138,18 +151,18 @@ public class TicketController {
     @GetMapping("/{id}/comments")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "List comments for a ticket")
-    public ResponseEntity<List<TicketComment>> listComments(@PathVariable Long id) {
-        return ResponseEntity.ok(helpdeskService.listComments(id));
+    public ResponseEntity<List<Map<String,Object>>> listComments(@PathVariable Long id) {
+        return ResponseEntity.ok(helpdeskService.listComments(id).stream().map(helpdeskService::commentView).toList());
     }
 
     @PostMapping("/{id}/comments")
     @PreAuthorize("hasAuthority('helpdesk:create')")
     @Operation(summary = "Add a comment to a ticket")
-    public ResponseEntity<TicketComment> addComment(@PathVariable Long id,
+    public ResponseEntity<Map<String,Object>> addComment(@PathVariable Long id,
                                                      @RequestBody Map<String, Object> body) {
         String comment = (String) body.get("comment");
-        Long commentedById = Long.parseLong(body.get("commentedById").toString());
-        return ResponseEntity.ok(helpdeskService.addComment(id, comment, commentedById));
+        Long commentedById = null; // Ignore supplied author; use the authenticated employee.
+        return ResponseEntity.ok(helpdeskService.commentView(helpdeskService.addComment(id, comment, commentedById)));
     }
 
     // ─── Attachments ──────────────────────────────────────────────────────────
@@ -157,16 +170,16 @@ public class TicketController {
     @GetMapping("/{ticketId}/attachments")
     @PreAuthorize("hasAuthority('helpdesk:view')")
     @Operation(summary = "List attachments for a ticket")
-    public ResponseEntity<List<TicketAttachment>> listAttachments(@PathVariable Long ticketId) {
-        return ResponseEntity.ok(helpdeskService.listAttachments(ticketId));
+    public ResponseEntity<List<Map<String,Object>>> listAttachments(@PathVariable Long ticketId) {
+        return ResponseEntity.ok(helpdeskService.listAttachments(ticketId).stream().map(helpdeskService::attachmentView).toList());
     }
 
     @PostMapping("/{ticketId}/attachments")
     @PreAuthorize("hasAuthority('helpdesk:create')")
     @Operation(summary = "Add an attachment to a ticket")
-    public ResponseEntity<TicketAttachment> addAttachment(@PathVariable Long ticketId,
+    public ResponseEntity<Map<String,Object>> addAttachment(@PathVariable Long ticketId,
                                                            @RequestBody TicketAttachment attachment) {
-        return ResponseEntity.ok(helpdeskService.addAttachment(ticketId, attachment));
+        return ResponseEntity.ok(helpdeskService.attachmentView(helpdeskService.addAttachment(ticketId, attachment)));
     }
 
     @DeleteMapping("/attachments/{id}")

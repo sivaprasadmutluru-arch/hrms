@@ -19,6 +19,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
+    private final com.example.demo.auth.service.PositionAccessService positionAccessService;
+    private final com.example.demo.auth.service.EmployeeArchiveGuard employeeArchiveGuard;
 
     @Override
     @Transactional(readOnly = true)
@@ -34,6 +36,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             return new UserPrincipal(user, allPermissions);
         }
 
-        return new UserPrincipal(user);
+        var principal = new UserPrincipal(user, List.of(), positionAccessService.resolve(user));
+        principal.setEmploymentArchived(employeeArchiveGuard.isArchived(user));
+        return principal;
     }
 }

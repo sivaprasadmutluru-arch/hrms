@@ -25,8 +25,7 @@ class ReportingManagerAccessTest {
     @Test void recognizesActiveDirectReportsWithinManagersCompany() {
         Company company = new Company(); company.setId(65L);
         Employee manager = employee(1, company), report = employee(2, company);
-        when(employees.findByCompanyId(65L)).thenReturn(List.of(manager, report));
-        doReturn(manager).when(service).resolve(report);
+        when(employees.findActiveDirectReports(65L,1L)).thenReturn(List.of(report));
         assertTrue(service.hasDirectReports(manager));
         verify(service, never()).resolve(manager);
     }
@@ -35,7 +34,7 @@ class ReportingManagerAccessTest {
         Company company = new Company(); company.setId(65L);
         Employee manager = employee(1, company), report = employee(2, company);
         report.setActive(false);
-        when(employees.findByCompanyId(65L)).thenReturn(List.of(report));
+        when(employees.findActiveDirectReports(65L,1L)).thenReturn(List.of());
         assertFalse(service.hasDirectReports(manager));
         manager.setActive(false);
         assertFalse(service.hasDirectReports(manager));
@@ -45,8 +44,7 @@ class ReportingManagerAccessTest {
     @Test void someoneElsesReportsDoNotGrantAccess() {
         Company company = new Company(); company.setId(65L);
         Employee manager = employee(1, company), otherManager = employee(3, company), report = employee(2, company);
-        when(employees.findByCompanyId(65L)).thenReturn(List.of(report));
-        doReturn(otherManager).when(service).resolve(report);
+        when(employees.findActiveDirectReports(65L,1L)).thenReturn(List.of());
         assertFalse(service.hasDirectReports(manager));
     }
 }

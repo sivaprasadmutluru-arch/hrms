@@ -5,6 +5,10 @@ import com.example.demo.employee.entity.Employee;
 import com.example.demo.auth.entity.User;
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.base.entity.Company;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.jpa.domain.Specification;
 import com.example.demo.common.context.AccessScopeContext;
 import com.example.demo.leave.entity.LeaveRequest;
 import com.example.demo.leave.repository.LeaveRequestRepository;
@@ -21,7 +25,7 @@ class ReportingManagerReviewTest {
     @Mock LeaveRequestRepository requests;
     @Mock ReportingManagerService managers;
     @InjectMocks LeaveService service;
-    @AfterEach void clear() { AccessScopeContext.clear(); }
+    @AfterEach void clear() { AccessScopeContext.clear(); SecurityContextHolder.clearContext(); }
     Employee employee(long id, long userId, long companyId) {
         Employee e = new Employee(); e.setId(id); e.setActive(true);
         User u = new User(); u.setId(userId); e.setUser(u);
@@ -34,6 +38,32 @@ class ReportingManagerReviewTest {
     void scope(long userId, long company) {
         AccessScopeContext.set(new AccessScopeContext.ScopeData(userId,company,UserRole.AccessScope.SELF,List.of(company)));
     }
+    @Test void departmentManagerWithLeaveApprovalPermissionCanReviewScopedRequest() {
+        Employee e = employee(1, 11, 5);
+        request(e);
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                12L, 5L, UserRole.AccessScope.DEPARTMENT, List.of(5L), 7L));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "manager", null, List.of(new SimpleGrantedAuthority("leave:approve"))));
+        when(requests.exists(org.mockito.ArgumentMatchers.<Specification<LeaveRequest>>any()))
+                .thenReturn(true);
+
+        assertTrue(service.reviewAllowed(10L));
+    }
+
+    @Test void departmentManagerCannotReviewRequestOutsideDepartment() {
+        Employee e = employee(1, 11, 5);
+        request(e);
+        AccessScopeContext.set(new AccessScopeContext.ScopeData(
+                12L, 5L, UserRole.AccessScope.DEPARTMENT, List.of(5L), 7L));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "manager", null, List.of(new SimpleGrantedAuthority("leave:approve"))));
+        when(requests.exists(org.mockito.ArgumentMatchers.<Specification<LeaveRequest>>any()))
+                .thenReturn(false);
+
+        assertFalse(service.reviewAllowed(10L));
+    }
+
     @Test void assignedManagerCanReviewWithoutBroadAdminRole() {
         Employee e = employee(1,11,5), m = employee(2,12,5); request(e); scope(12,5);
         when(managers.resolve(e)).thenReturn(m);

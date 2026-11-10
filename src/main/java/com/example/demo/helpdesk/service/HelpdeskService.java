@@ -40,11 +40,96 @@ public class HelpdeskService {
     private final CompanyRepository companyRepository;
     private final DepartmentRepository departmentRepository;
 
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> ticketDepartments(Long companyId) {
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(companyId);
+        return departmentRepository.findByCompanyIdAndIsActiveTrue(companyId).stream().map(d->{
+            Map<String,Object> m=new LinkedHashMap<>();m.put("id",d.getId());m.put("name",d.getName());return m;
+        }).toList();
+    }
+    @Transactional(readOnly=true)
+    public Map<String,Object> routingView(Ticket detached) {
+        // Entity references returned by earlier service calls are detached when OSIV is off.
+        // Load the managed ticket inside this transaction before reading lazy relationships.
+        Ticket t=findTicket(detached.getId());
+        return routingViewManaged(t);
+    }
+    private Map<String,Object> routingViewManaged(Ticket t) {
+        Map<String,Object> m=new LinkedHashMap<>();m.put("id",t.getId());m.put("title",t.getTitle());m.put("subject",t.getTitle());m.put("description",t.getDescription());m.put("status",t.getStatus());m.put("priority",t.getPriority());m.put("createdAt",t.getCreatedAt());m.put("companyId",t.getCompany().getId());
+        m.put("department",t.getDepartment()==null?null:Map.of("id",t.getDepartment().getId(),"name",t.getDepartment().getName()));
+        m.put("assignedTo",t.getAssignedTo()==null?null:Map.of("id",t.getAssignedTo().getId(),"name",employeeName(t.getAssignedTo())));
+        m.put("requesterName",t.getRaisedBy()==null?"":employeeName(t.getRaisedBy()));
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        boolean editor=auth!=null && auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("helpdesk:edit"));
+        m.put("canReassign",editor);m.put("canHandle",editor || assignedToCurrentUser(t));return m;
+    }
+    @Transactional(readOnly=true)
+    public Map<String,Object> commentView(TicketComment detached) {
+        var c=ticketCommentRepository.findById(detached.getId()).orElseThrow(()->new ResourceNotFoundException("Comment",detached.getId()));
+        findTicket(c.getTicket().getId());
+        Map<String,Object> m=new LinkedHashMap<>();m.put("id",c.getId());m.put("comment",c.getComment());m.put("createdAt",c.getCreatedAt());m.put("authorName",employeeName(c.getCommentedBy()));return m;
+    }
+    @Transactional(readOnly=true)
+    public Map<String,Object> attachmentView(TicketAttachment detached) {
+        var a=ticketAttachmentRepository.findById(detached.getId()).orElseThrow(()->new ResourceNotFoundException("Attachment",detached.getId()));
+        findTicket(a.getTicket().getId());
+        Map<String,Object> m=new LinkedHashMap<>();m.put("id",a.getId());m.put("filePath",a.getFilePath());m.put("fileName",a.getFileName());m.put("fileSize",a.getFileSize());return m;
+    }
+    @Transactional(readOnly=true)
+    public boolean isAssignedToCurrentUser(Long ticketId) {
+        var scope=AccessScopeContext.get();
+        if(scope==null)return false;
+        var ticket=findTicket(ticketId);
+        return assignedToCurrentUser(ticket);
+    }
+    private String employeeName(com.example.demo.employee.entity.Employee e) {
+        return java.util.stream.Stream.of(e.getFirstName(),e.getLastName()).filter(java.util.Objects::nonNull).collect(Collectors.joining(" ")).strip();
+    }
+
+    private boolean assignedToCurrentUser(Ticket ticket) {
+        var scope=AccessScopeContext.get();
+        return scope!=null && ticket.getAssignedTo()!=null && ticket.getAssignedTo().getUser()!=null
+            && ticket.getAssignedTo().getUser().getId().equals(scope.getUserId());
+    }
+
+    /** Fetch and map the response in one transaction, without per-row reloads. */
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> listTicketViews(String keyword, Ticket.TicketStatus status,
+            Long typeId, Ticket.Priority priority, Long employeeId, Long assigneeId, Long departmentId) {
+        Specification<Ticket> spec=visibleTickets();
+        spec=spec.and((root,query,cb)-> {
+            var predicates=new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            if(keyword!=null && !keyword.isBlank()) {
+                String pattern="%"+keyword.toLowerCase(java.util.Locale.ROOT)+"%";
+                predicates.add(cb.or(cb.like(cb.lower(root.get("title")),pattern),cb.like(cb.lower(root.get("description")),pattern)));
+            }
+            if(status!=null)predicates.add(cb.equal(root.get("status"),status));
+            if(priority!=null)predicates.add(cb.equal(root.get("priority"),priority));
+            if(typeId!=null)predicates.add(cb.equal(root.get("ticketType").get("id"),typeId));
+            if(employeeId!=null)predicates.add(cb.equal(root.get("raisedBy").get("id"),employeeId));
+            if(assigneeId!=null)predicates.add(cb.equal(root.get("assignedTo").get("id"),assigneeId));
+            if(departmentId!=null)predicates.add(cb.equal(root.get("department").get("id"),departmentId));
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        });
+        return ticketRepository.findAll(spec).stream().map(this::routingViewManaged).toList();
+    }
+    private Specification<Ticket> visibleTickets() {
+        Specification<Ticket> spec=ScopeFilter.byCompanyOrAll();
+        var scope=AccessScopeContext.get();
+        if(scope!=null && scope.isSelfScope()) {
+            Long userId=scope.getUserId();
+            spec=spec.and((root,query,cb)->cb.or(
+                cb.equal(root.join("raisedBy",jakarta.persistence.criteria.JoinType.LEFT).get("user").get("id"),userId),
+                cb.equal(root.join("assignedTo",jakarta.persistence.criteria.JoinType.LEFT).get("user").get("id"),userId)));
+        }
+        return spec;
+    }
+
     // ─── Ticket CRUD ──────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<Ticket> listTickets() {
-        Specification<Ticket> spec = ScopeFilter.byCompany();
+        Specification<Ticket> spec = visibleTickets();
         return spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll();
     }
 
@@ -55,22 +140,29 @@ public class HelpdeskService {
 
     @Transactional
     public Ticket createTicket(Ticket ticket) {
-        // Auto-populate raisedBy from the authenticated user if not explicitly provided
-        if (ticket.getRaisedBy() == null || ticket.getRaisedBy().getId() == null) {
-            AccessScopeContext.ScopeData scope = AccessScopeContext.get();
-            if (scope != null && scope.getUserId() != null) {
-                employeeRepository.findByUserId(scope.getUserId())
-                        .ifPresent(ticket::setRaisedBy);
-            }
-        } else {
-            ticket.setRaisedBy(employeeRepository.getReferenceById(ticket.getRaisedBy().getId()));
-        }
-        if (ticket.getAssignedTo() != null && ticket.getAssignedTo().getId() != null) {
-            ticket.setAssignedTo(employeeRepository.getReferenceById(ticket.getAssignedTo().getId()));
-        }
-        if (ticket.getCompany() != null && ticket.getCompany().getId() != null) {
-            ticket.setCompany(companyRepository.getReferenceById(ticket.getCompany().getId()));
-        }
+        if(ticket.getId()!=null || ticket.getTitle()==null || ticket.getTitle().isBlank() || ticket.getTitle().length()>255)
+            throw new com.example.demo.common.exception.BadRequestException("Enter a subject of up to 255 characters");
+        var scope=AccessScopeContext.get();
+        if(scope==null || scope.getUserId()==null)throw new org.springframework.security.access.AccessDeniedException("Sign in required");
+        ticket.setRaisedBy(employeeRepository.findByUserId(scope.getUserId()).orElse(null));
+        if(ticket.getRaisedBy()==null || !ticket.getRaisedBy().isActive() || ticket.getRaisedBy().getCompany()==null)
+            throw new com.example.demo.common.exception.BadRequestException("An active employee profile is required to raise a ticket");
+        var company=ticket.getRaisedBy().getCompany();
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(company.getId());
+        ticket.setCompany(company);
+        ticket.setAssignedTo(null); // Clients cannot override department routing during creation.
+        ticket.setStatus(Ticket.TicketStatus.OPEN);
+        if(ticket.getDepartment()!=null && ticket.getDepartment().getId()!=null) {
+            Long departmentId=ticket.getDepartment().getId();
+            var department=departmentRepository.findById(departmentId).orElseThrow(()->new ResourceNotFoundException("Department",departmentId));
+            if(!department.isActive() || !company.getId().equals(department.getCompany().getId()))
+                throw new com.example.demo.common.exception.BadRequestException("Choose an active department in the ticket company");
+            ticket.setDepartment(department);
+            ticket.setAssignedTo(departmentManagerRepository.findByDepartmentId(departmentId).stream()
+                .filter(a->a.isActive() && a.getManager().isActive() && a.getManager().getUser()!=null && a.getManager().getUser().isActive() && a.getManager().getCompany()!=null && company.getId().equals(a.getManager().getCompany().getId()))
+                .sorted(java.util.Comparator.comparing(DepartmentManager::getId))
+                .map(DepartmentManager::getManager).findFirst().orElse(null));
+        } else ticket.setDepartment(null);
         if (ticket.getTicketType() != null && ticket.getTicketType().getId() != null) {
             ticket.setTicketType(ticketTypeRepository.getReferenceById(ticket.getTicketType().getId()));
         }
@@ -86,7 +178,9 @@ public class HelpdeskService {
         ticket.setStatus(updated.getStatus());
         ticket.setPriority(updated.getPriority());
         if (updated.getAssignedTo() != null && updated.getAssignedTo().getId() != null) {
-            ticket.setAssignedTo(employeeRepository.getReferenceById(updated.getAssignedTo().getId()));
+            var assignee=employeeRepository.findById(updated.getAssignedTo().getId()).orElseThrow(()->new ResourceNotFoundException("Employee",updated.getAssignedTo().getId()));
+            if(!assignee.isActive() || assignee.getCompany()==null || !ticket.getCompany().getId().equals(assignee.getCompany().getId()))throw new com.example.demo.common.exception.BadRequestException("Choose an active employee in the ticket company");
+            ticket.setAssignedTo(assignee);
         } else {
             ticket.setAssignedTo(updated.getAssignedTo());
         }
@@ -110,8 +204,10 @@ public class HelpdeskService {
     @Transactional
     public Ticket assignTicket(Long ticketId, Long assigneeId) {
         Ticket ticket = findTicket(ticketId);
-        ticket.setAssignedTo(employeeRepository.findById(assigneeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee", assigneeId)));
+        var assignee=employeeRepository.findById(assigneeId).orElseThrow(()->new ResourceNotFoundException("Employee",assigneeId));
+        if(!assignee.isActive() || assignee.getUser()==null || !assignee.getUser().isActive() || assignee.getCompany()==null || !ticket.getCompany().getId().equals(assignee.getCompany().getId()))
+            throw new com.example.demo.common.exception.BadRequestException("Choose an active employee with a login in the ticket company");
+        ticket.setAssignedTo(assignee);
         if (ticket.getStatus() == Ticket.TicketStatus.OPEN) {
             ticket.setStatus(Ticket.TicketStatus.IN_PROGRESS);
         }
@@ -180,21 +276,24 @@ public class HelpdeskService {
         Ticket ticket = findTicket(ticketId);
         TicketComment comment = new TicketComment();
         comment.setTicket(ticket);
-        comment.setComment(commentText);
-        comment.setCommentedBy(employeeRepository.findById(commentedById)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee", commentedById)));
+        if(commentText==null || commentText.isBlank() || commentText.length()>10000)throw new com.example.demo.common.exception.BadRequestException("Enter a comment of up to 10000 characters");
+        comment.setComment(commentText.strip());
+        var scope=AccessScopeContext.get();
+        if(scope==null)throw new org.springframework.security.access.AccessDeniedException("Sign in required");
+        comment.setCommentedBy(employeeRepository.findByUserId(scope.getUserId()).orElseThrow(()->new com.example.demo.common.exception.BadRequestException("An employee profile is required to comment")));
         log.info("Adding comment to ticket id={} by employee id={}", ticketId, commentedById);
         return ticketCommentRepository.save(comment);
     }
 
     @Transactional(readOnly = true)
     public List<TicketAttachment> listAttachments(Long ticketId) {
+        findTicket(ticketId);
         return ticketAttachmentRepository.findByTicketId(ticketId);
     }
 
     @Transactional
     public TicketAttachment addAttachment(Long ticketId, TicketAttachment attachment) {
-        attachment.setTicket(ticketRepository.getReferenceById(ticketId));
+        attachment.setTicket(findTicket(ticketId));
         log.info("Adding attachment to ticket id={}", ticketId);
         return ticketAttachmentRepository.save(attachment);
     }
@@ -209,22 +308,20 @@ public class HelpdeskService {
 
     @Transactional(readOnly = true)
     public List<Ticket> getTicketsByEmployee(Long employeeId) {
-        return ticketRepository.findByRaisedById(employeeId);
+        return listTickets().stream().filter(t->t.getRaisedBy()!=null && t.getRaisedBy().getId().equals(employeeId)).toList();
     }
 
     @Transactional(readOnly = true)
     public List<Ticket> getTicketsByAssignee(Long employeeId) {
-        return ticketRepository.findByAssignedToId(employeeId);
+        return listTickets().stream().filter(t->t.getAssignedTo()!=null && t.getAssignedTo().getId().equals(employeeId)).toList();
     }
 
     @Transactional(readOnly = true)
     public List<Ticket> getTicketsByDepartment(Long departmentId) {
-        Specification<Ticket> spec = ScopeFilter.byCompany();
+        Specification<Ticket> spec = visibleTickets();
         List<Ticket> all = spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll();
         return all.stream()
-                .filter(t -> t.getRaisedBy() != null
-                        && t.getRaisedBy().getDepartment() != null
-                        && departmentId.equals(t.getRaisedBy().getDepartment().getId()))
+                .filter(t -> t.getDepartment()!=null && departmentId.equals(t.getDepartment().getId()))
                 .collect(Collectors.toList());
     }
 
@@ -235,7 +332,7 @@ public class HelpdeskService {
     @Transactional(readOnly = true)
     public List<Ticket> searchTickets(String keyword, Ticket.TicketStatus status,
                                       Long typeId, Ticket.Priority priority) {
-        Specification<Ticket> spec = ScopeFilter.byCompany();
+        Specification<Ticket> spec = visibleTickets();
         List<Ticket> all = spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll();
         return all.stream()
                 .filter(t -> keyword == null || keyword.isBlank()
@@ -256,7 +353,7 @@ public class HelpdeskService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getDashboard() {
-        Specification<Ticket> spec = ScopeFilter.byCompany();
+        Specification<Ticket> spec = visibleTickets();
         List<Ticket> tickets = spec != null ? ticketRepository.findAll(spec) : ticketRepository.findAll();
 
         LocalDateTime overdueThreshold = LocalDateTime.now().minusHours(48);
@@ -440,40 +537,75 @@ public class HelpdeskService {
 
     // ─── Department Managers ──────────────────────────────────────────────────
 
+    private void requireDepartmentAccess(com.example.demo.base.entity.Department department) {
+        if(department.getCompany()==null) throw new com.example.demo.common.exception.BadRequestException("Department has no company");
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(department.getCompany().getId());
+    }
+
+    private Map<String,Object> departmentManagerView(DepartmentManager assignment) {
+        var employee=assignment.getManager();var department=assignment.getDepartment();
+        Map<String,Object> person=new LinkedHashMap<>();person.put("id",employee.getId());person.put("firstName",employee.getFirstName());person.put("lastName",employee.getLastName());person.put("email",employee.getEmail());
+        return Map.of("id",assignment.getId(),"department",Map.of("id",department.getId(),"name",department.getName()),"manager",person,"companyId",department.getCompany().getId());
+    }
+
     @Transactional(readOnly = true)
-    public List<DepartmentManager> listDepartmentManagers(Long departmentId) {
-        if (departmentId != null) {
-            return departmentManagerRepository.findByDepartmentId(departmentId);
-        }
-        Specification<DepartmentManager> spec = ScopeFilter.byCompany();
-        return spec != null ? departmentManagerRepository.findAll(spec) : departmentManagerRepository.findAll();
+    public List<Map<String,Object>> listDepartmentManagers(Long departmentId) {
+        if(departmentId!=null) requireDepartmentAccess(departmentRepository.findById(departmentId).orElseThrow(()->new ResourceNotFoundException("Department",departmentId)));
+        var scope=AccessScopeContext.get();
+        boolean platform=SecurityContextHolder.getContext().getAuthentication()!=null && SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"));
+        if(scope==null && !platform)throw new org.springframework.security.access.AccessDeniedException("Company access required");
+        Specification<DepartmentManager> spec=(root,query,cb)->cb.and(cb.isTrue(root.get("isActive")),cb.isTrue(root.get("manager").get("isActive")),cb.isTrue(root.get("department").get("isActive")));
+        if(departmentId!=null)spec=spec.and((root,query,cb)->cb.equal(root.get("department").get("id"),departmentId));
+        if(scope!=null && !scope.hasUnrestrictedAccess())spec=spec.and((root,query,cb)->root.get("department").get("company").get("id").in(scope.getAccessibleCompanyIds()));
+        Long selected=com.example.demo.common.context.CompanyContext.get();
+        if(selected!=null)spec=spec.and((root,query,cb)->cb.equal(root.get("department").get("company").get("id"),selected));
+        return departmentManagerRepository.findAll(spec).stream().map(this::departmentManagerView).toList();
+    }
+
+    @Transactional(readOnly=true)
+    public Map<String,Object> departmentManagerOptions(Long companyId,String search) {
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(companyId);
+        var company=companyRepository.findById(companyId).orElseThrow(()->new ResourceNotFoundException("Company",companyId));
+        if(!company.isActive())throw new com.example.demo.common.exception.BadRequestException("Select an active company");
+        var departments=departmentRepository.findByCompanyIdAndIsActiveTrue(companyId).stream().map(d->Map.of("id",d.getId(),"name",d.getName())).toList();
+        String term="%"+search.strip().toLowerCase(java.util.Locale.ROOT)+"%";
+        Specification<com.example.demo.employee.entity.Employee> spec=(root,query,cb)->cb.and(cb.equal(root.get("company").get("id"),companyId),cb.isTrue(root.get("isActive")),cb.or(cb.like(cb.lower(root.get("firstName")),term),cb.like(cb.lower(root.get("lastName")),term),cb.like(cb.lower(root.get("email")),term),cb.like(cb.lower(cb.concat(cb.concat(root.get("firstName")," "),root.get("lastName"))),term)));
+        var employees=employeeRepository.findAll(spec,org.springframework.data.domain.PageRequest.of(0,50,org.springframework.data.domain.Sort.by("firstName","id")));
+        var choices=employees.getContent().stream().map(e->{Map<String,Object> m=new LinkedHashMap<>();m.put("id",e.getId());m.put("name",java.util.stream.Stream.of(e.getFirstName(),e.getLastName()).filter(java.util.Objects::nonNull).collect(Collectors.joining(" ")).strip());m.put("email",e.getEmail());return m;}).toList();
+        return Map.of("departments",departments,"employees",choices,"employeeTotal",employees.getTotalElements());
     }
 
     @Transactional
-    public DepartmentManager assignDepartmentManager(DepartmentManager dm) {
-        if (dm.getDepartment() != null && dm.getDepartment().getId() != null) {
-            dm.setDepartment(departmentRepository.getReferenceById(dm.getDepartment().getId()));
-        }
-        if (dm.getManager() != null && dm.getManager().getId() != null) {
-            dm.setManager(employeeRepository.getReferenceById(dm.getManager().getId()));
-        }
-        if (dm.getCompany() != null && dm.getCompany().getId() != null) {
-            dm.setCompany(companyRepository.getReferenceById(dm.getCompany().getId()));
-        }
-        log.info("Assigning department manager for department id={}", dm.getDepartment() != null ? dm.getDepartment().getId() : null);
-        return departmentManagerRepository.save(dm);
+    public Map<String,Object> assignDepartmentManager(DepartmentManager dm) {
+        if(dm.getId()!=null || dm.getDepartment()==null || dm.getDepartment().getId()==null || dm.getManager()==null || dm.getManager().getId()==null)throw new com.example.demo.common.exception.BadRequestException("Select a department and an employee");
+        final Long departmentId=dm.getDepartment().getId(); final Long managerId=dm.getManager().getId();
+        var department=departmentRepository.lockById(departmentId).orElseThrow(()->new ResourceNotFoundException("Department",departmentId));
+        requireDepartmentAccess(department);
+        var employee=employeeRepository.findById(managerId).orElseThrow(()->new ResourceNotFoundException("Employee",managerId));
+        if(!department.isActive() || !employee.isActive() || !department.getCompany().isActive())throw new com.example.demo.common.exception.BadRequestException("Select an active department and employee");
+        if(employee.getCompany()==null || !department.getCompany().getId().equals(employee.getCompany().getId()))throw new com.example.demo.common.exception.BadRequestException("The employee and department must belong to the same company");
+        var existing=departmentManagerRepository.findByDepartmentId(department.getId()).stream().filter(a->a.getManager().getId().equals(employee.getId())).findFirst().orElse(null);
+        if(existing!=null)dm=existing;
+        dm.setDepartment(department);dm.setManager(employee);dm.setCompany(department.getCompany());dm.setActive(true);
+        return departmentManagerView(departmentManagerRepository.save(dm));
     }
 
     @Transactional
     public void removeDepartmentManager(Long id) {
-        departmentManagerRepository.deleteById(id);
-        log.info("Removed DepartmentManager id={}", id);
+        var assignment=departmentManagerRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Department manager",id));
+        requireDepartmentAccess(assignment.getDepartment());assignment.setActive(false);departmentManagerRepository.save(assignment);
     }
 
     // ─── Private Helpers ──────────────────────────────────────────────────────
 
     private Ticket findTicket(Long id) {
-        return ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket", id));
+        var ticket=ticketRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Ticket",id));
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(ticket.getCompany().getId());
+        var scope=AccessScopeContext.get();
+        if(scope!=null && scope.isSelfScope() && !assignedToCurrentUser(ticket)
+            && (ticket.getRaisedBy()==null || ticket.getRaisedBy().getUser()==null
+                || !scope.getUserId().equals(ticket.getRaisedBy().getUser().getId())))
+            throw new org.springframework.security.access.AccessDeniedException("Ticket is outside your access");
+        return ticket;
     }
 }

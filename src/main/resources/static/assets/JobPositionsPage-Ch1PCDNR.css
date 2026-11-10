@@ -1,0 +1,1 @@
+.position-access-modal{flex-direction:column;max-height:calc(100dvh - 2rem);display:flex}.position-access-modal>:first-child,.position-access-modal>:last-child{flex-shrink:0}.position-access-modal>:nth-child(2){min-height:0;overflow-y:auto}

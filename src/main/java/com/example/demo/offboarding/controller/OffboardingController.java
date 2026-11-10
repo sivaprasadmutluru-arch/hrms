@@ -56,7 +56,7 @@ public class OffboardingController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('offboarding:create')")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
     public ResponseEntity<EmployeeOffboarding> create(@AuthenticationPrincipal UserPrincipal principal,
                                                        @RequestBody EmployeeOffboarding offboarding) {
         String name = principal != null && principal.getUsername() != null ? principal.getUsername() : "";
@@ -69,6 +69,10 @@ public class OffboardingController {
     public ResponseEntity<EmployeeOffboarding> update(@PathVariable Long id, @RequestBody EmployeeOffboarding updated) {
         return ResponseEntity.ok(offboardingService.update(id, updated));
     }
+
+    @GetMapping("/{id}/completion-readiness")
+    @PreAuthorize("hasAuthority('offboarding:view')")
+    public java.util.Map<String,Object> readiness(@PathVariable Long id){return offboardingService.completionReadiness(id);}
 
     @PutMapping("/{id}/complete")
     @PreAuthorize("hasAuthority('offboarding:edit')")

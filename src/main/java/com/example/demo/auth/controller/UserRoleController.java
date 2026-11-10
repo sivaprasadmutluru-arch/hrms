@@ -22,6 +22,9 @@ import java.util.Map;
 public class UserRoleController {
 
     private final UserRoleService userRoleService;
+    private final com.example.demo.platformops.PlatformTeamAccess platformTeam;
+    @GetMapping("/platform-team") @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    public Map<String,Object> platformTeam(){return platformTeam.configuration();}
 
     @GetMapping
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")

@@ -113,7 +113,7 @@ public class AnnouncementController {
                     if (employee.getEmail() != null && !employee.getEmail().isBlank()) {
                         String html = "<h2>" + announcement.getTitle() + "</h2><p>"
                                 + message.replace("\n", "<br>") + "</p>";
-                        emailService.sendEmail(announcement.getCompany().getId(), employee.getEmail(),
+                        emailService.sendEmailAsync(announcement.getCompany().getId(), employee.getEmail(),
                                 announcement.getTitle(), html, employee);
                     }
                 });

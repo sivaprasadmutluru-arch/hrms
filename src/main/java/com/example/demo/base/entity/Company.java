@@ -41,11 +41,11 @@ public class Company extends BaseEntity {
     @Column(name = "status", nullable = false)
     private CompanyStatus status = CompanyStatus.ACTIVE;
 
-    // Maximum branches this Head Office can create (default 5, set by Prabha Tech)
+    // Maximum branches this Head Office can create (default 5, set by AccrueHr)
     @Column(name = "branch_limit")
     private Integer branchLimit = 5;
 
-    // Which Prabha Tech client organization owns this company
+    // Which AccrueHr client organization owns this company
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organization_id")
@@ -127,7 +127,17 @@ public class Company extends BaseEntity {
     private String registrationNumber;
 
     @Column(name = "currency", length = 10)
-    private String currency = "USD";
+    private String currency = "INR";
+
+    public String getCurrency() {
+        if (country != null) {
+            var profile = com.example.demo.accounting.AccountingCountryProfile.from(country);
+            if ("IN".equals(profile.code())) return "INR";
+            if ("AE".equals(profile.code()) && ("USD".equalsIgnoreCase(currency) || currency == null)) return "AED";
+            if ("GB".equals(profile.code()) && ("USD".equalsIgnoreCase(currency) || currency == null)) return "GBP";
+        }
+        return currency != null && !currency.isBlank() ? currency : "INR";
+    }
 
     // Helper: is this the Head Office?
     public boolean isHeadOffice() {

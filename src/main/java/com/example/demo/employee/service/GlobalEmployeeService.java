@@ -2,6 +2,7 @@ package com.example.demo.employee.service;
 
 import com.example.demo.auth.entity.UserRole;
 import com.example.demo.auth.repository.UserRoleRepository;
+import com.example.demo.common.exception.BadRequestException;
 import com.example.demo.employee.dto.EmployeeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -53,6 +54,10 @@ public class GlobalEmployeeService {
     }
 
     public Page<EmployeeResponse> getAllAcrossOrgs(Pageable pageable, boolean active) {
+        return getAllAcrossOrgs(pageable, active, null);
+    }
+
+    public Page<EmployeeResponse> getAllAcrossOrgs(Pageable pageable, boolean active, String q) {
         List<String> schemas = jdbcTemplate.queryForList(SCHEMA_QUERY, String.class)
                 .stream()
                 .filter(s -> SAFE_SCHEMA.matcher(s).matches())
@@ -62,28 +67,7 @@ public class GlobalEmployeeService {
             return Page.empty(pageable);
         }
 
-        String unionSql = buildUnionSql(schemas, active);
-
-        // Deduplicate: if the same employee exists in multiple schemas (e.g. data integrity
-        // issues in dev), keep only the first occurrence per (company_id, id) pair.
-        String dedupedSql =
-                "SELECT * FROM (" +
-                "  SELECT _u.*, ROW_NUMBER() OVER (PARTITION BY _u.company_id, _u.id ORDER BY _u.created_at) AS _rn" +
-                "  FROM (" + unionSql + ") _u" +
-                ") _ranked WHERE _rn = 1";
-
-        String countSql = "SELECT COUNT(*) FROM (" + dedupedSql + ") _counted";
-        Long total = jdbcTemplate.queryForObject(countSql, Long.class);
-
-        String pagedSql = "SELECT * FROM (" + dedupedSql + ") _all ORDER BY created_at DESC LIMIT ? OFFSET ?";
-        List<EmployeeResponse> rows = jdbcTemplate.query(
-                pagedSql,
-                (rs, rowNum) -> mapRow(rs),
-                pageable.getPageSize(),
-                pageable.getOffset()
-        );
-
-        return new PageImpl<>(rows, pageable, total != null ? total : 0L);
+        return pageAcrossSchemas(schemas, pageable, active, q);
     }
 
     /**
@@ -97,16 +81,20 @@ public class GlobalEmployeeService {
     }
 
     public Page<EmployeeResponse> getAllAcrossAssignedOrgs(Long userId, Pageable pageable, boolean active) {
+        return getAllAcrossAssignedOrgs(userId, pageable, active, null);
+    }
+
+    public Page<EmployeeResponse> getAllAcrossAssignedOrgs(Long userId, Pageable pageable, boolean active, String q) {
         List<Long> assignedCompanyIds = userRoleRepository.findByUserId(userId).stream()
                 .filter(role -> role.isEffectiveOn(LocalDate.now()))
                 .map(role -> role.getCompany() == null ? null : role.getCompany().getId())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();
-        return getAllAcrossCompanyIds(assignedCompanyIds, pageable, active);
+        return getAllAcrossCompanyIds(assignedCompanyIds, pageable, active, q);
     }
 
-    private Page<EmployeeResponse> getAllAcrossCompanyIds(List<Long> companyIds, Pageable pageable, boolean active) {
+    private Page<EmployeeResponse> getAllAcrossCompanyIds(List<Long> companyIds, Pageable pageable, boolean active, String q) {
         if (companyIds == null || companyIds.isEmpty()) {
             return Page.empty(pageable);
         }
@@ -128,10 +116,15 @@ public class GlobalEmployeeService {
         if (schemas.isEmpty()) {
             return Page.empty(pageable);
         }
-        return pageAcrossSchemas(schemas, pageable, active);
+        return pageAcrossSchemas(schemas, pageable, active, q);
     }
 
-    private Page<EmployeeResponse> pageAcrossSchemas(List<String> schemas, Pageable pageable, boolean active) {
+    private Page<EmployeeResponse> pageAcrossSchemas(List<String> schemas, Pageable pageable, boolean active, String q) {
+        if (q != null && q.length() > 80) {
+            throw new BadRequestException("Search text must be 80 characters or fewer");
+        }
+        String term = q == null ? "" : q.trim().toLowerCase(java.util.Locale.ROOT);
+        String pattern = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
         String unionSql = buildUnionSql(schemas, active);
 
         String dedupedSql =
@@ -140,15 +133,19 @@ public class GlobalEmployeeService {
                 "  FROM (" + unionSql + ") _u" +
                 ") _ranked WHERE _rn = 1";
 
-        String countSql = "SELECT COUNT(*) FROM (" + dedupedSql + ") _counted";
-        Long total = jdbcTemplate.queryForObject(countSql, Long.class);
-        String pagedSql = "SELECT * FROM (" + dedupedSql + ") _all ORDER BY created_at DESC LIMIT ? OFFSET ?";
-        List<EmployeeResponse> rows = jdbcTemplate.query(
-                pagedSql,
-                (rs, rowNum) -> mapRow(rs),
-                pageable.getPageSize(),
-                pageable.getOffset()
-        );
+        String searchClause = term.isEmpty() ? "" :
+                " WHERE LOWER(CONCAT_WS(' ', _all.employee_first_name, _all.employee_last_name, " +
+                "_all.email, _all.badge_id, _all.company_name, _all.department_name, " +
+                "_all.organization_name)) LIKE ? ESCAPE '\\'";
+        String filteredSql = "SELECT * FROM (" + dedupedSql + ") _all" + searchClause;
+        String countSql = "SELECT COUNT(*) FROM (" + filteredSql + ") _counted";
+        Long total = term.isEmpty()
+                ? jdbcTemplate.queryForObject(countSql, Long.class)
+                : jdbcTemplate.queryForObject(countSql, Long.class, pattern);
+        String pagedSql = filteredSql + " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        List<EmployeeResponse> rows = term.isEmpty()
+                ? jdbcTemplate.query(pagedSql, (rs, rowNum) -> mapRow(rs), pageable.getPageSize(), pageable.getOffset())
+                : jdbcTemplate.query(pagedSql, (rs, rowNum) -> mapRow(rs), pattern, pageable.getPageSize(), pageable.getOffset());
         return new PageImpl<>(rows, pageable, total != null ? total : 0L);
     }
 
@@ -191,7 +188,7 @@ public class GlobalEmployeeService {
 
     private String selectForSchema(String schema, boolean active) {
         return "SELECT " +
-                "e.id, e.badge_id, e.employee_first_name, e.employee_last_name, " +
+                "e.id, e.user_id, COALESCE(u.login_held,false) AS login_held, e.badge_id, e.employee_first_name, e.employee_last_name, " +
                 "e.email, e.work_email, e.phone, e.work_phone, e.gender, " +
                 "e.date_of_birth, e.marital_status, e.nationality, e.country_of_birth, " +
                 "e.place_of_birth, e.permanent_address, e.current_address, " +
@@ -205,6 +202,7 @@ public class GlobalEmployeeService {
                 "e.qualification, e.experience, e.children, " +
                 "e.emergency_contact, e.emergency_contact_name, e.emergency_contact_relation " +
                 "FROM " + schema + ".employees e " +
+                "LEFT JOIN public.users u ON u.id = e.user_id " +
                 "LEFT JOIN public.companies c ON c.id = e.company_id " +
                 "LEFT JOIN public.organizations o ON o.id = c.organization_id " +
                 "LEFT JOIN " + schema + ".departments d ON d.id = e.department_id " +
@@ -216,6 +214,9 @@ public class GlobalEmployeeService {
     private EmployeeResponse mapRow(ResultSet rs) throws SQLException {
         EmployeeResponse r = new EmployeeResponse();
         r.setId(rs.getLong("id"));
+        long userId = rs.getLong("user_id");
+        if (!rs.wasNull()) r.setUserId(userId);
+        r.setLoginHeld(rs.getBoolean("login_held"));
         r.setBadgeId(rs.getString("badge_id"));
         String fn = rs.getString("employee_first_name");
         String ln = rs.getString("employee_last_name");

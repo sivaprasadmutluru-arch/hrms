@@ -48,6 +48,7 @@ public class GeneralSettingsController {
     private final HelpdeskTagRepository helpdeskTagRepository;
     private final AuditTagRepository auditTagRepository;
     private final CompanyRepository companyRepository;
+    private final com.example.demo.base.service.EmailService emailService;
 
     @GetMapping("/module-visibility")
     @PreAuthorize("isAuthenticated()")
@@ -219,35 +220,14 @@ public class GeneralSettingsController {
     @Operation(summary = "Test email server configuration by sending a test email")
     public ResponseEntity<Map<String, Object>> testEmailServer(@RequestParam Long companyId,
                                                                 @RequestParam String testEmailTo) {
-        var config = emailConfigRepository.findFirstByCompanyId(companyId)
-                .orElseThrow(() -> new ResourceNotFoundException("EmailConfig for company", companyId));
-
-        try {
-            JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-            mailSender.setHost(config.getHost());
-            mailSender.setPort(config.getPort() != null ? config.getPort() : 587);
-            mailSender.setUsername(config.getUsername());
-            mailSender.setPassword(config.getPassword());
-
-            Properties props = mailSender.getJavaMailProperties();
-            props.put("mail.transport.protocol", "smtp");
-            props.put("mail.smtp.auth", "true");
-            props.put("mail.smtp.starttls.enable", Boolean.TRUE.equals(config.getUseTls()) ? "true" : "false");
-            props.put("mail.smtp.ssl.enable", Boolean.TRUE.equals(config.getUseSsl()) ? "true" : "false");
-
-            mailSender.testConnection();
-
-            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-            message.setFrom(config.getFromEmail() != null ? config.getFromEmail() : config.getUsername());
-            message.setTo(testEmailTo);
-            message.setSubject("Test Email from HRMS");
-            message.setText("This is a test email from the HRMS system. If you received this, your email configuration is working correctly.");
-            mailSender.send(message);
-
-            return ResponseEntity.ok(Map.<String, Object>of("success", true, "message", "Test email sent to " + testEmailTo));
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.<String, Object>of("success", false, "error", e.getMessage()));
-        }
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(companyId);
+        if(!companyId.equals(com.example.demo.common.context.CompanyContext.get())) throw new com.example.demo.common.exception.BadRequestException("Select the target company before testing email");
+        if(testEmailTo==null || !testEmailTo.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new com.example.demo.common.exception.BadRequestException("Enter a valid recipient email");
+        String body="<h2>Email delivery test</h2><p>This is the email delivery test you requested. No employee or login account has been created by this test.</p>"
+          +"<p>In a real onboarding email, new employees receive their username and a secure password setup link.</p>"
+          +"<p><a href='"+emailService.loginUrl()+"'>Open your workspace</a> · <a href='"+emailService.passwordResetUrl()+"'>Password setup</a></p>";
+        boolean sent=emailService.sendEmail(companyId,testEmailTo,"Email delivery test",body,null);
+        return ResponseEntity.ok(Map.of("success",sent,"message",sent?"Test onboarding email sent":"Email delivery failed. Review Email Logs for the reason"));
     }
 
     @PostMapping("/email/set-primary")

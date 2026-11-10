@@ -30,11 +30,21 @@ import java.time.LocalDate;
 @Getter
 public class UserPrincipal implements UserDetails {
 
+    private final List<com.example.demo.auth.service.PositionAccessService.Grant> positionGrants;
+    private final Long defaultCompanyId;
+
+    private Long loginCompanyId;
+
+    public void setLoginCompanyId(Long loginCompanyId) {
+        this.loginCompanyId = loginCompanyId;
+    }
+
     private final Long id;
     private final String username;
     private final String email;
     private final String password;
     private final boolean active;
+    @lombok.Setter private boolean employmentArchived;
     private final Collection<? extends GrantedAuthority> authorities;
 
     public UserPrincipal(User user) {
@@ -46,11 +56,16 @@ public class UserPrincipal implements UserDetails {
      * so that every hasAuthority() check passes automatically.
      */
     public UserPrincipal(User user, List<Permission> allPermissions) {
+        this(user, allPermissions, List.of());
+    }
+
+    public UserPrincipal(User user, List<Permission> allPermissions, List<com.example.demo.auth.service.PositionAccessService.Grant> positions) {
+        this.positionGrants = List.copyOf(positions);
         this.id = user.getId();
         this.username = user.getUsername();
         this.email = user.getEmail();
         this.password = user.getPassword();
-        this.active = user.isActive();
+        this.active = user.isActive() && !user.isLoginHeld();
 
         List<GrantedAuthority> auths = new ArrayList<>();
 
@@ -62,7 +77,10 @@ public class UserPrincipal implements UserDetails {
         List<UserRole> effectiveAssignments = user.getUserRoles().stream()
                 .filter(ur -> ur.isEffectiveOn(LocalDate.now()))
                 .toList();
-        auths.addAll(authoritiesForAssignments(effectiveAssignments));
+        auths.addAll(com.example.demo.auth.service.PositionAccessService.authorities(effectiveAssignments, positions));
+        var defaults = new ArrayList<>(effectiveAssignments);
+        positions.forEach(p -> defaults.add(p.assignment()));
+        this.defaultCompanyId = defaults.stream().filter(a -> a.getCompany()!=null).sorted(java.util.Comparator.<UserRole>comparingInt(a -> a.getAccessScope()==null ? -1 : a.getAccessScope().ordinal()).reversed().thenComparing(a -> a.getCompany().getId())).map(a -> a.getCompany().getId()).findFirst().orElse(null);
 
         if (hasEffectivePlatformSuperAdminRole(effectiveAssignments)) {
             allPermissions.forEach(p ->
@@ -82,7 +100,7 @@ public class UserPrincipal implements UserDetails {
             result.add(new SimpleGrantedAuthority("ROLE_" + roleName.name()));
             compatibilityAuthorities(roleName).forEach(alias ->
                     result.add(new SimpleGrantedAuthority("ROLE_" + alias.name())));
-            ur.getRole().getPermissions().stream()
+            (com.example.demo.platformops.PlatformTeamAccess.ROLES.contains(roleName) ? java.util.stream.Stream.<Permission>empty() : ur.getRole().getPermissions().stream())
                     .map(Permission::getName)
                     .filter(permission -> !payrollExcluded || !permission.startsWith("payroll:"))
                     .forEach(permission -> result.add(new SimpleGrantedAuthority(permission)));
@@ -113,6 +131,9 @@ public class UserPrincipal implements UserDetails {
                     "payroll:view", "payroll:create", "payroll:edit");
             case ACCOUNTS_MANAGER, ACCOUNTANT -> Set.of(
                     "payroll:view", "payroll:create", "payroll:edit", "payroll:approve");
+            case PLATFORM_ORGANIZATION_OPERATIONS -> Set.of("platform:organizations");
+            case PLATFORM_SUPPORT -> Set.of("platform:support");
+            case PLATFORM_BILLING -> Set.of("platform:billing");
             case EMPLOYEE -> Set.of(
                     "leave:view", "leave:create", "payroll:view");
             default -> Set.of();
@@ -138,5 +159,5 @@ public class UserPrincipal implements UserDetails {
     @Override public boolean isAccountNonExpired() { return true; }
     @Override public boolean isAccountNonLocked() { return true; }
     @Override public boolean isCredentialsNonExpired() { return true; }
-    @Override public boolean isEnabled() { return active; }
+    @Override public boolean isEnabled() { return active && !employmentArchived; }
 }

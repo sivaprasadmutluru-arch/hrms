@@ -310,7 +310,9 @@ public class BillingService {
                     || !"INR".equalsIgnoreCase(invoice.path("currency").asText())) continue;
             boolean matchingPlan=false;
             for(var line:invoice.path("line_items")) if("plan".equals(line.path("type").asText())
-                    && line.path("quantity").asInt()==1 && line.path("amount").asLong()==BillingCatalog.plan(plan).amount(cycle)) matchingPlan=true;
+                    && line.path("quantity").asInt()==1
+                    && (line.path("amount").asLong()==BillingCatalog.plan(plan).amount(cycle)
+                        || line.path("amount").asLong()==BillingCatalog.plan(plan).totalAmount(cycle))) matchingPlan=true;
             if(!matchingPlan) continue;
             Instant start=epoch(invoice.path("billing_start")), end=epoch(invoice.path("billing_end"));
             if (start!=null && end!=null && (confirmedEnd==null || end.isAfter(confirmedEnd))) {confirmedStart=start; confirmedEnd=end;}
@@ -320,7 +322,7 @@ public class BillingService {
             s.setPlan(plan); s.setCycle(cycle); s.setSeatCount(null); s.setManualAccess(false); s.setLegacyAccess(false);
             s.setStartedAt(s.getStartedAt()==null ? epoch(object.path("created_at")) : s.getStartedAt());
             s.setPeriodStart(confirmedStart); s.setPeriodEnd(confirmedEnd); s.setPaidUntil(confirmedEnd);
-            s.setAmountMinor(BillingCatalog.plan(plan).amount(cycle)); s.setCurrency("inr");
+            s.setAmountMinor(BillingCatalog.plan(plan).totalAmount(cycle)); s.setCurrency("inr");
             var org=organization(s.getOrganizationId(),false); org.setSubscriptionPlan(plan); org.setPurchasedSeats(null);
             org.setMaxBranches(plan.getMaxBranches()==Integer.MAX_VALUE ? null : plan.getMaxBranches());
             usage.applyPlanLimits(org.getId(),plan); organizations.save(org);
@@ -346,10 +348,11 @@ public class BillingService {
         record.setHostedInvoiceUrl(url.isBlank()?null:checkedUrl(url)); record.setInvoicePdf(null); invoices.save(record);
     }
     void validatePlan(JsonNode object,SubscriptionPlan plan,BillingCycle cycle) {
+        long amt = object.path("item").path("amount").asLong(-1);
         if (!config.priceId(plan,cycle).equals(id(object)) || object.path("interval").asInt()!=1
                 || !(cycle==BillingCycle.YEARLY ? "yearly" : "monthly").equals(object.path("period").asText())
                 || !"INR".equalsIgnoreCase(object.path("item").path("currency").asText())
-                || object.path("item").path("amount").asLong(-1)!=BillingCatalog.plan(plan).amount(cycle))
+                || (amt!=BillingCatalog.plan(plan).amount(cycle) && amt!=BillingCatalog.plan(plan).totalAmount(cycle)))
             throw new BillingFailure(409,"Razorpay plan amount, currency or period does not match this package");
     }
     private Long parseOrganization(JsonNode object) {

@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * System-level monitoring for Prabha Tech (PLATFORM_SUPER_ADMIN only).
+ * System-level monitoring for AccrueHr (PLATFORM_SUPER_ADMIN only).
  *
  * Provides a bird's-eye view across all tenants on the platform.
  * All queries run against the public schema and are not tenant-scoped.
@@ -27,7 +27,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/platform")
 @RequiredArgsConstructor
-@Tag(name = "Platform Monitor (Prabha Tech Admin)")
+@Tag(name = "Platform Monitor (AccrueHr Admin)")
 public class PlatformMonitorController {
 
     private final OrganizationRepository organizationRepository;

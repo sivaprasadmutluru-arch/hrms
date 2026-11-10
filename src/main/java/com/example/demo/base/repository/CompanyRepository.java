@@ -83,6 +83,16 @@ public interface CompanyRepository extends JpaRepository<Company, Long>, JpaSpec
     @Query(value = "SELECT * FROM public.companies WHERE id = :id", nativeQuery = true)
     Optional<Company> findByIdPublic(@Param("id") Long id);
 
+    interface EmailBrand {
+        String getName();
+        String getColor();
+    }
+
+    @Query(value = "SELECT coalesce(o.name, c.name) AS name, o.brand_color AS color "
+            + "FROM public.companies c LEFT JOIN public.organizations o ON o.id = c.organization_id "
+            + "WHERE c.id = :companyId", nativeQuery = true)
+    Optional<EmailBrand> findEmailBrand(@Param("companyId") Long companyId);
+
     @Query(value = "SELECT * FROM public.companies WHERE parent_company_id = :parentId AND is_active = true", nativeQuery = true)
     List<Company> findByParentCompanyIdAndIsActiveTruePublic(@Param("parentId") Long parentId);
 }

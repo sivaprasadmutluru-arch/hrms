@@ -207,6 +207,15 @@ public class LeaveController {
         }
     }
 
+    private final com.example.demo.leave.service.DefaultLeaveTypeService defaultLeaveTypes;
+    @PostMapping("/types/defaults")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    @Operation(summary = "Add India or UAE default leave types without changing existing policies or balances")
+    public ResponseEntity<Map<String,Object>> applyDefaultLeaveTypes(@RequestHeader("X-Company-Id") Long companyId,
+            @RequestParam String region) {
+        return ResponseEntity.ok(Map.of("added",defaultLeaveTypes.apply(companyId,region)));
+    }
+
     @GetMapping("/types")
     @PreAuthorize("hasAuthority('leave:view')")
     @Transactional(readOnly = true)
@@ -1156,6 +1165,20 @@ public class LeaveController {
     }
 
     // ─── Holidays ─────────────────────────────────────────────────────────────
+
+    private final com.example.demo.leave.service.HolidayCatalogService holidayCatalog;
+    @GetMapping("/holidays/catalog")
+    @PreAuthorize("hasAuthority('leave:view')")
+    public ResponseEntity<com.example.demo.leave.service.HolidayCatalogService.Calendar> holidayCatalog(
+            @RequestHeader("X-Company-Id") Long companyId, @RequestParam(required=false) String country, @RequestParam int year) {
+        return ResponseEntity.ok(holidayCatalog.preview(companyId,country,year));
+    }
+    @PostMapping("/holidays/catalog")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','ENTERPRISE_ADMIN','BRANCH_ADMIN','HR_MANAGER')")
+    public ResponseEntity<Map<String,Integer>> importHolidayCatalog(@RequestHeader("X-Company-Id") Long companyId,
+            @RequestBody com.example.demo.leave.service.HolidayCatalogService.ImportRequest request) {
+        return ResponseEntity.ok(holidayCatalog.apply(companyId,request));
+    }
 
     @GetMapping("/holidays")
     @PreAuthorize("hasAuthority('leave:view')")

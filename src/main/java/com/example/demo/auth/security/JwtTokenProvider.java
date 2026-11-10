@@ -24,9 +24,14 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(Authentication authentication) {
+        return generateToken(authentication, null);
+    }
+
+    public String generateToken(Authentication authentication, Long loginCompanyId) {
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
         return Jwts.builder()
                 .subject(userPrincipal.getUsername())
+                .claim("loginCompanyId", loginCompanyId)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
                 .signWith(getSigningKey())
@@ -40,6 +45,12 @@ public class JwtTokenProvider {
                 .parseSignedClaims(token)
                 .getPayload()
                 .getSubject();
+    }
+
+    public Long getLoginCompanyIdFromToken(String token) {
+        Number id = Jwts.parser().verifyWith(getSigningKey()).build()
+                .parseSignedClaims(token).getPayload().get("loginCompanyId", Number.class);
+        return id == null ? null : id.longValue();
     }
 
     public boolean validateToken(String token) {

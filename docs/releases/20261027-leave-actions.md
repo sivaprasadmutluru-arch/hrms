@@ -26,7 +26,7 @@ The web build used `hrms-web/vite.leave-release.config.js` to exclude the in-pro
 - Uploaded JAR checksum verified before activation; baseline checksum checked before replacement.
 - Service active, successful Spring startup; local homepage HTTP 200.
 - Unauthenticated attachment-content request HTTP 401.
-- Public `https://grecha.ai/` HTTP 200 with the new web entry.
+- Public `the configured AccrueHr public URL` HTTP 200 with the new web entry.
 - Public entry and leave-page JavaScript bytes matched the local release build.
 - Authenticated browser workflows and a real uploaded certificate were not manually exercised.
 

@@ -117,15 +117,22 @@ public class HelpdeskExtrasController {
     @GetMapping("/department-managers")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "List helpdesk department managers (company-scoped)")
-    public ResponseEntity<List<DepartmentManager>> listDepartmentManagers(
+    public ResponseEntity<List<Map<String,Object>>> listDepartmentManagers(
             @RequestParam(required = false) Long departmentId) {
         return ResponseEntity.ok(helpdeskService.listDepartmentManagers(departmentId));
+    }
+
+    @GetMapping("/department-manager-options")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String,Object>> departmentManagerOptions(@RequestParam Long companyId,@RequestParam(defaultValue="") String search) {
+        if(search.length()>150)throw new com.example.demo.common.exception.BadRequestException("Search must be at most 150 characters");
+        return ResponseEntity.ok(helpdeskService.departmentManagerOptions(companyId,search));
     }
 
     @PostMapping("/department-managers")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Operation(summary = "Assign a manager to a department for helpdesk")
-    public ResponseEntity<DepartmentManager> assignDepartmentManager(@RequestBody DepartmentManager dm) {
+    public ResponseEntity<Map<String,Object>> assignDepartmentManager(@RequestBody DepartmentManager dm) {
         return ResponseEntity.ok(helpdeskService.assignDepartmentManager(dm));
     }
 

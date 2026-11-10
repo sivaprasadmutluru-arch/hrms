@@ -46,8 +46,11 @@ public class Role extends BaseEntity {
         ACCOUNTS_MANAGER,
         EMPLOYEE,
 
-        // Prabha Tech internal — manages all client organizations on the platform
+        // AccrueHr internal — manages all client organizations on the platform
         PLATFORM_SUPER_ADMIN,
+        PLATFORM_ORGANIZATION_OPERATIONS,
+        PLATFORM_SUPPORT,
+        PLATFORM_BILLING,
 
         // Head Office level — full access to Head Office + all its branches
         ENTERPRISE_ADMIN,

@@ -6,6 +6,7 @@ public final class BillingCatalog {
     public record Plan(SubscriptionPlan id, String name, long monthlyAmountMinor, long yearlyAmountMinor,
                        Integer maxBranches, Integer maxEmployees, boolean crossBranch) {
         public long amount(BillingCycle cycle) { return cycle==BillingCycle.YEARLY ? yearlyAmountMinor : monthlyAmountMinor; }
+        public long totalAmount(BillingCycle cycle) { return Math.round(amount(cycle) * 1.18); }
     }
     public static List<Plan> entries() { return List.of(
         new Plan(SubscriptionPlan.FREE,"Free",0,0,1,15,false),

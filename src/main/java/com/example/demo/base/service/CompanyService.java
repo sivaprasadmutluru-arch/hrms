@@ -64,6 +64,7 @@ public class CompanyService {
 
     private final CompanyRepository companyRepository;
     private final AuditService auditService;
+    private final com.example.demo.billing.BillingUsage billingUsage;
 
     @Transactional(readOnly = true)
     public Company getById(Long id) {
@@ -73,6 +74,7 @@ public class CompanyService {
     private final OrganizationRepository organizationRepository;
     private final SchemaProvisioningService schemaProvisioningService;
     private final TenantProvisioningService tenantProvisioningService;
+    private final StandardCompanySetup standardCompanySetup;
     private final AuthService authService;
     private final UserRoleService userRoleService;
     private final EmployeeRepository employeeRepository;
@@ -157,7 +159,7 @@ public class CompanyService {
             // first-admin assignment, so it gets a durable, explicit reason
             // rather than bypassing the validation used for manual grants.
             roleReq.setReason(INITIAL_ENTERPRISE_ADMIN_REASON);
-            userRoleService.assignRole(roleReq);
+            userRoleService.assignInitialOrganizationAdmin(roleReq);
             return adminUser.getId();
         }
         return null;
@@ -187,6 +189,14 @@ public class CompanyService {
                     "Head Office '" + headOffice.getName() + "' is not active. Cannot create branches.");
         }
 
+        // Serialize capacity checks with employee creation and paid plan changes.
+        if (headOffice.getOrganization()!=null) {
+            entityManager.refresh(headOffice.getOrganization(),jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            entityManager.refresh(headOffice);
+        } else {
+            entityManager.refresh(headOffice,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
+
         // Rule 3: Check branch limit (both company-level and subscription plan-level)
         long currentBranchCount = companyRepository.countByParentCompanyIdAndIsActiveTrue(headOfficeId);
         int branchLimit = headOffice.getBranchLimit() != null ? headOffice.getBranchLimit() : 5;
@@ -210,9 +220,12 @@ public class CompanyService {
         Company branch = buildCompany(request);
         branch.setCompanyType(Company.CompanyType.BRANCH);
         branch.setParentCompany(headOffice);
+        branch.setCurrency(headOffice.getCurrency());
         branch.setOrganization(headOffice.getOrganization()); // Branch inherits HO's organization
 
-        return companyRepository.save(branch);
+        branch = companyRepository.saveAndFlush(branch);
+        if(headOffice.isSchemaReady()) standardCompanySetup.ensure(branch.getId());
+        return branch;
     }
 
     /**
@@ -220,6 +233,32 @@ public class CompanyService {
      * Does not allow changing company type or organization after creation.
      * Branch Admins can only update their own branch — not the Head Office or other branches.
      */
+    private static void requirePlatformCountryEditor() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN")))
+            throw new org.springframework.security.access.AccessDeniedException("Only a platform administrator can change country");
+    }
+
+    private static String validCountry(String country) {
+        if (country == null || country.isBlank() || country.trim().length() > 100)
+            throw new BadRequestException("Select a country (up to 100 characters)");
+        String selected = country.trim();
+        if (!java.util.Set.of("IN","US","AE","GB").contains(com.example.demo.accounting.AccountingCountryProfile.from(selected).code()))
+            throw new BadRequestException("Choose a launch country: India, United States, United Arab Emirates or United Kingdom");
+        return selected;
+    }
+
+    @Transactional
+    public Company updateCountry(Long id, String country) {
+        requirePlatformCountryEditor();
+        Company company = companyRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Company", id));
+        if (!company.isHeadOffice()) throw new BadRequestException("Set organization country on its head office");
+        String before = company.getCountry();
+        company.setCountry(validCountry(country));
+        auditService.log("Company", id, "COUNTRY_CHANGED", java.util.Collections.singletonMap("country", before), java.util.Map.of("country", company.getCountry()));
+        return companyRepository.save(company);
+    }
+
     @Transactional
     public Company update(Long id, CompanyRequest request) {
         Company company = companyRepository.findById(id)
@@ -240,7 +279,12 @@ public class CompanyService {
         company.setAddress(request.getAddress());
         company.setCity(request.getCity());
         company.setState(request.getState());
-        company.setCountry(request.getCountry());
+        if (request.getCountry() != null && !java.util.Objects.equals(company.getCountry(), request.getCountry().trim())) {
+            requirePlatformCountryEditor();
+            String before = company.getCountry();
+            company.setCountry(validCountry(request.getCountry()));
+            auditService.log("Company", id, "COUNTRY_CHANGED", java.util.Collections.singletonMap("country", before), java.util.Map.of("country", company.getCountry()));
+        }
         company.setZip(request.getZip());
         company.setPhone(request.getPhone());
         company.setEmail(request.getEmail());
@@ -284,6 +328,7 @@ public class CompanyService {
         List<Company> affected = new ArrayList<>();
         if (company.isHeadOffice()) affected.addAll(companyRepository.findByParentCompanyId(id));
         affected.add(company);
+        CurrentCompanyDeletionGuard.check(affected.stream().map(Company::getId).toList());
 
         LocalDateTime archivedAt = LocalDateTime.now();
         String actor = org.springframework.security.core.context.SecurityContextHolder.getContext()
@@ -307,9 +352,43 @@ public class CompanyService {
     public void restore(Long id) {
         Company company = companyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Company", id));
+        Company headOffice=company;
+        if (company.isBranch()) {
+            Long parentId=company.getParentCompanyId()!=null ? company.getParentCompanyId()
+                    : company.getParentCompany()!=null ? company.getParentCompany().getId() : null;
+            if (parentId==null) throw new BadRequestException("A branch must have a Head Office before it can be restored");
+            headOffice=companyRepository.findById(parentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Head Office", parentId));
+            if (!headOffice.isHeadOffice()) throw new BadRequestException("A branch must belong to a Head Office");
+        }
+        Organization org=headOffice.getOrganization();
+        // Match the organization lock used by creation and plan activation. Count
+        // the complete proposed restoration before changing any active flags.
+        if (org!=null) {
+            entityManager.refresh(org,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            entityManager.refresh(headOffice);
+            if (company!=headOffice) entityManager.refresh(company);
+            if (org.getStatus()!=Organization.OrgStatus.ACTIVE)
+                throw new BadRequestException("Activate the organization before restoring its companies");
+        } else {
+            entityManager.refresh(headOffice,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (company!=headOffice) entityManager.refresh(company);
+        }
+        if (company.isBranch() && (!headOffice.isActive() || headOffice.getStatus()!=Company.CompanyStatus.ACTIVE))
+            throw new BadRequestException("Restore the Head Office before restoring this branch");
         List<Company> affected = new ArrayList<>();
         if (company.isHeadOffice()) affected.addAll(companyRepository.findByParentCompanyId(id));
         affected.add(company);
+        long addedBranches=affected.stream().filter(Company::isBranch).filter(c -> !c.isActive()).count();
+        long projectedBranches=companyRepository.countByParentCompanyIdAndIsActiveTrue(headOffice.getId())+addedBranches;
+        int branchLimit=headOffice.getBranchLimit()!=null ? headOffice.getBranchLimit() : 5;
+        var plan=org!=null && org.getSubscriptionPlan()!=null ? org.getSubscriptionPlan()
+                : com.example.demo.base.enums.SubscriptionPlan.STANDARD;
+        if (org!=null) branchLimit=Math.min(branchLimit,plan.getMaxBranches());
+        if (projectedBranches>branchLimit)
+            throw new BadRequestException("Restoring these companies would exceed the branch limit of "+branchLimit+". Upgrade the plan or reduce active branches first.");
+        if (org!=null) billingUsage.validateRestoration(org.getId(),plan,
+                affected.stream().map(Company::getId).toList(),org.getPurchasedSeats());
         for (Company target : affected) {
             target.setActive(true);
             target.setStatus(Company.CompanyStatus.ACTIVE);
@@ -337,6 +416,7 @@ public class CompanyService {
         if (company.isHeadOffice()) toPurge.addAll(companyRepository.findByParentCompanyId(id));
         toPurge.add(company);
         List<Long> companyIds = toPurge.stream().map(Company::getId).collect(Collectors.toList());
+        CurrentCompanyDeletionGuard.check(companyIds);
 
         String schemaName = company.isHeadOffice() ? company.getSchemaName()
                 : (company.getParentCompanyId() == null ? null
@@ -344,13 +424,15 @@ public class CompanyService {
         if (schemaName != null && !schemaName.isBlank()) {
             schemaProvisioningService.cleanupTenantDataForCompanies(schemaName, companyIds);
         }
+        // Run independent JDBC cleanup before this transaction locks role rows.
+        // It detaches platform-wide grants before removing company-owned records.
+        schemaProvisioningService.cleanupPublicSchemaDataForCompanies(companyIds);
         crossBranchAccessGrantRepository.deleteAllInBatch(
                 crossBranchAccessGrantRepository.findByCompanyIds(companyIds));
         var groups = userGroupRepository.findByCompanyIdIn(companyIds);
         groups.forEach(group -> group.setCompany(null));
         userGroupRepository.saveAll(groups);
         userRoleRepository.deleteAllInBatch(userRoleRepository.findByCompanyIdIn(companyIds));
-        schemaProvisioningService.cleanupPublicSchemaDataForCompanies(companyIds);
         companyRepository.deleteAllInBatch(toPurge.stream().filter(Company::isBranch).toList());
         companyRepository.deleteById(id);
         entityManager.clear();
@@ -396,6 +478,10 @@ public class CompanyService {
         if (company.getLogoPath() != null) fileUploadService.delete(company.getLogoPath());
         String path = fileUploadService.storeOrgScoped(file, orgSlug, "logos");
         company.setLogoPath(path);
+        if (org != null && (company.getCompanyType() == Company.CompanyType.HEAD_OFFICE || org.getLogoPath() == null || org.getLogoPath().isBlank())) {
+            org.setLogoPath(path);
+            organizationRepository.save(org);
+        }
         return companyRepository.save(company);
     }
 
@@ -454,6 +540,8 @@ public class CompanyService {
         company.setCity(request.getCity());
         company.setState(request.getState());
         company.setCountry(request.getCountry());
+        var profile = com.example.demo.accounting.AccountingCountryProfile.from(request.getCountry());
+        company.setCurrency(switch(profile.code()){case "IN" -> "INR";case "AE" -> "AED";case "GB" -> "GBP";default -> "USD";});
         company.setZip(request.getZip());
         company.setPhone(request.getPhone());
         company.setEmail(request.getEmail());

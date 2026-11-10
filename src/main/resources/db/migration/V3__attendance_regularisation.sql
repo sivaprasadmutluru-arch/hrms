@@ -10,7 +10,7 @@
 --     -c "SET search_path TO akhil_deploys, public;" \
 --     -f V3__attendance_regularisation.sql
 --
---   Then repeat for prabha_tech, yuwa_tech_solutions, etc.
+--   Then repeat for accruehr, yuwa_tech_solutions, etc.
 --
 -- The public schema (super-admin) does not use these tables, so skip it.
 

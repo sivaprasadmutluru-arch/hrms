@@ -46,10 +46,10 @@ class LeaveAttachmentServiceTest {
         AccessScopeContext.set(new AccessScopeContext.ScopeData(userId, companyId, UserRole.AccessScope.SELF, List.of(companyId)));
     }
     @AfterEach void cleanup() { AccessScopeContext.clear(); }
-    @Test void ownerCanReadExistingCertificate() {
+    @Test void ownerCanReadExistingCertificate() throws Exception {
         var result = service.content(1L, 2L);
         assertEquals("application/pdf", result.contentType());
-        assertEquals(root.resolve("certificate.pdf"), result.path());
+        assertEquals(root.resolve("certificate.pdf").toRealPath(), result.path().toRealPath());
     }
     @Test void authorizedReviewerCanReadButUnrelatedEmployeeCannot() {
         scope(8L, 10L);

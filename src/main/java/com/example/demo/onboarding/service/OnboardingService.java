@@ -25,6 +25,57 @@ import java.util.Map;
 public class OnboardingService {
 
     private final EmailService emailService;
+    private final com.example.demo.recruitment.repository.ApplicantRepository applicantRepository;
+    private final com.example.demo.employee.service.EmployeeService employeeService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+
+    private void access(Long companyId) { com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(companyId); }
+    private com.example.demo.employee.entity.Employee scopedEmployee(Long id) {
+        var employee=employeeRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Employee",id));access(employee.getCompany().getId());return employee;
+    }
+    private void assignTemplateTasks(OnboardingCandidate candidate) {
+        for(var template:taskRepository.findByCompanyId(candidate.getPortal().getCompany().getId())) {
+            var row=new CandidateTask();row.setOnboardingCandidate(candidate);row.setTitle(template.getTitle());row.setDescription(template.getDescription());row.setIsCompleted(false);
+            if(template.getDaysToComplete()!=null) row.setDueDate(LocalDate.now().plusDays(template.getDaysToComplete()));candidateTaskRepository.save(row);
+        }
+    }
+    private void editable(OnboardingCandidate candidate) {
+        access(candidate.getPortal().getCompany().getId());
+        if(candidate.getStatus()!=OnboardingCandidate.OnboardingStatus.IN_PROGRESS) throw new com.example.demo.common.exception.BadRequestException("Completed or cancelled onboarding cannot be changed");
+    }
+    private void checklist(OnboardingCandidate candidate) {
+        var existing=candidateStageRepository.findByOnboardingCandidateId(candidate.getId());
+        for(var stage:stageRepository.findByPortalIdOrderBySequenceAsc(candidate.getPortal().getId())) {
+            if(existing.stream().noneMatch(row->row.getStage().getId().equals(stage.getId()))) {var row=new CandidateStage();row.setOnboardingCandidate(candidate);row.setStage(stage);candidateStageRepository.save(row);}
+        }
+    }
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> eligibleCandidates(Long portalId) {
+        var portal=getPortalById(portalId);
+        var used=onboardingCandidateRepository.findByPortalId(portalId).stream().map(c->c.getCandidate().getId()).collect(java.util.stream.Collectors.toSet());
+        return applicantRepository.findByCompanyId(portal.getCompany().getId()).stream().filter(a->a.getStatus()==com.example.demo.recruitment.entity.Applicant.ApplicantStatus.HIRED && !used.contains(a.getCandidate().getId()) && onboardingCandidateRepository.findByCandidateId(a.getCandidate().getId()).isEmpty())
+          .map(a->Map.<String,Object>of("id",a.getCandidate().getId(),"name",a.getCandidate().getName(),"email",a.getCandidate().getEmail()==null?"":a.getCandidate().getEmail())).distinct().toList();
+    }
+    @Transactional
+    public Map<String,Object> convertCandidate(Long id,com.example.demo.onboarding.dto.OnboardingConversionRequest form) {
+        var oc=getCandidateById(id);entityManager.flush();entityManager.lock(oc,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);entityManager.refresh(oc);
+        access(oc.getPortal().getCompany().getId());
+        if(oc.getStatus()!=OnboardingCandidate.OnboardingStatus.COMPLETED) throw new com.example.demo.common.exception.BadRequestException("Complete the onboarding checklist before converting to an employee");
+        var candidate=oc.getCandidate();Long companyId=oc.getPortal().getCompany().getId();
+        entityManager.lock(candidate,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);entityManager.refresh(candidate);
+        if(candidate.getEmployeeId()!=null) return Map.of("employeeId",candidate.getEmployeeId(),"message","Employee already linked");
+        if(candidate.getEmail()==null || candidate.getEmail().isBlank()) throw new com.example.demo.common.exception.BadRequestException("Candidate email is required");
+        jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtextextended(?,0))","onboarding-employee:"+companyId+":"+candidate.getEmail().strip().toLowerCase(java.util.Locale.ROOT));
+        if(entityManager.createQuery("select count(e) from Employee e where lower(trim(e.email))=:email",Long.class).setParameter("email",candidate.getEmail().strip().toLowerCase(java.util.Locale.ROOT)).getSingleResult()>0) throw new com.example.demo.common.exception.BadRequestException("An employee with this email already exists. Use existing-employee onboarding instead of creating a duplicate");
+        var req=new com.example.demo.employee.dto.EmployeeRequest();String[] names=candidate.getName().strip().split("\\s+",2);
+        req.setFirstName(names[0]);req.setLastName(names.length>1?names[1]:"");req.setEmail(candidate.getEmail());req.setPhone(candidate.getMobile());req.setCompanyId(companyId);
+        req.setDateJoining(form.getDateJoining());req.setDepartmentId(form.getDepartmentId());req.setJobPositionId(form.getJobPositionId());req.setJobRoleId(form.getJobRoleId());req.setShiftId(form.getShiftId());req.setReportingManagerId(form.getReportingManagerId());
+        req.setRole(com.example.demo.auth.entity.Role.RoleName.EMPLOYEE);req.setAccessScope(com.example.demo.auth.entity.UserRole.AccessScope.SELF);
+        req.setPassword(java.util.UUID.randomUUID().toString()+java.util.UUID.randomUUID());req.setIsActive(true);
+        var employee=employeeService.createWithinCurrentTransaction(req);candidate.setEmployeeId(employee.getId());entityManager.flush();
+        return Map.of("employeeId",employee.getId(),"message","Employee created with self-service access; use password reset to set the login password");
+    }
     private final OnboardingTaskRepository taskRepository;
     private final EmployeeOnboardingRepository employeeOnboardingRepository;
     private final OnboardingPortalRepository portalRepository;
@@ -45,23 +96,19 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public OnboardingTask getTaskById(Long id) {
-        return taskRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingTask", id));
+        var task=taskRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("OnboardingTask",id));access(task.getCompany().getId());return task;
     }
 
     @Transactional
     public OnboardingTask createTask(OnboardingTask task) {
-        if (task.getCompany() != null && task.getCompany().getId() != null) {
-            task.setCompany(companyRepository.getReferenceById(task.getCompany().getId()));
-        }
+        Long companyId=com.example.demo.common.context.CompanyContext.get();if(companyId==null) throw new com.example.demo.common.exception.BadRequestException("Select a company");access(companyId);task.setCompany(companyRepository.getReferenceById(companyId));task.setId(null);
         log.info("Creating onboarding task: {}", task.getTitle());
         return taskRepository.save(task);
     }
 
     @Transactional
     public OnboardingTask updateTask(Long id, OnboardingTask updated) {
-        OnboardingTask task = taskRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingTask", id));
+        OnboardingTask task = getTaskById(id);
         task.setTitle(updated.getTitle());
         task.setDescription(updated.getDescription());
         task.setDaysToComplete(updated.getDaysToComplete());
@@ -71,6 +118,7 @@ public class OnboardingService {
 
     @Transactional
     public Map<String, String> deleteTask(Long id) {
+        getTaskById(id);
         if (!taskRepository.existsById(id)) {
             throw new ResourceNotFoundException("OnboardingTask", id);
         }
@@ -83,30 +131,25 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public List<EmployeeOnboarding> getEmployeeOnboarding(Long employeeId) {
-        return employeeOnboardingRepository.findByEmployeeId(employeeId);
+        scopedEmployee(employeeId);return employeeOnboardingRepository.findByEmployeeId(employeeId);
     }
 
     @Transactional(readOnly = true)
     public EmployeeOnboarding getEmployeeOnboardingById(Long id) {
-        return employeeOnboardingRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("EmployeeOnboarding", id));
+        var row=employeeOnboardingRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("EmployeeOnboarding",id));scopedEmployee(row.getEmployee().getId());return row;
     }
 
     @Transactional
-    public EmployeeOnboarding createEmployeeOnboarding(EmployeeOnboarding onboarding) {
-        if (onboarding.getEmployee() != null && onboarding.getEmployee().getId() != null) {
-            onboarding.setEmployee(employeeRepository.getReferenceById(onboarding.getEmployee().getId()));
-        }
-        if (onboarding.getTask() != null && onboarding.getTask().getId() != null) {
-            onboarding.setTask(taskRepository.getReferenceById(onboarding.getTask().getId()));
-        }
-        return employeeOnboardingRepository.save(onboarding);
+    public EmployeeOnboarding createEmployeeOnboarding(EmployeeOnboarding row) {
+        if(row.getEmployee()==null || row.getTask()==null) throw new com.example.demo.common.exception.BadRequestException("Employee and task are required");
+        var employee=scopedEmployee(row.getEmployee().getId());var task=getTaskById(row.getTask().getId());
+        if(!employee.getCompany().getId().equals(task.getCompany().getId())) throw new com.example.demo.common.exception.BadRequestException("Task belongs to another company");
+        row.setId(null);row.setEmployee(employee);row.setTask(task);row.setStatus(EmployeeOnboarding.OnboardingStatus.PENDING);row.setCompletedDate(null);return employeeOnboardingRepository.save(row);
     }
 
     @Transactional
     public EmployeeOnboarding completeEmployeeOnboarding(Long id) {
-        EmployeeOnboarding eo = employeeOnboardingRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("EmployeeOnboarding", id));
+        EmployeeOnboarding eo = getEmployeeOnboardingById(id);
         eo.setStatus(EmployeeOnboarding.OnboardingStatus.COMPLETED);
         eo.setCompletedDate(LocalDate.now());
         log.info("Marking EmployeeOnboarding id={} as COMPLETED", id);
@@ -123,23 +166,23 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public OnboardingPortal getPortalById(Long id) {
-        return portalRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingPortal", id));
+        var portal=portalRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("OnboardingPortal",id));
+        if(portal.getCompany()==null) throw new com.example.demo.common.exception.BadRequestException("Portal must belong to a company");access(portal.getCompany().getId());return portal;
     }
 
     @Transactional
     public OnboardingPortal createPortal(OnboardingPortal portal) {
-        if (portal.getCompany() != null && portal.getCompany().getId() != null) {
-            portal.setCompany(companyRepository.getReferenceById(portal.getCompany().getId()));
-        }
+        Long companyId=com.example.demo.common.context.CompanyContext.get();
+        if(companyId==null) throw new com.example.demo.common.exception.BadRequestException("Select a company before creating an onboarding portal");access(companyId);
+        if(portal.getTitle()==null || portal.getTitle().isBlank()) throw new com.example.demo.common.exception.BadRequestException("Portal title is required");
+        portal.setId(null);portal.setCompany(companyRepository.getReferenceById(companyId));
         log.info("Creating onboarding portal: {}", portal.getTitle());
         return portalRepository.save(portal);
     }
 
     @Transactional
     public OnboardingPortal updatePortal(Long id, OnboardingPortal updated) {
-        OnboardingPortal portal = portalRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingPortal", id));
+        OnboardingPortal portal = getPortalById(id);
         portal.setTitle(updated.getTitle());
         portal.setIsActive(updated.getIsActive());
         portal.setExpiresAt(updated.getExpiresAt());
@@ -148,6 +191,8 @@ public class OnboardingService {
 
     @Transactional
     public void deletePortal(Long id) {
+        getPortalById(id);
+        if(!onboardingCandidateRepository.findByPortalId(id).isEmpty() || !stageRepository.findByPortalIdOrderBySequenceAsc(id).isEmpty()) throw new com.example.demo.common.exception.BadRequestException("Portal has onboarding records or stages; deactivate it to preserve history");
         if (!portalRepository.existsById(id)) {
             throw new ResourceNotFoundException("OnboardingPortal", id);
         }
@@ -159,25 +204,25 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public List<OnboardingStage> listStages(Long portalId) {
-        return stageRepository.findByPortalIdOrderBySequenceAsc(portalId);
+        getPortalById(portalId);return stageRepository.findByPortalIdOrderBySequenceAsc(portalId);
     }
 
     @Transactional(readOnly = true)
     public OnboardingStage getStageById(Long id) {
-        return stageRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingStage", id));
+        var stage=stageRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("OnboardingStage",id));getPortalById(stage.getPortal().getId());return stage;
     }
 
     @Transactional
     public OnboardingStage createStage(Long portalId, OnboardingStage stage) {
-        stage.setPortal(portalRepository.getReferenceById(portalId));
-        return stageRepository.save(stage);
+        stage.setId(null);stage.setPortal(getPortalById(portalId));
+        var saved=stageRepository.save(stage);
+        for(var candidate:onboardingCandidateRepository.findByPortalId(saved.getPortal().getId())) if(candidate.getStatus()==OnboardingCandidate.OnboardingStatus.IN_PROGRESS) checklist(candidate);
+        return saved;
     }
 
     @Transactional
     public OnboardingStage updateStage(Long id, OnboardingStage updated) {
-        OnboardingStage stage = stageRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingStage", id));
+        OnboardingStage stage = getStageById(id);
         stage.setTitle(updated.getTitle());
         stage.setSequence(updated.getSequence());
         return stageRepository.save(stage);
@@ -185,6 +230,8 @@ public class OnboardingService {
 
     @Transactional
     public Map<String, String> deleteStage(Long id) {
+        getStageById(id);
+        if(!candidateStageRepository.findByStageId(id).isEmpty() || !candidateTaskRepository.findByStageId(id).isEmpty()) throw new com.example.demo.common.exception.BadRequestException("This stage is already part of an onboarding checklist");
         if (!stageRepository.existsById(id)) {
             throw new ResourceNotFoundException("OnboardingStage", id);
         }
@@ -196,25 +243,36 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public List<OnboardingCandidate> listCandidates(Long portalId) {
-        return onboardingCandidateRepository.findByPortalId(portalId);
+        getPortalById(portalId);var rows=onboardingCandidateRepository.findByPortalId(portalId);rows.forEach(row->org.hibernate.Hibernate.initialize(row.getCandidate()));return rows;
     }
 
     @Transactional(readOnly = true)
     public OnboardingCandidate getCandidateById(Long id) {
-        return onboardingCandidateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
+        var candidate=onboardingCandidateRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate",id));
+        access(candidate.getPortal().getCompany().getId());org.hibernate.Hibernate.initialize(candidate.getCandidate());return candidate;
     }
 
     @Transactional
     public OnboardingCandidate addCandidate(Long portalId, OnboardingCandidate oc) {
-        oc.setPortal(portalRepository.getReferenceById(portalId));
-        return onboardingCandidateRepository.save(oc);
+        var portal=getPortalById(portalId);entityManager.lock(portal,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!Boolean.TRUE.equals(portal.getIsActive()) || portal.getExpiresAt()!=null && portal.getExpiresAt().isBefore(LocalDate.now())) throw new com.example.demo.common.exception.BadRequestException("Portal is inactive or expired");
+        if(oc.getCandidate()==null || oc.getCandidate().getId()==null) throw new com.example.demo.common.exception.BadRequestException("Select a hired candidate");
+        Long candidateId=oc.getCandidate().getId();
+        var applicant=applicantRepository.findByCandidateId(candidateId).stream().filter(a->a.getCompany().getId().equals(portal.getCompany().getId()) && a.getStatus()==com.example.demo.recruitment.entity.Applicant.ApplicantStatus.HIRED).findFirst().orElseThrow(()->new com.example.demo.common.exception.BadRequestException("Only a hired candidate in this company can start onboarding"));
+        if(!onboardingCandidateRepository.findByCandidateId(candidateId).isEmpty()) throw new com.example.demo.common.exception.BadRequestException("This candidate already has onboarding. Open the existing record");
+        oc.setId(null);oc.setCandidate(applicant.getCandidate());oc.setPortal(portal);oc.setStatus(OnboardingCandidate.OnboardingStatus.IN_PROGRESS);
+        var saved=onboardingCandidateRepository.save(oc);checklist(saved);assignTemplateTasks(saved);return saved;
     }
 
     @Transactional
     public OnboardingCandidate completeOnboarding(Long id) {
-        OnboardingCandidate oc = onboardingCandidateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
+        OnboardingCandidate oc = getCandidateById(id);
+        entityManager.lock(oc,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(oc.getStatus()==OnboardingCandidate.OnboardingStatus.COMPLETED) return oc;
+        editable(oc);checklist(oc);
+        var stages=candidateStageRepository.findByOnboardingCandidateId(id);var tasks=candidateTaskRepository.findByOnboardingCandidateId(id);
+        if(stages.isEmpty() && tasks.isEmpty()) throw new com.example.demo.common.exception.BadRequestException("Configure an onboarding checklist before completing it");
+        if(stages.stream().anyMatch(row->!Boolean.TRUE.equals(row.getIsCompleted())) || tasks.stream().anyMatch(row->!Boolean.TRUE.equals(row.getIsCompleted()))) throw new com.example.demo.common.exception.BadRequestException("Complete every onboarding stage and task first");
         oc.setStatus(OnboardingCandidate.OnboardingStatus.COMPLETED);
         log.info("Marking OnboardingCandidate id={} as COMPLETED", id);
         return onboardingCandidateRepository.save(oc);
@@ -224,14 +282,17 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public List<CandidateStage> listCandidateStages(Long candidateId) {
-        return candidateStageRepository.findByOnboardingCandidateId(candidateId);
+        getCandidateById(candidateId);var rows=candidateStageRepository.findByOnboardingCandidateId(candidateId);rows.forEach(r->org.hibernate.Hibernate.initialize(r.getStage()));return rows;
     }
 
     @Transactional
     public CandidateStage addCandidateStage(Long candidateId, CandidateStage cs) {
-        cs.setOnboardingCandidate(onboardingCandidateRepository.getReferenceById(candidateId));
+        var owner=getCandidateById(candidateId);editable(owner);cs.setId(null);cs.setIsCompleted(false);cs.setOnboardingCandidate(owner);
         if (cs.getStage() != null && cs.getStage().getId() != null) {
-            cs.setStage(stageRepository.getReferenceById(cs.getStage().getId()));
+            var stage=stageRepository.findById(cs.getStage().getId()).orElseThrow();
+            if(!stage.getPortal().getId().equals(owner.getPortal().getId())) throw new com.example.demo.common.exception.BadRequestException("Stage belongs to a different portal");
+            var existing=candidateStageRepository.findByOnboardingCandidateId(candidateId).stream().filter(r->r.getStage().getId().equals(stage.getId())).findFirst();if(existing.isPresent()) return existing.get();
+            cs.setStage(stage);
         }
         return candidateStageRepository.save(cs);
     }
@@ -240,6 +301,8 @@ public class OnboardingService {
     public CandidateStage completeCandidateStage(Long id) {
         CandidateStage cs = candidateStageRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("CandidateStage", id));
+        editable(cs.getOnboardingCandidate());
+        if(candidateTaskRepository.findByOnboardingCandidateId(cs.getOnboardingCandidate().getId()).stream().anyMatch(t->t.getStage()!=null && t.getStage().getId().equals(cs.getStage().getId()) && !Boolean.TRUE.equals(t.getIsCompleted()))) throw new com.example.demo.common.exception.BadRequestException("Complete this stage tasks first");
         cs.setIsCompleted(true);
         return candidateStageRepository.save(cs);
     }
@@ -248,14 +311,14 @@ public class OnboardingService {
 
     @Transactional(readOnly = true)
     public List<CandidateTask> listCandidateTasks(Long candidateId) {
-        return candidateTaskRepository.findByOnboardingCandidateId(candidateId);
+        getCandidateById(candidateId);var rows=candidateTaskRepository.findByOnboardingCandidateId(candidateId);rows.forEach(r->org.hibernate.Hibernate.initialize(r.getStage()));return rows;
     }
 
     @Transactional
     public CandidateTask addCandidateTask(Long candidateId, CandidateTask task) {
-        task.setOnboardingCandidate(onboardingCandidateRepository.getReferenceById(candidateId));
+        var owner=getCandidateById(candidateId);editable(owner);task.setId(null);task.setIsCompleted(false);task.setOnboardingCandidate(owner);
         if (task.getStage() != null && task.getStage().getId() != null) {
-            task.setStage(stageRepository.getReferenceById(task.getStage().getId()));
+            var stage=stageRepository.findById(task.getStage().getId()).orElseThrow();if(!stage.getPortal().getId().equals(owner.getPortal().getId())) throw new com.example.demo.common.exception.BadRequestException("Stage belongs to a different portal");task.setStage(stage);
         }
         return candidateTaskRepository.save(task);
     }
@@ -266,10 +329,9 @@ public class OnboardingService {
      */
     @Transactional
     public CandidateTask assignTaskToCandidate(Long candidateId, Long taskId) {
-        OnboardingCandidate candidate = onboardingCandidateRepository.findById(candidateId)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", candidateId));
-        OnboardingTask taskTemplate = taskRepository.findById(taskId)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingTask", taskId));
+        OnboardingCandidate candidate = getCandidateById(candidateId);editable(candidate);
+        OnboardingTask taskTemplate = getTaskById(taskId);
+        if(!taskTemplate.getCompany().getId().equals(candidate.getPortal().getCompany().getId())) throw new com.example.demo.common.exception.BadRequestException("Task template belongs to a different company");
 
         CandidateTask ct = new CandidateTask();
         ct.setOnboardingCandidate(candidate);
@@ -290,7 +352,7 @@ public class OnboardingService {
     public CandidateTask completeTask(Long candidateTaskId) {
         CandidateTask ct = candidateTaskRepository.findById(candidateTaskId)
                 .orElseThrow(() -> new ResourceNotFoundException("CandidateTask", candidateTaskId));
-        ct.setIsCompleted(true);
+        editable(ct.getOnboardingCandidate());ct.setIsCompleted(true);
         log.info("Completing CandidateTask id={}", candidateTaskId);
         return candidateTaskRepository.save(ct);
     }
@@ -301,70 +363,13 @@ public class OnboardingService {
      * by creating a CandidateStage entry for it.
      */
     @Transactional
-    public Map<String, Object> advanceStage(Long candidateId) {
-        OnboardingCandidate candidate = onboardingCandidateRepository.findById(candidateId)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", candidateId));
-
-        // Get all candidate stages ordered
-        List<CandidateStage> candidateStages = candidateStageRepository.findByOnboardingCandidateId(candidateId);
-
-        // Find first incomplete stage
-        CandidateStage currentStage = candidateStages.stream()
-                .filter(cs -> !Boolean.TRUE.equals(cs.getIsCompleted()))
-                .findFirst()
-                .orElse(null);
-
-        Map<String, Object> result = new HashMap<>();
-        if (currentStage == null) {
-            // All stages complete — mark candidate as done
-            candidate.setStatus(OnboardingCandidate.OnboardingStatus.COMPLETED);
-            onboardingCandidateRepository.save(candidate);
-            result.put("message", "All stages completed. Onboarding marked as COMPLETED.");
-            result.put("candidateId", candidateId);
-            result.put("status", "COMPLETED");
-            return result;
-        }
-
-        // Mark current stage complete
-        currentStage.setIsCompleted(true);
-        candidateStageRepository.save(currentStage);
-
-        // Find the portal stages to determine next
-        List<OnboardingStage> portalStages = stageRepository.findByPortalIdOrderBySequenceAsc(
-                candidate.getPortal().getId());
-
-        Integer currentSequence = currentStage.getStage().getSequence();
-        OnboardingStage nextPortalStage = portalStages.stream()
-                .filter(s -> s.getSequence() > currentSequence)
-                .findFirst()
-                .orElse(null);
-
-        result.put("candidateId", candidateId);
-        result.put("completedStage", currentStage.getStage().getTitle());
-
-        if (nextPortalStage != null) {
-            // Check if CandidateStage entry already exists for the next stage
-            boolean alreadyExists = candidateStages.stream()
-                    .anyMatch(cs -> cs.getStage().getId().equals(nextPortalStage.getId()));
-            if (!alreadyExists) {
-                CandidateStage next = new CandidateStage();
-                next.setOnboardingCandidate(candidate);
-                next.setStage(nextPortalStage);
-                next.setIsCompleted(false);
-                candidateStageRepository.save(next);
-            }
-            result.put("message", "Advanced to next stage: " + nextPortalStage.getTitle());
-            result.put("nextStage", nextPortalStage.getTitle());
-        } else {
-            // No next stage — all portal stages completed
-            candidate.setStatus(OnboardingCandidate.OnboardingStatus.COMPLETED);
-            onboardingCandidateRepository.save(candidate);
-            result.put("message", "Final stage completed. Onboarding marked as COMPLETED.");
-            result.put("status", "COMPLETED");
-        }
-
-        log.info("Advanced stage for candidate id={}: {}", candidateId, result.get("message"));
-        return result;
+    public Map<String,Object> advanceStage(Long candidateId) {
+        var candidate=getCandidateById(candidateId);editable(candidate);checklist(candidate);
+        var stages=candidateStageRepository.findByOnboardingCandidateId(candidateId).stream().sorted(java.util.Comparator.comparing(r->r.getStage().getSequence())).toList();
+        var current=stages.stream().filter(row->!Boolean.TRUE.equals(row.getIsCompleted())).findFirst();
+        current.ifPresent(row->completeCandidateStage(row.getId()));
+        if(stages.stream().allMatch(row->Boolean.TRUE.equals(row.getIsCompleted()))) {completeOnboarding(candidateId);return Map.of("status","COMPLETED","candidateId",candidateId);}
+        return Map.of("status","IN_PROGRESS","candidateId",candidateId);
     }
 
     /**
@@ -373,72 +378,23 @@ public class OnboardingService {
      * then creates CandidateStage entries for each portal stage and assigns all company tasks.
      */
     @Transactional
-    public Map<String, Object> initiateOnboarding(Long employeeId, Long portalId) {
-        employeeRepository.findById(employeeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee", employeeId));
-        OnboardingPortal portal = portalRepository.findById(portalId)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingPortal", portalId));
-
-        // Create a placeholder Candidate reference if needed — create OnboardingCandidate
-        // In practice the caller should ensure a Candidate record exists; here we use getReferenceById
-        // to satisfy the non-null FK. HR should link proper Candidate entities upstream.
-        OnboardingCandidate oc = new OnboardingCandidate();
-        oc.setPortal(portal);
-        // Candidate reference: requires a Candidate entity keyed on employeeId as the id placeholder.
-        // This is a simplified mapping; in production Candidate.id may differ from Employee.id.
-        Candidate candidateRef = new Candidate();
-        candidateRef.setId(employeeId);
-        oc.setCandidate(candidateRef);
-        oc.setStatus(OnboardingCandidate.OnboardingStatus.IN_PROGRESS);
-        OnboardingCandidate savedOc = onboardingCandidateRepository.save(oc);
-
-        // Create CandidateStage for each portal stage
-        List<OnboardingStage> stages = stageRepository.findByPortalIdOrderBySequenceAsc(portalId);
-        for (OnboardingStage stage : stages) {
-            CandidateStage cs = new CandidateStage();
-            cs.setOnboardingCandidate(savedOc);
-            cs.setStage(stage);
-            cs.setIsCompleted(false);
-            candidateStageRepository.save(cs);
-        }
-
-        // Assign all company tasks to the candidate
-        Long companyId = portal.getCompany() != null ? portal.getCompany().getId() : null;
-        int tasksAssigned = 0;
-        if (companyId != null) {
-            List<OnboardingTask> companyTasks = taskRepository.findByCompanyId(companyId);
-            for (OnboardingTask task : companyTasks) {
-                CandidateTask ct = new CandidateTask();
-                ct.setOnboardingCandidate(savedOc);
-                ct.setTitle(task.getTitle());
-                ct.setDescription(task.getDescription());
-                ct.setIsCompleted(false);
-                if (task.getDaysToComplete() != null) {
-                    ct.setDueDate(LocalDate.now().plusDays(task.getDaysToComplete()));
-                }
-                candidateTaskRepository.save(ct);
-                tasksAssigned++;
-            }
-        }
-
-        log.info("Initiated onboarding for employee id={} on portal '{}': {} stages, {} tasks assigned",
-                employeeId, portal.getTitle(), stages.size(), tasksAssigned);
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("message", "Onboarding initiated successfully");
-        result.put("onboardingCandidateId", savedOc.getId());
-        result.put("portalId", portalId);
-        result.put("stagesCreated", stages.size());
-        result.put("tasksAssigned", tasksAssigned);
-        return result;
+    public Map<String,Object> initiateOnboarding(Long employeeId,Long portalId) {
+        var employee=employeeRepository.findById(employeeId).orElseThrow(()->new ResourceNotFoundException("Employee",employeeId));var portal=getPortalById(portalId);access(employee.getCompany().getId());
+        if(!Boolean.TRUE.equals(portal.getIsActive()) || portal.getExpiresAt()!=null && portal.getExpiresAt().isBefore(LocalDate.now())) throw new com.example.demo.common.exception.BadRequestException("Portal is inactive or expired");
+        if(!employee.getCompany().getId().equals(portal.getCompany().getId())) throw new com.example.demo.common.exception.BadRequestException("Employee and portal must belong to the same company");
+        var found=entityManager.createQuery("select c from Candidate c where c.employeeId=:id",Candidate.class).setParameter("id",employeeId).getResultList();
+        var candidate=found.isEmpty()?new Candidate():found.getFirst();
+        if(found.isEmpty()){candidate.setName(employee.getFirstName()+" "+(employee.getLastName()==null?"":employee.getLastName()));candidate.setEmail(employee.getEmail());candidate.setEmployeeId(employeeId);candidate.setSource("EXISTING_EMPLOYEE");entityManager.persist(candidate);}
+        var existing=onboardingCandidateRepository.findByCandidateId(candidate.getId());if(!existing.isEmpty()){var same=existing.stream().filter(c->c.getPortal().getId().equals(portalId)).findFirst();if(same.isPresent()) return Map.of("id",same.get().getId(),"candidateId",same.get().getId());throw new com.example.demo.common.exception.BadRequestException("This employee already has onboarding in another portal");}
+        var oc=new OnboardingCandidate();oc.setCandidate(candidate);oc.setPortal(portal);var saved=onboardingCandidateRepository.save(oc);checklist(saved);assignTemplateTasks(saved);
+        return Map.of("id",saved.getId(),"candidateId",saved.getId(),"employeeId",employeeId);
     }
 
     // ─── Offer Letter ─────────────────────────────────────────────────────────
 
     @Transactional
     public Map<String, Object> sendOfferLetter(Long id) {
-        OnboardingCandidate oc = onboardingCandidateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
+        OnboardingCandidate oc = getCandidateById(id);
         String recipientEmail = (oc.getCandidate() != null) ? oc.getCandidate().getEmail() : null;
         Map<String, Object> result = new HashMap<>();
         result.put("candidateId", id);
@@ -447,26 +403,21 @@ public class OnboardingService {
                     ? oc.getPortal().getCompany().getId() : null;
             emailService.sendEmail(companyId, recipientEmail,
                     "Your Offer Letter",
-                    "<p>Congratulations! Please find your offer letter attached.</p>",
+                    "<p>Your hiring team has an offer update for you. Please contact HR to review the approved offer and joining details.</p>",
                     null);
             result.put("message", "Offer letter sent to " + recipientEmail);
             result.put("email", recipientEmail);
         } else {
-            result.put("message", "Offer letter queued (no email address found for candidate)");
+            throw new com.example.demo.common.exception.BadRequestException("Candidate email is required");
         }
         return result;
     }
 
     @Transactional
     public OnboardingCandidate updateOfferLetterStatus(Long id, String status) {
-        OnboardingCandidate oc = onboardingCandidateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OnboardingCandidate", id));
-        try {
-            oc.setStatus(OnboardingCandidate.OnboardingStatus.valueOf(status));
-        } catch (IllegalArgumentException ignored) {
-            // unrecognized status — leave as-is
-        }
-        return onboardingCandidateRepository.save(oc);
+        OnboardingCandidate oc = getCandidateById(id);
+        if("COMPLETED".equals(status)) return completeOnboarding(id);
+        throw new com.example.demo.common.exception.BadRequestException("Offer status cannot change onboarding progress; use the onboarding checklist");
     }
 
     /**
@@ -495,7 +446,7 @@ public class OnboardingService {
         result.put("title", portal.getTitle());
         result.put("isActive", portal.getIsActive());
         result.put("expiresAt", portal.getExpiresAt());
-        result.put("message", "Welcome to the onboarding portal. Please create your account to continue.");
+        result.put("message", "Your HR team manages onboarding progress and employee account creation.");
         result.put("status", "ACTIVE");
         return result;
     }
@@ -506,38 +457,8 @@ public class OnboardingService {
      * Actual User entity provisioning should be handled by the auth/identity module.
      */
     @Transactional
-    public Map<String, Object> createAccountForCandidate(String token, Map<String, Object> accountDetails) {
-        // Validate the token is active
-        List<OnboardingPortal> portals = portalRepository.findAll();
-        OnboardingPortal portal = portals.stream()
-                .filter(p -> token.equals(p.getToken()))
-                .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "OnboardingPortal not found for token: " + token));
-
-        if (Boolean.FALSE.equals(portal.getIsActive())) {
-            throw new ResourceNotFoundException("OnboardingPortal with token " + token + " is inactive");
-        }
-        if (portal.getExpiresAt() != null && LocalDate.now().isAfter(portal.getExpiresAt())) {
-            throw new ResourceNotFoundException("OnboardingPortal with token " + token + " has expired");
-        }
-
-        String email = accountDetails.get("email") != null ? accountDetails.get("email").toString() : null;
-        log.info("Account creation request received for portal token={}, email={}", token, email);
-
-        // Attempt to update the status of matching OnboardingCandidates in this portal
-        List<OnboardingCandidate> candidates = onboardingCandidateRepository.findByPortalId(portal.getId());
-        log.info("Found {} candidate(s) in portal id={} during account creation", candidates.size(), portal.getId());
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("portalId", portal.getId());
-        result.put("message", "Account creation request received. You will receive a confirmation email shortly.");
-        result.put("success", true);
-        if (email != null) {
-            result.put("email", email);
-        }
-        return result;
+    public Map<String,Object> createAccountForCandidate(String token,Map<String,Object> details) {
+        throw new com.example.demo.common.exception.BadRequestException("Candidate accounts are created by HR using Convert to employee after onboarding is completed");
     }
 
     /**
@@ -545,7 +466,7 @@ public class OnboardingService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getOnboardingDashboard() {
-        List<EmployeeOnboarding> all = employeeOnboardingRepository.findAll();
+        var filter=ScopeFilter.<EmployeeOnboarding>byEmployeeCompany();List<EmployeeOnboarding> all=filter==null?employeeOnboardingRepository.findAll():employeeOnboardingRepository.findAll(filter);
         long total = all.size();
         long completed = all.stream()
                 .filter(o -> EmployeeOnboarding.OnboardingStatus.COMPLETED.equals(o.getStatus()))
@@ -558,7 +479,7 @@ public class OnboardingService {
                 .count();
 
         // Candidate-based stats
-        List<OnboardingCandidate> allCandidates = onboardingCandidateRepository.findAll();
+        var scope=com.example.demo.common.context.AccessScopeContext.get();List<OnboardingCandidate> allCandidates=onboardingCandidateRepository.findAll().stream().filter(c->scope!=null && scope.canAccess(c.getPortal().getCompany().getId())).toList();
         long totalCandidates = allCandidates.size();
         long completedCandidates = allCandidates.stream()
                 .filter(c -> OnboardingCandidate.OnboardingStatus.COMPLETED.equals(c.getStatus()))

@@ -24,6 +24,9 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "photo_path")
+    private String photoPath;
+
     @Column(name = "first_name")
     private String firstName;
 
@@ -46,6 +49,9 @@ public class User extends BaseEntity {
     /** Configurable company-assignment ceiling for Account Managers. */
     @Column(name = "account_manager_company_limit", nullable = false, columnDefinition = "integer default 6")
     private int accountManagerCompanyLimit = 6;
+
+    @Column(name = "login_held", nullable = false, columnDefinition = "boolean default false")
+    private boolean loginHeld = false;
 
     @Column(name = "reset_token")
     private String resetToken;

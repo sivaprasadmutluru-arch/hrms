@@ -1,0 +1,60 @@
+package com.example.demo.platformops;
+
+import com.example.demo.auth.entity.*;
+import com.example.demo.auth.dto.AssignRoleRequest;
+import com.example.demo.auth.security.UserPrincipal;
+import com.example.demo.auth.service.UserRoleService;
+import com.example.demo.base.entity.*;
+import com.example.demo.billing.BillingSecurity;
+import com.example.demo.common.context.*;
+import com.example.demo.employee.entity.Employee;
+import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.time.*;
+import java.util.*;
+import static org.assertj.core.api.Assertions.*;
+
+@SpringBootTest @Transactional
+@Sql("/db/migration/V47__platform_team_roles.sql")
+class PlatformTeamIntegrationTest {
+ @Autowired EntityManager em; @Autowired JdbcTemplate jdbc; @Autowired PlatformTeamAccess access;
+ @Autowired UserRoleService roles; @Autowired BillingSecurity billing; @Autowired PlatformOperationsService support;
+ @Autowired com.example.demo.base.controller.OrganizationController organizations;
+ @Autowired PlatformOperationsController controller;
+ Company internal,customer; User staff,outsider,root; Employee employee; Organization operator,external;
+ Role role(Role.RoleName name){var found=em.createQuery("select r from Role r where r.name=:name",Role.class).setParameter("name",name).getResultList();if(!found.isEmpty())return found.getFirst();var r=new Role();r.setName(name);em.persist(r);return r;}
+ Organization org(String prefix){var o=new Organization();o.setName(prefix);o.setSlug(prefix.toLowerCase()+UUID.randomUUID());em.persist(o);return o;}
+ Company company(Organization o){var c=new Company();c.setName(o.getName()+UUID.randomUUID());c.setOrganization(o);c.setSchemaName(o==operator ? "public" : "customer_"+UUID.randomUUID().toString().replace("-",""));em.persist(c);return c;}
+ User user(){var u=new User();u.setUsername("fixture-"+UUID.randomUUID());u.setEmail(u.getUsername()+"@example.invalid");u.setPassword("test-only-unused");em.persist(u);return u;}
+ UserRole assign(User u,Company c,Role.RoleName name){var a=new UserRole();a.setUser(u);a.setCompany(c);a.setRole(role(name));a.setAccessScope(UserRole.AccessScope.SELF);em.persist(a);u.getUserRoles().add(a);em.flush();return a;}
+ Employee employee(User u,Company c){var e=new Employee();e.setUser(u);e.setCompany(c);e.setFirstName("Fixture");e.setBadgeId(UUID.randomUUID().toString());em.persist(e);return e;}
+ void login(User u){var p=new UserPrincipal(u);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(p,null,p.getAuthorities()));AccessScopeContext.clear();CompanyContext.set(internal.getId());}
+ AssignRoleRequest request(User u,Company c,Role.RoleName name){var r=new AssignRoleRequest();r.setUserId(u.getId());r.setCompanyId(c.getId());r.setRoleName(name);r.setAccessScope(UserRole.AccessScope.SELF);r.setReason("Verified internal duties fixture");return r;}
+ @BeforeEach void setup(){operator=org("Internal");external=org("Customer");internal=company(operator);customer=company(external);staff=user();outsider=user();root=user();role(Role.RoleName.ENTERPRISE_ADMIN);employee=employee(staff,internal);employee(outsider,customer);assign(staff,internal,Role.RoleName.EMPLOYEE);assign(outsider,customer,Role.RoleName.EMPLOYEE);assign(root,internal,Role.RoleName.PLATFORM_SUPER_ADMIN);em.flush();jdbc.update("INSERT INTO public.platform_operator_configuration(id,organization_id,configured_by) VALUES(1,?,'fixture') ON CONFLICT(id) DO UPDATE SET organization_id=excluded.organization_id",operator.getId());}
+ @AfterEach void clear(){SecurityContextHolder.clearContext();AccessScopeContext.clear();CompanyContext.clear();}
+ @Test void employmentAloneGrantsNoPlatformAccess(){login(staff);assertThat(access.operations()||access.support()||access.billing()).isFalse();}
+ @Test void dutiesAreSeparateAndDoNotGrantWorkforceAuthority(){for(var name:PlatformTeamAccess.ROLES){var a=assign(staff,internal,name);login(staff);assertThat(access.operations()).as(name+" operations").isEqualTo(name==Role.RoleName.PLATFORM_ORGANIZATION_OPERATIONS);assertThat(access.support()).as(name+" support").isEqualTo(name==Role.RoleName.PLATFORM_SUPPORT);assertThat(access.billing()).as(name+" billing").isEqualTo(name==Role.RoleName.PLATFORM_BILLING);var authorities=SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream().map(Object::toString).toList();assertThat(authorities).doesNotContain("ROLE_ENTERPRISE_ADMIN","ROLE_SUPER_ADMIN","payroll:create","employee:view","employee:create");a.setAssignmentStatus(UserRole.AssignmentStatus.REVOKED);em.flush();}}
+ @Test void superAdminCanGrantAnAuditedInternalRole(){login(root);roles.assignRole(request(staff,internal,Role.RoleName.PLATFORM_SUPPORT));assertThat(jdbc.queryForObject("SELECT count(*) FROM public.user_roles ur JOIN public.roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.name='PLATFORM_SUPPORT' AND ur.granted_by_user_id=?",Long.class,staff.getId(),root.getId())).isEqualTo(1);}
+ @Test void cannotGrantPlatformDutiesToCustomerEmployeeEvenWithMatchingOrganizationName(){external.setName("Accrue Technologies");em.flush();login(root);assertThatThrownBy(()->roles.assignRole(request(outsider,customer,Role.RoleName.PLATFORM_SUPPORT))).hasMessageContaining("configured internal");}
+ @Test void platformRolesCannotExpandTenantScope(){login(root);var r=request(staff,internal,Role.RoleName.PLATFORM_BILLING);r.setAccessScope(UserRole.AccessScope.ENTERPRISE);assertThatThrownBy(()->roles.assignRole(r)).hasMessageContaining("SELF scope");}
+ @Test void delegatedStaffCannotGrantPlatformRoles(){assign(staff,internal,Role.RoleName.PLATFORM_ORGANIZATION_OPERATIONS);login(staff);assertThatThrownBy(()->roles.assignRole(request(staff,internal,Role.RoleName.PLATFORM_SUPPORT))).isInstanceOf(RuntimeException.class);}
+ @Test void companyAdminCannotGrantPlatformRoles(){assign(staff,internal,Role.RoleName.SUPER_ADMIN);login(staff);assertThatThrownBy(()->roles.assignRole(request(staff,internal,Role.RoleName.PLATFORM_SUPPORT))).hasMessageContaining("Only Platform Super Admin");}
+ @Test void employmentArchiveImmediatelyRevokesDelegatedCapabilities(){assign(staff,internal,Role.RoleName.PLATFORM_SUPPORT);login(staff);assertThat(access.support()).isTrue();employee.setActive(false);em.flush();assertThat(access.support()).isFalse();}
+ @Test void employmentTransferImmediatelyRevokesDelegatedCapabilities(){assign(staff,internal,Role.RoleName.PLATFORM_BILLING);login(staff);employee.setCompany(customer);em.flush();assertThat(access.billing()).isFalse();}
+ @Test void revokedAndExpiredAssignmentsCannotKeepAccessWithOldPrincipal(){var a=assign(staff,internal,Role.RoleName.PLATFORM_SUPPORT);login(staff);a.setAssignmentStatus(UserRole.AssignmentStatus.REVOKED);em.flush();assertThat(access.support()).isFalse();a.setAssignmentStatus(UserRole.AssignmentStatus.ACTIVE);a.setExpiresOn(LocalDate.now().minusDays(1));em.flush();assertThat(access.support()).isFalse();}
+ @Test void billingCanManageCustomerBillingButCannotReadCustomerSupport(){assign(staff,internal,Role.RoleName.PLATFORM_BILLING);login(staff);assertThatCode(()->billing.require(external.getId())).doesNotThrowAnyException();assertThatThrownBy(()->billing.requireTenantOwner(external.getId())).hasMessageContaining("Only an administrator");assertThatThrownBy(()->support.supportList(external.getId(),0,"")).isInstanceOf(RuntimeException.class);assertThatThrownBy(()->organizations.list()).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);}
+ @Test void supportCanHandleCustomerTicketsButCannotManageBillingOrOrganizations(){assign(staff,internal,Role.RoleName.PLATFORM_SUPPORT);login(staff);assertThatCode(()->support.supportList(external.getId(),0,"")).doesNotThrowAnyException();assertThatThrownBy(()->billing.require(external.getId())).hasMessageContaining("Only an administrator");assertThatThrownBy(()->controller.billingContext()).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);assertThatThrownBy(()->organizations.list()).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);}
+ @Test void operationsCanListOrganizationsButCannotManageBillingOrSupport(){assign(staff,internal,Role.RoleName.PLATFORM_ORGANIZATION_OPERATIONS);login(staff);assertThatCode(()->organizations.list()).doesNotThrowAnyException();assertThatThrownBy(()->billing.require(external.getId())).isInstanceOf(RuntimeException.class);assertThatThrownBy(()->support.supportList(external.getId(),0,"")).isInstanceOf(RuntimeException.class);}
+ @Test void operationsCanProvisionOnlyFirstAdminOfANewCustomer(){assign(staff,internal,Role.RoleName.PLATFORM_ORGANIZATION_OPERATIONS);login(staff);var newcomer=user();var r=request(newcomer,customer,Role.RoleName.ENTERPRISE_ADMIN);r.setAccessScope(UserRole.AccessScope.ENTERPRISE);assertThatThrownBy(()->roles.assignInitialOrganizationAdmin(r)).hasMessageContaining("new user and new company");var fresh=company(external);r.setCompanyId(fresh.getId());assertThatCode(()->roles.assignInitialOrganizationAdmin(r)).doesNotThrowAnyException();assertThatThrownBy(()->roles.assignInitialOrganizationAdmin(r)).hasMessageContaining("new user and new company");}
+ @Test void supportCanReplyAndResolveCustomerTicket(){assign(staff,internal,Role.RoleName.PLATFORM_SUPPORT);var ticket=new PlatformSupportTicket();ticket.setOrganizationId(external.getId());ticket.setOrganizationName(external.getName());ticket.setSubject("Fixture support");ticket.setCategory("TECHNICAL");ticket.setPriority("NORMAL");ticket.setStatus("OPEN");ticket.setCreatedBy("customer-fixture");ticket.setCreatedAt(Instant.now());ticket.setUpdatedAt(Instant.now());em.persist(ticket);em.flush();login(staff);support.reply(ticket.getId(),"Investigating fixture");support.update(ticket.getId(),"RESOLVED","NORMAL",true,"Verified solution fixture");em.flush();assertThat(ticket.getAssignedTo()).isEqualTo(staff.getUsername());assertThat(ticket.getStatus()).isEqualTo("RESOLVED");assertThat(ticket.getFirstResponseAt()).isNotNull();}
+ @Test void operationsContactUpdateCannotChangeSubscriptionOrStatus(){assign(staff,internal,Role.RoleName.PLATFORM_ORGANIZATION_OPERATIONS);login(staff);var before=external.getSubscriptionPlan();var update=new Organization();update.setName("Updated contact fixture");update.setContactEmail("fixture@example.invalid");update.setSubscriptionPlan(com.example.demo.base.enums.SubscriptionPlan.ENTERPRISE);update.setMaxBranches(999);update.setStatus(Organization.OrgStatus.SUSPENDED);organizations.update(external.getId(),update);assertThat(external.getName()).isEqualTo("Updated contact fixture");assertThat(external.getSubscriptionPlan()).isEqualTo(before);assertThat(external.getStatus()).isEqualTo(Organization.OrgStatus.ACTIVE);assertThat(external.getMaxBranches()).isNotEqualTo(999);}
+ @Test void alteredRolePermissionsCannotGrantCustomerPayroll(){var r=role(Role.RoleName.PLATFORM_SUPPORT);var permission=new Permission();permission.setName("payroll:create");em.persist(permission);r.getPermissions().add(permission);assign(staff,internal,Role.RoleName.PLATFORM_SUPPORT);login(staff);assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream().map(Object::toString)).doesNotContain("payroll:create");}
+ @Test void delegatedStaffCannotRevokePlatformAssignments(){var a=assign(outsider,customer,Role.RoleName.PLATFORM_SUPPORT);assign(staff,internal,Role.RoleName.SUPER_ADMIN);login(staff);assertThatThrownBy(()->roles.revokeRole(outsider.getId(),a.getRole().getId(),customer.getId())).isInstanceOf(RuntimeException.class);assertThat(a.isActive()).isTrue();}
+}

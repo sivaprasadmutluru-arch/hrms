@@ -33,6 +33,9 @@ public class Candidate extends BaseEntity {
     @Column(name = "source")
     private String source;
 
+    @Column(name = "employee_id")
+    private Long employeeId;
+
     @Column(name = "resume_path")
     private String resumePath;
 

@@ -35,7 +35,7 @@ import java.util.Map;
 @RequestMapping("/api/platform/scope")
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-@Tag(name = "Platform Scope Selection (Prabha Tech Admin)")
+@Tag(name = "Platform Scope Selection (AccrueHr Admin)")
 public class PlatformCompanyScopeController {
 
     private final CompanyRepository companyRepository;
@@ -74,10 +74,12 @@ public class PlatformCompanyScopeController {
             Map<String, Object> entry = new java.util.HashMap<>();
             entry.put("id", c.getId());
             entry.put("name", c.getName());
+            entry.put("organizationId", c.getOrganization() != null ? c.getOrganization().getId() : null);
             entry.put("type", c.getCompanyType() != null ? c.getCompanyType().name() : "UNKNOWN");
             entry.put("status", c.getStatus() != null ? c.getStatus().name() : "UNKNOWN");
             entry.put("parentCompanyId", c.getParentCompany() != null ? c.getParentCompany().getId() : null);
-            entry.put("currency", c.getCurrency() != null ? c.getCurrency() : "USD");
+            entry.put("country", c.getCountry());
+            entry.put("currency", c.getCurrency() != null ? c.getCurrency() : "INR");
             entry.put("logoUrl", c.getLogoPath() != null ? "/api/files/" + c.getLogoPath() : null);
             return entry;
         }).toList();

@@ -58,11 +58,15 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
                              Object handler) {
 
         // Step 1: Get the company ID from the request header
-        Long companyId = parseCompanyId(request.getHeader("X-Company-Id"));
+        Long requestedId = parseCompanyId(request.getHeader("X-Company-Id"));
 
         // Step 2: Get the authenticated user
         UserPrincipal currentUser = getAuthenticatedUser();
 
+        boolean platform = currentUser != null && currentUser.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN"));
+        // Identity refresh must recover after a position revocation changes the user's home scope.
+        final Long companyId = currentUser != null && !platform && request.getRequestURI().equals("/api/auth/me")
+                ? currentUser.getDefaultCompanyId() : requestedId != null ? requestedId : currentUser != null && !platform ? currentUser.getDefaultCompanyId() : null;
         if (currentUser == null || companyId == null) {
             // No user or no company context — allow the request to proceed
             // Security is still enforced by @PreAuthorize annotations
@@ -120,6 +124,11 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             }
         }
 
+        Long requestedRootId = requestedCompany != null && requestedCompany.isBranch() ? requestedCompany.getParentCompanyId() : companyId;
+        var positions = currentUser.getPositionGrants().stream().filter(p -> p.appliesTo(companyId, requestedRootId)).toList();
+        var explicitRoles = List.copyOf(userRoles);
+        for (var p : positions) userRoles.add(p.assignment());
+
         // A role authority held in another company must never authorize this company.
         // Previously the global Spring authority could pass @PreAuthorize while an empty
         // company assignment silently degraded to SELF scope.
@@ -155,13 +164,34 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
             request.setAttribute(ORIGINAL_AUTHENTICATION, original);
             UsernamePasswordAuthenticationToken scoped = new UsernamePasswordAuthenticationToken(
                     original.getPrincipal(), original.getCredentials(),
-                    UserPrincipal.authoritiesForAssignments(userRoles));
+                    com.example.demo.auth.service.PositionAccessService.authorities(explicitRoles, positions));
             scoped.setDetails(original.getDetails());
             SecurityContextHolder.getContext().setAuthentication(scoped);
         }
 
+        // Enforce position exclusions even on legacy endpoints guarded only by role names.
+        if (!isPlatformAdmin) {
+            var names=SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream().map(a -> a.getAuthority()).toList();
+            String path=request.getRequestURI();
+            boolean denied=names.contains("POSITION_OPERATIONS_ONLY") && request.getMethod().equals("DELETE") && !path.startsWith("/api/ess/")
+                || names.contains("POSITION_PAYROLL_EXCLUDED") && isPayrollRequest(request)
+                || names.contains("POSITION_SECURITY_EXCLUDED") && (path.startsWith("/api/user-roles") || path.startsWith("/api/user-permissions") || path.startsWith("/api/user-groups") || path.startsWith("/api/cross-branch-access") || path.startsWith("/api/roles") || path.startsWith("/api/auth/admin/") || path.startsWith("/api/2fa/admin/"))
+                || names.contains("POSITION_BILLING_EXCLUDED") && path.startsWith("/api/billing/") && !path.equals("/api/billing/catalog");
+            if (denied) {
+                response.setStatus(403); response.setContentType("application/json");
+                try { response.getWriter().write("{\"status\":403,\"message\":\"This action is excluded from your job-position access profile\"}"); }
+                catch(java.io.IOException e) { log.error("Failed to write position access response", e); }
+                return false;
+            }
+        }
+
         // Step 5: Determine access scope (use the highest scope if user has multiple roles)
-        UserRole.AccessScope scope = resolveHighestScope(userRoles, currentUser);
+        // COO operational scope must not enlarge a separately assigned branch finance/security role.
+        var scopeRoles = userRoles;
+        if (isPayrollRequest(request) && positions.stream().noneMatch(p -> p.profile()==com.example.demo.auth.service.PositionAccessService.Profile.CEO)) scopeRoles = explicitRoles;
+        String route=request.getRequestURI();
+        if(route.startsWith("/api/user-roles") || route.startsWith("/api/user-permissions") || route.startsWith("/api/user-groups") || route.startsWith("/api/cross-branch-access")) scopeRoles=explicitRoles;
+        UserRole.AccessScope scope = resolveHighestScope(scopeRoles, currentUser);
 
         // Step 6: Build the list of company IDs this user can access.
         // For ENTERPRISE/HEAD_OFFICE scope, always expand to the full company tree regardless
@@ -352,7 +382,8 @@ public class AccessScopeInterceptor implements HandlerInterceptor {
 
     private boolean isPayrollRequest(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.startsWith("/api/payroll") || path.startsWith("/api/gratuity");
+        return path.startsWith("/api/payroll") || path.startsWith("/api/gratuity") || path.startsWith("/api/reports/payroll")
+                || path.equals("/api/reports/export") && "payroll".equalsIgnoreCase(request.getParameter("type"));
     }
 
     private boolean hasPayrollExcludedAccess(List<UserRole> assignments) {

@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>For each candidate schema, uses raw JDBC to check if
  *       {@code <schema>.biometric_devices} contains a row where
  *       {@code serial_number = ? AND is_active = true}.</li>
- *   <li>Returns the matching schema name (e.g. {@code "prabha_technologies"}).</li>
+ *   <li>Returns the matching schema name (e.g. {@code "accruehr"}).</li>
  * </ol>
  *
  * <h3>Performance:</h3>
@@ -89,7 +89,7 @@ public class AdmsTenantResolver {
      * Resolve the tenant schema that owns the device with the given serial number.
      *
      * @param serialNumber the device serial number (SN parameter from ADMS push)
-     * @return the PostgreSQL schema name (e.g. "prabha_technologies"), or null if not found
+     * @return the PostgreSQL schema name (e.g. "accruehr"), or null if not found
      */
     public String resolveSchema(String serialNumber) {
         if (serialNumber == null || serialNumber.isBlank()) {

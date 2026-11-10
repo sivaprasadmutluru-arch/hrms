@@ -6,6 +6,7 @@ import com.example.demo.common.service.FileUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
@@ -22,11 +23,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "File Upload")
 public class FileUploadController {
 
     private final FileUploadService fileUploadService;
     private final CompanyRepository companyRepository;
+    private final com.example.demo.base.repository.OrganizationRepository organizationRepository;
+    private final com.example.demo.auth.repository.UserRoleRepository userRoleRepository;
 
     /**
      * Generic file upload endpoint.
@@ -80,16 +84,56 @@ public class FileUploadController {
     /**
      * Serve a stored file by its relative path.
      * Handles paths of any depth: subDir/file.png or orgSlug/subDir/file.png
+     * Public visual assets (logos, profile photos) are served without restriction.
+     * Sensitive files (documents, attachments, letters, stamps) require authentication
+     * and tenant verification.
      */
     @GetMapping("/{*filePath}")
     @Operation(summary = "Serve a stored file")
     public ResponseEntity<Resource> serveFile(@PathVariable String filePath) throws IOException {
         String relativePath = filePath.startsWith("/") ? filePath.substring(1) : filePath;
+
+        // Path traversal protection
         Path resolvedPath = fileUploadService.resolve(relativePath);
         Path uploadRoot = fileUploadService.resolve("").toAbsolutePath().normalize();
         Path absolutePath = resolvedPath.toAbsolutePath().normalize();
-        if (!absolutePath.startsWith(uploadRoot) || absolutePath.startsWith(uploadRoot.resolve("carr-private")))
-            return ResponseEntity.status(403).build();
+        if (!absolutePath.startsWith(uploadRoot) || absolutePath.startsWith(uploadRoot.resolve("carr-private"))) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+
+        // Check whether file is a public visual asset
+        if (!isPublicAsset(relativePath)) {
+            org.springframework.security.core.Authentication auth =
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()
+                    || auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).build();
+            }
+
+            // Tenant isolation for org-scoped files
+            String[] parts = relativePath.split("/");
+            if (parts.length > 1) {
+                String possibleOrgSlug = parts[0];
+                var orgOpt = organizationRepository.findBySlug(possibleOrgSlug);
+                if (orgOpt.isPresent()) {
+                    Long orgId = orgOpt.get().getId();
+                    boolean isPlatformAdmin = auth.getAuthorities().stream().anyMatch(a ->
+                            a.getAuthority().equals("ROLE_PLATFORM_SUPER_ADMIN") || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+                    if (!isPlatformAdmin && auth.getPrincipal() instanceof com.example.demo.auth.security.UserPrincipal principal) {
+                        boolean hasAccess = userRoleRepository.findByUserId(principal.getId()).stream()
+                                .anyMatch(ur -> ur.getCompany() != null
+                                        && ur.getCompany().getOrganization() != null
+                                        && orgId.equals(ur.getCompany().getOrganization().getId()));
+                        if (!hasAccess) {
+                            log.warn("Access denied for user {} to tenant file in organization {}",
+                                    principal.getUsername(), possibleOrgSlug);
+                            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+                        }
+                    }
+                }
+            }
+        }
+
         Resource resource = new UrlResource(resolvedPath.toUri());
         if (!resource.exists() || !resource.isReadable()) {
             return ResponseEntity.notFound().build();
@@ -101,5 +145,11 @@ public class FileUploadController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
                 .body(resource);
+    }
+
+    private boolean isPublicAsset(String path) {
+        String lower = path.toLowerCase();
+        return lower.startsWith("profile-photos/") || lower.contains("/profile-photos/")
+                || lower.startsWith("logos/") || lower.contains("/logos/");
     }
 }

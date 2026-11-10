@@ -14,6 +14,12 @@ import org.springframework.data.repository.query.Param;
 @Repository
 public interface UserRoleRepository extends JpaRepository<UserRole, Long>, JpaSpecificationExecutor<UserRole> {
 
+    @Query("select count(ur) > 0 from UserRole ur where ur.role.name=:role and ur.isActive=true " +
+            "and ur.user.isActive=true and ur.user.loginHeld=false and ur.assignmentStatus=:status " +
+            "and (ur.effectiveFrom is null or ur.effectiveFrom<=:today) and (ur.expiresOn is null or ur.expiresOn>=:today)")
+    boolean hasUsablePlatformAdministrator(@Param("role") Role.RoleName role,
+            @Param("status") UserRole.AssignmentStatus status, @Param("today") LocalDate today);
+
     List<UserRole> findByUserId(Long userId);
 
     List<UserRole> findByUserIdAndCompanyId(Long userId, Long companyId);

@@ -22,6 +22,9 @@ public class RecruitmentPost extends BaseEntity {
     @Column(nullable = false)
     private String name;
 
+    @Transient
+    private long applicantCount;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_position_id")
     private JobPosition jobPosition;
@@ -29,6 +32,11 @@ public class RecruitmentPost extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recruitment_manager_id")
     private Employee recruitmentManager;
+
+    private String department;
+    private String location;
+    @Column(name="employment_type")
+    private String employmentType = "FULL_TIME";
 
     @Column(name = "no_of_recruitment")
     private Integer noOfRecruitment;

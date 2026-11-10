@@ -33,7 +33,7 @@ public class CarrTaskEmailListener {
                 if (!mail.hasActiveSmtpConfig(event.companyId())) return;
                 users.findById(event.recipientId()).filter(u -> u.isActive() && u.getEmail()!=null).ifPresent(user ->
                     mail.sendEmail(event.companyId(), user.getEmail(), event.title(),
-                        "<p>" + HtmlUtils.htmlEscape(event.message()) + "</p><p>Open My Tasks in GRECHA HRMS to view the task.</p>",
+                        "<p>" + HtmlUtils.htmlEscape(event.message()) + "</p><p>Open My Tasks in your employee portal to view the task.</p>",
                         employees.findByUserId(user.getId()).orElse(null)));
             });
         } catch (Exception error) { log.warn("CARR task mail failed for company {}: {}", event.companyId(), error.getClass().getSimpleName()); }

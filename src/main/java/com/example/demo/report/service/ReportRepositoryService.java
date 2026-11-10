@@ -58,6 +58,7 @@ public class ReportRepositoryService {
 
     @Transactional
     public GeneratedReport generate(GenerateReportRequest req, Long userId, String userName) {
+        if(req.getReportType()==GeneratedReport.ReportType.PAYROLL) com.example.demo.auth.service.PositionAccessService.requirePayrollAccess();
         Company company = companyRepository.findById(req.getCompanyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", req.getCompanyId()));
 
@@ -177,6 +178,7 @@ public class ReportRepositoryService {
      *  roles only reports whose company is within their accessible companies; unrestricted
      *  (platform admin) scopes always pass. */
     private void enforceReadAccess(GeneratedReport record) {
+        if(record.getReportType()==GeneratedReport.ReportType.PAYROLL) com.example.demo.auth.service.PositionAccessService.requirePayrollAccess();
         AccessScopeContext.ScopeData scope = AccessScopeContext.get();
         if (scope == null || scope.hasUnrestrictedAccess()) return;
         if (scope.isSelfScope()) {
@@ -197,6 +199,10 @@ public class ReportRepositoryService {
                                        LocalDate from, LocalDate to, String generatedBy,
                                        GeneratedReport.ReportStatus status, boolean includeArchived, Pageable pageable) {
         Specification<GeneratedReport> spec = ScopeFilter.byCompanyOrAll();
+        if(com.example.demo.auth.service.PositionAccessService.payrollExcluded()) {
+            Specification<GeneratedReport> operational=(root,q,cb) -> cb.notEqual(root.get("reportType"),GeneratedReport.ReportType.PAYROLL);
+            spec=spec==null ? operational : spec.and(operational);
+        }
 
         // Self-scoped employees only ever see their own employee-linked reports, regardless
         // of any employeeId/companyId filter passed in.

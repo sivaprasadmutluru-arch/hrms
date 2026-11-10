@@ -40,3 +40,6 @@ LOGIN_CREDENTIALS.md
 
 # Local runtime logs
 .runtime/
+
+# Private candidate resumes (served only through authorized recruitment endpoints)
+private-resumes/

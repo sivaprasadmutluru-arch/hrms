@@ -11,7 +11,7 @@
 --     -c "SET search_path TO akhil_deploys, public;" \
 --     -f V13__loan_request_notification_types.sql
 --
---   Then repeat for prabha_tech, yuwa_tech_solutions, etc.
+--   Then repeat for accruehr, yuwa_tech_solutions, etc.
 --
 -- The public schema (super-admin) does not use this table, so skip it.
 

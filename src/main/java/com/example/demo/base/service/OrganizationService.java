@@ -37,13 +37,18 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Business logic for managing client organizations on the Prabha Tech platform.
+ * Business logic for managing client organizations on the AccrueHr platform.
  * Follows the same pattern as CompanyService — controller delegates here.
  */
 @Service
 @Slf4j
 public class OrganizationService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.example.demo.billing.BillingService billingService;
+
+    @org.springframework.beans.factory.annotation.Autowired private com.example.demo.platformops.PlatformTeamAccess platformTeam;
+    @org.springframework.beans.factory.annotation.Autowired private com.example.demo.audit.AuditService platformAudit;
     private final OrganizationRepository organizationRepository;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
@@ -94,16 +99,48 @@ public class OrganizationService {
         if (org.getLogoPath() != null) fileUploadService.delete(org.getLogoPath());
         String path = fileUploadService.storeOrgScoped(file, org.getSlug(), "logos");
         org.setLogoPath(path);
+        // Keep Head Office company logo in sync
+        companyRepository.findByOrganizationIdAndCompanyType(id, Company.CompanyType.HEAD_OFFICE)
+                .ifPresent(ho -> {
+                    ho.setLogoPath(path);
+                    companyRepository.save(ho);
+                });
         return organizationRepository.save(org);
     }
 
     public List<Organization> getAllOrganizations() {
-        return organizationRepository.findAll();
+        List<Organization> orgs = organizationRepository.findAll();
+        for (Organization org : orgs) {
+            resolveFallbackLogo(org);
+        }
+        return orgs;
     }
 
     public Organization getOrganizationById(Long id) {
-        return organizationRepository.findById(id)
+        Organization org = organizationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Organization", id));
+        resolveFallbackLogo(org);
+        return org;
+    }
+
+    private void resolveFallbackLogo(Organization org) {
+        if (org.getLogoPath() == null || org.getLogoPath().isBlank()) {
+            companyRepository.findByOrganizationIdAndCompanyType(org.getId(), Company.CompanyType.HEAD_OFFICE)
+                    .ifPresent(ho -> {
+                        if (ho.getLogoPath() != null && !ho.getLogoPath().isBlank()) {
+                            org.setLogoPath(ho.getLogoPath());
+                        }
+                    });
+            if (org.getLogoPath() == null || org.getLogoPath().isBlank()) {
+                List<Company> companies = companyRepository.findByOrganizationId(org.getId());
+                for (Company c : companies) {
+                    if (c.getLogoPath() != null && !c.getLogoPath().isBlank()) {
+                        org.setLogoPath(c.getLogoPath());
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     public List<Organization> getOrganizationsWithoutHeadOffice() {
@@ -117,14 +154,23 @@ public class OrganizationService {
      */
     @Transactional
     public CreateOrganizationResponse createOrganization(CreateOrganizationRequest request) {
+        platformTeam.requireOperations();
+        String country = request.getCountry() == null ? "" : request.getCountry().trim();
+        if (country.isEmpty() || country.length() > 100) throw new BadRequestException("Select a country (up to 100 characters)");
+        if (!java.util.Set.of("IN","US","AE","GB").contains(com.example.demo.accounting.AccountingCountryProfile.from(country).code()))
+            throw new BadRequestException("Choose a launch country: India, United States, United Arab Emirates or United Kingdom");
+        request.setCountry(country);
         validateInitialAdminCredentials(request);
 
         Organization organization = new Organization();
         organization.setName(request.getName());
+        organization.setIndustryType(request.getIndustryType()!=null ? request.getIndustryType() : com.example.demo.base.enums.OrganizationIndustry.GENERAL);
+        organization.setEmployeeRange(request.getEmployeeRange());
         organization.setContactEmail(request.getContactEmail());
         organization.setContactPhone(request.getContactPhone());
-        organization.setSubscriptionPlan(
-                request.getSubscriptionPlan() != null ? request.getSubscriptionPlan() : SubscriptionPlan.STANDARD);
+        organization.setBrandColor(normalizeBrandColor(request.getBrandColor()));
+        // Legacy workspace limits only; a purchased plan is selected through billing after sign-in.
+        organization.setSubscriptionPlan(SubscriptionPlan.STANDARD);
         organization.setStatus(Organization.OrgStatus.ACTIVE);
         if (request.getMaxBranches() != null) {
             organization.setMaxBranches(request.getMaxBranches());
@@ -142,6 +188,7 @@ public class OrganizationService {
         organization.setSlug(slug);
 
         Organization savedOrg = organizationRepository.save(organization);
+        billingService.initializeOrganization(savedOrg.getId());
 
         // Auto-create the Head Office for this organization
         CompanyRequest hoRequest = new CompanyRequest();
@@ -167,6 +214,7 @@ public class OrganizationService {
 
         Company headOffice = companyService.createHeadOffice(hoRequest);
 
+        platformAudit.log("Organization",savedOrg.getId(),"CREATE",null,java.util.Map.of("name",savedOrg.getName(),"headOfficeId",headOffice.getId()));
         return new CreateOrganizationResponse(savedOrg, headOffice.getId(), headOffice.isSchemaReady());
     }
 
@@ -188,6 +236,21 @@ public class OrganizationService {
     }
 
     @Transactional
+    public Organization updateOrganizationContact(Long id,Organization updated){
+        platformTeam.requireOperations();
+        if(updated.getName()==null || updated.getName().isBlank() || updated.getName().length()>255) throw new BadRequestException("Organization name is required and must be at most 255 characters");
+        if(updated.getContactEmail()!=null && (updated.getContactEmail().length()>255 || !updated.getContactEmail().isBlank() && !updated.getContactEmail().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+"))) throw new BadRequestException("Enter a valid contact email");
+        if(updated.getContactPhone()!=null && updated.getContactPhone().length()>50) throw new BadRequestException("Contact phone must be at most 50 characters");
+        if(platformTeam.superAdmin())return updateOrganization(id,updated);
+        Organization org=getOrganizationById(id);
+        var before=java.util.Map.of("name",org.getName(),"contactEmail",java.util.Objects.toString(org.getContactEmail(),""));
+        org.setName(updated.getName());org.setContactEmail(updated.getContactEmail());org.setContactPhone(updated.getContactPhone());if(updated.getEmployeeRange()!=null)org.setEmployeeRange(updated.getEmployeeRange());
+        if (updated.getBrandColor() != null) org.setBrandColor(normalizeBrandColor(updated.getBrandColor()));
+        platformAudit.log("Organization",id,"CONTACT_UPDATE",before,java.util.Map.of("name",org.getName(),"contactEmail",java.util.Objects.toString(org.getContactEmail(),"")));
+        return organizationRepository.save(org);
+    }
+
+    @Transactional
     public Organization updateOrganization(Long id, Organization updated) {
         Organization org = getOrganizationById(id);
 
@@ -197,17 +260,26 @@ public class OrganizationService {
                 : org.getSubscriptionPlan();
 
         if (newPlan != org.getSubscriptionPlan()) {
-            validatePlanDowngrade(org, newPlan);
+            throw new BadRequestException("Plan changes must be completed on the Subscription page");
         }
 
         org.setName(updated.getName());
+        if (updated.getEmployeeRange()!=null) org.setEmployeeRange(updated.getEmployeeRange());
         org.setContactEmail(updated.getContactEmail());
         org.setContactPhone(updated.getContactPhone());
+        if (updated.getBrandColor() != null) org.setBrandColor(normalizeBrandColor(updated.getBrandColor()));
         org.setSubscriptionPlan(newPlan);
         if (updated.getMaxBranches() != null) {
             org.setMaxBranches(updated.getMaxBranches());
         }
         return organizationRepository.save(org);
+    }
+
+    private String normalizeBrandColor(String value) {
+        if (value == null || value.isBlank()) return null;
+        String color = value.trim();
+        if (!color.matches("#[0-9A-Fa-f]{6}")) throw new BadRequestException("Brand color must be a six-digit hex color, for example #2F73B7");
+        return color.toUpperCase(java.util.Locale.ROOT);
     }
 
     @Transactional
@@ -257,6 +329,10 @@ public class OrganizationService {
      *     completes in milliseconds rather than the usual 5-15 s.
      */
     public void deleteOrganization(Long id) {
+        if (CurrentCompanyDeletionGuard.hasProtectedCompany()) {
+            CurrentCompanyDeletionGuard.check(companyRepository.findByOrganizationId(id).stream()
+                    .map(Company::getId).toList());
+        }
         // Guard against a second overlapping delete for the same org (double-click, client
         // retry after a slow response, etc.). Without this, two concurrent invocations of this
         // method race over the same rows (user_roles, companies) and can block each other
@@ -277,6 +353,7 @@ public class OrganizationService {
                         "This organization is already being deleted. Please wait for it to finish.");
             }
             try {
+                billingService.ensureDeletable(id);
                 deleteOrganizationLocked(id);
             } finally {
                 try (var ps = lockConn.prepareStatement("SELECT pg_advisory_unlock(?)")) {
@@ -384,15 +461,14 @@ public class OrganizationService {
         if (logoPath != null) {
             fileUploadService.delete(logoPath);
         }
+        billingService.removeUnusedOrganization(id);
         organizationRepository.deleteById(id);
     }
 
     /** Updates the subscription plan for an organization. Only PLATFORM_SUPER_ADMIN should call this. */
     @Transactional
     public Organization updateSubscriptionPlan(Long id, SubscriptionPlan plan) {
-        Organization org = getOrganizationById(id);
-        org.setSubscriptionPlan(plan);
-        return organizationRepository.save(org);
+        throw new BadRequestException("Direct plan changes are disabled. Use the Subscription page.");
     }
 
     /** Stats snapshot for a given organization. */
@@ -483,6 +559,9 @@ public class OrganizationService {
             org.setName(company.getName());
             org.setStatus(Organization.OrgStatus.ACTIVE);
             org.setSubscriptionPlan(SubscriptionPlan.STANDARD);
+            if (company.getLogoPath() != null && !company.getLogoPath().isBlank()) {
+                org.setLogoPath(company.getLogoPath());
+            }
             String baseSlug = company.getName().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
             String slug = baseSlug;
             int i = 1;

@@ -25,6 +25,7 @@ import java.util.Map;
 public class DepartmentController {
 
     private final DepartmentRepository departmentRepository;
+    private final com.example.demo.base.service.StandardCompanySetup standardCompanySetup;
     private final CompanyRepository companyRepository;
     private final EmployeeRepository employeeRepository;
 
@@ -35,7 +36,7 @@ public class DepartmentController {
         org.springframework.data.jpa.domain.Specification<Department> activeSpec =
                 (root, query, cb) -> cb.isTrue(root.get("isActive"));
         var spec = companySpec != null ? companySpec.and(activeSpec) : activeSpec;
-        return ResponseEntity.ok(departmentRepository.findAll(spec));
+        return ResponseEntity.ok(standardCompanySetup.filterDepartments(departmentRepository.findAll(spec)));
     }
 
     @GetMapping("/{id}")

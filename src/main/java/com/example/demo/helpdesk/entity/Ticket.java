@@ -33,6 +33,10 @@ public class Ticket extends BaseEntity {
     @JoinColumn(name = "assigned_to_id")
     private Employee assignedTo;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    private com.example.demo.base.entity.Department department;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private TicketStatus status = TicketStatus.OPEN;

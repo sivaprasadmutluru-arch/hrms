@@ -35,9 +35,12 @@ public class BaseExtrasController {
     private final ShiftScheduleRepository shiftScheduleRepository;
     private final WorkTypeRepository workTypeRepository;
     private final JobPositionRepository jobPositionRepository;
+    private final com.example.demo.base.service.StandardCompanySetup standardCompanySetup;
+    private final com.example.demo.auth.service.PositionAccessService positionAccessService;
     private final JobRoleRepository jobRoleRepository;
     private final DepartmentRepository departmentRepository;
     private final MailTemplateRepository mailTemplateRepository;
+    private final com.example.demo.base.service.EmailService emailService;
     private final DynamicEmailConfigRepository dynamicEmailConfigRepository;
     private final AnnouncementViewRepository announcementViewRepository;
     private final EmailLogRepository emailLogRepository;
@@ -198,17 +201,45 @@ public class BaseExtrasController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<MailTemplate>> listMailTemplates() {
-        var spec = ScopeFilter.<MailTemplate>byCompany();
-        return ResponseEntity.ok(spec != null ? mailTemplateRepository.findAll(spec) : mailTemplateRepository.findAll());
+        requireOrganizationMailContext();
+        // One tenant schema contains the organization's head office and branches.
+        return ResponseEntity.ok(mailTemplateRepository.findAll());
+    }
+
+    @GetMapping("/mail-templates/branding")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<Map<String, String>> mailTemplateBranding() {
+        Company company = requireOrganizationMailContext();
+        var brand = companyRepository.findEmailBrand(company.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Company", company.getId()));
+        return ResponseEntity.ok(Map.of(
+                "name", brand.getName(),
+                "color", brand.getColor() != null ? brand.getColor() : "#2F73B7"));
+    }
+
+    @PostMapping("/mail-templates/defaults")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
+    public ResponseEntity<Map<String, String>> addDefaultMailTemplates() {
+        Company selected = requireOrganizationMailContext();
+        Company owner = selected.isBranch()
+                ? companyRepository.findByIdPublic(selected.getParentCompanyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", selected.getParentCompanyId()))
+                : selected;
+        emailService.ensureOnboardingTemplates(owner);
+        return ResponseEntity.ok(Map.of("message", "Missing standard email templates added for this organization"));
     }
 
     @PostMapping("/mail-templates")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     public ResponseEntity<MailTemplate> createMailTemplate(@RequestBody MailTemplate template) {
-        if (template.getCompany() != null && template.getCompany().getId() != null) {
-            template.setCompany(companyRepository.getReferenceById(template.getCompany().getId()));
-        }
+        Company selected = requireOrganizationMailContext();
+        validateMailTemplate(template, null);
+        Long headOfficeId = selected.isBranch() ? selected.getParentCompanyId() : selected.getId();
+        // Ignore client-supplied company IDs: templates belong to the selected organization.
+        template.setId(null);
+        template.setCompany(companyRepository.getReferenceById(headOfficeId));
         return ResponseEntity.ok(mailTemplateRepository.save(template));
     }
 
@@ -216,8 +247,10 @@ public class BaseExtrasController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     @Transactional
     public ResponseEntity<MailTemplate> updateMailTemplate(@PathVariable Long id, @RequestBody MailTemplate updated) {
+        requireOrganizationMailContext();
         MailTemplate t = mailTemplateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("MailTemplate", id));
+        validateMailTemplate(updated, id);
         t.setTitle(updated.getTitle());
         t.setSubject(updated.getSubject());
         t.setBody(updated.getBody());
@@ -228,8 +261,28 @@ public class BaseExtrasController {
     @DeleteMapping("/mail-templates/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN', 'HR_MANAGER')")
     public ResponseEntity<Map<String, String>> deleteMailTemplate(@PathVariable Long id) {
+        requireOrganizationMailContext();
         mailTemplateRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Deleted"));
+    }
+
+    private Company requireOrganizationMailContext() {
+        Long companyId = CompanyContext.get();
+        if (companyId == null || com.example.demo.common.tenant.TenantContext.DEFAULT_TENANT.equals(com.example.demo.common.tenant.TenantContext.getTenant()))
+            throw new BadRequestException("Select an organization before managing its email templates");
+        return companyRepository.findByIdPublic(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+    }
+
+    private void validateMailTemplate(MailTemplate template, Long existingId) {
+        if (template.getTitle() == null || template.getTitle().isBlank()) throw new BadRequestException("Enter a template name");
+        if (template.getSubject() == null || template.getSubject().isBlank()) throw new BadRequestException("Enter an email subject");
+        if (template.getBody() == null || template.getBody().isBlank()) throw new BadRequestException("Enter an email message");
+        if (template.getTemplateType() == null || template.getTemplateType().isBlank()) throw new BadRequestException("Choose a notification category");
+        if (!"GENERAL".equals(template.getTemplateType()) && mailTemplateRepository.findAll().stream()
+                .anyMatch(other -> template.getTemplateType().equals(other.getTemplateType())
+                        && !other.getId().equals(existingId)))
+            throw new BadRequestException("This organization already has a template for that notification category. Edit the existing template instead.");
     }
 
     // ---- Dynamic Email Config ----
@@ -475,7 +528,7 @@ public class BaseExtrasController {
     @Transactional(readOnly = true)
     public ResponseEntity<List<JobPosition>> listJobPositions() {
         var spec = ScopeFilter.<JobPosition>byCompany();
-        return ResponseEntity.ok(spec != null ? jobPositionRepository.findAll(spec) : jobPositionRepository.findAll());
+        return ResponseEntity.ok(standardCompanySetup.filterPositions(spec != null ? jobPositionRepository.findAll(spec) : jobPositionRepository.findAll()));
     }
 
     @PostMapping("/job-positions")
@@ -510,6 +563,7 @@ public class BaseExtrasController {
                 .orElseThrow(() -> new ResourceNotFoundException("JobPosition", id));
         Company company = requireActiveCompany("job position");
         requireOwnedByActiveCompany(jp.getCompany().getId(), company.getId(), "Job position");
+        positionAccessService.requirePositionChange(jp.getCompany().getId(), jp.getId(), null, null);
         jobPositionRepository.delete(jp);
         return ResponseEntity.ok(Map.of("message", "Deleted"));
     }
@@ -521,7 +575,7 @@ public class BaseExtrasController {
     @Transactional(readOnly = true)
     public ResponseEntity<List<JobRole>> listJobRoles() {
         var spec = ScopeFilter.<JobRole>byCompany();
-        return ResponseEntity.ok(spec != null ? jobRoleRepository.findAll(spec) : jobRoleRepository.findAll());
+        return ResponseEntity.ok(standardCompanySetup.filterRoles(spec != null ? jobRoleRepository.findAll(spec) : jobRoleRepository.findAll()));
     }
 
     @PostMapping("/job-roles")

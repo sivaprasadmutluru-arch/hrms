@@ -82,16 +82,19 @@ public class CarrService {
         if (canViewCompanyCarr(auth)) return recordRepo.findByCompanyIdOrderByUpdatedAtDesc(companyId()).stream().map(this::recordDto).toList();
         UserPrincipal principal=(UserPrincipal)auth.getPrincipal();
         Employee signedIn=employeeRepo.findByUserId(principal.getId()).filter(e->Objects.equals(e.getCompany().getId(),companyId())).orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"No employee profile is linked to this account"));
-        if (hasRole(auth,"ROLE_MANAGER")) return recordRepo.findByCompanyIdAndManagerIdOrderByUpdatedAtDesc(companyId(),signedIn.getId()).stream().map(this::recordDto).toList();
-        return recordRepo.findByCompanyIdAndEmployeeIdOrderByUpdatedAtDesc(companyId(),signedIn.getId()).stream().map(this::recordDto).toList();
+        Map<Long,CarrRecord> visible=new LinkedHashMap<>();
+        recordRepo.findByCompanyIdAndEmployeeIdOrderByUpdatedAtDesc(companyId(),signedIn.getId()).forEach(r->visible.put(r.getId(),r));
+        if (hasManagerRole(auth)) recordRepo.findByCompanyIdAndManagerIdOrderByUpdatedAtDesc(companyId(),signedIn.getId()).forEach(r->visible.put(r.getId(),r));
+        return visible.values().stream().map(this::recordDto).toList();
     }
     @Transactional(readOnly=true)
     public RecordResponse record(Long id,Authentication auth) { CarrRecord record=requireRecord(id);ensureCanView(record,auth);return recordDto(record); }
 
     private boolean canViewCompanyCarr(Authentication auth){return auth.getAuthorities().stream().map(a->a.getAuthority()).anyMatch(Set.of("ROLE_PLATFORM_SUPER_ADMIN","ROLE_ENTERPRISE_ADMIN","ROLE_BRANCH_ADMIN","ROLE_HR_MANAGER")::contains);}
+    private boolean hasManagerRole(Authentication auth){return auth.getAuthorities().stream().anyMatch(a->Set.of("ROLE_MANAGER","ROLE_DEPARTMENT_MANAGER","ROLE_TEAM_LEAD").contains(a.getAuthority()));}
     private boolean hasRole(Authentication auth,String role){return auth.getAuthorities().stream().anyMatch(a->role.equals(a.getAuthority()));}
-    private void ensureCanView(CarrRecord record,Authentication auth){if(canViewCompanyCarr(auth))return;UserPrincipal principal=(UserPrincipal)auth.getPrincipal();Employee signedIn=employeeRepo.findByUserId(principal.getId()).orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"No employee profile is linked to this account"));if(Objects.equals(record.getEmployee().getId(),signedIn.getId()))return;if(hasRole(auth,"ROLE_MANAGER")&&record.getManager()!=null&&Objects.equals(record.getManager().getId(),signedIn.getId()))return;throw new ResponseStatusException(HttpStatus.FORBIDDEN,"You can only view your own or directly assigned team CARR records");}
-    private void ensureCanApprove(CarrRecord record,Authentication auth){if(canViewCompanyCarr(auth))return;UserPrincipal principal=(UserPrincipal)auth.getPrincipal();Employee signedIn=employeeRepo.findByUserId(principal.getId()).orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"No employee profile is linked to this account"));if(!hasRole(auth,"ROLE_MANAGER")||record.getManager()==null||!Objects.equals(record.getManager().getId(),signedIn.getId()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only the assigned manager or HR administrator can review this CARR");}
+    private void ensureCanView(CarrRecord record,Authentication auth){if(canViewCompanyCarr(auth))return;UserPrincipal principal=(UserPrincipal)auth.getPrincipal();Employee signedIn=employeeRepo.findByUserId(principal.getId()).orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"No employee profile is linked to this account"));if(Objects.equals(record.getEmployee().getId(),signedIn.getId()))return;if(hasManagerRole(auth)&&record.getManager()!=null&&Objects.equals(record.getManager().getId(),signedIn.getId()))return;throw new ResponseStatusException(HttpStatus.FORBIDDEN,"You can only view your own or directly assigned team CARR records");}
+    private void ensureCanApprove(CarrRecord record,Authentication auth){if(canViewCompanyCarr(auth))return;UserPrincipal principal=(UserPrincipal)auth.getPrincipal();Employee signedIn=employeeRepo.findByUserId(principal.getId()).orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"No employee profile is linked to this account"));if(!hasManagerRole(auth)||record.getManager()==null||!Objects.equals(record.getManager().getId(),signedIn.getId()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only the assigned manager or HR administrator can review this CARR");}
 
     @Transactional
     public RecordResponse create(RecordRequest req, Authentication auth) {

@@ -34,11 +34,11 @@ public class CompanyController {
     private final TenantProvisioningService tenantProvisioningService;
     private final com.example.demo.auth.repository.UserRoleRepository userRoleRepository;
 
-    // ---- Prabha Tech (Platform Super Admin) endpoints ----
+    // ---- AccrueHr (Platform Super Admin) endpoints ----
 
     @GetMapping
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "List all companies across all organizations (Prabha Tech only)")
+    @Operation(summary = "List all companies across all organizations (AccrueHr only)")
     public ResponseEntity<List<Company>> listAll(
             @RequestHeader(value = "X-Company-Id", required = false) Long companyId) {
         if (companyId != null) {
@@ -53,14 +53,14 @@ public class CompanyController {
 
     @GetMapping("/head-offices")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "List all Head Offices (Prabha Tech only)")
+    @Operation(summary = "List all Head Offices (AccrueHr only)")
     public ResponseEntity<List<Company>> listHeadOffices() {
         return ResponseEntity.ok(companyRepository.findAllHeadOfficesActivePublic());
     }
 
     @PostMapping("/head-office")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Create a Head Office for a client organization (Prabha Tech only)")
+    @Operation(summary = "Create a Head Office for a client organization (AccrueHr only)")
     public ResponseEntity<Company> createHeadOffice(@Valid @RequestBody CompanyRequest request) {
         return ResponseEntity.ok(companyService.createHeadOffice(request));
     }
@@ -180,6 +180,12 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.update(id, request));
     }
 
+    @PatchMapping("/{id}/country")
+    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    public ResponseEntity<Company> updateCountry(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(companyService.updateCountry(id, body.get("country")));
+    }
+
     @PatchMapping("/{id}/currency")
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN', 'ENTERPRISE_ADMIN', 'BRANCH_ADMIN')")
     @Operation(summary = "Update the currency for a company/branch")
@@ -190,7 +196,7 @@ public class CompanyController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
-    @Operation(summary = "Archive a company and preserve all data for restore (Prabha Tech only)")
+    @Operation(summary = "Archive a company and preserve all data for restore (AccrueHr only)")
     public ResponseEntity<Map<String, String>> delete(@PathVariable Long id,
                                                        @RequestBody(required = false) Map<String, String> body) {
         companyService.archive(id, body == null ? null : body.get("reason"));

@@ -1,0 +1,46 @@
+package com.example.demo.platformops;
+import com.example.demo.auth.entity.*;
+import com.example.demo.auth.security.UserPrincipal;
+import com.example.demo.base.entity.*;
+import com.example.demo.billing.*;
+import com.example.demo.common.context.CompanyContext;
+import com.example.demo.common.tenant.TenantContext;
+import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.util.*;
+import java.time.Instant;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+@SpringBootTest @AutoConfigureMockMvc @Transactional
+class PlatformOperationsIntegrationTest {
+ @Autowired EntityManager em; @Autowired PlatformOperationsService service; @Autowired PlatformSupportRepository tickets; @Autowired PlatformSupportMessageRepository messages; @Autowired MockMvc mvc;
+ Organization org,other;Company company;User user;
+ @BeforeEach void setup(){TenantContext.clear();CompanyContext.clear();org=org("Operations");other=org("Other");company=new Company();company.setName("Operations company");company.setOrganization(org);company.setSchemaName("public");company.setSchemaReady(true);em.persist(company);user=new User();user.setUsername("ops-"+UUID.randomUUID());user.setEmail(user.getUsername()+"@example.invalid");user.setPassword("encoded-fixture");em.persist(user);var role=em.createQuery("select r from Role r where r.name=:n",Role.class).setParameter("n",Role.RoleName.ENTERPRISE_ADMIN).getResultStream().findFirst().orElseGet(()->{var r=new Role();r.setName(Role.RoleName.ENTERPRISE_ADMIN);em.persist(r);return r;});var grant=new UserRole();grant.setUser(user);grant.setCompany(company);grant.setRole(role);grant.setAccessScope(UserRole.AccessScope.ENTERPRISE);em.persist(grant);em.flush();login(false);}
+ Organization org(String name){var o=new Organization();o.setName(name+UUID.randomUUID());o.setSlug("ops-"+UUID.randomUUID());em.persist(o);return o;}
+ void login(boolean platform){var p=mock(UserPrincipal.class);when(p.getId()).thenReturn(user.getId());when(p.getUsername()).thenReturn(platform?"platform-fixture":user.getUsername());when(p.getPositionGrants()).thenReturn(List.of());var auth=List.of(new SimpleGrantedAuthority("ROLE_"+(platform?"PLATFORM_SUPER_ADMIN":"ENTERPRISE_ADMIN")));doReturn(auth).when(p).getAuthorities();SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(p,null,auth));CompanyContext.set(company.getId());}
+ Long create(){return ((PlatformSupportTicket)service.create(org.getId(),"Cannot renew plan","BILLING","HIGH","Synthetic support request").get("ticket")).getId();}
+ @AfterEach void clear(){SecurityContextHolder.clearContext();CompanyContext.clear();TenantContext.clear();}
+ @Test void organizationRequestsAndPlatformRepliesHaveDurableTimeline(){Long id=create();assertThat(tickets.findById(id).orElseThrow().getCreatedBy()).isEqualTo(user.getUsername());login(true);service.reply(id,"We are investigating");var t=tickets.findById(id).orElseThrow();assertThat(t.getFirstResponseAt()).isNotNull();assertThat(t.getStatus()).isEqualTo("WAITING_CUSTOMER");service.update(id,"RESOLVED","HIGH",true,"Renewal issue resolved");assertThat(t.getAssignedTo()).isEqualTo("platform-fixture");assertThat(t.getResolvedAt()).isNotNull();login(false);service.reply(id,"Still seeing the problem");assertThat(t.getStatus()).isEqualTo("WAITING_SUPPORT");assertThat(t.getResolvedAt()).isNull();assertThat(messages.findByTicketIdOrderByIdDesc(id,PageRequest.of(0,25)).getTotalElements()).isEqualTo(4);}
+ @Test void cannotAccessOrWriteOtherOrganizationsSupport(){login(true);Long foreign=((PlatformSupportTicket)service.create(other.getId(),"Private other request","ACCOUNT","NORMAL","Other organization private details").get("ticket")).getId();login(false);assertThatThrownBy(()->service.detail(foreign,0)).isInstanceOf(BillingFailure.class);assertThatThrownBy(()->service.reply(foreign,"Unauthorized reply")).isInstanceOf(BillingFailure.class);assertThatThrownBy(()->service.create(other.getId(),"Forged","OTHER","LOW","No")).isInstanceOf(BillingFailure.class);assertThatThrownBy(()->service.supportList(other.getId(),0,"")).isInstanceOf(BillingFailure.class);assertThat((List<?>)service.supportList(null,0,"").get("items")).isEmpty();}
+ @Test void onlyPlatformCanAssignChangeStatusOrListPlatformBilling(){Long id=create();assertThatThrownBy(()->service.update(id,"CLOSED","NORMAL",true,"Forged closure")).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);assertThatThrownBy(()->service.billingList(0,"")).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);assertThatThrownBy(()->service.billingDetail(org.getId(),0)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);}
+ @Test void closedRequestsRequireExplicitPlatformReopening(){Long id=create();login(true);service.update(id,"CLOSED","NORMAL",true,"Completed");assertThatThrownBy(()->service.reply(id,"Late reply")).hasMessageContaining("closed");service.update(id,"IN_PROGRESS","HIGH",false,"Customer needs more help");service.reply(id,"Reopened for investigation");assertThat(tickets.findById(id).orElseThrow().getStatus()).isEqualTo("WAITING_CUSTOMER");}
+ @Test void organizationContextDoesNotExposeOtherOrganizations(){var rows=(List<?>)service.context().get("organizations");assertThat(rows).hasSize(1);login(true);assertThat((List<?>)service.context().get("organizations")).hasSizeGreaterThan(1);}
+ @Test void customerStatusFilterAndPaginationAreScoped(){create();assertThat(service.supportList(null,0,"OPEN").get("total")).isEqualTo(1L);assertThat(service.supportList(null,0,"RESOLVED").get("total")).isEqualTo(0L);assertThat((List<?>)service.supportList(null,1,"").get("items")).isEmpty();}
+ @Test void manualAccessIsNotPaymentAndLiveTestUnknownPaymentsStaySeparate(){login(true);var s=new BillingSubscription();s.setOrganizationId(org.getId());s.setManualAccess(true);s.setLegacyAccess(false);s.setStatus("active");s.setPlan(com.example.demo.base.enums.SubscriptionPlan.BASIC);s.setAmountMinor(100000L);s.setPaidUntil(Instant.now().plusSeconds(86400));em.persist(s);em.flush();assertThat((List<?>)service.billingDetail(org.getId(),0).get("recordedPayments")).isEmpty();for(Boolean mode:Arrays.asList(true,false,null)){var i=new BillingInvoice();i.setId("ops-invoice-"+UUID.randomUUID());i.setOrganizationId(org.getId());i.setStatus("paid");i.setCurrency("inr");i.setAmountPaid(1000L);i.setLiveMode(mode);em.persist(i);}em.flush();var rows=(List<?>)service.billingDetail(org.getId(),0).get("recordedPayments");assertThat(rows).hasSize(3);assertThat(rows.toString()).contains("LIVE","TEST","UNKNOWN");assertThat((List<?>)service.billingList(0,org.getName()).get("items")).hasSize(1);}
+ @Test void anonymousSupportAccessIsRejected() throws Exception {SecurityContextHolder.clearContext();mvc.perform(get("/api/platform-operations/support")).andExpect(status().isUnauthorized());}
+ @Test void ordinaryUsersWithoutOrganizationAdminGrantsCannotUsePlatformSupport(){Long id=create();var p=mock(UserPrincipal.class);when(p.getId()).thenReturn(-99L);when(p.getPositionGrants()).thenReturn(List.of());SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(p,null,List.of(new SimpleGrantedAuthority("ROLE_EMPLOYEE"))));assertThatThrownBy(()->service.detail(id,0)).isInstanceOf(BillingFailure.class);assertThatThrownBy(()->service.create(org.getId(),"Unauthorized","OTHER","LOW","Not permitted")).isInstanceOf(BillingFailure.class);}
+ @Test void expiredSubscriptionStillAllowsAuthenticatedOrganizationSupport() throws Exception {var s=new BillingSubscription();s.setOrganizationId(org.getId());s.setManualAccess(true);s.setLegacyAccess(false);s.setPlan(com.example.demo.base.enums.SubscriptionPlan.BASIC);s.setPaidUntil(Instant.now().minusSeconds(60));em.persist(s);em.flush();mvc.perform(get("/api/platform-operations/context").header("X-Company-Id",company.getId()).with(authentication(SecurityContextHolder.getContext().getAuthentication()))).andExpect(status().isOk());}
+ @Test void archivedOrganizationsRemainVisibleForBillingHistory(){login(true);org.setActive(false);em.flush();var result=service.billingList(0,org.getName());assertThat((List<?>)result.get("items")).hasSize(1);assertThat(result.toString()).contains("record_active=false");}
+}

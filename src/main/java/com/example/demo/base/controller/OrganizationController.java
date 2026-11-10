@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Manages client organizations on the Prabha Tech platform.
+ * Manages client organizations on the AccrueHr platform.
  * All endpoints here are restricted to PLATFORM_SUPER_ADMIN only.
  *
  * An organization is the top-level tenant:
@@ -27,45 +27,45 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/organizations")
 @RequiredArgsConstructor
-@Tag(name = "Organizations (Prabha Tech Admin)")
+@Tag(name = "Organizations (AccrueHr Admin)")
 public class OrganizationController {
 
     private final OrganizationService organizationService;
 
     @GetMapping
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations()")
     @Operation(summary = "List all client organizations")
     public ResponseEntity<List<Organization>> list() {
         return ResponseEntity.ok(organizationService.getAllOrganizations());
     }
 
     @GetMapping("/without-head-office")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations()")
     @Operation(summary = "List organizations that don't yet have a Head Office")
     public ResponseEntity<List<Organization>> listWithoutHeadOffice() {
         return ResponseEntity.ok(organizationService.getOrganizationsWithoutHeadOffice());
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations() or @platformTeam.billing()")
     @Operation(summary = "Get organization details")
     public ResponseEntity<Organization> get(@PathVariable Long id) {
         return ResponseEntity.ok(organizationService.getOrganizationById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations()")
     @Operation(summary = "Create a new client organization with its Head Office")
     public ResponseEntity<CreateOrganizationResponse> create(@Valid @RequestBody CreateOrganizationRequest request) {
         return ResponseEntity.ok(organizationService.createOrganization(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations()")
     @Operation(summary = "Update organization details")
     public ResponseEntity<Organization> update(@PathVariable Long id,
                                                 @RequestBody Organization updated) {
-        return ResponseEntity.ok(organizationService.updateOrganization(id, updated));
+        return ResponseEntity.ok(organizationService.updateOrganizationContact(id, updated));
     }
 
     @PostMapping("/{id}/activate")
@@ -115,7 +115,7 @@ public class OrganizationController {
     }
 
     @PostMapping("/{id}/logo")
-    @PreAuthorize("hasRole('PLATFORM_SUPER_ADMIN')")
+    @PreAuthorize("@platformTeam.operations()")
     @Operation(summary = "Upload logo for an organization")
     public ResponseEntity<Map<String, String>> uploadLogo(@PathVariable Long id,
                                                           @RequestParam("file") MultipartFile file) {

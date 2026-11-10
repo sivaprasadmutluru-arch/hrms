@@ -52,25 +52,43 @@ public class RecruitmentService {
     @Transactional(readOnly = true)
     public List<RecruitmentPost> listPosts() {
         Specification<RecruitmentPost> spec = ScopeFilter.byCompany();
-        return spec != null ? recruitmentPostRepository.findAll(spec) : recruitmentPostRepository.findAll();
+        var posts=spec != null ? recruitmentPostRepository.findAll(spec) : recruitmentPostRepository.findAll();
+        posts.forEach(p -> p.setApplicantCount(applicantRepository.countByRecruitmentId(p.getId())));
+        return posts;
     }
 
-    @Transactional(readOnly = true)
-    public RecruitmentPost getPost(Long id) {
-        return recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+    private RecruitmentPost scopedPost(Long id) {
+        var post=recruitmentPostRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost",id));
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(post.getCompany().getId());return post;
     }
+    private Applicant scopedApplicant(Long id) {
+        var applicant=applicantRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Applicant",id));
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(applicant.getCompany().getId());return applicant;
+    }
+    @Transactional(readOnly=true) public RecruitmentPost getPost(Long id) { return scopedPost(id); }
 
     @Transactional
     public RecruitmentPost createPost(RecruitmentPost post) {
+        Long companyId=com.example.demo.common.context.CompanyContext.get();
+        if(companyId==null) throw new com.example.demo.common.exception.BadRequestException("Select a company before creating a job post");
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(companyId);
+        if(post.getName()==null || post.getName().isBlank() || post.getName().length()>200) throw new com.example.demo.common.exception.BadRequestException("Job title is required and must be under 200 characters");
+        if(post.getStartDate()!=null && post.getEndDate()!=null && post.getStartDate().isAfter(post.getEndDate())) throw new com.example.demo.common.exception.BadRequestException("Application deadline must be after the start date");
+        post.setId(null);post.setCompany(companyRepository.findById(companyId).orElseThrow());
         log.info("Creating recruitment post: {}", post.getName());
-        return recruitmentPostRepository.save(post);
+        var saved=recruitmentPostRepository.save(post);
+        String[] names={"Applied","Screening","Interview","Offer"};
+        RecruitmentStage.StageType[] types={RecruitmentStage.StageType.APPLIED,RecruitmentStage.StageType.INITIAL,RecruitmentStage.StageType.INTERVIEW,RecruitmentStage.StageType.OFFER};
+        for(int i=0;i<names.length;i++){var stage=new RecruitmentStage();stage.setRecruitment(saved);stage.setName(names[i]);stage.setSequence(i+1);stage.setStageType(types[i]);recruitmentStageRepository.save(stage);}
+        return saved;
     }
 
     @Transactional
     public RecruitmentPost updatePost(Long id, RecruitmentPost updated) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
+        com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(post.getCompany().getId());
+        if(updated.getName()==null || updated.getName().isBlank() || updated.getName().length()>200) throw new com.example.demo.common.exception.BadRequestException("Job title is required and must be under 200 characters");
+        post.setDepartment(updated.getDepartment());post.setLocation(updated.getLocation());post.setEmploymentType(updated.getEmploymentType());
         post.setName(updated.getName());
         post.setStatus(updated.getStatus());
         post.setNoOfRecruitment(updated.getNoOfRecruitment());
@@ -84,8 +102,7 @@ public class RecruitmentService {
 
     @Transactional
     public void deletePost(Long id) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
         post.setActive(false);
         recruitmentPostRepository.save(post);
         log.info("Soft-deleted recruitment post id={}", id);
@@ -93,8 +110,7 @@ public class RecruitmentService {
 
     @Transactional
     public RecruitmentPost closePost(Long id) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
         post.setClosed(true);
         post.setActive(false);
         post.setEndDate(LocalDate.now());
@@ -105,8 +121,7 @@ public class RecruitmentService {
 
     @Transactional
     public RecruitmentPost reopenPost(Long id) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
         post.setClosed(false);
         post.setActive(true);
         post.setStatus(RecruitmentPost.RecruitmentStatus.OPEN);
@@ -116,8 +131,7 @@ public class RecruitmentService {
 
     @Transactional
     public RecruitmentPost archivePost(Long id) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
         post.setActive(false);
         log.info("Archiving recruitment post id={}", id);
         return recruitmentPostRepository.save(post);
@@ -125,8 +139,7 @@ public class RecruitmentService {
 
     @Transactional
     public RecruitmentPost unarchivePost(Long id) {
-        RecruitmentPost post = recruitmentPostRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", id));
+        RecruitmentPost post = scopedPost(id);
         post.setActive(true);
         log.info("Unarchiving recruitment post id={}", id);
         return recruitmentPostRepository.save(post);
@@ -134,10 +147,10 @@ public class RecruitmentService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getPostPipeline(Long postId) {
-        recruitmentPostRepository.findById(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("RecruitmentPost", postId));
+        scopedPost(postId);
         List<RecruitmentStage> stages = recruitmentStageRepository.findByRecruitmentIdOrderBySequenceAsc(postId);
         List<Applicant> allApplicants = applicantRepository.findByRecruitmentId(postId);
+        allApplicants.forEach(a -> org.hibernate.Hibernate.initialize(a.getCandidate()));
 
         return stages.stream().map(stage -> {
             List<Applicant> inStage = allApplicants.stream()
@@ -202,11 +215,14 @@ public class RecruitmentService {
     @Transactional(readOnly = true)
     public List<Applicant> listApplicants() {
         Specification<Applicant> spec = ScopeFilter.byCompany();
-        return spec != null ? applicantRepository.findAll(spec) : applicantRepository.findAll();
+        var rows=spec != null ? applicantRepository.findAll(spec) : applicantRepository.findAll();
+        rows.forEach(a->{org.hibernate.Hibernate.initialize(a.getCandidate());org.hibernate.Hibernate.initialize(a.getRecruitment());org.hibernate.Hibernate.initialize(a.getStage());});
+        return rows;
     }
 
     @Transactional(readOnly = true)
     public List<Applicant> listApplicantsByPost(Long postId) {
+        scopedPost(postId);
         return applicantRepository.findByRecruitmentId(postId);
     }
 
@@ -218,10 +234,10 @@ public class RecruitmentService {
 
     @Transactional
     public Applicant moveApplicantToStage(Long applicantId, Long stageId) {
-        Applicant applicant = applicantRepository.findById(applicantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Applicant", applicantId));
+        Applicant applicant = scopedApplicant(applicantId);
         RecruitmentStage stage = recruitmentStageRepository.findById(stageId)
                 .orElseThrow(() -> new ResourceNotFoundException("RecruitmentStage", stageId));
+        if(!stage.getRecruitment().getId().equals(applicant.getRecruitment().getId())) throw new com.example.demo.common.exception.BadRequestException("Stage belongs to a different job opening");
         applicant.setStage(stage);
         log.info("Moving applicant id={} to stage id={}", applicantId, stageId);
         return applicantRepository.save(applicant);
@@ -229,8 +245,7 @@ public class RecruitmentService {
 
     @Transactional
     public Applicant hireApplicant(Long id) {
-        Applicant applicant = applicantRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Applicant", id));
+        Applicant applicant = scopedApplicant(id);
         applicant.setStatus(Applicant.ApplicantStatus.HIRED);
         log.info("Hiring applicant id={}", id);
         return applicantRepository.save(applicant);
@@ -238,8 +253,7 @@ public class RecruitmentService {
 
     @Transactional
     public Applicant rejectApplicant(Long id) {
-        Applicant applicant = applicantRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Applicant", id));
+        Applicant applicant = scopedApplicant(id);
         applicant.setStatus(Applicant.ApplicantStatus.REJECTED);
         log.info("Rejecting applicant id={}", id);
         return applicantRepository.save(applicant);
@@ -263,33 +277,13 @@ public class RecruitmentService {
     }
 
     @Transactional
-    public Map<String, Object> convertToEmployee(Long applicantId) {
-        Applicant applicant = applicantRepository.findById(applicantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Applicant", applicantId));
-        Candidate candidate = applicant.getCandidate();
-        Company company = applicant.getCompany();
-
-        Employee employee = new Employee();
-        if (candidate != null && candidate.getName() != null) {
-            String[] parts = candidate.getName().trim().split("\\s+", 2);
-            employee.setFirstName(parts[0]);
-            if (parts.length > 1) employee.setLastName(parts[1]);
-        }
-        employee.setEmail(candidate != null ? candidate.getEmail() : null);
-        employee.setCompany(company);
-        employee.setActive(true);
-
-        Employee saved = employeeRepository.save(employee);
-        applicant.setStatus(Applicant.ApplicantStatus.HIRED);
-        applicantRepository.save(applicant);
-
-        log.info("Converted applicant id={} to employee id={}", applicantId, saved.getId());
-        return Map.of("employeeId", saved.getId(), "message", "Employee created successfully");
+    public Map<String,Object> convertToEmployee(Long applicantId) {
+        scopedApplicant(applicantId);
+        throw new com.example.demo.common.exception.BadRequestException("Complete onboarding, then use Convert to employee with joining date, department and position");
     }
 
     public void sendApplicationEmail(Long applicantId, Map<String, Object> mailRequest) {
-        Applicant applicant = applicantRepository.findById(applicantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Applicant", applicantId));
+        Applicant applicant = scopedApplicant(applicantId);
         String candidateEmail = applicant.getCandidate() != null ? applicant.getCandidate().getEmail() : null;
         String subject = mailRequest.get("subject") != null ? (String) mailRequest.get("subject") : "(no subject)";
         String body = mailRequest.get("body") != null ? (String) mailRequest.get("body") : "";

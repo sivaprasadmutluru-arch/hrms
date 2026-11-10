@@ -33,7 +33,7 @@ public class CompanyRequest {
     private String taxId;
     private String registrationNumber;
 
-    // Only relevant when creating a Head Office — links it to a Prabha Tech organization
+    // Only relevant when creating a Head Office — links it to a AccrueHr organization
     private Long organizationId;
 
     // Head Office can override the default branch limit (max branches allowed)

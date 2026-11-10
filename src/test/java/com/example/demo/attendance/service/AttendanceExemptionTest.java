@@ -73,4 +73,22 @@ class AttendanceExemptionTest {
         // Dates before the exemption are still ordinary required dates.
         assertEquals("A",row.getDays().get(day.minusDays(1).toString()).getDisplayStatus());
     }
+    @Test void fullViewWithoutDateFiltersQueriesAllRecordedAttendance() {
+        Attendance attendance = new Attendance();
+        attendance.setId(100L);
+        attendance.setEmployee(employee);
+        attendance.setAttendanceDate(day);
+        attendance.setAttendanceStatus(Attendance.AttendanceQualityStatus.REGULAR);
+        org.springframework.data.domain.Page<Attendance> mockPage = new org.springframework.data.domain.PageImpl<>(
+                List.of(attendance), PageRequest.of(0, 20), 1
+        );
+        when(attendanceRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(mockPage);
+        when(policies.indexByCompany(anyList(), any())).thenReturn(Map.of());
+
+        var rows = service.getFullView(10L, null, null, null, null, null, PageRequest.of(0, 20));
+        assertEquals(1, rows.getTotalElements());
+        assertEquals(100L, rows.getContent().get(0).getId());
+        assertEquals("REGULAR", rows.getContent().get(0).getDisplayStatus());
+    }
 }

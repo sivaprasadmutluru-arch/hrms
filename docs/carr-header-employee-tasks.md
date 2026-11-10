@@ -1,6 +1,6 @@
 # CARR header and employee tasks
 
-The existing CAR reference design is retained. The header adds task search, the accessible-company selector, notifications, a user-profile link and the existing Redux logout action. The sidebar adds Back to GRECHA HRMS. Tasks and My Tasks sidebar entries are removed, as requested; task URLs and the Home task action remain available. Home shows assigned-task counts from the existing scoped task API.
+The existing CAR reference design is retained. The header adds task search, the accessible-company selector, notifications, a user-profile link and the existing Redux logout action. The sidebar adds Back to AccrueHr HRMS. Tasks and My Tasks sidebar entries are removed, as requested; task URLs and the Home task action remain available. Home shows assigned-task counts from the existing scoped task API.
 
 Employees select View My Tasks on Home and use Work & review to save title, description and due date, alongside the existing status and progress controls. PATCH /api/carr/tasks/{id}/details validates the fields and uses the existing company and ownership/manager visibility checks. Submitted, completed and cancelled tasks reject details changes. Assignment, review rules and instruction fields remain manager-controlled. Changes are saved transactionally and audited; standalone task wrapper titles/descriptions stay synchronized. The task list refreshes after saves, and Home loads current task counts on navigation.
 

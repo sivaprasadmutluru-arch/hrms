@@ -42,12 +42,60 @@ public class OffboardingService {
     private final OffboardingGeneralSettingRepository generalSettingRepository;
     private final OffboardingTaskRepository offboardingTaskRepository;
     private final AuditService auditService;
+    private final com.example.demo.auth.repository.UserRoleRepository userRoles;
+    private final com.example.demo.auth.repository.UserRepository users;
+    private final com.example.demo.asset.repository.AssetAssignmentRepository assets;
+    private final com.example.demo.payroll.repository.PayslipRepository payslips;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+    private void companyAccess(Long id) {com.example.demo.base.service.StandardCompanySetup.requireCompanyAccess(id);}
+    private void ensureEditable(EmployeeOffboarding record) {
+        companyAccess(record.getEmployee().getCompany().getId());
+        if(record.getStatus()==EmployeeOffboarding.OffboardingStatus.COMPLETED) throw new BadRequestException("Completed offboarding is read-only");
+    }
+    private com.example.demo.base.entity.Company selectedCompany() {
+        Long id=com.example.demo.common.context.CompanyContext.get();if(id==null) throw new BadRequestException("Select a company");companyAccess(id);return companyRepository.findById(id).orElseThrow();
+    }
+    private OffboardingPlan scopedPlan(Long id) {var row=planRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("OffboardingPlan",id));if(row.getCompany()==null) throw new BadRequestException("Plan has no company");companyAccess(row.getCompany().getId());return row;}
+    private OffboardingStage scopedStage(Long id) {var row=stageRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("OffboardingStage",id));scopedPlan(row.getPlan().getId());return row;}
+    private void endCompanyAccess(Employee employee) {
+        if(employee.getUser()!=null) {
+            var account=users.findByIdForUpdate(employee.getUser().getId()).orElseThrow();
+            var grants=userRoles.findByUserId(account.getId());
+            for(var grant:grants) if(grant.getCompany()!=null && grant.getCompany().getId().equals(employee.getCompany().getId())) {
+                grant.setAssignmentStatus(com.example.demo.auth.entity.UserRole.AssignmentStatus.REVOKED);grant.setActive(false);grant.setExpiresOn(LocalDate.now().minusDays(1));userRoles.save(grant);
+            }
+            if(grants.stream().noneMatch(g->g.isEffectiveOn(LocalDate.now()))) {account.setActive(false);users.save(account);}
+        }
+    }
+    private boolean platformEmployee(Employee employee) {
+        return employee.getUser()!=null && userRoles.findByUserId(employee.getUser().getId()).stream().anyMatch(r->r.isEffectiveOn(LocalDate.now()) && r.getRole().getName()==com.example.demo.auth.entity.Role.RoleName.PLATFORM_SUPER_ADMIN);
+    }
+    private void defaultChecklist(EmployeeOffboarding record) {
+        for(String title:List.of("Complete knowledge transfer and handover","Review final salary and leave settlement")) {
+            var task=new OffboardingEmployeeTask();task.setTitle(title);task.setEmployeeOffboarding(record);task.setDueDate(record.getExitDate());task.setIsCompleted(false);employeeTaskRepository.save(task);
+        }
+    }
+    @Transactional(readOnly=true)
+    public Map<String,Object> completionReadiness(Long id) {
+        var record=getById(id);var blockers=new java.util.ArrayList<String>();
+        var tasks=employeeTaskRepository.findByEmployeeOffboardingId(id).stream().filter(OffboardingEmployeeTask::isActive).toList();
+        if(tasks.isEmpty()) blockers.add("Add and complete the handover and final-settlement checklist");
+        tasks.stream().filter(t->!Boolean.TRUE.equals(t.getIsCompleted())).forEach(t->blockers.add("Pending task: "+t.getTitle()));
+        long held=assets.findByEmployeeId(record.getEmployee().getId()).stream().filter(a->a.isActive() && !Boolean.TRUE.equals(a.getIsReturned())).count();
+        if(held>0) blockers.add("Return "+held+" outstanding company asset(s)");
+        long unpaid=payslips.findByEmployeeId(record.getEmployee().getId()).stream().filter(p->p.isActive() && p.getStatus()!=com.example.demo.payroll.entity.Payslip.PayslipStatus.PAID).count();
+        if(unpaid>0) blockers.add("Review and settle "+unpaid+" unpaid payslip(s) in Payroll");
+        if(record.getExitDate()==null || record.getExitDate().isAfter(LocalDate.now())) blockers.add("Last working date has not arrived");
+        if(record.getEmployeeDeactivatedAt()==null || record.getEmployee().isActive()) blockers.add("Employment access has not been ended yet");
+        if(platformEmployee(record.getEmployee())) blockers.add("Platform administrator access must be transferred or revoked separately before completion");
+        return Map.of("ready",blockers.isEmpty(),"blockers",blockers,"outstandingAssets",held,"unpaidPayslips",unpaid,"accessEnded",record.getEmployeeDeactivatedAt()!=null && !record.getEmployee().isActive());
+    }
 
     // ─── Employee Offboarding ─────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<EmployeeOffboarding> getByEmployee(Long employeeId) {
-        return offboardingRepository.findByEmployeeId(employeeId);
+        var employee=employeeRepository.findById(employeeId).orElseThrow(()->new ResourceNotFoundException("Employee",employeeId));companyAccess(employee.getCompany().getId());var scope=com.example.demo.common.context.AccessScopeContext.get();if(scope!=null && scope.isSelfScope() && (employee.getUser()==null || !scope.getUserId().equals(employee.getUser().getId()))) throw new org.springframework.security.access.AccessDeniedException("Not your employee record");return offboardingRepository.findByEmployeeId(employeeId);
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +139,8 @@ public class OffboardingService {
 
     private void enforceReadAccess(EmployeeOffboarding eo) {
         var scope = com.example.demo.common.context.AccessScopeContext.get();
-        if (scope == null || scope.hasUnrestrictedAccess()) return;
+        if (scope == null) {companyAccess(eo.getEmployee().getCompany().getId());return;}
+        if (scope.hasUnrestrictedAccess()) return;
         if (scope.isSelfScope()) {
             Long userId = scope.getUserId();
             boolean owns = eo.getEmployee() != null && eo.getEmployee().getUser() != null
@@ -112,6 +161,15 @@ public class OffboardingService {
         }
         Employee employee = employeeRepository.findById(offboarding.getEmployee().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", offboarding.getEmployee().getId()));
+        companyAccess(employee.getCompany().getId());
+        entityManager.lock(employee,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!employee.isActive()) throw new BadRequestException("This employee is already inactive");
+        if(platformEmployee(employee)) throw new BadRequestException("Transfer or revoke platform administrator access before starting offboarding");
+        if(offboardingRepository.findByEmployeeId(employee.getId()).stream().anyMatch(r->r.getStatus()!=EmployeeOffboarding.OffboardingStatus.COMPLETED)) throw new BadRequestException("An offboarding record already exists for this employee");
+        if(Boolean.TRUE.equals(offboarding.getImmediateLeaving())) offboarding.setExitDate(LocalDate.now());
+        if(offboarding.getExitDate()==null) throw new BadRequestException("Last working date is required");
+        if(offboarding.getRetentionPeriodMonths()!=null && offboarding.getRetentionPeriodMonths()<0) throw new BadRequestException("Retention period cannot be negative");
+        offboarding.setId(null);offboarding.setEmployeeDeactivatedAt(null);offboarding.setCompletedDate(null);offboarding.setStatus(EmployeeOffboarding.OffboardingStatus.IN_PROGRESS);
         offboarding.setEmployee(employee);
         if (offboarding.getTask() != null && offboarding.getTask().getId() != null) {
             offboarding.setTask(offboardingTaskRepository.getReferenceById(offboarding.getTask().getId()));
@@ -123,7 +181,7 @@ public class OffboardingService {
         if (offboarding.getRetentionPeriodMonths() != null && offboarding.getExitDate() != null) {
             offboarding.setRetentionExpiresAt(offboarding.getExitDate().plusMonths(offboarding.getRetentionPeriodMonths()));
         }
-        EmployeeOffboarding saved = offboardingRepository.save(offboarding);
+        EmployeeOffboarding saved = offboardingRepository.save(offboarding);defaultChecklist(saved);
 
         auditService.log("EmployeeOffboarding", saved.getId(), "INITIATED", null, summarize(saved));
 
@@ -137,8 +195,11 @@ public class OffboardingService {
     }
 
     public EmployeeOffboarding update(Long id, EmployeeOffboarding updated) {
-        EmployeeOffboarding eo = offboardingRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("EmployeeOffboarding", id));
+        EmployeeOffboarding eo = getById(id);ensureEditable(eo);
+        if(eo.getEmployeeDeactivatedAt()!=null) throw new BadRequestException("Departure is already effective; employee dates cannot be changed");
+        if(Boolean.TRUE.equals(updated.getImmediateLeaving())) updated.setExitDate(LocalDate.now());
+        if(updated.getExitDate()==null) throw new BadRequestException("Last working date is required");
+        if(updated.getRetentionPeriodMonths()!=null && updated.getRetentionPeriodMonths()<0) throw new BadRequestException("Retention period cannot be negative");
         eo.setNoticePeriodType(updated.getNoticePeriodType());
         eo.setExitDate(updated.getExitDate());
         eo.setReasonOfLeaving(updated.getReasonOfLeaving());
@@ -147,15 +208,16 @@ public class OffboardingService {
         if (eo.getRetentionPeriodMonths() != null && eo.getExitDate() != null) {
             eo.setRetentionExpiresAt(eo.getExitDate().plusMonths(eo.getRetentionPeriodMonths()));
         }
-        return offboardingRepository.save(eo);
+        var saved=offboardingRepository.save(eo);if(!saved.getExitDate().isAfter(LocalDate.now())) return activateOffboarding(saved);return saved;
     }
 
     public EmployeeOffboarding complete(Long id) {
-        EmployeeOffboarding eo = offboardingRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("EmployeeOffboarding", id));
-        eo.setStatus(EmployeeOffboarding.OffboardingStatus.COMPLETED);
-        eo.setCompletedDate(LocalDate.now());
-        return offboardingRepository.save(eo);
+        var eo=getById(id);companyAccess(eo.getEmployee().getCompany().getId());entityManager.flush();entityManager.lock(eo,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);entityManager.refresh(eo);
+        if(eo.getStatus()==EmployeeOffboarding.OffboardingStatus.COMPLETED) return eo;
+        var readiness=completionReadiness(id);
+        if(!Boolean.TRUE.equals(readiness.get("ready"))) throw new BadRequestException(String.join("; ",(List<String>)readiness.get("blockers")));
+        eo.setStatus(EmployeeOffboarding.OffboardingStatus.COMPLETED);eo.setCompletedDate(LocalDate.now());
+        auditService.log("EmployeeOffboarding",id,"COMPLETED",null,summarize(eo));return offboardingRepository.save(eo);
     }
 
     /**
@@ -166,6 +228,7 @@ public class OffboardingService {
     public EmployeeOffboarding activateOffboardingById(Long id) {
         EmployeeOffboarding eo = offboardingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("EmployeeOffboarding", id));
+        entityManager.flush();entityManager.lock(eo,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);entityManager.refresh(eo);
         return activateOffboarding(eo);
     }
 
@@ -176,9 +239,13 @@ public class OffboardingService {
      */
     public EmployeeOffboarding activateOffboarding(EmployeeOffboarding eo) {
         if (eo.getEmployeeDeactivatedAt() != null) {
-            return eo; // already processed
+            // Repair legacy departures, but do not disable an employee restored for a new employment period.
+            if(!eo.getEmployee().isActive()) endCompanyAccess(eo.getEmployee());
+            return eo;
         }
-        Employee employee = eo.getEmployee();
+        if(eo.getExitDate()==null || eo.getExitDate().isAfter(LocalDate.now())) throw new BadRequestException("Last working date has not arrived");
+        Employee employee = eo.getEmployee();entityManager.lock(employee,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        endCompanyAccess(employee);
         Map<String, Object> before = Map.of("employeeActive", employee.isActive());
         employee.setActive(false);
         employeeRepository.save(employee);
@@ -204,7 +271,7 @@ public class OffboardingService {
     }
 
     public void delete(Long id) {
-        offboardingRepository.deleteById(id);
+        var record=getById(id);ensureEditable(record);throw new BadRequestException("Offboarding records retain employment history and cannot be deleted");
     }
 
     // ─── Resignation Letters ─────────────────────────────────────────────────
@@ -217,24 +284,28 @@ public class OffboardingService {
 
     public ResignationLetter createResignation(ResignationLetter letter) {
         if (letter.getEmployee() != null && letter.getEmployee().getId() != null) {
-            letter.setEmployee(employeeRepository.getReferenceById(letter.getEmployee().getId()));
+            var employee=employeeRepository.findById(letter.getEmployee().getId()).orElseThrow();companyAccess(employee.getCompany().getId());var scope=com.example.demo.common.context.AccessScopeContext.get();if(scope!=null && scope.isSelfScope() && (employee.getUser()==null || !scope.getUserId().equals(employee.getUser().getId()))) throw new org.springframework.security.access.AccessDeniedException("You can only submit your own resignation");letter.setEmployee(employee);letter.setCompany(employee.getCompany());letter.setStatus(ResignationLetter.ResignationStatus.REQUESTED);letter.setId(null);
         }
-        if (letter.getCompany() != null && letter.getCompany().getId() != null) {
-            letter.setCompany(companyRepository.getReferenceById(letter.getCompany().getId()));
-        }
+        if(letter.getEmployee()==null) throw new BadRequestException("Employee is required");
         return resignationRepository.save(letter);
     }
 
     public ResignationLetter approveResignation(Long id) {
         ResignationLetter r = resignationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ResignationLetter", id));
-        r.setStatus(ResignationLetter.ResignationStatus.APPROVED);
-        return resignationRepository.save(r);
+        if(r.getEmployee()==null) throw new BadRequestException("Resignation must identify an employee");companyAccess(r.getEmployee().getCompany().getId());
+        if(r.getStatus()==ResignationLetter.ResignationStatus.REJECTED) throw new BadRequestException("Rejected resignations cannot be approved");
+        if(r.getPlannedToLeaveOn()==null) throw new BadRequestException("Confirm the last working date before approving");
+        if(offboardingRepository.findByEmployeeId(r.getEmployee().getId()).stream().noneMatch(o->o.getStatus()!=EmployeeOffboarding.OffboardingStatus.COMPLETED)) {
+            var record=new EmployeeOffboarding();record.setEmployee(r.getEmployee());record.setExitDate(r.getPlannedToLeaveOn());record.setReasonOfLeaving(r.getDescription());record.setImmediateLeaving(false);create(record,null,"Resignation approval");
+        }
+        r.setStatus(ResignationLetter.ResignationStatus.APPROVED);return resignationRepository.save(r);
     }
 
     public ResignationLetter rejectResignation(Long id) {
         ResignationLetter r = resignationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ResignationLetter", id));
+        if(r.getEmployee()==null) throw new BadRequestException("Employee is required");companyAccess(r.getEmployee().getCompany().getId());if(r.getStatus()!=ResignationLetter.ResignationStatus.REQUESTED) throw new BadRequestException("Only a pending resignation can be rejected");
         r.setStatus(ResignationLetter.ResignationStatus.REJECTED);
         return resignationRepository.save(r);
     }
@@ -248,14 +319,12 @@ public class OffboardingService {
     }
 
     public ExitReason createExitReason(ExitReason reason) {
-        if (reason.getCompany() != null && reason.getCompany().getId() != null) {
-            reason.setCompany(companyRepository.getReferenceById(reason.getCompany().getId()));
-        }
+        reason.setCompany(selectedCompany());reason.setId(null);
         return exitReasonRepository.save(reason);
     }
 
     public void deleteExitReason(Long id) {
-        exitReasonRepository.deleteById(id);
+        var reason=exitReasonRepository.findById(id).orElseThrow();companyAccess(reason.getCompany().getId());exitReasonRepository.delete(reason);
     }
 
     // ─── Offboarding Plans ────────────────────────────────────────────────────
@@ -267,15 +336,12 @@ public class OffboardingService {
     }
 
     public OffboardingPlan createPlan(OffboardingPlan plan) {
-        if (plan.getCompany() != null && plan.getCompany().getId() != null) {
-            plan.setCompany(companyRepository.getReferenceById(plan.getCompany().getId()));
-        }
+        plan.setCompany(selectedCompany());plan.setId(null);
         return planRepository.save(plan);
     }
 
     public OffboardingPlan updatePlan(Long id, OffboardingPlan updated) {
-        OffboardingPlan plan = planRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OffboardingPlan", id));
+        OffboardingPlan plan = scopedPlan(id);
         plan.setTitle(updated.getTitle());
         plan.setDescription(updated.getDescription());
         plan.setIsActive(updated.getIsActive());
@@ -283,60 +349,59 @@ public class OffboardingService {
     }
 
     public void deletePlan(Long id) {
-        planRepository.deleteById(id);
+        scopedPlan(id);if(!stageRepository.findByPlanIdOrderBySequenceAsc(id).isEmpty()) throw new BadRequestException("Remove the plan stages first, or deactivate the plan to preserve history");planRepository.deleteById(id);
     }
 
     // ─── Offboarding Stages ───────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<OffboardingStage> listStages(Long planId) {
-        return stageRepository.findByPlanIdOrderBySequenceAsc(planId);
+        scopedPlan(planId);return stageRepository.findByPlanIdOrderBySequenceAsc(planId);
     }
 
     public OffboardingStage createStage(Long planId, OffboardingStage stage) {
-        stage.setPlan(planRepository.getReferenceById(planId));
+        stage.setId(null);stage.setPlan(scopedPlan(planId));
         return stageRepository.save(stage);
     }
 
     public OffboardingStage updateStage(Long id, OffboardingStage updated) {
-        OffboardingStage stage = stageRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("OffboardingStage", id));
+        OffboardingStage stage = scopedStage(id);
         stage.setTitle(updated.getTitle());
         stage.setSequence(updated.getSequence());
         return stageRepository.save(stage);
     }
 
     public void deleteStage(Long id) {
-        stageRepository.deleteById(id);
+        scopedStage(id);if(!stageFileRepository.findByStageId(id).isEmpty()) throw new BadRequestException("Remove stage attachments before deleting this stage");stageRepository.deleteById(id);
     }
 
     // ─── Stage Files ──────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<OffboardingStageFile> listStageFiles(Long stageId) {
-        return stageFileRepository.findByStageId(stageId);
+        scopedStage(stageId);return stageFileRepository.findByStageId(stageId);
     }
 
     public OffboardingStageFile addStageFile(Long stageId, OffboardingStageFile file) {
-        file.setStage(stageRepository.getReferenceById(stageId));
+        file.setId(null);file.setStage(scopedStage(stageId));
         return stageFileRepository.save(file);
     }
 
     public void deleteStageFile(Long id) {
-        stageFileRepository.deleteById(id);
+        var file=stageFileRepository.findById(id).orElseThrow();scopedStage(file.getStage().getId());stageFileRepository.delete(file);
     }
 
     // ─── Employee Tasks ───────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<OffboardingEmployeeTask> listEmployeeTasks(Long offboardingId) {
-        return employeeTaskRepository.findByEmployeeOffboardingId(offboardingId);
+        getById(offboardingId);return employeeTaskRepository.findByEmployeeOffboardingId(offboardingId);
     }
 
     public OffboardingEmployeeTask assignEmployeeTask(Long offboardingId, OffboardingEmployeeTask task) {
-        task.setEmployeeOffboarding(offboardingRepository.getReferenceById(offboardingId));
+        var record=getById(offboardingId);ensureEditable(record);task.setId(null);task.setIsCompleted(false);task.setEmployeeOffboarding(record);
         if (task.getAssignedTo() != null && task.getAssignedTo().getId() != null) {
-            task.setAssignedTo(employeeRepository.getReferenceById(task.getAssignedTo().getId()));
+            var assignee=employeeRepository.findById(task.getAssignedTo().getId()).orElseThrow();if(!assignee.getCompany().getId().equals(record.getEmployee().getCompany().getId())) throw new BadRequestException("Task owner belongs to another company");task.setAssignedTo(assignee);
         }
         return employeeTaskRepository.save(task);
     }
@@ -344,7 +409,7 @@ public class OffboardingService {
     public OffboardingEmployeeTask completeEmployeeTask(Long id) {
         OffboardingEmployeeTask task = employeeTaskRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("OffboardingEmployeeTask", id));
-        task.setIsCompleted(true);
+        ensureEditable(task.getEmployeeOffboarding());task.setIsCompleted(true);
         return employeeTaskRepository.save(task);
     }
 
@@ -352,11 +417,11 @@ public class OffboardingService {
 
     @Transactional(readOnly = true)
     public List<OffboardingNote> listNotes(Long offboardingId) {
-        return noteRepository.findByEmployeeOffboardingId(offboardingId);
+        getById(offboardingId);return noteRepository.findByEmployeeOffboardingId(offboardingId);
     }
 
     public OffboardingNote addNote(Long offboardingId, OffboardingNote note) {
-        note.setEmployeeOffboarding(offboardingRepository.getReferenceById(offboardingId));
+        var record=getById(offboardingId);ensureEditable(record);note.setId(null);note.setEmployeeOffboarding(record);
         if (note.getCreatedBy() != null && note.getCreatedBy().getId() != null) {
             note.setCreatedBy(employeeRepository.getReferenceById(note.getCreatedBy().getId()));
         }
@@ -364,29 +429,19 @@ public class OffboardingService {
     }
 
     public void deleteNote(Long id) {
-        noteRepository.deleteById(id);
+        var note=noteRepository.findById(id).orElseThrow();ensureEditable(note.getEmployeeOffboarding());noteRepository.delete(note);
     }
 
     // ─── General Settings ─────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public OffboardingGeneralSetting getSettings() {
-        Long companyId = com.example.demo.common.context.CompanyContext.get();
-        var result = companyId != null
-                ? generalSettingRepository.findByCompanyId(companyId)
-                : generalSettingRepository.findAll().stream().findFirst();
+        Long companyId=selectedCompany().getId();var result=generalSettingRepository.findByCompanyId(companyId);
         return result.orElse(new OffboardingGeneralSetting());
     }
 
     public OffboardingGeneralSetting upsertSettings(OffboardingGeneralSetting incoming) {
-        OffboardingGeneralSetting setting;
-        if (incoming.getCompany() != null && incoming.getCompany().getId() != null) {
-            setting = generalSettingRepository.findByCompanyId(incoming.getCompany().getId())
-                    .orElse(new OffboardingGeneralSetting());
-            setting.setCompany(companyRepository.getReferenceById(incoming.getCompany().getId()));
-        } else {
-            setting = new OffboardingGeneralSetting();
-        }
+        var company=selectedCompany();var setting=generalSettingRepository.findByCompanyId(company.getId()).orElse(new OffboardingGeneralSetting());setting.setCompany(company);
         setting.setNoticePeriodDays(incoming.getNoticePeriodDays());
         setting.setEnableExitInterview(incoming.getEnableExitInterview());
         setting.setEnableAssetReturnCheck(incoming.getEnableAssetReturnCheck());

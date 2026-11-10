@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * Because the device has no concept of tenants or auth tokens, every request resolves
  * the tenant schema from the SN via {@link AdmsTenantResolver} and sets the
  * {@link TenantContext} before delegating to {@link AdmsService}. This ensures
- * Hibernate queries hit the correct tenant schema (e.g. prabha_technologies),
+ * Hibernate queries hit the correct tenant schema (e.g. accruehr),
  * not the default "public" schema.
  */
 @RestController

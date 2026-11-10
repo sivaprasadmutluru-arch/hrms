@@ -26,7 +26,7 @@ public class OffboardingScheduler {
     private final OffboardingService offboardingService;
     private final com.example.demo.offboarding.repository.EmployeeOffboardingRepository offboardingRepository;
 
-    @Scheduled(cron = "0 5 0 * * *")
+    @Scheduled(initialDelayString="${offboarding.initial-delay-ms:60000}",fixedDelayString="${offboarding.poll-delay-ms:3600000}")
     public void activateDueOffboardings() {
         LocalDate today = LocalDate.now();
         List<Company> headOffices = companyRepository.findByCompanyType(Company.CompanyType.HEAD_OFFICE);
@@ -34,14 +34,14 @@ public class OffboardingScheduler {
 
         for (Company headOffice : headOffices) {
             String schema = headOffice.getSchemaName();
-            if (schema == null || schema.isBlank()) {
+            if (!headOffice.isSchemaReady() || schema == null || schema.isBlank()) {
                 continue;
             }
             try {
                 TenantContext.setTenant(schema);
-                List<Long> dueIds = offboardingRepository
-                        .findByEmployeeDeactivatedAtIsNullAndExitDateLessThanEqual(today)
-                        .stream().map(EmployeeOffboarding::getId).toList();
+                var records=new java.util.ArrayList<>(offboardingRepository.findByEmployeeDeactivatedAtIsNullAndExitDateLessThanEqual(today));
+                records.addAll(offboardingRepository.findByEmployeeDeactivatedAtIsNotNull());
+                List<Long> dueIds=records.stream().map(EmployeeOffboarding::getId).distinct().toList();
                 for (Long id : dueIds) {
                     try {
                         EmployeeOffboarding activated = offboardingService.activateOffboardingById(id);
